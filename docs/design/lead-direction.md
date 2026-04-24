@@ -1,0 +1,52 @@
+# Lead Direction
+
+## Decision
+
+The current lead direction for Vyrden is the Movie Detail Concept.
+
+Signal Deck remains useful as an exploration, but it should not be the primary product interface unless later testing proves it is clearer than the Movie Detail direction.
+
+## Why Movie Detail Leads
+
+The Movie Detail Concept is stronger because it makes the core product promise obvious:
+
+- The user can immediately play or resume.
+- Versions are visible before playback.
+- Audio and subtitles are visible before playback.
+- Download quality is visible.
+- The playback forecast explains what Vyrden will do before the user presses play.
+- The layout feels cinematic without hiding common actions.
+
+This screen better balances premium movie/TV presentation with daily-use clarity.
+
+## What To Keep From Signal Deck
+
+Signal Deck still contributes useful ideas:
+
+- Playback route as a visual object.
+- Codec path displayed as a sequence.
+- Server cost shown in human language.
+- A stronger sense that Vyrden has its own identity.
+- Focus-driven media changes that update the playback route live.
+
+These ideas should be folded into the Movie Detail direction where they improve clarity.
+
+## What To Avoid
+
+- Do not force novelty at the cost of obvious controls.
+- Do not hide play, resume, mark watched, versions, audio, subtitles, or download.
+- Do not make users hunt for routine actions.
+- Do not copy the standard streaming app layout without improving it.
+
+## Next Design Target
+
+Design the Movie Detail direction into a fuller TV product system:
+
+- Movie detail.
+- Series detail.
+- Episode detail.
+- Playback overlay.
+- Audio and subtitle selector.
+- Version selector.
+- Download selector.
+

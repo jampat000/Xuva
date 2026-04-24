@@ -6,6 +6,7 @@ The Vyrden design system starts with the movie and TV experience. The TV app sho
 
 - [UI Direction](ui-direction.md)
 - [Design Tokens](design-tokens.md)
+- [Lead Direction](lead-direction.md)
 - [Signature Experience](signature-experience.md)
 - [TV Experience](tv-experience.md)
 - [Screen Inventory](screen-inventory.md)
@@ -24,7 +25,7 @@ The first runnable UI concept is:
 apps/web/prototypes/vyrden-movie-detail/index.html
 ```
 
-The signature exploration is:
+The current lead direction is the Movie Detail Concept. The signature exploration is:
 
 ```text
 apps/web/prototypes/vyrden-signal-deck/index.html

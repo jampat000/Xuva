@@ -1,5 +1,9 @@
 # Vyrden Signature Experience
 
+Status: exploration.
+
+The Signal Deck is not the current lead direction. The Movie Detail Concept is the lead direction because it keeps the common movie/TV controls obvious while still showing Vyrden's playback intelligence. Signal Deck should be used as a source of ideas, not as the default product interface.
+
 ## Problem
 
 Most movie and TV apps converge on the same visual pattern:
