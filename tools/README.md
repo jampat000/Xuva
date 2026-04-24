@@ -15,7 +15,17 @@ python tools/vyrden_scan.py X:\ --no-probe --limit 100
 Example deep probe scan after FFmpeg is installed:
 
 ```powershell
+winget install --id Gyan.FFmpeg -e --source winget --accept-source-agreements --accept-package-agreements
+```
+
+```powershell
 python tools/vyrden_scan.py X:\ --ffprobe "C:\ffmpeg\bin\ffprobe.exe" --workers 2
+```
+
+On Windows, the scanner also checks winget's FFmpeg alias location automatically:
+
+```text
+%LOCALAPPDATA%\Microsoft\WinGet\Links\ffprobe.exe
 ```
 
 Outputs are local and ignored by git:
@@ -26,6 +36,8 @@ data/probe-results-summary.json
 ```
 
 Use low worker counts for NAS paths. `--workers 2` is the default because network storage can become slower when too many files are probed at once.
+
+The summary counts the primary playable video stream per file. Secondary thumbnail/preview video streams remain in JSONL records but do not affect headline video codec totals.
 
 Useful options:
 

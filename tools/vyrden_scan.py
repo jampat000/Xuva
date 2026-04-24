@@ -194,11 +194,21 @@ def run_ffprobe(path: Path, ffprobe: str, timeout: int) -> tuple[dict[str, Any] 
 
 
 def stream_groups(probe: dict[str, Any] | None) -> dict[str, list[dict[str, Any]]]:
-    groups: dict[str, list[dict[str, Any]]] = {"video": [], "audio": [], "subtitle": [], "other": []}
+    groups: dict[str, list[dict[str, Any]]] = {
+        "video": [],
+        "audio": [],
+        "subtitle": [],
+        "attachment": [],
+        "other": [],
+    }
     if not probe:
         return groups
     for stream in probe.get("streams", []):
         if not isinstance(stream, dict):
+            continue
+        disposition = stream.get("disposition")
+        if isinstance(disposition, dict) and disposition.get("attached_pic") == 1:
+            groups["attachment"].append(stream)
             continue
         codec_type = stream.get("codec_type")
         if codec_type in groups:
@@ -223,6 +233,14 @@ def format_name(probe: dict[str, Any] | None) -> str | None:
         return None
     value = fmt.get("format_name")
     return value if isinstance(value, str) else None
+
+
+def container_supported(container: str | None, supported: set[str]) -> bool:
+    if not container:
+        return True
+    names = {name.strip().lower() for name in container.split(",") if name.strip()}
+    names.add(container.lower())
+    return bool(names & supported)
 
 
 def bitrate(probe: dict[str, Any] | None) -> int | None:
@@ -296,7 +314,7 @@ def decide_playback(probe: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
             mode = "Audio Transcode"
             actions["audio"] = "transcode"
             reason = f"Audio codec {audio_codec} is not in the {profile_name} direct-play profile."
-        elif container and container not in profile["containers"]:
+        elif not container_supported(container, profile["containers"]):
             mode = "Remux"
             actions["container"] = "remux"
             reason = f"Container {container} is not in the {profile_name} direct-play profile."
@@ -325,6 +343,7 @@ def summarize_streams(probe: dict[str, Any] | None) -> dict[str, Any]:
         "video": [summarize_stream(stream) for stream in groups["video"]],
         "audio": [summarize_stream(stream) for stream in groups["audio"]],
         "subtitles": [summarize_stream(stream) for stream in groups["subtitle"]],
+        "attachments": [summarize_stream(stream) for stream in groups["attachment"]],
         "chapters": len(probe.get("chapters", [])) if probe else 0,
     }
 
@@ -424,7 +443,8 @@ def update_summary(summary: dict[str, Any], record: dict[str, Any]) -> None:
     if container:
         summary["containers"][container] += 1
 
-    for stream in streams.get("video", []) if isinstance(streams.get("video"), list) else []:
+    video_streams = streams.get("video", []) if isinstance(streams.get("video"), list) else []
+    for stream in video_streams[:1]:
         codec = stream.get("codec")
         if codec:
             summary["video_codecs"][codec] += 1
@@ -490,6 +510,30 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def find_ffprobe(explicit_path: str | None) -> str | None:
+    if explicit_path:
+        return explicit_path
+
+    from_path = shutil.which("ffprobe")
+    if from_path:
+        return from_path
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates = [
+            Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "ffprobe.exe",
+        ]
+        packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+        if packages.exists():
+            candidates.extend(packages.glob("Gyan.FFmpeg_*/*/bin/ffprobe.exe"))
+            candidates.extend(packages.glob("BtbN.FFmpeg.*/*/bin/ffprobe.exe"))
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+
+    return None
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     root = Path(args.root).expanduser()
@@ -497,7 +541,7 @@ def main(argv: list[str]) -> int:
         print(f"Media root does not exist: {root}", file=sys.stderr)
         return 2
 
-    ffprobe = args.ffprobe or shutil.which("ffprobe")
+    ffprobe = find_ffprobe(args.ffprobe)
     probe = not args.no_probe and bool(ffprobe)
     if not args.no_probe and not ffprobe:
         print("ffprobe was not found; running inventory-only mode. Use --ffprobe or install FFmpeg for deep probing.", file=sys.stderr)

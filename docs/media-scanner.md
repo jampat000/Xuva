@@ -40,8 +40,16 @@ python tools/vyrden_scan.py X:\ --no-probe --limit 100
 Deep probe mode requires `ffprobe`:
 
 ```powershell
+winget install --id Gyan.FFmpeg -e --source winget --accept-source-agreements --accept-package-agreements
+```
+
+```powershell
 python tools/vyrden_scan.py X:\ --ffprobe "C:\ffmpeg\bin\ffprobe.exe" --workers 2
 ```
+
+If FFmpeg was installed through winget, the scanner also checks winget's local alias path automatically.
+
+The aggregate `video_codecs` summary counts the primary playable video stream for each file. Secondary thumbnail/preview video streams are preserved in per-file records but do not inflate the headline video codec counts.
 
 ## Output
 
