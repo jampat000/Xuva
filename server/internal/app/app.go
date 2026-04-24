@@ -20,6 +20,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
+	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
 	"github.com/vyrdenhq/vyrden/server/internal/streaming"
 	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
@@ -30,6 +31,7 @@ import (
 type Application struct {
 	Config    config.Config
 	StartedAt time.Time
+	cancel    context.CancelFunc
 	Database  *database.Service
 	Catalog   *catalog.Service
 	Events    *events.Bus
@@ -38,6 +40,7 @@ type Application struct {
 
 	Libraries *libraries.Service
 	Scanner   *scanner.Service
+	Scans     *scans.Service
 	Probe     *probe.Service
 	Media     *media.Service
 	Movies    *movies.Service
@@ -52,6 +55,7 @@ type Application struct {
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
+	appCtx, cancel := context.WithCancel(ctx)
 	limits := resources.Limits{
 		ScanWorkers:      cfg.ScanWorkers,
 		ProbeWorkers:     cfg.ProbeWorkers,
@@ -83,20 +87,29 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		})
 	}
 
+	jobRegistry := jobs.NewRegistry(manager)
+	jobRegistry.Start(appCtx)
+	scannerService := scanner.NewService()
+	movieService := movies.NewService()
+	tvService := tv.NewService()
+	scanService := scans.NewService(cfg, bus, jobRegistry.Scan, libraryService, scannerService, catalogService, movieService, tvService)
+
 	return &Application{
 		Config:    cfg,
 		StartedAt: time.Now().UTC(),
+		cancel:    cancel,
 		Database:  databaseService,
 		Catalog:   catalogService,
 		Events:    bus,
 		Resources: manager,
-		Jobs:      jobs.NewRegistry(manager),
+		Jobs:      jobRegistry,
 		Libraries: libraryService,
-		Scanner:   scanner.NewService(),
+		Scanner:   scannerService,
+		Scans:     scanService,
 		Probe:     probe.NewService(),
 		Media:     media.NewService(),
-		Movies:    movies.NewService(),
-		TV:        tv.NewService(),
+		Movies:    movieService,
+		TV:        tvService,
 		Playback:  playback.NewService(),
 		Streaming: streaming.NewService(),
 		Transcode: transcode.NewService(),
@@ -116,6 +129,7 @@ func (a *Application) Router() http.Handler {
 		Jobs:      a.Jobs,
 		Libraries: a.Libraries,
 		Scanner:   a.Scanner,
+		Scans:     a.Scans,
 		Catalog:   a.Catalog,
 		Media:     a.Media,
 		Movies:    a.Movies,
@@ -126,6 +140,7 @@ func (a *Application) Router() http.Handler {
 }
 
 func (a *Application) Shutdown(context.Context) {
+	a.cancel()
 	a.Events.Close()
 	_ = a.Database.Close()
 }

@@ -3,6 +3,8 @@ package jobs
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 )
@@ -14,6 +16,8 @@ type Queue struct {
 	Class   resources.WorkloadClass `json:"class"`
 	Workers int                     `json:"workers"`
 	jobs    chan Job
+	started sync.Once
+	active  atomic.Int64
 }
 
 type Registry struct {
@@ -55,6 +59,31 @@ func (q *Queue) Submit(ctx context.Context, job Job) error {
 	}
 }
 
+func (q *Queue) Start(ctx context.Context) {
+	q.started.Do(func() {
+		for i := 0; i < q.Workers; i++ {
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case job := <-q.jobs:
+						q.active.Add(1)
+						job(ctx)
+						q.active.Add(-1)
+					}
+				}
+			}()
+		}
+	})
+}
+
+func (r *Registry) Start(ctx context.Context) {
+	r.Scan.Start(ctx)
+	r.Probe.Start(ctx)
+	r.Transcode.Start(ctx)
+}
+
 func (r *Registry) Snapshot() []map[string]any {
 	queues := []*Queue{r.Scan, r.Probe, r.Transcode}
 	output := make([]map[string]any, 0, len(queues))
@@ -64,6 +93,7 @@ func (r *Registry) Snapshot() []map[string]any {
 			"class":   queue.Class,
 			"workers": queue.Workers,
 			"queued":  len(queue.jobs),
+			"active":  queue.active.Load(),
 		})
 	}
 	return output

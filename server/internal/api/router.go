@@ -19,6 +19,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
+	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
@@ -31,6 +32,7 @@ type Deps struct {
 	Jobs      *jobs.Registry
 	Libraries *libraries.Service
 	Scanner   *scanner.Service
+	Scans     *scans.Service
 	Catalog   *catalog.Service
 	Media     *media.Service
 	Movies    *movies.Service
@@ -47,6 +49,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
+	mux.HandleFunc("GET /api/scans", scansHandler(deps))
+	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
 	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/tv/scan", tvScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/scan", allLibrariesScanHandler(deps))
@@ -125,11 +129,12 @@ func movieScanHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "movie library path is required")
 			return
 		}
-		response, ok := scanMovies(w, r, deps, path, request.SampleLimit)
-		if !ok {
+		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindMovies, Path: path, SampleLimit: request.SampleLimit})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, response)
+		writeJSON(w, http.StatusAccepted, job)
 	}
 }
 
@@ -144,11 +149,12 @@ func tvScanHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "tv library path is required")
 			return
 		}
-		response, ok := scanTV(w, r, deps, path, request.SampleLimit)
-		if !ok {
+		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindTV, Path: path, SampleLimit: request.SampleLimit})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, response)
+		writeJSON(w, http.StatusAccepted, job)
 	}
 }
 
@@ -166,22 +172,29 @@ func allLibrariesScanHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		response := combinedScanResponse{}
-		if moviesPath != "" {
-			moviesResponse, ok := scanMovies(w, r, deps, moviesPath, request.SampleLimit)
-			if !ok {
-				return
-			}
-			response.Movies = moviesResponse
+		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindAll, MoviesPath: moviesPath, TVPath: tvPath, SampleLimit: request.SampleLimit})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
 		}
-		if tvPath != "" {
-			tvResponse, ok := scanTV(w, r, deps, tvPath, request.SampleLimit)
-			if !ok {
-				return
-			}
-			response.TV = tvResponse
+		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
+func scansHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"scans": deps.Scans.List()})
+	}
+}
+
+func scanJobHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Scans.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "scan job not found")
+			return
 		}
-		writeJSON(w, http.StatusOK, response)
+		writeJSON(w, http.StatusOK, job)
 	}
 }
 
@@ -620,6 +633,7 @@ const devConsoleHTML = `<!doctype html>
       <div class="links">
         <a class="button" href="/api/health">Health</a>
         <a class="button" href="/api/libraries">Libraries</a>
+        <a class="button" href="/api/scans">Scans</a>
         <a class="button" href="/api/catalog/summary">Catalog Summary</a>
         <a class="button" href="/api/architecture">Architecture</a>
       </div>
@@ -634,6 +648,7 @@ const devConsoleHTML = `<!doctype html>
   <script>
     const output = document.getElementById("output");
     const buttons = [...document.querySelectorAll("button")];
+    let activeScanId = "";
 
     function setBusy(busy) {
       for (const button of buttons) button.disabled = busy;
@@ -650,9 +665,10 @@ const devConsoleHTML = `<!doctype html>
     }
 
     async function refresh() {
-      const [health, summary] = await Promise.all([
+      const [health, summary, scans] = await Promise.all([
         getJSON("/api/health"),
-        getJSON("/api/catalog/summary")
+        getJSON("/api/catalog/summary"),
+        getJSON("/api/scans")
       ]);
       document.getElementById("serverStatus").textContent = health.status || "unknown";
       document.getElementById("moviesPath").textContent = health.libraries?.movies || "Not configured";
@@ -660,11 +676,21 @@ const devConsoleHTML = `<!doctype html>
       for (const key of ["libraries", "mediaSources", "movies", "series", "episodes", "scanRuns"]) {
         document.getElementById(key).textContent = summary[key] ?? 0;
       }
+      if (!activeScanId && scans.scans?.length) {
+        const latest = scans.scans[0];
+        show({
+          latestScan: latest.id,
+          status: latest.status,
+          mediaFiles: latest.mediaFiles,
+          lastPath: latest.lastPath,
+          result: latest.result
+        });
+      }
     }
 
     async function post(path) {
       setBusy(true);
-      show("Running " + path + " ...");
+      show("Starting " + path + " ...");
       try {
         const response = await fetch(path, {
           method: "POST",
@@ -673,13 +699,60 @@ const devConsoleHTML = `<!doctype html>
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || response.statusText);
-        show(payload);
-        await refresh();
+        activeScanId = payload.id;
+        show({
+          scan: payload.id,
+          status: payload.status,
+          note: "Scan is running in the background. Progress will update here."
+        });
       } catch (error) {
         output.innerHTML = "<span class=\"error\">" + error.message + "</span>";
-      } finally {
         setBusy(false);
       }
+    }
+
+    async function loadScan(id) {
+      const job = await getJSON("/api/scans/" + encodeURIComponent(id));
+      show({
+        scan: job.id,
+        status: job.status,
+        totalFiles: job.totalFiles,
+        mediaFiles: job.mediaFiles,
+        ignoredFiles: job.ignoredFiles,
+        lastPath: job.lastPath,
+        error: job.error,
+        result: job.result
+      });
+      if (job.status === "completed" || job.status === "failed") {
+        activeScanId = "";
+        setBusy(false);
+        await refresh();
+      }
+    }
+
+    const events = new EventSource("/api/events");
+    for (const eventName of ["scan.queued", "scan.started", "scan.progress", "scan.completed", "scan.failed"]) {
+      events.addEventListener(eventName, async event => {
+        const message = JSON.parse(event.data);
+        const job = message.data || message;
+        if (!activeScanId || job.id === activeScanId) {
+          activeScanId = job.id;
+          show({
+            scan: job.id,
+            event: eventName,
+            status: job.status,
+            totalFiles: job.totalFiles,
+            mediaFiles: job.mediaFiles,
+            ignoredFiles: job.ignoredFiles,
+            lastPath: job.lastPath,
+            error: job.error,
+            result: job.result
+          });
+          if (eventName === "scan.completed" || eventName === "scan.failed") {
+            await loadScan(job.id);
+          }
+        }
+      });
     }
 
     document.getElementById("scanAll").addEventListener("click", () => post("/api/libraries/scan"));

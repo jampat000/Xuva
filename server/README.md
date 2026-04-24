@@ -31,11 +31,15 @@ Initial scan endpoints:
 
 - `GET /`
 - `GET /api/libraries`
+- `GET /api/scans`
+- `GET /api/scans/{id}`
 - `POST /api/libraries/movies/scan`
 - `POST /api/libraries/tv/scan`
 - `POST /api/libraries/scan`
 
 `GET /` serves the local dev console for quick testing.
+
+Scan requests return a background scan job with HTTP 202. Progress is emitted through `GET /api/events` as `scan.queued`, `scan.started`, `scan.progress`, `scan.completed`, and `scan.failed`.
 
 Scan requests can pass `path`, or use `VYRDEN_MOVIES_PATH` and `VYRDEN_TV_PATH` when those environment variables are configured.
 

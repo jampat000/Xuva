@@ -175,6 +175,8 @@ Playback-critical jobs should preempt background scans, chapter extraction, intr
 Implementation rules:
 
 - Scanning has its own bounded queue.
+- Scan requests enqueue background jobs and return a job ID immediately.
+- Scan progress is published over SSE so the UI never blocks on a full NAS scan.
 - ffprobe has a separate low/medium concurrency pool for NAS safety.
 - Transcoding has a strict worker pool.
 - GPU jobs have a separate limiter.

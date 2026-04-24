@@ -21,9 +21,19 @@ const (
 var ErrMissingRoot = errors.New("scan root is required")
 
 type Request struct {
-	Kind          LibraryKind `json:"kind"`
-	Root          string      `json:"root"`
-	IncludeHidden bool        `json:"includeHidden"`
+	Kind          LibraryKind    `json:"kind"`
+	Root          string         `json:"root"`
+	IncludeHidden bool           `json:"includeHidden"`
+	Progress      func(Progress) `json:"-"`
+}
+
+type Progress struct {
+	Kind         LibraryKind `json:"kind"`
+	Root         string      `json:"root"`
+	TotalFiles   int         `json:"totalFiles"`
+	MediaFiles   int         `json:"mediaFiles"`
+	IgnoredFiles int         `json:"ignoredFiles"`
+	LastPath     string      `json:"lastPath,omitempty"`
 }
 
 type FileCandidate struct {
@@ -152,14 +162,25 @@ func (s *Service) Scan(ctx context.Context, request Request) (Result, error) {
 
 		result.MediaFiles++
 		result.Extensions[extension]++
-		result.Files = append(result.Files, FileCandidate{
+		candidate := FileCandidate{
 			Path:       path,
 			RelPath:    relPath,
 			Name:       entry.Name(),
 			Extension:  extension,
 			Size:       info.Size(),
 			ModifiedAt: info.ModTime().UTC(),
-		})
+		}
+		result.Files = append(result.Files, candidate)
+		if request.Progress != nil {
+			request.Progress(Progress{
+				Kind:         request.Kind,
+				Root:         absoluteRoot,
+				TotalFiles:   result.TotalFiles,
+				MediaFiles:   result.MediaFiles,
+				IgnoredFiles: result.IgnoredFiles,
+				LastPath:     candidate.RelPath,
+			})
+		}
 		return nil
 	})
 	if err != nil {
