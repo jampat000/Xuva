@@ -39,6 +39,14 @@ Start with:
 - FFmpeg worker wrapper.
 - Session event stream.
 
+Internal separation:
+
+- REST for commands and reads.
+- SSE for live dashboard updates.
+- WebSocket later only for two-way playback/remote-control surfaces.
+- Separate packages for Movies, TV, shared media sources, playback, subtitles, scanner, probe, transcode, sessions, downloads, events, and resources.
+- Separate bounded queues for scan, probe, and transcode work.
+
 ## Client Skeleton
 
 Start with web admin before native TV clients:

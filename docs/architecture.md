@@ -22,7 +22,7 @@ Preferred starting stack:
 - Database: SQLite.
 - Media probing: ffprobe.
 - Media processing: FFmpeg.
-- API: HTTP/JSON first, WebSocket or SSE for session events.
+- API: HTTP/JSON for commands and reads, SSE for live server-to-client events, WebSocket only for future two-way realtime control.
 - Packaging: Windows installer, Linux packages, Docker.
 
 Go is the pragmatic default because it is fast enough, easy to distribute, straightforward to operate, and simpler to hire for than more specialized stacks.
@@ -39,6 +39,35 @@ Core server services:
 - Device capability service.
 - Remote access diagnostics service.
 - License service with local cache.
+
+The first implementation should be one installable server process with separated internal services. This keeps installation light while preventing unrelated workloads from sharing uncontrolled queues.
+
+Initial package layout:
+
+```text
+server/
+  cmd/vyrden/        Process entrypoint.
+  internal/api/      HTTP routes, JSON, SSE.
+  internal/app/      Dependency wiring and lifecycle.
+  internal/config/   Runtime configuration.
+  internal/database/ SQLite connection and migrations.
+  internal/libraries Library folders and scan scheduling.
+  internal/scanner/  Filesystem walking.
+  internal/probe/    ffprobe worker pool.
+  internal/media/    Shared media sources, streams, versions.
+  internal/movies/   Movie grouping, collections, editions.
+  internal/tv/       Series, seasons, episodes, next-up.
+  internal/playback/ Playback decision engine.
+  internal/streaming Direct file/range streaming.
+  internal/transcode FFmpeg jobs and worker pools.
+  internal/subtitles Embedded and sidecar subtitle logic.
+  internal/devices/  Client profiles and capability reports.
+  internal/sessions/ Active playback sessions.
+  internal/downloads Offline preparation and queue.
+  internal/events/   Internal event bus and SSE fanout.
+  internal/resources CPU/GPU/disk/network limits.
+  internal/jobs/     Bounded background queues.
+```
 
 ## Web
 
@@ -98,9 +127,32 @@ Client request
 
 The UI should never guess playback state. It should show the server's decision object, including the chosen mode and reason.
 
+## Movie And TV Separation
+
+Movies and TV should be separate domain packages, but they should share the technical media and playback engine.
+
+```text
+Movie -> movie version -> media source -> playback decision
+Episode -> episode version -> media source -> playback decision
+```
+
+Rules:
+
+- Browsing is movie/TV-domain based.
+- Playback is media-source based.
+- Movies own collections, editions, cuts, and extras.
+- TV owns series, seasons, episodes, specials, and next-up.
+- Scanner, probe, subtitles, versions, streaming, transcode, downloads, devices, and sessions are shared services.
+
 ## Resource Scheduling
 
 The server should distinguish between normal background work and playback-critical work.
+
+Workload classes:
+
+- Playback-critical: direct streaming, active remux/transcode, subtitle delivery, session heartbeats.
+- Interactive: API requests, dashboard reads, users, devices, active sessions.
+- Background: library scans, ffprobe jobs, metadata matching, image generation, chapter extraction, intro detection, cleanup.
 
 Resource controls:
 
@@ -114,3 +166,14 @@ Resource controls:
 - Quiet mode.
 
 Playback-critical jobs should preempt background scans, chapter extraction, intro detection, and preview generation. The scheduler should protect active playback from avoidable resource spikes.
+
+Implementation rules:
+
+- Scanning has its own bounded queue.
+- ffprobe has a separate low/medium concurrency pool for NAS safety.
+- Transcoding has a strict worker pool.
+- GPU jobs have a separate limiter.
+- SQLite writes should use short transactions and batching where appropriate.
+- SSE fanout must be non-blocking so a slow browser cannot block playback or scanning.
+- Direct streaming must not wait behind scan/probe jobs.
+- Movies and TV can scan independently, but both feed the shared media source store.
