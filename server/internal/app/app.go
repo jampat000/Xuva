@@ -75,22 +75,44 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	}
 	catalogService := catalog.NewService(databaseService)
 	libraryService := libraries.NewService()
+	if savedLibraries, err := catalogService.ListLibraries(ctx); err == nil {
+		for _, library := range savedLibraries {
+			libraryService.Set(library)
+		}
+	}
 	if cfg.MovieLibraryPath != "" {
-		libraryService.Set(libraries.Library{
+		library, err := catalogService.SaveLibrary(ctx, libraries.Library{
 			ID:   "movies",
 			Name: "Movies",
 			Path: cfg.MovieLibraryPath,
 			Kind: libraries.KindMovies,
 		})
+		if err == nil {
+			libraryService.Set(library)
+		}
 	}
 	if cfg.TVLibraryPath != "" {
-		libraryService.Set(libraries.Library{
+		library, err := catalogService.SaveLibrary(ctx, libraries.Library{
 			ID:   "tv",
 			Name: "TV",
 			Path: cfg.TVLibraryPath,
 			Kind: libraries.KindTV,
 		})
+		if err == nil {
+			libraryService.Set(library)
+		}
 	}
+	_ = config.SaveFile(cfg.DataDir, cfg)
+	_ = catalogService.SaveSettings(ctx, catalog.RuntimeSettings{
+		HTTPAddr:         cfg.HTTPAddr,
+		DataDir:          cfg.DataDir,
+		FFmpegPath:       cfg.FFmpegPath,
+		FFprobePath:      cfg.FFprobePath,
+		ScanWorkers:      cfg.ScanWorkers,
+		ProbeWorkers:     cfg.ProbeWorkers,
+		TranscodeWorkers: cfg.TranscodeWorkers,
+		GPUWorkers:       cfg.GPUWorkers,
+	})
 
 	jobRegistry := jobs.NewRegistry(manager)
 	jobRegistry.Start(appCtx)

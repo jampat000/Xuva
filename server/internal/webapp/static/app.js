@@ -34,7 +34,7 @@ async function navigate(name) {
 }
 
 function title(name) {
-  return { dashboard: "Dashboard", movies: "Movies", tv: "TV", activity: "Activity", health: "Health", playback: "Playback Lab", settings: "Settings" }[name] || name;
+  return { dashboard: "Home", movies: "Movies", tv: "TV", libraries: "Libraries", activity: "Activity", health: "Review", playback: "Playback Lab", remote: "Remote Access", settings: "Settings" }[name] || name;
 }
 
 async function refreshShell() {
@@ -47,9 +47,11 @@ async function render(name) {
   if (name === "dashboard") return renderDashboard();
   if (name === "movies") return renderMovies();
   if (name === "tv") return renderTV();
+  if (name === "libraries") return renderLibraries();
   if (name === "activity") return renderActivity();
   if (name === "health") return renderHealth();
   if (name === "playback") return renderPlaybackLab();
+  if (name === "remote") return renderRemote();
   if (name === "settings") return renderSettings();
 }
 
@@ -73,12 +75,12 @@ async function renderDashboard() {
         ${metric("Active", sessions.sessions.length)}
       </div>
       <div class="hero-strip">
-        <div><span>Vyrden Signal</span><strong>${summary.unprobed || 0} sources need probing</strong></div>
+        <div><span>Vyrden Signal</span><strong>${summary.movies || 0} movies, ${summary.episodes || 0} episodes, ${summary.unprobed || 0} waiting for probe</strong></div>
         <button class="primary" onclick="navigate('movies')">Browse Library</button>
       </div>
       <div class="grid two">
         <div class="card"><h2>Resume</h2>${mediaCards(recent.recent, "recent")}</div>
-        <div class="card"><h2>Libraries</h2>${table(["Name", "Path", "Storage"], libraries.libraries.map(item => [item.name, item.path, item.storageType]))}</div>
+        <div class="card"><h2>Storage</h2>${libraryCards(libraries.libraries)}</div>
       </div>
       <div class="grid two">
         <div class="card"><h2>Recent Scans</h2>${jobTable(scans.scans)}</div>
@@ -101,9 +103,10 @@ async function renderMovies() {
 
 function movieCard(item) {
   return `<article class="poster-card" data-filter="${escapeAttr(item.title)} ${item.year || ""}">
+    <img alt="" src="/api/artwork/movie/${item.id}" loading="lazy">
     <button class="poster-action" onclick="showMovie('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
-      <small>${item.year || "Unknown year"} · ${item.versionCount || 0} version${item.versionCount === 1 ? "" : "s"}</small>
+      <small>${item.year || "Unknown year"} - ${item.versionCount || 0} version${item.versionCount === 1 ? "" : "s"}</small>
       ${item.needsReview ? `<em>Review</em>` : ""}
     </button>
   </article>`;
@@ -119,9 +122,10 @@ async function showMovie(id) {
   view.innerHTML = `
     <div class="detail-shell">
       <section class="detail-hero">
+        <img alt="" src="/api/artwork/movie/${movie.id}">
         <button onclick="navigate('movies')">Back</button>
         <h2>${escapeHTML(movie.title)}</h2>
-        <p>${movie.year || "Unknown year"} · ${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</p>
+        <p>${movie.year || "Unknown year"} - ${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</p>
         ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
       </section>
       <section class="card"><h2>Versions</h2>${table(["Quality", "File", "State", "Controls"], rows)}</section>
@@ -156,9 +160,10 @@ async function renderTV() {
 
 function seriesCard(item) {
   return `<article class="poster-card" data-filter="${escapeAttr(item.title)}">
+    <img alt="" src="/api/artwork/series/${item.id}" loading="lazy">
     <button class="poster-action" onclick="showSeries('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
-      <small>${item.seasonCount || 0} seasons · ${item.episodeCount || 0} episodes</small>
+      <small>${item.seasonCount || 0} seasons - ${item.episodeCount || 0} episodes</small>
     </button>
   </article>`;
 }
@@ -169,9 +174,10 @@ async function showSeries(id) {
   view.innerHTML = `
     <div class="detail-shell">
       <section class="detail-hero">
+        <img alt="" src="/api/artwork/series/${series.id}">
         <button onclick="navigate('tv')">Back</button>
         <h2>${escapeHTML(series.title)}</h2>
-        <p>${series.seasonCount} seasons · ${series.episodeCount} episodes</p>
+        <p>${series.seasonCount} seasons - ${series.episodeCount} episodes</p>
       </section>
       <div class="stack">
         ${series.seasons.map(season => `<section class="card"><h2>Season ${season.seasonNumber}</h2>${episodeList(season.episodes)}</section>`).join("")}
@@ -192,6 +198,53 @@ function episodeList(episodes) {
       <div class="inline-actions">${play}${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix</button>` : ""}</div>
     </div>`;
   }).join("");
+}
+
+async function renderLibraries() {
+  const payload = await api("/api/libraries");
+  view.innerHTML = `
+    <div class="stack">
+      <div class="library-panel">
+        <div>
+          <h2>Add Library</h2>
+          <p class="muted">Use any local, USB, mapped, NAS, SMB, NFS, or mounted path that the logged-in user can access.</p>
+        </div>
+        <form class="library-form" onsubmit="saveLibrary(event)">
+          <select name="kind"><option value="movies">Movies</option><option value="tv">TV</option></select>
+          <input name="name" placeholder="Library name">
+          <input name="path" placeholder="D:\\Media\\Movies or \\\\NAS\\Share\\TV" required>
+          <button class="primary">Add</button>
+        </form>
+      </div>
+      <div class="library-grid">${libraryCards(payload.libraries, true)}</div>
+    </div>`;
+}
+
+function libraryCards(items = [], controls = false) {
+  if (!items.length) return empty("No libraries configured yet.");
+  return items.map(item => `<article class="library-card">
+    <div><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.kind)} - ${escapeHTML(item.storageType)}</span></div>
+    <code>${escapeHTML(item.path)}</code>
+    ${controls ? `<div class="inline-actions"><button onclick="scanLibrary('${item.id}')">Scan</button><button onclick="deleteLibrary('${item.id}')">Remove</button></div>` : ""}
+  </article>`).join("");
+}
+
+async function saveLibrary(event) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  await send("/api/libraries", { kind: data.get("kind"), name: data.get("name"), path: data.get("path") });
+  navigate("libraries");
+}
+
+async function scanLibrary(id) {
+  await send(`/api/libraries/${id}/scan`, {});
+  navigate("activity");
+}
+
+async function deleteLibrary(id) {
+  if (!confirm("Remove this library from Vyrden? Media files are not deleted.")) return;
+  await api(`/api/libraries/${id}`, { method: "DELETE" });
+  navigate("libraries");
 }
 
 async function renderActivity() {
@@ -247,12 +300,45 @@ async function renderPlaybackLab() {
   </div>`;
 }
 
-async function renderSettings() {
-  const payload = await api("/api/settings/performance");
+async function renderRemote() {
+  const payload = await api("/api/remote/access");
   view.innerHTML = `<div class="stack">
-    <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(payload, null, 2))}</pre></div>
-    <div class="card"><h2>Runtime Direction</h2><p class="muted">Windows tray app first, service mode later for advanced installs. Local, USB, NAS, and mapped storage stay first-class.</p></div>
+    <div class="hero-strip">
+      <div><span>Remote Access</span><strong>Your server stays yours. Vyrden helps you expose it safely.</strong></div>
+      <button class="primary" onclick="lookupWan()">Detect WAN IP</button>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2>LAN addresses</h2>${payload.lanAddresses.length ? `<div class="mini-list">${payload.lanAddresses.map(url => `<a href="${url}" target="_blank"><strong>${escapeHTML(url)}</strong><span>Reachable inside your network if firewall allows it</span></a>`).join("")}</div>` : empty("No LAN address detected.")}</div>
+      <div class="card"><h2>WAN address</h2><pre id="wanResult">Not checked. Click Detect WAN IP to call an external IP service.</pre></div>
+    </div>
+    <div class="card"><h2>Recommended paths</h2>
+      <div class="remote-options">
+        <div><strong>VPN mesh</strong><span>Tailscale, WireGuard, ZeroTier. Lowest operational burden for most users.</span></div>
+        <div><strong>Reverse proxy</strong><span>Caddy, Nginx, Traefik. Good when the user controls DNS and TLS.</span></div>
+        <div><strong>Port forward</strong><span>Works, but users must own firewall, router, and update hygiene.</span></div>
+      </div>
+    </div>
   </div>`;
+}
+
+async function lookupWan() {
+  const target = document.getElementById("wanResult");
+  target.textContent = "Checking WAN address through api.ipify.org...";
+  const payload = await send("/api/remote/wan", {});
+  target.textContent = JSON.stringify(payload, null, 2);
+}
+
+async function renderSettings() {
+  const [settings, performance] = await Promise.all([api("/api/settings"), api("/api/settings/performance")]);
+  view.innerHTML = `<div class="stack">
+    <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
+    <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
+    <div class="card"><h2>Runtime Direction</h2><p class="muted">Product UI and persisted configuration come first. The Windows tray app can then manage a real local product instead of a dev server.</p></div>
+  </div>`;
+}
+
+function settingsGrid(config) {
+  return `<div class="settings-grid">${Object.entries(config).map(([key, value]) => `<div><span>${escapeHTML(key)}</span><strong>${escapeHTML(value)}</strong></div>`).join("")}</div>`;
 }
 
 async function markWatched(mediaSourceId, watched) {
@@ -295,7 +381,7 @@ function metric(label, value) {
 
 function mediaCards(items = []) {
   if (!items.length) return empty("Nothing to resume yet.");
-  return `<div class="mini-list">${items.slice(0, 6).map(item => `<a href="/play/${item.mediaSourceId}" target="_blank"><strong>${escapeHTML(item.name)}</strong><span>${Math.round((item.percent || 0) * 100)}% · ${escapeHTML(item.kind)}</span></a>`).join("")}</div>`;
+  return `<div class="mini-list">${items.slice(0, 6).map(item => `<a href="/play/${item.mediaSourceId}" target="_blank"><strong>${escapeHTML(item.name)}</strong><span>${Math.round((item.percent || 0) * 100)}% - ${escapeHTML(item.kind)}</span></a>`).join("")}</div>`;
 }
 
 function reviewTable(items = []) {

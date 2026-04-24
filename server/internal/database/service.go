@@ -95,6 +95,11 @@ var migrations = []string{
 		updated_at TEXT NOT NULL
 	)`,
 	`ALTER TABLE libraries ADD COLUMN storage_type TEXT NOT NULL DEFAULT 'unknown'`,
+	`CREATE TABLE IF NOT EXISTS app_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
 	`CREATE TABLE IF NOT EXISTS media_sources (
 		id TEXT PRIMARY KEY,
 		library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

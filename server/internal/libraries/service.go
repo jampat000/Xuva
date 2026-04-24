@@ -1,6 +1,8 @@
 package libraries
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -42,7 +44,7 @@ func NewService() *Service {
 
 func (s *Service) Set(library Library) {
 	if library.ID == "" {
-		return
+		library.ID = IDFor(library.Kind, library.Path)
 	}
 	if library.StorageType == "" {
 		library.StorageType = DetectStorageType(library.Path)
@@ -50,6 +52,27 @@ func (s *Service) Set(library Library) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.libraries[library.ID] = library
+}
+
+func (s *Service) Delete(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.libraries, id)
+}
+
+func (s *Service) Get(id string) (Library, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	library, ok := s.libraries[id]
+	return library, ok
+}
+
+func IDFor(kind Kind, path string) string {
+	hash := sha1.New()
+	hash.Write([]byte(kind))
+	hash.Write([]byte{0})
+	hash.Write([]byte(filepath.Clean(path)))
+	return string(kind) + "_" + hex.EncodeToString(hash.Sum(nil))[:12]
 }
 
 func (s *Service) List() []Library {

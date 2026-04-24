@@ -270,6 +270,38 @@ func TestMetadataMatchResolvesReview(t *testing.T) {
 	}
 }
 
+func TestLibraryManagementRemoteAndArtworkEndpoints(t *testing.T) {
+	root := t.TempDir()
+	router := NewRouter(testDeps(t, time.Now()))
+
+	library := postJSON(t, router, "/api/libraries", map[string]any{
+		"kind": "movies",
+		"name": "Archive Movies",
+		"path": root,
+	})
+	if library["name"] != "Archive Movies" {
+		t.Fatalf("expected saved library, got %#v", library)
+	}
+	libraryID := library["id"].(string)
+	librariesPayload := getJSON(t, router, "/api/libraries")
+	if len(librariesPayload["libraries"].([]any)) != 1 {
+		t.Fatalf("expected one saved library, got %#v", librariesPayload)
+	}
+	scan := postJSON(t, router, "/api/libraries/"+libraryID+"/scan", map[string]any{})
+	waitForScan(t, router, scan["id"].(string))
+
+	remote := getJSON(t, router, "/api/remote/access")
+	if remote["wanLookup"] != "available_on_request" {
+		t.Fatalf("expected explicit wan lookup flag, got %#v", remote)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/artwork/movie/example", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/svg+xml" {
+		t.Fatalf("expected svg artwork response, got %d %q", response.Code, response.Header().Get("Content-Type"))
+	}
+}
+
 func testDeps(t *testing.T, startedAt time.Time) Deps {
 	t.Helper()
 

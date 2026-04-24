@@ -153,7 +153,7 @@ func (s *Service) validate(job Job) error {
 			return errors.New("tv library path is required")
 		}
 	case KindAll:
-		if firstNonEmpty(job.MoviesPath, s.cfg.MovieLibraryPath) == "" && firstNonEmpty(job.TVPath, s.cfg.TVLibraryPath) == "" {
+		if len(s.libraries.List()) == 0 && firstNonEmpty(job.MoviesPath, s.cfg.MovieLibraryPath) == "" && firstNonEmpty(job.TVPath, s.cfg.TVLibraryPath) == "" {
 			return errors.New("at least one movie or tv library path is required")
 		}
 	default:
@@ -179,14 +179,31 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 	case KindTV:
 		s.runTV(ctx, id, firstNonEmpty(request.Path, request.TVPath, s.cfg.TVLibraryPath))
 	case KindAll:
-		if path := firstNonEmpty(request.MoviesPath, s.cfg.MovieLibraryPath); path != "" {
-			if !s.runMovies(ctx, id, path) {
-				return
+		ran := false
+		for _, library := range s.libraries.List() {
+			switch library.Kind {
+			case libraries.KindMovies:
+				ran = true
+				if !s.runMoviesLibrary(ctx, id, library) {
+					return
+				}
+			case libraries.KindTV:
+				ran = true
+				if !s.runTVLibrary(ctx, id, library) {
+					return
+				}
 			}
 		}
-		if path := firstNonEmpty(request.TVPath, s.cfg.TVLibraryPath); path != "" {
-			if !s.runTV(ctx, id, path) {
-				return
+		if !ran {
+			if path := firstNonEmpty(request.MoviesPath, s.cfg.MovieLibraryPath); path != "" {
+				if !s.runMovies(ctx, id, path) {
+					return
+				}
+			}
+			if path := firstNonEmpty(request.TVPath, s.cfg.TVLibraryPath); path != "" {
+				if !s.runTV(ctx, id, path) {
+					return
+				}
 			}
 		}
 	}
@@ -199,6 +216,84 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 }
 
 func (s *Service) runMovies(ctx context.Context, id string, path string) bool {
+	return s.runMoviesLibrary(ctx, id, libraries.Library{ID: "movies", Name: "Movies", Path: path, Kind: libraries.KindMovies})
+}
+
+func (s *Service) runTV(ctx context.Context, id string, path string) bool {
+	return s.runTVLibrary(ctx, id, libraries.Library{ID: "tv", Name: "TV", Path: path, Kind: libraries.KindTV})
+}
+
+func (s *Service) runMoviesLibrary(ctx context.Context, id string, library libraries.Library) bool {
+	result, err := s.scanner.Scan(ctx, scanner.Request{
+		Kind: scanner.KindMovies,
+		Root: library.Path,
+		Progress: func(progress scanner.Progress) {
+			s.updateProgress(id, progress)
+		},
+	})
+	if err != nil {
+		s.fail(id, err)
+		return false
+	}
+	candidates := s.movies.Classify(result.Files)
+	library.Path = result.Root
+	if library.ID == "" {
+		library.ID = libraries.IDFor(library.Kind, library.Path)
+	}
+	if library.Name == "" {
+		library.Name = "Movies"
+	}
+	s.libraries.Set(library)
+	persisted, err := s.catalog.SaveMovieScan(ctx, library, result, candidates)
+	if err != nil {
+		s.fail(id, err)
+		return false
+	}
+	s.mergeResult(id, library.ID, map[string]any{
+		"kind":        "movies",
+		"summary":     result.Summary,
+		"persisted":   persisted,
+		"moviesFound": len(candidates),
+	})
+	return true
+}
+
+func (s *Service) runTVLibrary(ctx context.Context, id string, library libraries.Library) bool {
+	result, err := s.scanner.Scan(ctx, scanner.Request{
+		Kind: scanner.KindTV,
+		Root: library.Path,
+		Progress: func(progress scanner.Progress) {
+			s.updateProgress(id, progress)
+		},
+	})
+	if err != nil {
+		s.fail(id, err)
+		return false
+	}
+	candidates := s.tv.Classify(result.Files)
+	library.Path = result.Root
+	if library.ID == "" {
+		library.ID = libraries.IDFor(library.Kind, library.Path)
+	}
+	if library.Name == "" {
+		library.Name = "TV"
+	}
+	s.libraries.Set(library)
+	persisted, err := s.catalog.SaveTVScan(ctx, library, result, candidates)
+	if err != nil {
+		s.fail(id, err)
+		return false
+	}
+	s.mergeResult(id, library.ID, map[string]any{
+		"kind":          "tv",
+		"summary":       result.Summary,
+		"persisted":     persisted,
+		"episodesFound": len(candidates),
+	})
+	return true
+}
+
+func (s *Service) runMoviesOld(ctx context.Context, id string, path string) bool {
 	result, err := s.scanner.Scan(ctx, scanner.Request{
 		Kind: scanner.KindMovies,
 		Root: path,
@@ -226,7 +321,7 @@ func (s *Service) runMovies(ctx context.Context, id string, path string) bool {
 	return true
 }
 
-func (s *Service) runTV(ctx context.Context, id string, path string) bool {
+func (s *Service) runTVOld(ctx context.Context, id string, path string) bool {
 	result, err := s.scanner.Scan(ctx, scanner.Request{
 		Kind: scanner.KindTV,
 		Root: path,

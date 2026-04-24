@@ -1,11 +1,13 @@
 package api
 
 import (
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -60,6 +62,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/events", eventsHandler(deps))
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
+	mux.HandleFunc("POST /api/libraries", librarySaveHandler(deps))
+	mux.HandleFunc("DELETE /api/libraries/{id}", libraryDeleteHandler(deps))
+	mux.HandleFunc("POST /api/libraries/{id}/scan", libraryScanByIDHandler(deps))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
 	mux.HandleFunc("GET /api/catalog/health", catalogHealthHandler(deps))
 	mux.HandleFunc("GET /api/movies", moviesHandler(deps))
@@ -69,12 +74,17 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
 	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
 	mux.HandleFunc("PUT /api/metadata/match", metadataMatchHandler(deps))
+	mux.HandleFunc("GET /api/artwork/{kind}/{id}", artworkHandler(deps))
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
+	mux.HandleFunc("GET /api/settings", settingsHandler(deps))
+	mux.HandleFunc("GET /api/remote/access", remoteAccessHandler(deps))
+	mux.HandleFunc("POST /api/remote/wan", wanAddressHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}/subtitles/{index}", mediaSourceSubtitleStreamHandler(deps))
 	mux.HandleFunc("POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
 	mux.HandleFunc("GET /api/probes", probesHandler(deps))
 	mux.HandleFunc("GET /api/probes/{id}", probeJobHandler(deps))
@@ -135,6 +145,56 @@ func librariesHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"libraries": deps.Libraries.List(),
 		})
+	}
+}
+
+func librarySaveHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request libraries.Library
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		library, err := deps.Catalog.SaveLibrary(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		deps.Libraries.Set(library)
+		deps.Events.Publish("library.updated", library)
+		writeJSON(w, http.StatusOK, library)
+	}
+}
+
+func libraryDeleteHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if err := deps.Catalog.DeleteLibrary(r.Context(), id); err != nil {
+			writeError(w, http.StatusInternalServerError, "library delete failed")
+			return
+		}
+		deps.Libraries.Delete(id)
+		deps.Events.Publish("library.deleted", map[string]string{"id": id})
+		writeJSON(w, http.StatusOK, map[string]string{"id": id})
+	}
+}
+
+func libraryScanByIDHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		library, ok := deps.Libraries.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "library not found")
+			return
+		}
+		kind := scans.KindMovies
+		if library.Kind == libraries.KindTV {
+			kind = scans.KindTV
+		}
+		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: kind, Path: library.Path})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, job)
 	}
 }
 
@@ -252,6 +312,33 @@ func metadataMatchHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func artworkHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		kind := r.PathValue("kind")
+		id := r.PathValue("id")
+		title := id
+		switch kind {
+		case "movie":
+			if item, ok, err := deps.Catalog.GetMovie(r.Context(), id); err == nil && ok {
+				title = item.Title
+			}
+		case "series":
+			if item, ok, err := deps.Catalog.GetSeries(r.Context(), id); err == nil && ok {
+				title = item.Title
+			}
+		}
+		a, b := artworkColors(kind + ":" + id)
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = fmt.Fprintf(w, `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
+<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#%s"/><stop offset="1" stop-color="#%s"/></linearGradient></defs>
+<rect width="600" height="900" fill="#090b10"/><rect x="24" y="24" width="552" height="852" rx="28" fill="url(#g)" opacity="0.95"/>
+<circle cx="120" cy="126" r="54" fill="#f5f0e7" opacity="0.16"/><path d="M92 730h416v30H92zM92 784h300v22H92z" fill="#f5f0e7" opacity="0.24"/>
+<text x="92" y="694" fill="#f5f0e7" font-family="Inter,Segoe UI,sans-serif" font-size="44" font-weight="800">%s</text>
+</svg>`, a, b, html.EscapeString(truncate(title, 20)))
+	}
+}
+
 func versionsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		items, err := deps.Catalog.VersionGroups(r.Context(), queryInt(r, "limit", 100))
@@ -283,6 +370,62 @@ func performanceSettingsHandler(deps Deps) http.HandlerFunc {
 				"Probe jobs are isolated from scan and transcode queues",
 				"Playback-critical work is separated from background jobs",
 			},
+		})
+	}
+}
+
+func settingsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"config": map[string]any{
+				"httpAddr":         deps.Config.HTTPAddr,
+				"dataDir":          deps.Config.DataDir,
+				"ffmpegPath":       deps.Config.FFmpegPath,
+				"ffprobePath":      deps.Config.FFprobePath,
+				"scanWorkers":      deps.Config.ScanWorkers,
+				"probeWorkers":     deps.Config.ProbeWorkers,
+				"transcodeWorkers": deps.Config.TranscodeWorkers,
+				"gpuWorkers":       deps.Config.GPUWorkers,
+			},
+			"libraries": deps.Libraries.List(),
+		})
+	}
+}
+
+func remoteAccessHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"httpAddr":       deps.Config.HTTPAddr,
+			"lanAddresses":   lanAddresses(deps.Config.HTTPAddr),
+			"wanAddress":     "",
+			"wanLookup":      "available_on_request",
+			"recommendation": "Use your own VPN, reverse proxy, or port-forwarding setup. Vyrden does not require hosted relay servers.",
+		})
+	}
+}
+
+func wanAddressHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		client := http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get("https://api.ipify.org?format=json")
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "wan lookup failed")
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			writeError(w, http.StatusBadGateway, "wan lookup failed")
+			return
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			writeError(w, http.StatusBadGateway, "wan lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"publicIp": payload["ip"],
+			"source":   "https://api.ipify.org",
+			"note":     "WAN address was requested explicitly and discovered using an external IP check service.",
 		})
 	}
 }
@@ -412,11 +555,14 @@ func playerHandler(deps Deps) http.HandlerFunc {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>%s · Vyrden</title>
+  <title>%s - Vyrden</title>
 </head>
 <body style="margin:0;background:#05070a;color:white;font-family:system-ui">
   <video id="player" src="/api/media-sources/%s/stream" controls autoplay style="width:100vw;height:100vh"></video>
-  <div style="position:fixed;left:16px;bottom:16px;background:#000a;padding:10px;border-radius:8px">%s</div>
+  <div style="position:fixed;left:16px;bottom:16px;background:#000a;padding:10px;border-radius:8px">
+    <strong>%s</strong>
+    <div id="decision" style="font-size:13px;color:#d8f36a;margin-top:4px">Preparing playback</div>
+  </div>
   <script>
     const mediaSourceId = %q;
     let sessionId = "";
@@ -424,6 +570,26 @@ func playerHandler(deps Deps) http.HandlerFunc {
     async function send(path, body, method = "POST") {
       const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
       return response.ok ? response.json() : {};
+    }
+    async function loadExtras() {
+      const state = await fetch("/api/playback/state/" + mediaSourceId).then(r => r.json()).catch(() => ({}));
+      const decision = await fetch("/api/playback/decision?mediaSourceId=" + mediaSourceId + "&clientProfile=web").then(r => r.json()).catch(() => ({}));
+      document.getElementById("decision").textContent = decision.mode ? decision.mode + " - " + (decision.reason || "") : "Direct stream";
+      const subtitles = await fetch("/api/media-sources/" + mediaSourceId + "/subtitles").then(r => r.json()).catch(() => ({ sidecars: [] }));
+      (subtitles.sidecars || []).forEach((item, index) => {
+        if (item.format !== "vtt") return;
+        const track = document.createElement("track");
+        track.kind = "subtitles";
+        track.label = item.language || item.relPath || "Subtitle";
+        track.srclang = item.language || "und";
+        track.src = "/api/media-sources/" + mediaSourceId + "/subtitles/" + index;
+        player.appendChild(track);
+      });
+      player.addEventListener("loadedmetadata", () => {
+        if (state.progressSeconds > 5 && state.progressSeconds < player.duration - 10) {
+          player.currentTime = state.progressSeconds;
+        }
+      }, { once: true });
     }
     async function start() {
       const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", mode: "direct" });
@@ -442,6 +608,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     window.addEventListener("beforeunload", () => {
       if (sessionId) navigator.sendBeacon("/api/sessions/" + sessionId, new Blob([JSON.stringify({ status: "stopped", progressSeconds: player.currentTime || 0, durationSeconds: player.duration || 0 })], { type: "application/json" }));
     });
+    loadExtras();
     start();
   </script>
 </body>
@@ -461,6 +628,32 @@ func mediaSourceSubtitlesHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"sidecars": subtitles.DiscoverSidecars(item.Path)})
+	}
+}
+
+func mediaSourceSubtitleStreamHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		index := parsePathInt(r.PathValue("index"), -1)
+		sidecars := subtitles.DiscoverSidecars(item.Path)
+		if index < 0 || index >= len(sidecars) {
+			writeError(w, http.StatusNotFound, "subtitle not found")
+			return
+		}
+		if sidecars[index].Format == "vtt" {
+			w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+		} else {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		}
+		http.ServeFile(w, r, sidecars[index].Path)
 	}
 }
 
@@ -840,6 +1033,57 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func lanAddresses(httpAddr string) []string {
+	_, port, err := net.SplitHostPort(httpAddr)
+	if err != nil || port == "" {
+		port = "8097"
+	}
+	output := []string{}
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return output
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch value := addr.(type) {
+			case *net.IPNet:
+				ip = value.IP
+			case *net.IPAddr:
+				ip = value.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ipv4 := ip.To4(); ipv4 != nil {
+				output = append(output, "http://"+ipv4.String()+":"+port)
+			}
+		}
+	}
+	return output
+}
+
+func artworkColors(seed string) (string, string) {
+	sum := sha1.Sum([]byte(seed))
+	return fmt.Sprintf("%02x%02x%02x", 40+sum[0]%120, 50+sum[1]%120, 70+sum[2]%120),
+		fmt.Sprintf("%02x%02x%02x", 100+sum[3]%120, 120+sum[4]%100, 80+sum[5]%140)
+}
+
+func truncate(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
 func queryInt(r *http.Request, key string, fallback int) int {
 	value := r.URL.Query().Get(key)
 	if value == "" {
@@ -854,6 +1098,20 @@ func queryInt(r *http.Request, key string, fallback int) int {
 	}
 	if output == 0 {
 		return fallback
+	}
+	return output
+}
+
+func parsePathInt(value string, fallback int) int {
+	if value == "" {
+		return fallback
+	}
+	output := 0
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return fallback
+		}
+		output = output*10 + int(ch-'0')
 	}
 	return output
 }

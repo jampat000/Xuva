@@ -31,6 +31,17 @@ type PersistSummary struct {
 	Episodes     int    `json:"episodes,omitempty"`
 }
 
+type RuntimeSettings struct {
+	HTTPAddr         string `json:"httpAddr"`
+	DataDir          string `json:"dataDir"`
+	FFmpegPath       string `json:"ffmpegPath"`
+	FFprobePath      string `json:"ffprobePath"`
+	ScanWorkers      int    `json:"scanWorkers"`
+	ProbeWorkers     int    `json:"probeWorkers"`
+	TranscodeWorkers int    `json:"transcodeWorkers"`
+	GPUWorkers       int    `json:"gpuWorkers"`
+}
+
 type Summary struct {
 	Libraries    int `json:"libraries"`
 	MediaSources int `json:"mediaSources"`
@@ -161,6 +172,95 @@ type ProbeResult struct {
 
 func NewService(database *database.Service) *Service {
 	return &Service{db: database.DB()}
+}
+
+func (s *Service) ListLibraries(ctx context.Context) ([]libraries.Library, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, kind, name, path, storage_type
+		FROM libraries
+		ORDER BY kind, name, path
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	output := []libraries.Library{}
+	for rows.Next() {
+		var item libraries.Library
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) SaveLibrary(ctx context.Context, library libraries.Library) (libraries.Library, error) {
+	if strings.TrimSpace(library.Path) == "" {
+		return libraries.Library{}, errors.New("library path is required")
+	}
+	if library.Kind != libraries.KindMovies && library.Kind != libraries.KindTV {
+		return libraries.Library{}, errors.New("library kind must be movies or tv")
+	}
+	if strings.TrimSpace(library.Name) == "" {
+		if library.Kind == libraries.KindMovies {
+			library.Name = "Movies"
+		} else {
+			library.Name = "TV"
+		}
+	}
+	if library.ID == "" {
+		library.ID = libraries.IDFor(library.Kind, library.Path)
+	}
+	if library.StorageType == "" {
+		library.StorageType = libraries.DetectStorageType(library.Path)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return libraries.Library{}, err
+	}
+	defer tx.Rollback()
+	if err := upsertLibrary(ctx, tx, library); err != nil {
+		return libraries.Library{}, err
+	}
+	return library, tx.Commit()
+}
+
+func (s *Service) DeleteLibrary(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM libraries WHERE id = ?", id)
+	return err
+}
+
+func (s *Service) SaveSettings(ctx context.Context, settings RuntimeSettings) error {
+	now := timestamp(time.Now())
+	values := map[string]string{
+		"httpAddr":         settings.HTTPAddr,
+		"dataDir":          settings.DataDir,
+		"ffmpegPath":       settings.FFmpegPath,
+		"ffprobePath":      settings.FFprobePath,
+		"scanWorkers":      intString(settings.ScanWorkers),
+		"probeWorkers":     intString(settings.ProbeWorkers),
+		"transcodeWorkers": intString(settings.TranscodeWorkers),
+		"gpuWorkers":       intString(settings.GPUWorkers),
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for key, value := range values {
+		if value == "" || value == "0" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_settings(key, value, updated_at)
+			VALUES(?, ?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+		`, key, value, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
