@@ -6,6 +6,7 @@ The Vyrden design system starts with the movie and TV experience. The TV app sho
 
 - [UI Direction](ui-direction.md)
 - [Design Tokens](design-tokens.md)
+- [Signature Experience](signature-experience.md)
 - [TV Experience](tv-experience.md)
 - [Screen Inventory](screen-inventory.md)
 
@@ -27,6 +28,12 @@ The second runnable UI concept is:
 
 ```text
 apps/web/prototypes/vyrden-movie-detail/index.html
+```
+
+The fresh signature exploration is:
+
+```text
+apps/web/prototypes/vyrden-signal-deck/index.html
 ```
 
 The prototypes use fictional titles and original poster-style artwork. Use arrow keys across media cards and controls to test the first pass of remote-style focus behavior.
