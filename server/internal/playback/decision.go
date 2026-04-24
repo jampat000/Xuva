@@ -19,13 +19,14 @@ type Request struct {
 }
 
 type SourceFacts struct {
-	MediaSourceID   string
-	Container       string
-	VideoCodec      string
-	AudioStreams    int
-	SubtitleStreams int
-	Bitrate         int64
-	Probed          bool
+	MediaSourceID    string
+	Container        string
+	VideoCodec       string
+	AudioStreams     int
+	SubtitleStreams  int
+	SidecarSubtitles int
+	Bitrate          int64
+	Probed           bool
 }
 
 type Decision struct {
@@ -96,7 +97,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.ContainerAction = "direct"
 		decision.VideoAction = "direct"
 		decision.AudioAction = "direct"
-		decision.SubtitleAction = subtitleAction(source.SubtitleStreams)
+		decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
 		decision.EstimatedCPUCost = "none"
 		decision.EstimatedGPUCost = "none"
 		return decision
@@ -107,7 +108,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	decision.ContainerAction = "transcode_or_remux"
 	decision.VideoAction = "transcode"
 	decision.AudioAction = "copy_or_transcode"
-	decision.SubtitleAction = subtitleAction(source.SubtitleStreams)
+	decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
 	decision.EstimatedCPUCost = "high"
 	decision.EstimatedGPUCost = "optional"
 	decision.SuggestedFixes = []string{"Add client capability profiles", "Implement remux/transcode pipeline"}

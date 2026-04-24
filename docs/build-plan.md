@@ -57,6 +57,9 @@ Internal separation:
 - Playback decision v1 using stored probe facts.
 - Direct media source streaming with HTTP range support.
 - First dev-console browse views for movies, series, review items, and media sources.
+- Metadata suggestions endpoint for review-needed items.
+- Version intelligence endpoint for multi-version movies and episodes.
+- Performance settings endpoint with storage-aware recommendations.
 
 ## Client Skeleton
 

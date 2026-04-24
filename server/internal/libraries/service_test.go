@@ -8,7 +8,6 @@ func TestDetectStorageType(t *testing.T) {
 		want StorageType
 	}{
 		{`C:\Media`, StorageLocal},
-		{`X:\Movies`, StorageLocal},
 		{`\\nas\media`, StorageNetwork},
 		{`\\?\UNC\nas\media`, StorageNetwork},
 		{`/mnt/media`, StorageMounted},

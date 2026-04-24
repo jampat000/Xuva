@@ -53,6 +53,10 @@ Catalog endpoints:
 - `GET /api/series`
 - `GET /api/series/{id}`
 - `GET /api/review`
+- `GET /api/metadata/suggestions`
+- `GET /api/versions`
+- `GET /api/catalog/health`
+- `GET /api/settings/performance`
 - `GET /api/media-sources`
 - `GET /api/media-sources/{id}`
 - `GET /api/media-sources/{id}/stream`

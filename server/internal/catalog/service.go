@@ -38,6 +38,16 @@ type Summary struct {
 	Series       int `json:"series"`
 	Episodes     int `json:"episodes"`
 	ScanRuns     int `json:"scanRuns"`
+	Unprobed     int `json:"unprobed"`
+}
+
+type Health struct {
+	Summary       Summary `json:"summary"`
+	NeedsReview   int     `json:"needsReview"`
+	Unprobed      int     `json:"unprobed"`
+	Unsupported   int     `json:"unsupported"`
+	HighBitrate   int     `json:"highBitrate"`
+	WithSubtitles int     `json:"withSubtitles"`
 }
 
 type MovieListItem struct {
@@ -100,6 +110,13 @@ type ReviewItem struct {
 	ReviewReason string `json:"reviewReason"`
 }
 
+type VersionGroup struct {
+	Kind         string `json:"kind"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	VersionCount int    `json:"versionCount"`
+}
+
 type MediaSourceItem struct {
 	ID              string  `json:"id"`
 	LibraryID       string  `json:"libraryId"`
@@ -155,7 +172,31 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 			return Summary{}, err
 		}
 	}
+	_ = s.db.QueryRowContext(ctx, "SELECT count(*) FROM media_sources ms LEFT JOIN media_probes mp ON mp.media_source_id = ms.id WHERE mp.media_source_id IS NULL").Scan(&summary.Unprobed)
 	return summary, nil
+}
+
+func (s *Service) Health(ctx context.Context) (Health, error) {
+	summary, err := s.Summary(ctx)
+	if err != nil {
+		return Health{}, err
+	}
+	health := Health{Summary: summary, Unprobed: summary.Unprobed}
+	queries := []struct {
+		query string
+		out   *int
+	}{
+		{"SELECT (SELECT count(*) FROM movies WHERE needs_review = 1) + (SELECT count(*) FROM tv_episodes WHERE needs_review = 1)", &health.NeedsReview},
+		{"SELECT count(*) FROM media_probes WHERE video_codec NOT IN ('h264', 'av1', 'vp9')", &health.Unsupported},
+		{"SELECT count(*) FROM media_probes WHERE bitrate > 40000000", &health.HighBitrate},
+		{"SELECT count(*) FROM media_probes WHERE subtitle_streams > 0", &health.WithSubtitles},
+	}
+	for _, item := range queries {
+		if err := s.db.QueryRowContext(ctx, item.query).Scan(item.out); err != nil {
+			return Health{}, err
+		}
+	}
+	return health, nil
 }
 
 func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, error) {
@@ -333,6 +374,39 @@ func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, err
 	for rows.Next() {
 		var item ReviewItem
 		if err := rows.Scan(&item.Kind, &item.ID, &item.Title, &item.ReviewReason); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) VersionGroups(ctx context.Context, limit int) ([]VersionGroup, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT 'movie', m.id, m.title, count(mv.media_source_id) AS version_count
+		FROM movies m
+		JOIN movie_versions mv ON mv.movie_id = m.id
+		GROUP BY m.id
+		HAVING version_count > 1
+		UNION ALL
+		SELECT 'episode', e.id, e.title, count(ev.media_source_id) AS version_count
+		FROM tv_episodes e
+		JOIN episode_versions ev ON ev.episode_id = e.id
+		GROUP BY e.id
+		HAVING version_count > 1
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var output []VersionGroup
+	for rows.Next() {
+		var item VersionGroup
+		if err := rows.Scan(&item.Kind, &item.ID, &item.Title, &item.VersionCount); err != nil {
 			return nil, err
 		}
 		output = append(output, item)

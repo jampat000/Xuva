@@ -1,9 +1,12 @@
 package libraries
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
+	"unsafe"
 )
 
 type Kind string
@@ -78,9 +81,8 @@ func DetectStorageType(path string) StorageType {
 		return StorageNetwork
 	}
 	if len(normalized) >= 3 && normalized[1] == ':' && normalized[2] == '\\' {
-		drive := normalized[0]
-		if drive == 'A' || drive == 'B' || drive == 'a' || drive == 'b' {
-			return StorageRemovable
+		if driveType := windowsDriveStorageType(normalized[:3]); driveType != StorageUnknown {
+			return driveType
 		}
 		return StorageLocal
 	}
@@ -91,4 +93,30 @@ func DetectStorageType(path string) StorageType {
 		return StorageLocal
 	}
 	return StorageUnknown
+}
+
+func windowsDriveStorageType(root string) StorageType {
+	absolute, err := filepath.Abs(root)
+	if err == nil && len(absolute) >= 3 {
+		root = absolute[:3]
+	}
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	getDriveType := kernel32.NewProc("GetDriveTypeW")
+	ptr, err := syscall.UTF16PtrFromString(root)
+	if err != nil {
+		return StorageUnknown
+	}
+	ret, _, _ := getDriveType.Call(uintptr(unsafe.Pointer(ptr)))
+	switch ret {
+	case 2:
+		return StorageRemovable
+	case 3:
+		return StorageLocal
+	case 4:
+		return StorageNetwork
+	case 5:
+		return StorageRemovable
+	default:
+		return StorageUnknown
+	}
 }

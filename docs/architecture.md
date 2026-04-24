@@ -151,6 +151,8 @@ Rules:
 - A movie scan can be rescheduled without touching TV, and a TV scan can be rescheduled without touching movies.
 - Scan results persist into SQLite as libraries, media sources, movie versions, series, seasons, episodes, and scan runs.
 - Libraries carry a storage type (`local`, `removable`, `network`, `mounted`, or `unknown`) so future defaults can differ for local SSDs, USB drives, NAS shares, and mounted volumes.
+- Metadata matching starts local-first from filenames and folders, with review queues exposed before any provider integration.
+- Version intelligence is represented as grouped movie/episode versions instead of duplicate standalone items.
 
 ## Resource Scheduling
 
@@ -189,4 +191,5 @@ Implementation rules:
 - SSE fanout must be non-blocking so a slow browser cannot block playback or scanning.
 - Direct streaming must not wait behind scan/probe jobs.
 - Direct media streaming is served from trusted catalog paths and supports browser range requests.
+- Performance settings expose queue limits, active/queued work, and storage-aware recommendations before packaging.
 - Movies and TV can scan independently, but both feed the shared media source store.

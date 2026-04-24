@@ -18,6 +18,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
+	"github.com/vyrdenhq/vyrden/server/internal/probes"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
@@ -42,6 +43,7 @@ type Application struct {
 	Scanner   *scanner.Service
 	Scans     *scans.Service
 	Probe     *probe.Service
+	Probes    *probes.Service
 	Media     *media.Service
 	Movies    *movies.Service
 	TV        *tv.Service
@@ -93,6 +95,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	movieService := movies.NewService()
 	tvService := tv.NewService()
 	scanService := scans.NewService(cfg, bus, jobRegistry.Scan, libraryService, scannerService, catalogService, movieService, tvService)
+	probeService := probe.NewService(cfg.FFprobePath)
+	probesService := probes.NewService(bus, jobRegistry.Probe, catalogService, probeService)
 
 	return &Application{
 		Config:    cfg,
@@ -106,13 +110,14 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Libraries: libraryService,
 		Scanner:   scannerService,
 		Scans:     scanService,
-		Probe:     probe.NewService(cfg.FFprobePath),
+		Probe:     probeService,
+		Probes:    probesService,
 		Media:     media.NewService(),
 		Movies:    movieService,
 		TV:        tvService,
 		Playback:  playback.NewService(),
 		Streaming: streaming.NewService(),
-		Transcode: transcode.NewService(),
+		Transcode: transcode.NewService(bus, jobRegistry.Transcode),
 		Subtitles: subtitles.NewService(),
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(),
@@ -135,7 +140,9 @@ func (a *Application) Router() http.Handler {
 		Movies:    a.Movies,
 		TV:        a.TV,
 		Probe:     a.Probe,
+		Probes:    a.Probes,
 		Playback:  a.Playback,
+		Transcode: a.Transcode,
 		Sessions:  a.Sessions,
 	})
 }

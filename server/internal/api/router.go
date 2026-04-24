@@ -18,10 +18,13 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
+	"github.com/vyrdenhq/vyrden/server/internal/probes"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
+	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
+	"github.com/vyrdenhq/vyrden/server/internal/transcode"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
 
@@ -39,7 +42,9 @@ type Deps struct {
 	Movies    *movies.Service
 	TV        *tv.Service
 	Probe     *probe.Service
+	Probes    *probes.Service
 	Playback  *playback.Service
+	Transcode *transcode.Service
 	Sessions  *sessions.Service
 }
 
@@ -51,21 +56,32 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
+	mux.HandleFunc("GET /api/catalog/health", catalogHealthHandler(deps))
 	mux.HandleFunc("GET /api/movies", moviesHandler(deps))
 	mux.HandleFunc("GET /api/movies/{id}", movieDetailHandler(deps))
 	mux.HandleFunc("GET /api/series", seriesHandler(deps))
 	mux.HandleFunc("GET /api/series/{id}", seriesDetailHandler(deps))
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
+	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
+	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
+	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
 	mux.HandleFunc("POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
+	mux.HandleFunc("GET /api/probes", probesHandler(deps))
+	mux.HandleFunc("GET /api/probes/{id}", probeJobHandler(deps))
+	mux.HandleFunc("POST /api/probes", probeStartHandler(deps))
+	mux.HandleFunc("GET /api/work", workHandler(deps))
+	mux.HandleFunc("POST /api/work", workStartHandler(deps))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
 	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/tv/scan", tvScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/scan", allLibrariesScanHandler(deps))
 	mux.HandleFunc("GET /api/playback/decision", playbackDecisionHandler(deps))
+	mux.HandleFunc("GET /play/{id}", playerHandler(deps))
 	return mux
 }
 
@@ -126,6 +142,17 @@ func catalogSummaryHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, summary)
+	}
+}
+
+func catalogHealthHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		health, err := deps.Catalog.Health(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "catalog health failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, health)
 	}
 }
 
@@ -192,6 +219,55 @@ func reviewHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Catalog.ReviewItems(r.Context(), queryInt(r, "limit", 100))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "metadata suggestions failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"suggestions": items,
+			"strategy":    "filename-and-folder-first matching; provider lookup will layer on top later",
+		})
+	}
+}
+
+func versionsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Catalog.VersionGroups(r.Context(), queryInt(r, "limit", 100))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "version groups failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"versions": items})
+	}
+}
+
+func performanceSettingsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		libraryList := deps.Libraries.List()
+		profile := "local"
+		for _, library := range libraryList {
+			if library.StorageType == libraries.StorageNetwork || library.StorageType == libraries.StorageRemovable || library.StorageType == libraries.StorageMounted {
+				profile = "conservative"
+				break
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"profile":   profile,
+			"limits":    deps.Resources.Limits(),
+			"queues":    deps.Jobs.Snapshot(),
+			"libraries": libraryList,
+			"recommendations": []string{
+				"Keep scan concurrency low for network/removable storage",
+				"Probe jobs are isolated from scan and transcode queues",
+				"Playback-critical work is separated from background jobs",
+			},
+		})
+	}
+}
+
 func mediaSourcesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		items, err := deps.Catalog.ListMediaSources(r.Context(), queryInt(r, "limit", 100), r.URL.Query().Get("unprobed") == "true")
@@ -252,6 +328,38 @@ func mediaSourceProbeHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func probesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"probes": deps.Probes.List()})
+	}
+}
+
+func probeJobHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Probes.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "probe job not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, job)
+	}
+}
+
+func probeStartHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request probes.Request
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		job, err := deps.Probes.Start(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
 func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
@@ -264,6 +372,59 @@ func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		http.ServeFile(w, r, item.Path)
+	}
+}
+
+func playerHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, `<!doctype html><title>Vyrden Player</title><body style="margin:0;background:#05070a;color:white;font-family:system-ui"><video src="/api/media-sources/%s/stream" controls autoplay style="width:100vw;height:100vh"></video><div style="position:fixed;left:16px;bottom:16px;background:#000a;padding:10px;border-radius:8px">%s</div></body>`, id, item.Name)
+	}
+}
+
+func mediaSourceSubtitlesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sidecars": subtitles.DiscoverSidecars(item.Path)})
+	}
+}
+
+func workHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"work": deps.Transcode.List()})
+	}
+}
+
+func workStartHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request transcode.Request
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		job, err := deps.Transcode.Start(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, job)
 	}
 }
 
@@ -365,13 +526,14 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			decision = deps.Playback.DecideSource(r.Context(), request, playback.SourceFacts{
-				MediaSourceID:   source.ID,
-				Container:       source.Container,
-				VideoCodec:      source.VideoCodec,
-				AudioStreams:    source.AudioStreams,
-				SubtitleStreams: source.SubtitleStreams,
-				Bitrate:         source.Bitrate,
-				Probed:          source.Probed,
+				MediaSourceID:    source.ID,
+				Container:        source.Container,
+				VideoCodec:       source.VideoCodec,
+				AudioStreams:     source.AudioStreams,
+				SubtitleStreams:  source.SubtitleStreams,
+				SidecarSubtitles: len(subtitles.DiscoverSidecars(source.Path)),
+				Bitrate:          source.Bitrate,
+				Probed:           source.Probed,
 			})
 		}
 		writeJSON(w, http.StatusOK, decision)
@@ -847,6 +1009,8 @@ const devConsoleHTML = `<!doctype html>
         <button id="loadSeries">Series</button>
         <button id="loadReview">Needs Review</button>
         <button id="loadMedia">Media Sources</button>
+        <button id="loadHealth">Health</button>
+        <button id="loadSettings">Settings</button>
       </div>
       <div id="browse"></div>
     </section>
@@ -859,6 +1023,8 @@ const devConsoleHTML = `<!doctype html>
         <a class="button" href="/api/movies">Movies</a>
         <a class="button" href="/api/series">Series</a>
         <a class="button" href="/api/review">Needs Review</a>
+        <a class="button" href="/api/catalog/health">Health</a>
+        <a class="button" href="/api/settings/performance">Performance</a>
         <a class="button" href="/api/scans">Scans</a>
         <a class="button" href="/api/catalog/summary">Catalog Summary</a>
         <a class="button" href="/api/architecture">Architecture</a>
@@ -993,6 +1159,8 @@ const devConsoleHTML = `<!doctype html>
     document.getElementById("loadSeries").addEventListener("click", () => loadBrowse("series"));
     document.getElementById("loadReview").addEventListener("click", () => loadBrowse("review"));
     document.getElementById("loadMedia").addEventListener("click", () => loadBrowse("media"));
+    document.getElementById("loadHealth").addEventListener("click", () => loadBrowse("health"));
+    document.getElementById("loadSettings").addEventListener("click", () => loadBrowse("settings"));
 
     async function loadBrowse(kind) {
       const browse = document.getElementById("browse");
@@ -1031,6 +1199,14 @@ const devConsoleHTML = `<!doctype html>
           escapeHTML(item.videoCodec || ""),
           "<a href=\"/api/media-sources/" + item.id + "/stream\">Open</a>"
         ]));
+      }
+      if (kind === "health") {
+        const payload = await getJSON("/api/catalog/health");
+        browse.innerHTML = "<pre>" + escapeHTML(JSON.stringify(payload, null, 2)) + "</pre>";
+      }
+      if (kind === "settings") {
+        const payload = await getJSON("/api/settings/performance");
+        browse.innerHTML = "<pre>" + escapeHTML(JSON.stringify(payload, null, 2)) + "</pre>";
       }
     }
 
