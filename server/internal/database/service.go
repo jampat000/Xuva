@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -74,6 +75,9 @@ func (s *Service) configure(ctx context.Context) error {
 func (s *Service) migrate(ctx context.Context) error {
 	for _, statement := range migrations {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
 			return err
 		}
 	}
@@ -86,9 +90,11 @@ var migrations = []string{
 		kind TEXT NOT NULL,
 		name TEXT NOT NULL,
 		path TEXT NOT NULL UNIQUE,
+		storage_type TEXT NOT NULL DEFAULT 'unknown',
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL
 	)`,
+	`ALTER TABLE libraries ADD COLUMN storage_type TEXT NOT NULL DEFAULT 'unknown'`,
 	`CREATE TABLE IF NOT EXISTS media_sources (
 		id TEXT PRIMARY KEY,
 		library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

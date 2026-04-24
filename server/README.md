@@ -43,6 +43,8 @@ Scan requests return a background scan job with HTTP 202. Progress is emitted th
 
 Scan requests can pass `path`, or use `VYRDEN_MOVIES_PATH` and `VYRDEN_TV_PATH` when those environment variables are configured.
 
+Library paths are not NAS-specific. The scanner accepts any OS-visible folder, including local disks, removable USB drives, network shares, and mounted volumes. Library records include a `storageType` field so future scan/probe behavior can tune itself per storage class.
+
 Catalog endpoints:
 
 - `GET /api/catalog/summary`

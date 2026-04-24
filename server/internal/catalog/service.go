@@ -532,15 +532,19 @@ func (s *Service) SaveTVScan(ctx context.Context, library libraries.Library, res
 
 func upsertLibrary(ctx context.Context, tx *sql.Tx, library libraries.Library) error {
 	now := timestamp(time.Now())
+	if library.StorageType == "" {
+		library.StorageType = libraries.DetectStorageType(library.Path)
+	}
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO libraries(id, kind, name, path, updated_at)
-		VALUES(?, ?, ?, ?, ?)
+		INSERT INTO libraries(id, kind, name, path, storage_type, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			kind = excluded.kind,
 			name = excluded.name,
 			path = excluded.path,
+			storage_type = excluded.storage_type,
 			updated_at = excluded.updated_at
-	`, library.ID, library.Kind, library.Name, library.Path, now)
+	`, library.ID, library.Kind, library.Name, library.Path, library.StorageType, now)
 	return err
 }
 

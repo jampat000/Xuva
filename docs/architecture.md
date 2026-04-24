@@ -42,6 +42,8 @@ Core server services:
 
 The first implementation should be one installable server process with separated internal services. This keeps installation light while preventing unrelated workloads from sharing uncontrolled queues.
 
+Storage must be library-path agnostic. Vyrden should support local internal disks, removable USB disks, NAS/SMB/NFS/network shares, and mounted volumes. NAS safety is one tuning profile, not the only target.
+
 Initial package layout:
 
 ```text
@@ -148,6 +150,7 @@ Rules:
 - `X:\Movies` and `X:\TV` should be scanned as separate libraries, even though their files feed the same media source and playback engine.
 - A movie scan can be rescheduled without touching TV, and a TV scan can be rescheduled without touching movies.
 - Scan results persist into SQLite as libraries, media sources, movie versions, series, seasons, episodes, and scan runs.
+- Libraries carry a storage type (`local`, `removable`, `network`, `mounted`, or `unknown`) so future defaults can differ for local SSDs, USB drives, NAS shares, and mounted volumes.
 
 ## Resource Scheduling
 
@@ -177,7 +180,7 @@ Implementation rules:
 - Scanning has its own bounded queue.
 - Scan requests enqueue background jobs and return a job ID immediately.
 - Scan progress is published over SSE so the UI never blocks on a full NAS scan.
-- ffprobe has a separate low/medium concurrency pool for NAS safety.
+- ffprobe has a separate low/medium concurrency pool. Network shares and removable drives should default to more conservative probing than local internal drives.
 - ffprobe results persist separately from media source identity so source paths and technical stream facts can update independently.
 - Transcoding has a strict worker pool.
 - GPU jobs have a separate limiter.

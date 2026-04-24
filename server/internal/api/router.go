@@ -827,6 +827,7 @@ const devConsoleHTML = `<!doctype html>
         <div class="path"><span>Movies</span><code id="moviesPath">Loading</code></div>
         <div class="path"><span>TV</span><code id="tvPath">Loading</code></div>
       </div>
+      <pre id="storageNotes">Detecting storage...</pre>
     </section>
 
     <section>
@@ -890,10 +891,11 @@ const devConsoleHTML = `<!doctype html>
     }
 
     async function refresh() {
-      const [health, summary, scans] = await Promise.all([
+      const [health, summary, scans, libraries] = await Promise.all([
         getJSON("/api/health"),
         getJSON("/api/catalog/summary"),
-        getJSON("/api/scans")
+        getJSON("/api/scans"),
+        getJSON("/api/libraries")
       ]);
       document.getElementById("serverStatus").textContent = health.status || "unknown";
       document.getElementById("moviesPath").textContent = health.libraries?.movies || "Not configured";
@@ -901,6 +903,9 @@ const devConsoleHTML = `<!doctype html>
       for (const key of ["libraries", "mediaSources", "movies", "series", "episodes", "scanRuns"]) {
         document.getElementById(key).textContent = summary[key] ?? 0;
       }
+      document.getElementById("storageNotes").textContent = libraries.libraries.map(item =>
+        item.name + ": " + item.storageType + " storage"
+      ).join("\n") || "No libraries configured.";
       if (!activeScanId && scans.scans?.length) {
         const latest = scans.scans[0];
         show({
