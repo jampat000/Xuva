@@ -73,6 +73,28 @@ Design intent:
 - Preserve a full inspector path for users who want to know exactly why Vyrden chose the current playback route.
 - Make subtitle burn-in risk visible before the user selects a subtitle track.
 
+### Audio And Subtitle Selector
+
+Purpose: make track choice obvious, fast, and technically honest.
+
+Required sections:
+
+- Audio tracks with language, codec, channel layout, default/commentary flags, and route impact.
+- Subtitle tracks with language, forced/default flags, format, render path, and burn-in risk.
+- Combined playback forecast for the selected audio and subtitle pair.
+- Subtitle delay.
+- Audio delay.
+- Remember choice scope.
+- Apply and cancel.
+
+Design intent:
+
+- Treat audio and subtitles as first-class playback choices, not hidden advanced settings.
+- Preview direct render, direct play, audio transcode, styled subtitle render, and subtitle burn-in before apply.
+- Keep the forecast combined across both columns so users can understand the real outcome of the selected pair.
+- Make forced/default/language flags scannable at TV distance.
+- Keep sync and delay controls reachable from the selector without opening general settings.
+
 ### Playback Inspector
 
 Purpose: make Vyrden's technical advantage visible.

@@ -24,6 +24,7 @@ Completed prototype passes:
 - Movie Detail Concept: `apps/web/prototypes/vyrden-movie-detail/index.html`
 - Signal Deck Concept: `apps/web/prototypes/vyrden-signal-deck/index.html`
 - Playback Overlay Concept: `apps/web/prototypes/vyrden-playback-overlay/index.html`
+- Audio + Subtitle Selector Concept: `apps/web/prototypes/vyrden-track-selector/index.html`
 
 ## Web Admin
 

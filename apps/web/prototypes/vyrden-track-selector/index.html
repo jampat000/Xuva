@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vyrden Audio and Subtitle Selector Concept</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080705;
+        --panel: #11100d;
+        --panel-2: #191713;
+        --text: #fff7ea;
+        --muted: #b9b0a2;
+        --quiet: #746c60;
+        --line: #312b23;
+        --focus: #4fe6c8;
+        --action: #f6b756;
+        --success: #65d887;
+        --warn: #f6b756;
+        --danger: #ff6b6b;
+        --info: #7ca7ff;
+        --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button { font: inherit; }
+
+      .screen {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        isolation: isolate;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(8, 7, 5, 0.98), rgba(8, 7, 5, 0.84) 42%, rgba(8, 7, 5, 0.92)),
+          linear-gradient(135deg, #402616 0%, #080705 28%, #0f2c27 68%, #080705 100%);
+      }
+
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        z-index: -2;
+        background:
+          linear-gradient(132deg, rgba(246, 183, 86, 0.58) 0 15%, transparent 15% 42%, rgba(79, 230, 200, 0.48) 42% 62%, transparent 62%),
+          radial-gradient(circle at 76% 24%, rgba(255, 247, 234, 0.9) 0 26px, transparent 28px),
+          linear-gradient(140deg, #3d2316 0%, #080705 42%, #0f2e29 100%);
+      }
+
+      .backdrop::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(8, 7, 5, 0.72), rgba(8, 7, 5, 0.92)),
+          linear-gradient(90deg, rgba(8, 7, 5, 0.96), rgba(8, 7, 5, 0.5) 52%, rgba(8, 7, 5, 0.92));
+      }
+
+      .shell {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        height: 100vh;
+        padding: 38px 56px 42px;
+      }
+
+      .top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 32px;
+      }
+
+      .identity {
+        display: grid;
+        gap: 12px;
+      }
+
+      .crumb {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(79, 230, 200, 0.36);
+        border-radius: 9px;
+        background: rgba(79, 230, 200, 0.08);
+        color: var(--focus);
+        font-size: 20px;
+        font-weight: 780;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 40px;
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      .context {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 5px 10px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        background: rgba(8, 7, 5, 0.42);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 730;
+      }
+
+      .pill.good {
+        border-color: rgba(79, 230, 200, 0.36);
+        color: var(--focus);
+      }
+
+      .session {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 13px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        background: rgba(8, 7, 5, 0.46);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 720;
+        backdrop-filter: blur(18px);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 18px rgba(101, 216, 135, 0.62);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 438px;
+        gap: 26px;
+        min-height: 0;
+        margin-top: 34px;
+      }
+
+      .selector {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      .column,
+      .forecast {
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 12px;
+        background: rgba(17, 16, 13, 0.78);
+        box-shadow: 0 30px 86px rgba(0, 0, 0, 0.38);
+        backdrop-filter: blur(20px);
+      }
+
+      .column {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 0;
+      }
+
+      .column-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 18px 12px;
+        border-bottom: 1px solid rgba(255, 247, 234, 0.08);
+      }
+
+      .column-title {
+        display: grid;
+        gap: 5px;
+      }
+
+      .column-title strong {
+        font-size: 18px;
+      }
+
+      .column-title span {
+        color: var(--quiet);
+        font-size: 12px;
+        font-weight: 720;
+      }
+
+      .active-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+        border: 1px solid rgba(79, 230, 200, 0.3);
+        border-radius: 999px;
+        color: var(--focus);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .track-list {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .track {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: center;
+        min-height: 92px;
+        padding: 14px;
+        border: 1px solid rgba(255, 247, 234, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 247, 234, 0.045);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .track.is-selected {
+        border-color: rgba(79, 230, 200, 0.42);
+        background: rgba(79, 230, 200, 0.08);
+      }
+
+      .track:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.18);
+        outline: none;
+        transform: translateY(-3px);
+      }
+
+      .track-main {
+        min-width: 0;
+      }
+
+      .track-name {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 820;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 3px 7px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 820;
+        text-transform: uppercase;
+      }
+
+      .tag.good {
+        border-color: rgba(79, 230, 200, 0.3);
+        color: var(--focus);
+      }
+
+      .tag.warn {
+        border-color: rgba(246, 183, 86, 0.36);
+        color: var(--warn);
+      }
+
+      .tag.danger {
+        border-color: rgba(255, 107, 107, 0.36);
+        color: var(--danger);
+      }
+
+      .track-detail {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+        font-weight: 650;
+      }
+
+      .track-impact {
+        display: grid;
+        justify-items: end;
+        gap: 8px;
+        color: var(--quiet);
+        font-size: 12px;
+        font-weight: 750;
+        text-align: right;
+      }
+
+      .impact-mode {
+        color: var(--focus);
+        font-size: 13px;
+        font-weight: 840;
+      }
+
+      .impact-mode.warn {
+        color: var(--warn);
+      }
+
+      .impact-mode.danger {
+        color: var(--danger);
+      }
+
+      .forecast {
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        min-height: 0;
+        padding: 18px;
+      }
+
+      .forecast-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+
+      .forecast-title strong {
+        font-size: 13px;
+        text-transform: uppercase;
+      }
+
+      .forecast-title span {
+        color: var(--focus);
+        font-size: 12px;
+        font-weight: 820;
+      }
+
+      .path-card {
+        display: grid;
+        gap: 6px;
+        padding: 15px;
+        border: 1px solid rgba(79, 230, 200, 0.36);
+        border-radius: 10px;
+        background: rgba(79, 230, 200, 0.08);
+      }
+
+      .path-card strong {
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .path-card span {
+        color: var(--focus);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .path-card.warn {
+        border-color: rgba(246, 183, 86, 0.38);
+        background: rgba(246, 183, 86, 0.08);
+      }
+
+      .path-card.warn span { color: var(--warn); }
+
+      .path-card.danger {
+        border-color: rgba(255, 107, 107, 0.38);
+        background: rgba(255, 107, 107, 0.08);
+      }
+
+      .path-card.danger span { color: var(--danger); }
+
+      .route {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .route-row {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        min-height: 38px;
+        padding: 8px 0;
+        border-top: 1px solid rgba(255, 247, 234, 0.08);
+      }
+
+      .route-row span:first-child {
+        color: var(--quiet);
+        font-size: 12px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .route-row span:last-child {
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.25;
+        font-weight: 740;
+        text-align: right;
+      }
+
+      .reason {
+        margin-top: 14px;
+        padding: 12px;
+        border: 1px solid rgba(79, 230, 200, 0.28);
+        border-radius: 8px;
+        background: rgba(79, 230, 200, 0.08);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.42;
+        font-weight: 650;
+      }
+
+      .tools {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .tool {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        min-height: 42px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 247, 234, 0.1);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.045);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 760;
+      }
+
+      .tool span:last-child {
+        color: var(--quiet);
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .action {
+        min-height: 46px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.08);
+        color: var(--text);
+        font-weight: 820;
+      }
+
+      .action.primary {
+        border-color: rgba(246, 183, 86, 0.72);
+        background: var(--action);
+        color: #080705;
+      }
+
+      .action:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.18);
+        outline: none;
+      }
+
+      @media (max-width: 1280px) {
+        body { overflow: auto; }
+        .screen { height: auto; min-height: 100vh; }
+        .shell { height: auto; }
+        .layout { grid-template-columns: 1fr; }
+        .selector { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="screen">
+      <div class="backdrop"></div>
+      <div class="shell">
+        <header class="top">
+          <section class="identity">
+            <div class="crumb"><span class="mark">V</span> The Meridian Signal - Track Selector</div>
+            <h1>Audio & Subtitles</h1>
+            <div class="context">
+              <span class="pill good" id="context-mode">Direct Play</span>
+              <span class="pill" id="context-audio">English TrueHD 7.1</span>
+              <span class="pill" id="context-subs">English SRT</span>
+              <span class="pill">Apple TV Living Room</span>
+            </div>
+          </section>
+          <div class="session"><span class="dot"></span> Atlas Server - LAN - changes previewed before apply</div>
+        </header>
+
+        <section class="layout">
+          <div class="selector">
+            <section class="column" aria-label="Audio tracks">
+              <div class="column-head">
+                <div class="column-title"><strong>Audio</strong><span>Codec compatibility and channel layout</span></div>
+                <div class="active-badge" id="audio-active">TrueHD 7.1</div>
+              </div>
+              <div class="track-list">
+                <button class="track is-selected" data-column="audio" data-name="English TrueHD 7.1" data-mode="Direct Play" data-class="good" data-cost="0% transcode load" data-video="HEVC Main10 HDR10+ - direct" data-audio="TrueHD 7.1 - direct" data-subs="English SRT - direct render" data-reason="This Apple TV route supports the selected TrueHD audio path, so no audio transcode is needed." data-context="English TrueHD 7.1">
+                  <span class="track-main"><span class="track-name">English TrueHD 7.1 <span class="tag good">Direct</span></span><span class="track-detail">Original lossless track - 8 channels - default</span></span>
+                  <span class="track-impact"><span class="impact-mode">Direct Play</span><span>best quality</span></span>
+                </button>
+                <button class="track" data-column="audio" data-name="English EAC3 5.1" data-mode="Direct Play" data-class="good" data-cost="0% transcode load" data-video="HEVC Main10 HDR10+ - direct" data-audio="EAC3 5.1 - direct" data-subs="English SRT - direct render" data-reason="EAC3 is broadly compatible and keeps playback direct on this client." data-context="English EAC3 5.1">
+                  <span class="track-main"><span class="track-name">English EAC3 5.1 <span class="tag good">Direct</span></span><span class="track-detail">Compatible surround fallback - lower bitrate</span></span>
+                  <span class="track-impact"><span class="impact-mode">Direct Play</span><span>compatible</span></span>
+                </button>
+                <button class="track" data-column="audio" data-name="English DTS-HD MA 7.1" data-mode="Audio Transcode" data-class="warn" data-cost="Low CPU - no video transcode" data-video="HEVC Main10 HDR10+ - direct" data-audio="DTS-HD MA to EAC3" data-subs="English SRT - direct render" data-reason="The selected client cannot decode DTS-HD MA, so Vyrden will transcode audio only and leave video untouched." data-context="English DTS-HD MA 7.1">
+                  <span class="track-main"><span class="track-name">English DTS-HD MA 7.1 <span class="tag warn">Audio only</span></span><span class="track-detail">Lossless source, incompatible with this route</span></span>
+                  <span class="track-impact"><span class="impact-mode warn">Audio Transcode</span><span>video untouched</span></span>
+                </button>
+                <button class="track" data-column="audio" data-name="Commentary AAC Stereo" data-mode="Direct Play" data-class="good" data-cost="0% transcode load" data-video="HEVC Main10 HDR10+ - direct" data-audio="AAC stereo - direct" data-subs="English SRT - direct render" data-reason="AAC stereo is supported by the active client route." data-context="Commentary AAC Stereo">
+                  <span class="track-main"><span class="track-name">Commentary AAC Stereo <span class="tag">Commentary</span></span><span class="track-detail">Director and editor commentary</span></span>
+                  <span class="track-impact"><span class="impact-mode">Direct Play</span><span>stereo</span></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="column" aria-label="Subtitle tracks">
+              <div class="column-head">
+                <div class="column-title"><strong>Subtitles</strong><span>Render mode, forced flags, and burn-in risk</span></div>
+                <div class="active-badge" id="subs-active">English SRT</div>
+              </div>
+              <div class="track-list">
+                <button class="track is-selected" data-column="subtitles" data-name="English SRT" data-mode="Direct Play" data-class="good" data-cost="0% transcode load" data-video="HEVC Main10 HDR10+ - direct" data-audio="TrueHD 7.1 - direct" data-subs="English SRT - direct render" data-reason="SRT subtitles can render directly on this client without subtitle burn-in." data-context="English SRT">
+                  <span class="track-main"><span class="track-name">English SRT <span class="tag good">Direct</span></span><span class="track-detail">Text subtitles - default language</span></span>
+                  <span class="track-impact"><span class="impact-mode">Direct Render</span><span>no burn-in</span></span>
+                </button>
+                <button class="track" data-column="subtitles" data-name="English Forced SRT" data-mode="Direct Play" data-class="good" data-cost="0% transcode load" data-video="HEVC Main10 HDR10+ - direct" data-audio="TrueHD 7.1 - direct" data-subs="Forced SRT - direct render" data-reason="Forced SRT subtitles render directly and are suitable for foreign-language lines only." data-context="English Forced SRT">
+                  <span class="track-main"><span class="track-name">English Forced SRT <span class="tag good">Forced</span><span class="tag good">Direct</span></span><span class="track-detail">Only non-English dialogue and signs</span></span>
+                  <span class="track-impact"><span class="impact-mode">Direct Render</span><span>forced only</span></span>
+                </button>
+                <button class="track" data-column="subtitles" data-name="English PGS" data-mode="Subtitle Burn" data-class="danger" data-cost="Video transcode required" data-video="HEVC to H.264 - subtitle burn" data-audio="TrueHD 7.1 - direct if supported" data-subs="PGS burned into video" data-reason="PGS is an image subtitle format. This client cannot overlay it directly, so Vyrden must burn it into the video stream." data-context="English PGS">
+                  <span class="track-main"><span class="track-name">English PGS <span class="tag danger">Burn-in</span></span><span class="track-detail">Image subtitles from disc source</span></span>
+                  <span class="track-impact"><span class="impact-mode danger">Subtitle Burn</span><span>video transcode</span></span>
+                </button>
+                <button class="track" data-column="subtitles" data-name="English ASS" data-mode="Subtitle Render" data-class="warn" data-cost="Client-dependent render" data-video="HEVC Main10 HDR10+ - direct" data-audio="TrueHD 7.1 - direct" data-subs="ASS styled subtitle render" data-reason="ASS subtitles include styling and positioning. Vyrden can render them with libass when the client cannot." data-context="English ASS">
+                  <span class="track-main"><span class="track-name">English ASS <span class="tag warn">Styled</span></span><span class="track-detail">Positioned/styled subtitles - libass path</span></span>
+                  <span class="track-impact"><span class="impact-mode warn">Styled Render</span><span>check client</span></span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <aside class="forecast" aria-label="Playback forecast">
+            <div class="forecast-title"><strong>Playback Forecast</strong><span id="forecast-chip">Direct Play</span></div>
+            <div class="path-card" id="path-card"><strong id="path-title">Direct Play</strong><span id="path-cost">0% transcode load</span></div>
+            <div class="route">
+              <div class="route-row"><span>Video</span><span id="video">HEVC Main10 HDR10+ - direct</span></div>
+              <div class="route-row"><span>Audio</span><span id="audio">TrueHD 7.1 - direct</span></div>
+              <div class="route-row"><span>Subtitles</span><span id="subs">English SRT - direct render</span></div>
+              <div class="route-row"><span>Output</span><span id="output">No remux or transcode</span></div>
+            </div>
+            <div>
+              <div class="reason" id="reason">SRT subtitles can render directly on this client without subtitle burn-in.</div>
+              <div class="tools">
+                <div class="tool"><span>Subtitle delay</span><span>0 ms</span></div>
+                <div class="tool"><span>Audio delay</span><span>0 ms</span></div>
+                <div class="tool"><span>Remember choice</span><span>This user</span></div>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="action primary">Apply</button>
+              <button class="action">Cancel</button>
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const tracks = [...document.querySelectorAll(".track")];
+      const pathCard = document.querySelector("#path-card");
+      const pathTitle = document.querySelector("#path-title");
+      const pathCost = document.querySelector("#path-cost");
+      const forecastChip = document.querySelector("#forecast-chip");
+      const contextMode = document.querySelector("#context-mode");
+      const contextAudio = document.querySelector("#context-audio");
+      const contextSubs = document.querySelector("#context-subs");
+      const audioActive = document.querySelector("#audio-active");
+      const subsActive = document.querySelector("#subs-active");
+      const video = document.querySelector("#video");
+      const audio = document.querySelector("#audio");
+      const subs = document.querySelector("#subs");
+      const output = document.querySelector("#output");
+      const reason = document.querySelector("#reason");
+
+      let selectedAudio = document.querySelector('.track[data-column="audio"].is-selected');
+      let selectedSubs = document.querySelector('.track[data-column="subtitles"].is-selected');
+
+      function setSelection(track) {
+        document.querySelectorAll(`.track[data-column="${track.dataset.column}"]`).forEach((item) => item.classList.remove("is-selected"));
+        track.classList.add("is-selected");
+        if (track.dataset.column === "audio") selectedAudio = track;
+        if (track.dataset.column === "subtitles") selectedSubs = track;
+      }
+
+      function renderForecast() {
+        const audioMode = selectedAudio.dataset.mode;
+        const subsMode = selectedSubs.dataset.mode;
+        let mode = "Direct Play";
+        let statusClass = "good";
+        let cost = "0% transcode load";
+        let videoText = selectedAudio.dataset.video;
+        let reasonText = "The selected audio and subtitle tracks are compatible with this client route.";
+
+        if (subsMode === "Subtitle Burn") {
+          mode = "Subtitle Burn";
+          statusClass = "danger";
+          cost = selectedSubs.dataset.cost;
+          videoText = selectedSubs.dataset.video;
+          reasonText = `${selectedSubs.dataset.reason} Audio route: ${selectedAudio.dataset.audio}.`;
+        } else if (audioMode === "Audio Transcode") {
+          mode = "Audio Transcode";
+          statusClass = "warn";
+          cost = selectedAudio.dataset.cost;
+          reasonText = selectedAudio.dataset.reason;
+          if (subsMode === "Subtitle Render") {
+            reasonText = `${selectedAudio.dataset.reason} ${selectedSubs.dataset.reason}`;
+          }
+        } else if (subsMode === "Subtitle Render") {
+          mode = "Subtitle Render";
+          statusClass = "warn";
+          cost = selectedSubs.dataset.cost;
+          videoText = selectedSubs.dataset.video;
+          reasonText = selectedSubs.dataset.reason;
+        }
+
+        pathCard.classList.remove("warn", "danger");
+        if (statusClass === "warn") pathCard.classList.add("warn");
+        if (statusClass === "danger") pathCard.classList.add("danger");
+
+        pathTitle.textContent = mode;
+        pathCost.textContent = cost;
+        forecastChip.textContent = mode;
+        contextMode.textContent = mode;
+        contextAudio.textContent = selectedAudio.dataset.context;
+        contextSubs.textContent = selectedSubs.dataset.context;
+        audioActive.textContent = selectedAudio.dataset.context.replace("English ", "");
+        subsActive.textContent = selectedSubs.dataset.context.replace("English ", "");
+        video.textContent = videoText;
+        audio.textContent = selectedAudio.dataset.audio;
+        subs.textContent = selectedSubs.dataset.subs;
+        reason.textContent = reasonText;
+        output.textContent = mode === "Direct Play" ? "No remux or transcode" : mode;
+      }
+
+      function preview(track) {
+        setSelection(track);
+        renderForecast();
+      }
+
+      tracks.forEach((track) => {
+        track.addEventListener("focus", () => preview(track));
+        track.addEventListener("mouseenter", () => preview(track));
+      });
+
+      document.addEventListener("keydown", (event) => {
+        const active = document.activeElement;
+        const index = tracks.indexOf(active);
+        if (index < 0) return;
+        const column = active.dataset.column;
+        const columnItems = tracks.filter((track) => track.dataset.column === column);
+        const columnIndex = columnItems.indexOf(active);
+        const otherItems = tracks.filter((track) => track.dataset.column !== column);
+
+        if (event.key === "ArrowDown" && columnItems[columnIndex + 1]) {
+          columnItems[columnIndex + 1].focus();
+          event.preventDefault();
+        }
+        if (event.key === "ArrowUp" && columnItems[columnIndex - 1]) {
+          columnItems[columnIndex - 1].focus();
+          event.preventDefault();
+        }
+        if (event.key === "ArrowRight" && column === "audio") {
+          otherItems[Math.min(columnIndex, otherItems.length - 1)]?.focus();
+          event.preventDefault();
+        }
+        if (event.key === "ArrowLeft" && column === "subtitles") {
+          otherItems[Math.min(columnIndex, otherItems.length - 1)]?.focus();
+          event.preventDefault();
+        }
+      });
+
+      renderForecast();
+      tracks[0]?.focus();
+    </script>
+  </body>
+</html>

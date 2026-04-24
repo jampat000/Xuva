@@ -54,4 +54,5 @@ Current prototype coverage:
 
 - Movie Detail Concept leads the browsing and detail direction.
 - Playback Overlay Concept extends that direction into the watching state.
+- Audio + Subtitle Selector Concept defines the first focused selector pattern for track choice and playback-route forecasting.
 - Signal Deck remains an exploration for playback-route visualization and focus-driven browsing.
