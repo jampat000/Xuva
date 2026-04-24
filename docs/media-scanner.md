@@ -60,6 +60,14 @@ data/probe-results-summary.json
 
 The JSONL file contains one record per media file. The summary file contains aggregate counts for extensions, containers, codecs, subtitle formats, and prototype playback decisions.
 
+Generate the local dashboard:
+
+```powershell
+python tools/vyrden_dashboard.py data/probe-results.jsonl --out data/compatibility-dashboard.html
+```
+
+The dashboard is static HTML and stays local in `data/`.
+
 ## Why This Matters
 
 The scanner turns a media library into a local compatibility test suite. Before Vyrden has a full server, it can already identify:

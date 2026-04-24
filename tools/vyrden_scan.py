@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -44,6 +45,67 @@ MEDIA_EXTENSIONS = {
     ".webm",
     ".wmv",
 }
+
+
+SIDECAR_SUBTITLE_EXTENSIONS = {
+    ".ass",
+    ".idx",
+    ".smi",
+    ".srt",
+    ".ssa",
+    ".sub",
+    ".sup",
+    ".vtt",
+}
+
+
+SUBTITLE_EXTENSION_LABELS = {
+    ".ass": "ASS",
+    ".idx": "VobSub IDX",
+    ".smi": "SAMI",
+    ".srt": "SRT",
+    ".ssa": "SSA",
+    ".sub": "VobSub SUB",
+    ".sup": "PGS/SUP",
+    ".vtt": "WebVTT",
+}
+
+
+LANGUAGE_HINTS = {
+    "ara": "Arabic",
+    "chi": "Chinese",
+    "chs": "Chinese Simplified",
+    "cht": "Chinese Traditional",
+    "dan": "Danish",
+    "de": "German",
+    "deu": "German",
+    "dut": "Dutch",
+    "en": "English",
+    "eng": "English",
+    "es": "Spanish",
+    "spa": "Spanish",
+    "fi": "Finnish",
+    "fin": "Finnish",
+    "fr": "French",
+    "fre": "French",
+    "fra": "French",
+    "ger": "German",
+    "ita": "Italian",
+    "it": "Italian",
+    "jpn": "Japanese",
+    "kor": "Korean",
+    "nl": "Dutch",
+    "nor": "Norwegian",
+    "por": "Portuguese",
+    "pt": "Portuguese",
+    "rus": "Russian",
+    "sv": "Swedish",
+    "swe": "Swedish",
+}
+
+
+DIR_ENTRY_CACHE: dict[Path, list[Path]] = {}
+DIR_ENTRY_CACHE_LOCK = threading.Lock()
 
 
 CLIENT_PROFILES = {
@@ -96,6 +158,23 @@ def stable_path(path: Path, hash_paths: bool) -> str:
     return hashlib.sha256(text.lower().encode("utf-8", errors="ignore")).hexdigest()
 
 
+def library_section(root: Path, path: Path) -> str:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return "Unknown"
+    return relative.parts[0] if relative.parts else "Unknown"
+
+
+def media_kind(section: str) -> str:
+    normalized = section.casefold()
+    if normalized == "movies":
+        return "Movie"
+    if normalized in {"tv", "tv shows", "shows", "series"}:
+        return "TV"
+    return "Unknown"
+
+
 def record_key(path: Path, size: int, mtime_ns: int) -> str:
     raw = f"{str(path).lower()}|{size}|{mtime_ns}"
     return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
@@ -120,6 +199,75 @@ def discover_media(root: Path, limit: int | None) -> tuple[list[Path], list[dict
     return files, errors
 
 
+def directory_entries(path: Path) -> list[Path]:
+    parent = path.parent
+    with DIR_ENTRY_CACHE_LOCK:
+        cached = DIR_ENTRY_CACHE.get(parent)
+    if cached is not None:
+        return cached
+
+    try:
+        entries = [entry for entry in parent.iterdir() if entry.is_file()]
+    except OSError:
+        entries = []
+
+    with DIR_ENTRY_CACHE_LOCK:
+        DIR_ENTRY_CACHE[parent] = entries
+    return entries
+
+
+def sidecar_matches(media_path: Path, candidate: Path) -> bool:
+    if candidate.suffix.lower() not in SIDECAR_SUBTITLE_EXTENSIONS:
+        return False
+    media_stem = media_path.stem.casefold()
+    candidate_stem = candidate.stem.casefold()
+    return (
+        candidate_stem == media_stem
+        or candidate_stem.startswith(media_stem + ".")
+        or candidate_stem.startswith(media_stem + "-")
+        or candidate_stem.startswith(media_stem + "_")
+    )
+
+
+def infer_sidecar_language(media_path: Path, sidecar_path: Path) -> str | None:
+    media_stem = media_path.stem.casefold()
+    sidecar_stem = sidecar_path.stem.casefold()
+    suffix = sidecar_stem.removeprefix(media_stem).strip(" ._-")
+    tokens = [token for token in suffix.replace("-", ".").replace("_", ".").split(".") if token]
+    for token in tokens:
+        language = LANGUAGE_HINTS.get(token)
+        if language:
+            return language
+    return None
+
+
+def sidecar_tokens(media_path: Path, sidecar_path: Path) -> set[str]:
+    media_stem = media_path.stem.casefold()
+    sidecar_stem = sidecar_path.stem.casefold()
+    suffix = sidecar_stem.removeprefix(media_stem).strip(" ._-")
+    return {token for token in suffix.replace("-", ".").replace("_", ".").split(".") if token}
+
+
+def detect_sidecars(path: Path, hash_paths: bool) -> list[dict[str, Any]]:
+    sidecars: list[dict[str, Any]] = []
+    for candidate in directory_entries(path):
+        if not sidecar_matches(path, candidate):
+            continue
+        tokens = sidecar_tokens(path, candidate)
+        sidecars.append(
+            {
+                "path": stable_path(candidate, hash_paths),
+                "name": candidate.name if not hash_paths else None,
+                "extension": candidate.suffix.lower(),
+                "format": SUBTITLE_EXTENSION_LABELS.get(candidate.suffix.lower(), candidate.suffix.lower().lstrip(".").upper()),
+                "language": infer_sidecar_language(path, candidate),
+                "forced": "forced" in tokens,
+                "hearing_impaired": bool(tokens & {"sdh", "hi", "hearing"}),
+            }
+        )
+    return [{key: value for key, value in item.items() if value is not None} for item in sidecars]
+
+
 def empty_summary() -> dict[str, Any]:
     return {
         "files_scanned": 0,
@@ -130,6 +278,12 @@ def empty_summary() -> dict[str, Any]:
         "video_codecs": Counter(),
         "audio_codecs": Counter(),
         "subtitle_codecs": Counter(),
+        "sidecar_subtitles": Counter(),
+        "library_sections": Counter(),
+        "media_kinds": Counter(),
+        "files_with_embedded_subtitles": 0,
+        "files_with_sidecar_subtitles": 0,
+        "files_with_any_subtitles": 0,
         "decisions": defaultdict(Counter),
     }
 
@@ -401,15 +555,20 @@ def scan_one(path: Path, config: ScanConfig) -> dict[str, Any]:
     if config.probe and config.ffprobe:
         probe, probe_error = run_ffprobe(path, config.ffprobe, config.timeout)
 
+    section = library_section(config.root, path)
+    sidecars = detect_sidecars(path, config.hash_paths)
     record = {
         "key": key,
         "path": stable_path(path, config.hash_paths),
         "name": path.name if not config.hash_paths else None,
+        "library_section": section,
+        "media_kind": media_kind(section),
         "extension": path.suffix.lower(),
         "size_bytes": stat.st_size,
         "modified_time_ns": stat.st_mtime_ns,
         "probe_status": "ok" if probe else "not_run",
         "probe_error": probe_error,
+        "sidecars": sidecars,
         "streams": summarize_streams(probe),
         "decisions": decide_playback(probe),
         "elapsed_ms": round((time.time() - started) * 1000),
@@ -434,6 +593,8 @@ def update_summary(summary: dict[str, Any], record: dict[str, Any]) -> None:
     summary["bytes_scanned"] += int(record.get("size_bytes") or 0)
     summary["extensions"][record.get("extension") or "unknown"] += 1
     summary["probe_status"][record.get("probe_status") or "unknown"] += 1
+    summary["library_sections"][record.get("library_section") or "Unknown"] += 1
+    summary["media_kinds"][record.get("media_kind") or "Unknown"] += 1
 
     streams = record.get("streams")
     if not isinstance(streams, dict):
@@ -452,10 +613,28 @@ def update_summary(summary: dict[str, Any], record: dict[str, Any]) -> None:
         codec = stream.get("codec")
         if codec:
             summary["audio_codecs"][codec] += 1
-    for stream in streams.get("subtitles", []) if isinstance(streams.get("subtitles"), list) else []:
+    embedded_subtitles = streams.get("subtitles", []) if isinstance(streams.get("subtitles"), list) else []
+    for stream in embedded_subtitles:
         codec = stream.get("codec")
         if codec:
             summary["subtitle_codecs"][codec] += 1
+
+    sidecars = record.get("sidecars")
+    sidecar_count = 0
+    if isinstance(sidecars, list):
+        for sidecar in sidecars:
+            if isinstance(sidecar, dict):
+                extension = sidecar.get("extension")
+                if extension:
+                    summary["sidecar_subtitles"][extension] += 1
+                    sidecar_count += 1
+
+    if embedded_subtitles:
+        summary["files_with_embedded_subtitles"] += 1
+    if sidecar_count:
+        summary["files_with_sidecar_subtitles"] += 1
+    if embedded_subtitles or sidecar_count:
+        summary["files_with_any_subtitles"] += 1
 
     decisions = record.get("decisions")
     if isinstance(decisions, dict):
@@ -487,8 +666,14 @@ def finalize_summary(summary: dict[str, Any], config: ScanConfig, discovered: in
         "video_codecs",
         "audio_codecs",
         "subtitle_codecs",
+        "sidecar_subtitles",
+        "library_sections",
+        "media_kinds",
     ]:
         output[key] = dict(summary[key].most_common())
+    output["files_with_embedded_subtitles"] = summary["files_with_embedded_subtitles"]
+    output["files_with_sidecar_subtitles"] = summary["files_with_sidecar_subtitles"]
+    output["files_with_any_subtitles"] = summary["files_with_any_subtitles"]
     output["decisions"] = {
         profile: dict(counter.most_common())
         for profile, counter in summary["decisions"].items()
