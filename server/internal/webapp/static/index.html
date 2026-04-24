@@ -7,41 +7,51 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div id="app">
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-mark"></span>
-        <div>
-          <strong>Vyrden</strong>
-          <small>Local media system</small>
-        </div>
+  <div id="app" class="app">
+    <div class="backdrop"></div>
+    <div class="shell">
+      <aside class="rail">
+        <div class="mark" aria-label="Vyrden">V</div>
+        <nav aria-label="Primary">
+          <button class="nav-item active" data-view="dashboard" title="Home" aria-label="Home">
+            <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></svg>
+          </button>
+          <button class="nav-item" data-view="movies" title="Movies" aria-label="Movies">
+            <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/></svg>
+          </button>
+          <button class="nav-item" data-view="tv" title="TV" aria-label="TV">
+            <svg viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M9 20h6M12 17.5V20"/></svg>
+          </button>
+          <button class="nav-item" data-view="libraries" title="Libraries" aria-label="Libraries">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><path d="M7 7v10"/></svg>
+          </button>
+          <button class="nav-item" data-view="activity" title="Activity" aria-label="Activity">
+            <svg viewBox="0 0 24 24"><path d="M4 12h4l2-5 4 10 2-5h4"/></svg>
+          </button>
+          <button class="nav-item" data-view="health" title="Review" aria-label="Review">
+            <svg viewBox="0 0 24 24"><path d="M12 4 20 8v5c0 4-3.2 6.5-8 7-4.8-.5-8-3-8-7V8l8-4Z"/><path d="m9 12 2 2 4-5"/></svg>
+          </button>
+          <button class="nav-item" data-view="remote" title="Remote" aria-label="Remote">
+            <svg viewBox="0 0 24 24"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M4 12h16M12 4c2 2.2 3 4.8 3 8s-1 5.8-3 8M12 4c-2 2.2-3 4.8-3 8s1 5.8 3 8"/></svg>
+          </button>
+          <button class="nav-item" data-view="settings" title="Settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M5 12h14M12 5v14"/></svg>
+          </button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="crumbs"><span id="viewTitle">Home</span> <span>/</span> Vyrden</div>
+          <div class="server-state">
+            <span id="serverDot"></span>
+            <strong id="serverStatus">Checking</strong>
+          </div>
+        </header>
+
+        <section id="view" class="view"></section>
+      </main>
       </div>
-      <nav>
-        <button class="nav-item active" data-view="dashboard">Home</button>
-        <button class="nav-item" data-view="movies">Movies</button>
-        <button class="nav-item" data-view="tv">TV</button>
-        <button class="nav-item" data-view="libraries">Libraries</button>
-        <button class="nav-item" data-view="activity">Activity</button>
-        <button class="nav-item" data-view="health">Review</button>
-        <button class="nav-item" data-view="remote">Remote</button>
-        <button class="nav-item" data-view="settings">Settings</button>
-      </nav>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Windows user-session build</p>
-          <h1 id="viewTitle">Home</h1>
-        </div>
-        <div class="server-state">
-          <span id="serverDot"></span>
-          <strong id="serverStatus">Checking</strong>
-        </div>
-      </header>
-
-      <section id="view" class="view"></section>
-    </main>
   </div>
 
   <script src="/app.js"></script>

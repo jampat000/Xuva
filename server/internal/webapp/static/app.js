@@ -133,33 +133,74 @@ async function showMovie(id) {
     const state = await api(`/api/playback/state/${version.mediaSourceId}`);
     return versionCard(version, state, index === 0);
   }));
+  const selected = movie.versions[0];
   viewTitle.textContent = movie.title;
   view.innerHTML = `
-    <div class="detail-shell">
-      <section class="detail-hero">
-        <img alt="" src="/api/artwork/movie/${movie.id}">
-        <div class="detail-poster"><img alt="" src="/api/artwork/movie/${movie.id}"></div>
-        <div class="detail-copy">
-          <button class="ghost" onclick="navigate('movies')">Back to Movies</button>
-          <h2>${escapeHTML(movie.title)}</h2>
-          <p>${movie.year || "Unknown year"} - ${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"} - ${movie.needsReview ? "Needs metadata review" : "Ready"}</p>
-          <div class="detail-actions">
-            ${movie.versions[0] ? `<a class="button primary" href="/play/${movie.versions[0].mediaSourceId}" target="_blank">Play</a>` : ""}
-            ${movie.versions[0] ? `<button onclick="markWatched('${movie.versions[0].mediaSourceId}', true)">Mark Watched</button>` : ""}
+    <div class="movie-layout">
+      <aside class="poster-wrap">
+        <div class="poster live-poster"><img alt="" src="/api/artwork/movie/${movie.id}"><div class="poster-title">${escapeHTML(movie.title)}</div></div>
+        <div class="poster-meta">
+          <div class="compact-row"><span>Library</span><strong>Movies</strong></div>
+          <div class="compact-row"><span>Versions</span><strong>${movie.versionCount}</strong></div>
+          <div class="compact-row"><span>State</span><strong>${movie.needsReview ? "Review" : "Ready"}</strong></div>
+        </div>
+      </aside>
+
+      <section class="content">
+        <div class="eyebrow">Featured from your library</div>
+        <h1>${escapeHTML(movie.title)}</h1>
+        <div class="meta">
+          <span>${movie.year || "Unknown year"}</span>
+          <span>${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</span>
+          <span class="pill direct">${selected ? "Ready to play" : "No source"}</span>
+        </div>
+        <p class="summary">${movie.needsReview ? "This item needs metadata review before Vyrden can fully trust its match." : "Choose a version, confirm the playback route, then play directly from your local library."}</p>
+        <div class="actions">
+          ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Play</a>` : ""}
+          ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', true)">Mark Watched</button>` : ""}
+          ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', false)">Mark Unwatched</button>` : ""}
+          <button class="button focusable" onclick="navigate('movies')">Back</button>
+          ${movie.needsReview ? `<button class="button focusable" onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
+        </div>
+        <section class="section">
+          <div class="section-head">
+            <div class="section-title">Versions</div>
+            <div class="section-note">Choose source quality before playback</div>
+          </div>
+          <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
+        </section>
+      </section>
+
+      <aside class="side">
+        <section class="panel pad">
+          <div class="panel-title">Playback Forecast</div>
+          <div class="play-path">
+            <strong>${selected ? "Decision Ready" : "No Source"}</strong>
+            <span>${selected ? "Inspect source" : "Scan library"}</span>
+          </div>
+          <div class="inspect-row"><span>Reason</span><span>${selected ? "Vyrden has a local media source available." : "No version is linked to this title."}</span></div>
+          <div class="inspect-row"><span>Version</span><span>${selected ? escapeHTML(selected.qualityLabel || "Source") : "None"}</span></div>
+          <div class="inspect-row"><span>File</span><span>${selected ? escapeHTML(selected.relPath) : "None"}</span></div>
+          <div class="inspect-row"><span>Control</span><span>Play, watched state, version choice</span></div>
+        </section>
+        <section class="panel pad">
+          <div class="panel-title">Actions</div>
+          <div class="download">
+            ${selected ? `<a class="download-option" href="/api/playback/decision?mediaSourceId=${selected.mediaSourceId}&clientProfile=web" target="_blank"><span>Playback decision</span><span>Open</span></a>` : ""}
             ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
           </div>
-        </div>
-      </section>
-      <section class="card"><h2>Available Versions</h2><div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div></section>
+        </section>
+      </aside>
     </div>`;
 }
 
 function versionCard(version, state, selected) {
   const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round(state.percent * 100)}%` : "Unplayed";
-  return `<article class="version-card">
-    <div>
-      <strong>${escapeHTML(version.qualityLabel || "Source")}${selected ? " - selected" : ""}</strong>
-      <small>${escapeHTML(version.relPath)} - ${watched}</small>
+  return `<article class="version ${selected ? "is-selected" : ""}">
+    <div class="version-title">${escapeHTML(version.qualityLabel || "Source")}<span class="version-path">${watched}</span></div>
+    <div class="version-details">
+      <span>${escapeHTML(version.relPath)}</span>
+      <span>${Math.round((version.sizeBytes || 0) / 1024 / 1024 / 1024 * 10) / 10} GB</span>
     </div>
     <div class="inline-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">Play</a>
