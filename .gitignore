@@ -56,6 +56,6 @@ DerivedData/
 
 # Media test artifacts
 fixtures/media-local/
+data/
 tmp/
 temp/
-

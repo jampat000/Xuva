@@ -74,6 +74,7 @@ The first technical milestone is a playback decision prototype:
 - [MVP Scope](docs/mvp-scope.md)
 - [Architecture](docs/architecture.md)
 - [Playback Engine](docs/playback-engine.md)
+- [Media Scanner](docs/media-scanner.md)
 - [Remote Access](docs/remote-access.md)
 - [Monetization](docs/monetization.md)
 - [Roadmap](docs/roadmap.md)
