@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,6 +39,25 @@ func TestHealthUsesStableStartedAt(t *testing.T) {
 	}
 	if first["startedAt"] != second["startedAt"] {
 		t.Fatalf("expected stable startedAt, got %q then %q", first["startedAt"], second["startedAt"])
+	}
+}
+
+func TestRootServesDevConsole(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if !bytes.Contains(body, []byte("Vyrden Dev Console")) {
+		t.Fatalf("expected dev console html, got %s", string(body))
 	}
 }
 

@@ -29,10 +29,13 @@ Structure:
 
 Initial scan endpoints:
 
+- `GET /`
 - `GET /api/libraries`
 - `POST /api/libraries/movies/scan`
 - `POST /api/libraries/tv/scan`
 - `POST /api/libraries/scan`
+
+`GET /` serves the local dev console for quick testing.
 
 Scan requests can pass `path`, or use `VYRDEN_MOVIES_PATH` and `VYRDEN_TV_PATH` when those environment variables are configured.
 

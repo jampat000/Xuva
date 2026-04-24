@@ -41,6 +41,7 @@ type Deps struct {
 
 func NewRouter(deps Deps) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", devConsoleHandler(deps))
 	mux.HandleFunc("GET /api/health", healthHandler(deps))
 	mux.HandleFunc("GET /api/events", eventsHandler(deps))
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
@@ -51,6 +52,17 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/libraries/scan", allLibrariesScanHandler(deps))
 	mux.HandleFunc("GET /api/playback/decision", playbackDecisionHandler(deps))
 	return mux
+}
+
+func devConsoleHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(devConsoleHTML))
+	}
 }
 
 func healthHandler(deps Deps) http.HandlerFunc {
@@ -381,3 +393,304 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
 }
+
+const devConsoleHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyrden Dev Console</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090a0d;
+      --panel: #12151b;
+      --panel-2: #171b22;
+      --text: #f4f1ea;
+      --muted: #a8a193;
+      --line: #2b313b;
+      --accent: #d8f36a;
+      --accent-2: #70d6ff;
+      --danger: #ff7b7b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(216, 243, 106, 0.08), transparent 28rem),
+        radial-gradient(circle at 90% 0%, rgba(112, 214, 255, 0.08), transparent 26rem),
+        var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 42px 0;
+    }
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 72px);
+      line-height: 0.92;
+      letter-spacing: 0;
+    }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .status {
+      min-width: 220px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      background: rgba(18, 21, 27, 0.82);
+      border-radius: 8px;
+      color: var(--muted);
+      text-align: right;
+    }
+    .status strong {
+      display: block;
+      color: var(--text);
+      font-size: 22px;
+    }
+    section {
+      margin-top: 18px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(18, 21, 27, 0.88);
+    }
+    h2 {
+      margin: 0 0 16px;
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      min-height: 96px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 14px;
+      font-size: 30px;
+      line-height: 1;
+    }
+    .actions, .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    button, a.button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 15px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #1a1f27;
+      color: var(--text);
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    button.primary {
+      background: var(--accent);
+      color: #15170d;
+      border-color: transparent;
+    }
+    button:disabled {
+      cursor: progress;
+      opacity: 0.55;
+    }
+    code, pre {
+      font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    }
+    pre {
+      max-height: 300px;
+      overflow: auto;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #080a0e;
+      color: #d9dde5;
+      white-space: pre-wrap;
+    }
+    .paths {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .path {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      overflow-wrap: anywhere;
+    }
+    .path span {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .error { color: var(--danger); }
+    @media (max-width: 860px) {
+      header { align-items: stretch; flex-direction: column; }
+      .status { text-align: left; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .paths { grid-template-columns: 1fr; }
+      main { width: min(100vw - 24px, 1180px); padding: 24px 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">Local dev build</p>
+        <h1>Vyrden</h1>
+      </div>
+      <div class="status">
+        Server
+        <strong id="serverStatus">Checking</strong>
+      </div>
+    </header>
+
+    <section>
+      <h2>Catalog</h2>
+      <div class="grid">
+        <div class="metric"><span>Libraries</span><strong id="libraries">0</strong></div>
+        <div class="metric"><span>Media</span><strong id="mediaSources">0</strong></div>
+        <div class="metric"><span>Movies</span><strong id="movies">0</strong></div>
+        <div class="metric"><span>Series</span><strong id="series">0</strong></div>
+        <div class="metric"><span>Episodes</span><strong id="episodes">0</strong></div>
+        <div class="metric"><span>Scans</span><strong id="scanRuns">0</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Libraries</h2>
+      <div class="paths">
+        <div class="path"><span>Movies</span><code id="moviesPath">Loading</code></div>
+        <div class="path"><span>TV</span><code id="tvPath">Loading</code></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Actions</h2>
+      <div class="actions">
+        <button class="primary" id="scanAll">Scan Movies + TV</button>
+        <button id="scanMovies">Scan Movies</button>
+        <button id="scanTV">Scan TV</button>
+        <button id="refresh">Refresh</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>API</h2>
+      <div class="links">
+        <a class="button" href="/api/health">Health</a>
+        <a class="button" href="/api/libraries">Libraries</a>
+        <a class="button" href="/api/catalog/summary">Catalog Summary</a>
+        <a class="button" href="/api/architecture">Architecture</a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Output</h2>
+      <pre id="output">Ready.</pre>
+    </section>
+  </main>
+
+  <script>
+    const output = document.getElementById("output");
+    const buttons = [...document.querySelectorAll("button")];
+
+    function setBusy(busy) {
+      for (const button of buttons) button.disabled = busy;
+    }
+
+    function show(value) {
+      output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    }
+
+    async function getJSON(path) {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(path + " returned " + response.status);
+      return response.json();
+    }
+
+    async function refresh() {
+      const [health, summary] = await Promise.all([
+        getJSON("/api/health"),
+        getJSON("/api/catalog/summary")
+      ]);
+      document.getElementById("serverStatus").textContent = health.status || "unknown";
+      document.getElementById("moviesPath").textContent = health.libraries?.movies || "Not configured";
+      document.getElementById("tvPath").textContent = health.libraries?.tv || "Not configured";
+      for (const key of ["libraries", "mediaSources", "movies", "series", "episodes", "scanRuns"]) {
+        document.getElementById(key).textContent = summary[key] ?? 0;
+      }
+    }
+
+    async function post(path) {
+      setBusy(true);
+      show("Running " + path + " ...");
+      try {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sampleLimit: 50 })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || response.statusText);
+        show(payload);
+        await refresh();
+      } catch (error) {
+        output.innerHTML = "<span class=\"error\">" + error.message + "</span>";
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    document.getElementById("scanAll").addEventListener("click", () => post("/api/libraries/scan"));
+    document.getElementById("scanMovies").addEventListener("click", () => post("/api/libraries/movies/scan"));
+    document.getElementById("scanTV").addEventListener("click", () => post("/api/libraries/tv/scan"));
+    document.getElementById("refresh").addEventListener("click", () => refresh().catch(error => show(error.message)));
+
+    refresh().catch(error => {
+      document.getElementById("serverStatus").textContent = "Error";
+      show(error.message);
+    });
+  </script>
+</body>
+</html>`
