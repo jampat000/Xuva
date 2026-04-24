@@ -160,6 +160,28 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	if summary["episodes"] != float64(1) {
 		t.Fatalf("expected one episode, got %#v", summary["episodes"])
 	}
+
+	movies := getJSON(t, router, "/api/movies")
+	movieList := movies["movies"].([]any)
+	if len(movieList) != 1 {
+		t.Fatalf("expected one movie in browse API, got %#v", movieList)
+	}
+	movieID := movieList[0].(map[string]any)["id"].(string)
+	movieDetail := getJSON(t, router, "/api/movies/"+movieID)
+	if movieDetail["title"] != "Heat" {
+		t.Fatalf("expected Heat movie detail, got %#v", movieDetail["title"])
+	}
+
+	series := getJSON(t, router, "/api/series")
+	seriesList := series["series"].([]any)
+	if len(seriesList) != 1 {
+		t.Fatalf("expected one series in browse API, got %#v", seriesList)
+	}
+	seriesID := seriesList[0].(map[string]any)["id"].(string)
+	seriesDetail := getJSON(t, router, "/api/series/"+seriesID)
+	if seriesDetail["title"] != "The Bear" {
+		t.Fatalf("expected The Bear series detail, got %#v", seriesDetail["title"])
+	}
 }
 
 func testDeps(t *testing.T, startedAt time.Time) Deps {

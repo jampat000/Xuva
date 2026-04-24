@@ -48,6 +48,21 @@ func TestSaveMovieScanIsIdempotent(t *testing.T) {
 	if summary.ScanRuns != 2 {
 		t.Fatalf("expected two scan runs, got %d", summary.ScanRuns)
 	}
+
+	movies, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	if len(movies) != 1 || movies[0].Title != "Heat" || movies[0].VersionCount != 1 {
+		t.Fatalf("unexpected movies: %#v", movies)
+	}
+	detail, ok, err := service.GetMovie(ctx, movies[0].ID)
+	if err != nil {
+		t.Fatalf("get movie: %v", err)
+	}
+	if !ok || len(detail.Versions) != 1 {
+		t.Fatalf("unexpected movie detail: %#v", detail)
+	}
 }
 
 func TestSaveTVScanStoresSeriesEpisodeAndSource(t *testing.T) {
@@ -81,6 +96,21 @@ func TestSaveTVScanStoresSeriesEpisodeAndSource(t *testing.T) {
 	if summary.MediaSources != 1 {
 		t.Fatalf("expected one media source, got %d", summary.MediaSources)
 	}
+
+	series, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list series: %v", err)
+	}
+	if len(series) != 1 || series[0].Title != "The Bear" || series[0].EpisodeCount != 1 {
+		t.Fatalf("unexpected series: %#v", series)
+	}
+	detail, ok, err := service.GetSeries(ctx, series[0].ID)
+	if err != nil {
+		t.Fatalf("get series: %v", err)
+	}
+	if !ok || len(detail.Seasons) != 1 || len(detail.Seasons[0].Episodes) != 1 {
+		t.Fatalf("unexpected series detail: %#v", detail)
+	}
 }
 
 func TestSaveTVScanKeepsUnmatchedEpisodesSeparate(t *testing.T) {
@@ -110,6 +140,13 @@ func TestSaveTVScanKeepsUnmatchedEpisodesSeparate(t *testing.T) {
 	}
 	if summary.Episodes != 2 {
 		t.Fatalf("expected two stored review episodes, got %d", summary.Episodes)
+	}
+	reviewItems, err := service.ReviewItems(ctx, 10)
+	if err != nil {
+		t.Fatalf("review items: %v", err)
+	}
+	if len(reviewItems) != 2 {
+		t.Fatalf("expected two review items, got %#v", reviewItems)
 	}
 }
 

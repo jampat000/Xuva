@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -39,6 +40,66 @@ type Summary struct {
 	ScanRuns     int `json:"scanRuns"`
 }
 
+type MovieListItem struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Year         int    `json:"year"`
+	SortTitle    string `json:"sortTitle"`
+	NeedsReview  bool   `json:"needsReview"`
+	VersionCount int    `json:"versionCount"`
+}
+
+type MovieDetail struct {
+	MovieListItem
+	Versions []MovieVersion `json:"versions"`
+}
+
+type MovieVersion struct {
+	MediaSourceID string `json:"mediaSourceId"`
+	Path          string `json:"path"`
+	RelPath       string `json:"relPath"`
+	Edition       string `json:"edition,omitempty"`
+	QualityLabel  string `json:"qualityLabel,omitempty"`
+	SizeBytes     int64  `json:"sizeBytes"`
+	ModifiedAt    string `json:"modifiedAt"`
+}
+
+type SeriesListItem struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	SortTitle    string `json:"sortTitle"`
+	SeasonCount  int    `json:"seasonCount"`
+	EpisodeCount int    `json:"episodeCount"`
+}
+
+type SeriesDetail struct {
+	SeriesListItem
+	Seasons []SeasonDetail `json:"seasons"`
+}
+
+type SeasonDetail struct {
+	ID           string         `json:"id"`
+	SeasonNumber int            `json:"seasonNumber"`
+	Episodes     []EpisodeBrief `json:"episodes"`
+}
+
+type EpisodeBrief struct {
+	ID            string `json:"id"`
+	SeasonNumber  int    `json:"seasonNumber"`
+	EpisodeNumber int    `json:"episodeNumber"`
+	EpisodeEnd    int    `json:"episodeEnd,omitempty"`
+	Title         string `json:"title,omitempty"`
+	NeedsReview   bool   `json:"needsReview"`
+	VersionCount  int    `json:"versionCount"`
+}
+
+type ReviewItem struct {
+	Kind         string `json:"kind"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	ReviewReason string `json:"reviewReason"`
+}
+
 func NewService(database *database.Service) *Service {
 	return &Service{db: database.DB()}
 }
@@ -62,6 +123,188 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 		}
 	}
 	return summary, nil
+}
+
+func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review, count(mv.media_source_id) AS version_count
+		FROM movies m
+		LEFT JOIN movie_versions mv ON mv.movie_id = m.id
+		GROUP BY m.id
+		ORDER BY m.sort_title, m.year
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var output []MovieListItem
+	for rows.Next() {
+		var item MovieListItem
+		var needsReview int
+		if err := rows.Scan(&item.ID, &item.Title, &item.Year, &item.SortTitle, &needsReview, &item.VersionCount); err != nil {
+			return nil, err
+		}
+		item.NeedsReview = needsReview != 0
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, error) {
+	var detail MovieDetail
+	var needsReview int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review, count(mv.media_source_id) AS version_count
+		FROM movies m
+		LEFT JOIN movie_versions mv ON mv.movie_id = m.id
+		WHERE m.id = ?
+		GROUP BY m.id
+	`, id).Scan(&detail.ID, &detail.Title, &detail.Year, &detail.SortTitle, &needsReview, &detail.VersionCount)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MovieDetail{}, false, nil
+	}
+	if err != nil {
+		return MovieDetail{}, false, err
+	}
+	detail.NeedsReview = needsReview != 0
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ms.id, ms.path, ms.rel_path, mv.edition, mv.quality_label, ms.size_bytes, ms.modified_at
+		FROM movie_versions mv
+		JOIN media_sources ms ON ms.id = mv.media_source_id
+		WHERE mv.movie_id = ?
+		ORDER BY mv.quality_label DESC, ms.rel_path
+	`, id)
+	if err != nil {
+		return MovieDetail{}, false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version MovieVersion
+		if err := rows.Scan(&version.MediaSourceID, &version.Path, &version.RelPath, &version.Edition, &version.QualityLabel, &version.SizeBytes, &version.ModifiedAt); err != nil {
+			return MovieDetail{}, false, err
+		}
+		detail.Versions = append(detail.Versions, version)
+	}
+	return detail, true, rows.Err()
+}
+
+func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
+		FROM tv_series s
+		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
+		LEFT JOIN tv_episodes e ON e.series_id = s.id
+		GROUP BY s.id
+		ORDER BY s.sort_title
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var output []SeriesListItem
+	for rows.Next() {
+		var item SeriesListItem
+		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool, error) {
+	var detail SeriesDetail
+	err := s.db.QueryRowContext(ctx, `
+		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
+		FROM tv_series s
+		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
+		LEFT JOIN tv_episodes e ON e.series_id = s.id
+		WHERE s.id = ?
+		GROUP BY s.id
+	`, id).Scan(&detail.ID, &detail.Title, &detail.SortTitle, &detail.SeasonCount, &detail.EpisodeCount)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SeriesDetail{}, false, nil
+	}
+	if err != nil {
+		return SeriesDetail{}, false, err
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT seasons.id, seasons.season_number, e.id, e.season_number, e.episode_number, e.episode_end, e.title, e.needs_review, count(ev.media_source_id) AS version_count
+		FROM tv_seasons seasons
+		LEFT JOIN tv_episodes e ON e.season_id = seasons.id
+		LEFT JOIN episode_versions ev ON ev.episode_id = e.id
+		WHERE seasons.series_id = ?
+		GROUP BY seasons.id, e.id
+		ORDER BY seasons.season_number, e.episode_number
+	`, id)
+	if err != nil {
+		return SeriesDetail{}, false, err
+	}
+	defer rows.Close()
+
+	seasonIndex := map[string]int{}
+	for rows.Next() {
+		var seasonID string
+		var seasonNumber int
+		var episode EpisodeBrief
+		var needsReview int
+		if err := rows.Scan(&seasonID, &seasonNumber, &episode.ID, &episode.SeasonNumber, &episode.EpisodeNumber, &episode.EpisodeEnd, &episode.Title, &needsReview, &episode.VersionCount); err != nil {
+			return SeriesDetail{}, false, err
+		}
+		index, ok := seasonIndex[seasonID]
+		if !ok {
+			index = len(detail.Seasons)
+			seasonIndex[seasonID] = index
+			detail.Seasons = append(detail.Seasons, SeasonDetail{ID: seasonID, SeasonNumber: seasonNumber})
+		}
+		if episode.ID != "" {
+			episode.NeedsReview = needsReview != 0
+			detail.Seasons[index].Episodes = append(detail.Seasons[index].Episodes, episode)
+		}
+	}
+	return detail, true, rows.Err()
+}
+
+func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT 'movie' AS kind, id, title, review_reason
+		FROM movies
+		WHERE needs_review = 1
+		UNION ALL
+		SELECT 'episode' AS kind, id, title, review_reason
+		FROM tv_episodes
+		WHERE needs_review = 1
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var output []ReviewItem
+	for rows.Next() {
+		var item ReviewItem
+		if err := rows.Scan(&item.Kind, &item.ID, &item.Title, &item.ReviewReason); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
 }
 
 func (s *Service) SaveMovieScan(ctx context.Context, library libraries.Library, result scanner.Result, candidates []movies.Candidate) (PersistSummary, error) {

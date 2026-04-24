@@ -49,6 +49,11 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
+	mux.HandleFunc("GET /api/movies", moviesHandler(deps))
+	mux.HandleFunc("GET /api/movies/{id}", movieDetailHandler(deps))
+	mux.HandleFunc("GET /api/series", seriesHandler(deps))
+	mux.HandleFunc("GET /api/series/{id}", seriesDetailHandler(deps))
+	mux.HandleFunc("GET /api/review", reviewHandler(deps))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
 	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
@@ -115,6 +120,69 @@ func catalogSummaryHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, summary)
+	}
+}
+
+func moviesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Catalog.ListMovies(r.Context(), queryInt(r, "limit", 100))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "movie list failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"movies": items})
+	}
+}
+
+func movieDetailHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		detail, ok, err := deps.Catalog.GetMovie(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "movie detail failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "movie not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+	}
+}
+
+func seriesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Catalog.ListSeries(r.Context(), queryInt(r, "limit", 100))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "series list failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"series": items})
+	}
+}
+
+func seriesDetailHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		detail, ok, err := deps.Catalog.GetSeries(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "series detail failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "series not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+	}
+}
+
+func reviewHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Catalog.ReviewItems(r.Context(), queryInt(r, "limit", 100))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "review list failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	}
 }
 
@@ -342,6 +410,24 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func queryInt(r *http.Request, key string, fallback int) int {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return fallback
+	}
+	var output int
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return fallback
+		}
+		output = output*10 + int(ch-'0')
+	}
+	if output == 0 {
+		return fallback
+	}
+	return output
 }
 
 func limitMovies(candidates []movies.Candidate, limit int) []movies.Candidate {
@@ -633,6 +719,9 @@ const devConsoleHTML = `<!doctype html>
       <div class="links">
         <a class="button" href="/api/health">Health</a>
         <a class="button" href="/api/libraries">Libraries</a>
+        <a class="button" href="/api/movies">Movies</a>
+        <a class="button" href="/api/series">Series</a>
+        <a class="button" href="/api/review">Needs Review</a>
         <a class="button" href="/api/scans">Scans</a>
         <a class="button" href="/api/catalog/summary">Catalog Summary</a>
         <a class="button" href="/api/architecture">Architecture</a>
