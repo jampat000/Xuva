@@ -185,4 +185,5 @@ Implementation rules:
 - SQLite should run locally in WAL mode with a short busy timeout and foreign keys enabled.
 - SSE fanout must be non-blocking so a slow browser cannot block playback or scanning.
 - Direct streaming must not wait behind scan/probe jobs.
+- Direct media streaming is served from trusted catalog paths and supports browser range requests.
 - Movies and TV can scan independently, but both feed the shared media source store.

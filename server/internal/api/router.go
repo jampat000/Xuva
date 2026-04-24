@@ -58,6 +58,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
 	mux.HandleFunc("POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
@@ -251,6 +252,21 @@ func mediaSourceProbeHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		http.ServeFile(w, r, item.Path)
+	}
+}
+
 func movieScanHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request libraryScanRequest
@@ -333,10 +349,31 @@ func scanJobHandler(deps Deps) http.HandlerFunc {
 
 func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		decision := deps.Playback.Decide(r.Context(), playback.Request{
+		request := playback.Request{
 			MediaSourceID: r.URL.Query().Get("mediaSourceId"),
 			ClientProfile: r.URL.Query().Get("clientProfile"),
-		})
+		}
+		decision := deps.Playback.Decide(r.Context(), request)
+		if request.MediaSourceID != "" {
+			source, ok, err := deps.Catalog.GetMediaSource(r.Context(), request.MediaSourceID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "media source lookup failed")
+				return
+			}
+			if !ok {
+				writeError(w, http.StatusNotFound, "media source not found")
+				return
+			}
+			decision = deps.Playback.DecideSource(r.Context(), request, playback.SourceFacts{
+				MediaSourceID:   source.ID,
+				Container:       source.Container,
+				VideoCodec:      source.VideoCodec,
+				AudioStreams:    source.AudioStreams,
+				SubtitleStreams: source.SubtitleStreams,
+				Bitrate:         source.Bitrate,
+				Probed:          source.Probed,
+			})
+		}
 		writeJSON(w, http.StatusOK, decision)
 	}
 }

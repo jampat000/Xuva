@@ -79,13 +79,10 @@ func TestArchitectureExposesSeparateQueuesAndWorkloads(t *testing.T) {
 
 func TestPlaybackDecisionEndpointIsExplicitlyDeferred(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
-	payload := getJSON(t, router, "/api/playback/decision?mediaSourceId=abc&clientProfile=android-tv")
+	payload := getJSON(t, router, "/api/playback/decision?clientProfile=android-tv")
 
 	if payload["mode"] != string(playback.DecisionDeferred) {
 		t.Fatalf("expected deferred decision mode, got %#v", payload["mode"])
-	}
-	if payload["mediaSourceId"] != "abc" {
-		t.Fatalf("expected media source to round-trip, got %#v", payload["mediaSourceId"])
 	}
 	if payload["clientProfile"] != "android-tv" {
 		t.Fatalf("expected client profile to round-trip, got %#v", payload["clientProfile"])
@@ -193,6 +190,16 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	sourceDetail := getJSON(t, router, "/api/media-sources/"+sourceID)
 	if sourceDetail["id"] != sourceID {
 		t.Fatalf("expected media source detail, got %#v", sourceDetail)
+	}
+	streamRequest := httptest.NewRequest(http.MethodGet, "/api/media-sources/"+sourceID+"/stream", nil)
+	streamResponse := httptest.NewRecorder()
+	router.ServeHTTP(streamResponse, streamRequest)
+	if streamResponse.Code != http.StatusOK {
+		t.Fatalf("expected stream 200, got %d: %s", streamResponse.Code, streamResponse.Body.String())
+	}
+	decision := getJSON(t, router, "/api/playback/decision?mediaSourceId="+sourceID+"&clientProfile=web")
+	if decision["mode"] != string(playback.DecisionDeferred) {
+		t.Fatalf("expected unprobed source to defer playback decision, got %#v", decision["mode"])
 	}
 }
 

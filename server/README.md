@@ -53,7 +53,9 @@ Catalog endpoints:
 - `GET /api/review`
 - `GET /api/media-sources`
 - `GET /api/media-sources/{id}`
+- `GET /api/media-sources/{id}/stream`
 - `POST /api/media-sources/{id}/probe`
+- `GET /api/playback/decision?mediaSourceId={id}&clientProfile=web`
 
 First milestone:
 
