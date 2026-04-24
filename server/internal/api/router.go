@@ -764,6 +764,29 @@ const devConsoleHTML = `<!doctype html>
       text-transform: uppercase;
     }
     .error { color: var(--danger); }
+    table {
+      width: 100%;
+      margin-top: 14px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    td a {
+      color: var(--accent-2);
+      text-decoration: none;
+      font-weight: 700;
+    }
     @media (max-width: 860px) {
       header { align-items: stretch; flex-direction: column; }
       .status { text-align: left; }
@@ -814,6 +837,17 @@ const devConsoleHTML = `<!doctype html>
         <button id="scanTV">Scan TV</button>
         <button id="refresh">Refresh</button>
       </div>
+    </section>
+
+    <section>
+      <h2>Browse</h2>
+      <div class="actions">
+        <button id="loadMovies">Movies</button>
+        <button id="loadSeries">Series</button>
+        <button id="loadReview">Needs Review</button>
+        <button id="loadMedia">Media Sources</button>
+      </div>
+      <div id="browse"></div>
     </section>
 
     <section>
@@ -950,6 +984,67 @@ const devConsoleHTML = `<!doctype html>
     document.getElementById("scanMovies").addEventListener("click", () => post("/api/libraries/movies/scan"));
     document.getElementById("scanTV").addEventListener("click", () => post("/api/libraries/tv/scan"));
     document.getElementById("refresh").addEventListener("click", () => refresh().catch(error => show(error.message)));
+    document.getElementById("loadMovies").addEventListener("click", () => loadBrowse("movies"));
+    document.getElementById("loadSeries").addEventListener("click", () => loadBrowse("series"));
+    document.getElementById("loadReview").addEventListener("click", () => loadBrowse("review"));
+    document.getElementById("loadMedia").addEventListener("click", () => loadBrowse("media"));
+
+    async function loadBrowse(kind) {
+      const browse = document.getElementById("browse");
+      browse.innerHTML = "<pre>Loading " + kind + "...</pre>";
+      if (kind === "movies") {
+        const payload = await getJSON("/api/movies?limit=50");
+        browse.innerHTML = table(["Title", "Year", "Versions", "Review"], payload.movies.map(item => [
+          "<a href=\"/api/movies/" + item.id + "\">" + escapeHTML(item.title) + "</a>",
+          item.year || "",
+          item.versionCount || 0,
+          item.needsReview ? "Yes" : "No"
+        ]));
+      }
+      if (kind === "series") {
+        const payload = await getJSON("/api/series?limit=50");
+        browse.innerHTML = table(["Series", "Seasons", "Episodes"], payload.series.map(item => [
+          "<a href=\"/api/series/" + item.id + "\">" + escapeHTML(item.title) + "</a>",
+          item.seasonCount || 0,
+          item.episodeCount || 0
+        ]));
+      }
+      if (kind === "review") {
+        const payload = await getJSON("/api/review?limit=50");
+        browse.innerHTML = table(["Kind", "Title", "Reason"], payload.items.map(item => [
+          escapeHTML(item.kind),
+          escapeHTML(item.title),
+          escapeHTML(item.reviewReason)
+        ]));
+      }
+      if (kind === "media") {
+        const payload = await getJSON("/api/media-sources?limit=50");
+        browse.innerHTML = table(["Name", "Kind", "Probed", "Codec", "Stream"], payload.mediaSources.map(item => [
+          "<a href=\"/api/media-sources/" + item.id + "\">" + escapeHTML(item.name) + "</a>",
+          escapeHTML(item.kind),
+          item.probed ? "Yes" : "No",
+          escapeHTML(item.videoCodec || ""),
+          "<a href=\"/api/media-sources/" + item.id + "/stream\">Open</a>"
+        ]));
+      }
+    }
+
+    function table(headers, rows) {
+      if (!rows.length) return "<pre>No items yet. Run a scan first.</pre>";
+      return "<table><thead><tr>" + headers.map(header => "<th>" + escapeHTML(header) + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map(row => "<tr>" + row.map(cell => "<td>" + cell + "</td>").join("") + "</tr>").join("") +
+        "</tbody></table>";
+    }
+
+    function escapeHTML(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
 
     refresh().catch(error => {
       document.getElementById("serverStatus").textContent = "Error";

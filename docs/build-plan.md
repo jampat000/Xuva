@@ -55,6 +55,7 @@ Internal separation:
 - ffprobe parser and media probe persistence.
 - Playback decision v1 using stored probe facts.
 - Direct media source streaming with HTTP range support.
+- First dev-console browse views for movies, series, review items, and media sources.
 
 ## Client Skeleton
 
