@@ -4,6 +4,8 @@
 
 Vyrden should help users configure remote access, but it should not require Vyrden-owned infrastructure.
 
+The setup experience should be honest: Vyrden can test, explain, and generate guidance, but the user controls the route.
+
 ## Supported Paths
 
 ### LAN
@@ -21,6 +23,8 @@ Vyrden should provide:
 - Port checks.
 - Upload speed checks.
 - Clear warnings about exposing services.
+
+The UI should prefer a tested HTTPS URL and show whether the route is LAN-only, public internet, reverse proxy, or private network.
 
 ### User-Managed Reverse Proxy
 
@@ -56,10 +60,17 @@ Download features should include:
 - Integrity verification.
 - Offline playback without contacting the server.
 
+## Product Rules
+
+- LAN pairing must work without internet.
+- Manual server URL entry must always exist.
+- Remote access diagnostics must say what failed in plain language.
+- Vyrden must not imply that unsupported NAT or ISP setups are the user's fault.
+- Paid features can improve diagnostics and download preparation, but core local access must not depend on vendor infrastructure.
+
 ## Explicit Non-Goals
 
 - No vendor relay in v1.
 - No mandatory cloud auth.
 - No vendor-hosted media proxy.
 - No promise that every NAT or ISP setup can be reached remotely.
-

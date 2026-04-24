@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vyrden Series Detail Concept</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080705;
+        --panel: #11100d;
+        --text: #fff7ea;
+        --muted: #b9b0a2;
+        --quiet: #746c60;
+        --line: #312b23;
+        --focus: #4fe6c8;
+        --action: #f6b756;
+        --success: #65d887;
+        --warn: #f6b756;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      button { font: inherit; }
+
+      .screen {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        isolation: isolate;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(8, 7, 5, 0.98), rgba(8, 7, 5, 0.82) 38%, rgba(8, 7, 5, 0.96)),
+          linear-gradient(135deg, #442918 0%, #080705 31%, #12332e 68%, #080705 100%);
+      }
+
+      .screen::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background:
+          radial-gradient(circle at 72% 22%, rgba(79, 230, 200, 0.25), transparent 25%),
+          linear-gradient(132deg, rgba(246, 183, 86, 0.46) 0 12%, transparent 12% 42%, rgba(79, 230, 200, 0.34) 42% 58%, transparent 58%);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr) 388px;
+        gap: 28px;
+        height: 100vh;
+        padding: 38px 56px 42px;
+      }
+
+      .series {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 18px;
+        min-height: 0;
+      }
+
+      .crumb {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(79, 230, 200, 0.36);
+        border-radius: 9px;
+        background: rgba(79, 230, 200, 0.08);
+        color: var(--focus);
+        font-size: 20px;
+        font-weight: 780;
+      }
+
+      .poster {
+        position: relative;
+        overflow: hidden;
+        min-height: 448px;
+        border-radius: 10px;
+        background:
+          linear-gradient(135deg, #123832 0%, #4fe6c8 10%, #102923 28%, #080705 28%, #1a100d 66%, #f6b756 66%, #6b3a22 100%);
+        box-shadow: 0 34px 86px rgba(0, 0, 0, 0.48);
+      }
+
+      .poster::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 68% 18%, rgba(255, 247, 234, 0.9) 0 20px, transparent 22px),
+          linear-gradient(135deg, transparent 0 32%, rgba(8, 7, 5, 0.96) 32% 58%, transparent 58%);
+      }
+
+      .meta {
+        display: grid;
+        gap: 10px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 42px;
+        line-height: 1.04;
+        letter-spacing: 0;
+      }
+
+      .summary {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.48;
+        font-weight: 620;
+      }
+
+      .middle {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .topline {
+        display: flex;
+        justify-content: space-between;
+        gap: 22px;
+        align-items: flex-start;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 5px 10px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        background: rgba(8, 7, 5, 0.42);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 730;
+      }
+
+      .chip.good {
+        border-color: rgba(79, 230, 200, 0.36);
+        color: var(--focus);
+      }
+
+      .session {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 13px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        background: rgba(8, 7, 5, 0.46);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 720;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 18px rgba(101, 216, 135, 0.62);
+      }
+
+      .season-tabs {
+        display: flex;
+        gap: 10px;
+        margin-top: 26px;
+      }
+
+      .season {
+        min-height: 44px;
+        padding: 9px 14px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.06);
+        color: var(--text);
+        font-weight: 800;
+      }
+
+      .season.is-active,
+      .season:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.16);
+        outline: none;
+      }
+
+      .episode-list {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+        min-height: 0;
+        margin-top: 18px;
+        overflow: hidden;
+      }
+
+      .episode {
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr) 140px;
+        gap: 14px;
+        align-items: center;
+        min-height: 116px;
+        padding: 12px;
+        border: 1px solid rgba(255, 247, 234, 0.1);
+        border-radius: 10px;
+        background: rgba(17, 16, 13, 0.78);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .episode.is-selected {
+        border-color: rgba(79, 230, 200, 0.46);
+        background: rgba(79, 230, 200, 0.08);
+      }
+
+      .episode:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.18);
+        outline: none;
+        transform: translateY(-3px);
+      }
+
+      .still {
+        height: 90px;
+        border-radius: 8px;
+        background:
+          linear-gradient(132deg, rgba(246, 183, 86, 0.58) 0 22%, transparent 22% 52%, rgba(79, 230, 200, 0.48) 52% 68%, transparent 68%),
+          linear-gradient(135deg, #3d2417, #080705 48%, #143b35);
+      }
+
+      .episode-main { min-width: 0; }
+      .episode-main strong {
+        display: block;
+        overflow: hidden;
+        font-size: 18px;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .episode-main span {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.38;
+        font-weight: 650;
+      }
+
+      .episode-status {
+        display: grid;
+        justify-items: end;
+        gap: 8px;
+        color: var(--quiet);
+        font-size: 12px;
+        font-weight: 760;
+        text-align: right;
+      }
+
+      .episode-status strong {
+        color: var(--focus);
+        font-size: 14px;
+      }
+
+      .episode-status strong.warn { color: var(--warn); }
+
+      .panel {
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        min-height: 0;
+        padding: 18px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 12px;
+        background: rgba(17, 16, 13, 0.78);
+        box-shadow: 0 30px 86px rgba(0, 0, 0, 0.38);
+        backdrop-filter: blur(20px);
+      }
+
+      .panel-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 780;
+        text-transform: uppercase;
+      }
+
+      .panel-title span:last-child {
+        color: var(--focus);
+        text-transform: none;
+      }
+
+      .now {
+        margin-top: 16px;
+        padding: 15px;
+        border: 1px solid rgba(79, 230, 200, 0.36);
+        border-radius: 10px;
+        background: rgba(79, 230, 200, 0.08);
+      }
+
+      .now strong {
+        display: block;
+        font-size: 25px;
+        line-height: 1.1;
+      }
+
+      .now span {
+        display: block;
+        margin-top: 8px;
+        color: var(--focus);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .route {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .route-row {
+        display: grid;
+        grid-template-columns: 94px minmax(0, 1fr);
+        gap: 10px;
+        min-height: 38px;
+        padding: 8px 0;
+        border-top: 1px solid rgba(255, 247, 234, 0.08);
+      }
+
+      .route-row span:first-child {
+        color: var(--quiet);
+        font-size: 12px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .route-row span:last-child {
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.25;
+        font-weight: 740;
+        text-align: right;
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .action {
+        min-height: 46px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.08);
+        color: var(--text);
+        font-weight: 820;
+      }
+
+      .action.primary {
+        border-color: rgba(246, 183, 86, 0.72);
+        background: var(--action);
+        color: #080705;
+      }
+
+      .action:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.18);
+        outline: none;
+      }
+
+      @media (max-width: 1320px) {
+        body { overflow: auto; }
+        .screen, .shell { height: auto; min-height: 100vh; }
+        .shell { grid-template-columns: 1fr; }
+        .poster { min-height: 320px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="screen">
+      <div class="shell">
+        <aside class="series">
+          <div class="crumb"><span class="mark">V</span> TV Series</div>
+          <div class="poster" aria-label="The Halcyon Drift poster artwork"></div>
+          <section class="meta">
+            <h1>The Halcyon Drift</h1>
+            <p class="summary">A crew crosses folded space to recover missing colony signals while each episode changes the route, version, and subtitle needs before playback.</p>
+          </section>
+        </aside>
+
+        <section class="middle">
+          <div class="topline">
+            <div>
+              <div class="chips">
+                <span class="chip good">Direct Play Ready</span>
+                <span class="chip">3 seasons</span>
+                <span class="chip">26 episodes</span>
+                <span class="chip">Next: S2 E4</span>
+              </div>
+            </div>
+            <div class="session"><span class="dot"></span> Atlas Server - LAN - 4K season pack</div>
+          </div>
+
+          <nav class="season-tabs" aria-label="Seasons">
+            <button class="season">Season 1</button>
+            <button class="season is-active">Season 2</button>
+            <button class="season">Season 3</button>
+            <button class="season">Specials</button>
+          </nav>
+
+          <section class="episode-list" aria-label="Episodes">
+            <button class="episode" data-title="S2 E1 - Signal Wake" data-progress="Watched" data-route="Direct Play" data-version="4K Encode - 21 Mbps" data-audio="EAC3 5.1 - direct" data-subs="Forced SRT - direct render" data-action="Play Again">
+              <span class="still"></span>
+              <span class="episode-main"><strong>S2 E1 - Signal Wake</strong><span>The recovered beacon points to a broken relay hidden inside a civilian cargo route.</span></span>
+              <span class="episode-status"><strong>Watched</strong><span>44 min</span></span>
+            </button>
+            <button class="episode" data-title="S2 E2 - Glass Orbit" data-progress="Watched" data-route="Direct Play" data-version="4K Encode - 22 Mbps" data-audio="EAC3 5.1 - direct" data-subs="English SRT - direct render" data-action="Play Again">
+              <span class="still"></span>
+              <span class="episode-main"><strong>S2 E2 - Glass Orbit</strong><span>A quiet station hides a mirrored archive that changes what the crew thinks they found.</span></span>
+              <span class="episode-status"><strong>Watched</strong><span>48 min</span></span>
+            </button>
+            <button class="episode is-selected" data-title="S2 E3 - Low Sun Protocol" data-progress="Resume at 31:12" data-route="Direct Play" data-version="4K Encode - 23 Mbps" data-audio="EAC3 5.1 - direct" data-subs="English SRT - direct render" data-action="Resume">
+              <span class="still"></span>
+              <span class="episode-main"><strong>S2 E3 - Low Sun Protocol</strong><span>The bridge splits its command path when a distress call arrives from a dead sector.</span></span>
+              <span class="episode-status"><strong>Resume</strong><span>31:12 of 50:24</span></span>
+            </button>
+            <button class="episode" data-title="S2 E4 - The Locked Meridian" data-progress="Unwatched" data-route="Audio Transcode" data-version="4K Remux - 69 Mbps" data-audio="DTS-HD MA to EAC3" data-subs="Forced SRT - direct render" data-action="Play Next">
+              <span class="still"></span>
+              <span class="episode-main"><strong>S2 E4 - The Locked Meridian</strong><span>A sealed navigation core forces the crew to choose between rescue and exposure.</span></span>
+              <span class="episode-status"><strong class="warn">Audio Transcode</strong><span>next episode</span></span>
+            </button>
+          </section>
+        </section>
+
+        <aside class="panel" aria-label="Episode actions">
+          <div class="panel-title"><span>Episode Focus</span><span id="route-chip">Direct Play</span></div>
+          <div class="now"><strong id="episode-title">S2 E3 - Low Sun Protocol</strong><span id="episode-progress">Resume at 31:12</span></div>
+          <div class="route">
+            <div class="route-row"><span>Version</span><span id="version">4K Encode - 23 Mbps</span></div>
+            <div class="route-row"><span>Audio</span><span id="audio">EAC3 5.1 - direct</span></div>
+            <div class="route-row"><span>Subtitles</span><span id="subs">English SRT - direct render</span></div>
+            <div class="route-row"><span>Queue</span><span>Next episode follows automatically</span></div>
+            <div class="route-row"><span>Watched</span><span>Mark episode or full season</span></div>
+          </div>
+          <div class="actions">
+            <button class="action primary" id="primary-action">Resume</button>
+            <button class="action">Mark Played</button>
+            <button class="action">Versions</button>
+            <button class="action">Download</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <script>
+      const episodes = [...document.querySelectorAll(".episode")];
+      const episodeTitle = document.querySelector("#episode-title");
+      const episodeProgress = document.querySelector("#episode-progress");
+      const routeChip = document.querySelector("#route-chip");
+      const version = document.querySelector("#version");
+      const audio = document.querySelector("#audio");
+      const subs = document.querySelector("#subs");
+      const primaryAction = document.querySelector("#primary-action");
+
+      function preview(episode) {
+        episodes.forEach((item) => item.classList.remove("is-selected"));
+        episode.classList.add("is-selected");
+        episodeTitle.textContent = episode.dataset.title;
+        episodeProgress.textContent = episode.dataset.progress;
+        routeChip.textContent = episode.dataset.route;
+        version.textContent = episode.dataset.version;
+        audio.textContent = episode.dataset.audio;
+        subs.textContent = episode.dataset.subs;
+        primaryAction.textContent = episode.dataset.action;
+      }
+
+      episodes.forEach((episode) => {
+        episode.addEventListener("focus", () => preview(episode));
+        episode.addEventListener("mouseenter", () => preview(episode));
+      });
+
+      document.addEventListener("keydown", (event) => {
+        const index = episodes.indexOf(document.activeElement);
+        if (index < 0) return;
+        if (event.key === "ArrowDown" && episodes[index + 1]) {
+          episodes[index + 1].focus();
+          event.preventDefault();
+        }
+        if (event.key === "ArrowUp" && episodes[index - 1]) {
+          episodes[index - 1].focus();
+          event.preventDefault();
+        }
+      });
+
+      episodes[2]?.focus();
+    </script>
+  </body>
+</html>

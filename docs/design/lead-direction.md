@@ -55,4 +55,9 @@ Current prototype coverage:
 - Movie Detail Concept leads the browsing and detail direction.
 - Playback Overlay Concept extends that direction into the watching state.
 - Audio + Subtitle Selector Concept defines the first focused selector pattern for track choice and playback-route forecasting.
+- Version Selector Concept defines file/version choice and route suitability.
+- Series Detail Concept extends the lead direction into TV seasons and episodes.
+- Download Selector Concept turns offline playback into a clear remote-access path.
+- Server Setup Concept defines the local-first first-run stance.
+- Playback Inspector Concept defines how technical decisions become user-facing explanations.
 - Signal Deck remains an exploration for playback-route visualization and focus-driven browsing.

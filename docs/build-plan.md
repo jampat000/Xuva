@@ -1,0 +1,64 @@
+# Build Plan
+
+## Current Definition Of Complete
+
+The current planning/design phase is complete when Vyrden has:
+
+- A clear local-first product stance.
+- A credible monetization boundary.
+- A playback decision architecture.
+- A TV-first visual direction.
+- Prototype coverage for the core playback decisions.
+- A concrete engineering path into the first server prototype.
+
+The repo now aims to satisfy that definition before moving into production code.
+
+## Immediate Engineering Milestone
+
+Build a playback decision prototype before building the full UI.
+
+Required behavior:
+
+- Probe a local folder with `ffprobe`.
+- Store probe results in SQLite.
+- Define a client capability profile.
+- Select a media version, audio track, and subtitle track.
+- Return a playback decision object.
+- Explain direct play, remux, audio transcode, subtitle burn, and video transcode.
+
+## Server Skeleton
+
+Start with:
+
+- Go HTTP API.
+- SQLite database.
+- File scanner.
+- `ffprobe` integration.
+- Playback decision package.
+- Basic direct file streaming.
+- FFmpeg worker wrapper.
+- Session event stream.
+
+## Client Skeleton
+
+Start with web admin before native TV clients:
+
+- First-run setup.
+- Library scan progress.
+- Media detail page.
+- Playback decision inspector.
+- Active sessions.
+- Transcode queue.
+
+Native TV apps should follow once the server decision contract is stable.
+
+## Product Gates
+
+Do not move to public beta until:
+
+- LAN playback works without an internet connection.
+- Every transcode has a visible reason.
+- Subtitles are handled deliberately.
+- Downloads resume safely.
+- Install and update paths are boring.
+- Paid feature boundaries are clear.

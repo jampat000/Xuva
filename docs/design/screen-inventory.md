@@ -25,6 +25,11 @@ Completed prototype passes:
 - Signal Deck Concept: `apps/web/prototypes/vyrden-signal-deck/index.html`
 - Playback Overlay Concept: `apps/web/prototypes/vyrden-playback-overlay/index.html`
 - Audio + Subtitle Selector Concept: `apps/web/prototypes/vyrden-track-selector/index.html`
+- Version Selector Concept: `apps/web/prototypes/vyrden-version-selector/index.html`
+- Series Detail Concept: `apps/web/prototypes/vyrden-series-detail/index.html`
+- Download Selector Concept: `apps/web/prototypes/vyrden-download-selector/index.html`
+- Server Setup Concept: `apps/web/prototypes/vyrden-server-setup/index.html`
+- Playback Inspector Concept: `apps/web/prototypes/vyrden-playback-inspector/index.html`
 
 ## Web Admin
 

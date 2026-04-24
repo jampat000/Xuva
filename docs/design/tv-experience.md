@@ -95,6 +95,28 @@ Design intent:
 - Make forced/default/language flags scannable at TV distance.
 - Keep sync and delay controls reachable from the selector without opening general settings.
 
+### Version Selector
+
+Purpose: help users choose the right file before playback.
+
+Required sections:
+
+- Available versions.
+- Bitrate.
+- Resolution.
+- HDR/DV/SDR.
+- Audio summary.
+- Subtitle compatibility.
+- LAN/remote/download suitability.
+- Playback forecast.
+
+Design intent:
+
+- Make multiple versions feel like a strength, not a confusing duplicate-file problem.
+- Recommend the version that best matches the user's route.
+- Show when a smaller compatible file is better than transcoding a larger one.
+- Keep "play this" and "remember" obvious.
+
 ### Playback Inspector
 
 Purpose: make Vyrden's technical advantage visible.
@@ -109,6 +131,13 @@ Required sections:
 - Buffer health.
 - Suggested fix.
 
+Design intent:
+
+- Answer "why is this transcoding?" in one glance.
+- Show the exact stream that caused the fallback.
+- Suggest lower-cost fixes such as changing audio, subtitles, or version.
+- Keep the data technical enough to be trusted without making the user read logs.
+
 ### Downloads
 
 Purpose: make offline viewing reliable and understandable.
@@ -121,6 +150,34 @@ Required sections:
 - Quality preset.
 - Audio/subtitle selection.
 - Error recovery and resume state.
+
+Design intent:
+
+- Make offline playback a first-class remote access strategy.
+- Show file size, included tracks, estimated transfer time, and device storage impact before starting.
+- Prefer reliable offline compatibility over impressive labels.
+- Make resume and integrity verification visible as product trust signals.
+
+### Server Pairing And Setup
+
+Purpose: get users from install to playback without requiring Vyrden-owned infrastructure.
+
+Required sections:
+
+- Local server discovery.
+- Manual server URL.
+- Library folder selection.
+- Device pairing.
+- Hardware acceleration check.
+- Remote access diagnostics.
+- Reverse proxy or VPN guidance.
+
+Design intent:
+
+- LAN should feel instant.
+- Manual setup should feel controlled, not like a fallback for experts.
+- Remote access should be explained as user-owned infrastructure.
+- Diagnostics should identify the failed step and the next action.
 
 ## Remote Navigation Rules
 

@@ -36,9 +36,54 @@ Examples:
 - Subtitle burn-in: selected PGS subtitle cannot be rendered by this client.
 - Video transcode: client cannot decode AV1 Main10 at this resolution.
 
+## Decision Object
+
+Every playback request should return a structured decision object:
+
+```text
+mode
+reason
+source_file
+selected_version
+selected_audio_track
+selected_subtitle_track
+video_action
+audio_action
+subtitle_action
+container_action
+estimated_cpu_cost
+estimated_gpu_cost
+estimated_network_bitrate
+client_capability_match
+suggested_fixes
+```
+
+The TV app, web admin, and playback inspector should all read from the same decision object so the product stays consistent.
+
 ## Design Rule
 
 Never perform a heavier operation when a lighter one will work.
+
+Decision order:
+
+1. Try direct play for the chosen version and tracks.
+2. Try container remux if streams are compatible but the container is not.
+3. Try audio-only transcode if video and subtitles are compatible.
+4. Try subtitle conversion or direct subtitle rendering before burn-in.
+5. Burn subtitles only when the selected subtitle cannot render on the client.
+6. Transcode video only when video compatibility, bitrate, HDR, or subtitle burn-in requires it.
+
+## Version Selection
+
+Versions should be ranked by the user's intent and route:
+
+- Best local quality.
+- Best remote quality.
+- Most compatible.
+- Smallest offline copy.
+- User-pinned preference.
+
+The selector should explain the tradeoff before playback. A lower-bitrate compatible version is often better than transcoding a larger file.
 
 ## Subtitle Priorities
 
@@ -61,6 +106,18 @@ Future targets:
 - Encoding repair.
 - Automatic subtitle sync suggestions.
 
+## Download Preparation
+
+Offline downloads should use the same playback decision engine with a different target profile:
+
+- Target device capability.
+- Available storage.
+- Offline subtitle renderer.
+- Battery and network state.
+- User quality preference.
+
+The server can pre-transcode a download, but the app must show the resulting file size, included tracks, and playback compatibility before the user starts the job.
+
 ## Inspector
 
 Every active session should have an inspector with:
@@ -75,4 +132,3 @@ Every active session should have an inspector with:
 - Server CPU/GPU load.
 - Transcode speed.
 - Buffer health.
-

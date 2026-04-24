@@ -27,6 +27,19 @@ Preferred starting stack:
 
 Go is the pragmatic default because it is fast enough, easy to distribute, straightforward to operate, and simpler to hire for than more specialized stacks.
 
+Core server services:
+
+- Library scanner.
+- Metadata matcher.
+- Media probe service.
+- Playback decision service.
+- Streaming session service.
+- Transcode worker service.
+- Download preparation service.
+- Device capability service.
+- Remote access diagnostics service.
+- License service with local cache.
+
 ## Web
 
 Preferred starting stack:
@@ -67,6 +80,24 @@ Apple TV:
 - Server settings.
 - Licenses.
 
+## Playback Path
+
+Playback should move through a deterministic contract:
+
+```text
+Client request
+  -> selected media source
+  -> selected version
+  -> selected audio track
+  -> selected subtitle track
+  -> client capability profile
+  -> network estimate
+  -> playback decision
+  -> stream plan
+```
+
+The UI should never guess playback state. It should show the server's decision object, including the chosen mode and reason.
+
 ## Resource Scheduling
 
 The server should distinguish between normal background work and playback-critical work.
@@ -82,3 +113,4 @@ Resource controls:
 - Burst mode.
 - Quiet mode.
 
+Playback-critical jobs should preempt background scans, chapter extraction, intro detection, and preview generation. The scheduler should protect active playback from avoidable resource spikes.

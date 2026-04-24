@@ -4,7 +4,7 @@ Vyrden is a local-first personal media server for private media libraries.
 
 The goal is to combine polished TV-first playback with predictable local ownership: no required cloud account, no vendor relay dependency, no ads, and no streaming-service clutter.
 
-Status: pre-alpha product planning.
+Status: pre-alpha product and design foundation.
 
 ## Product Promise
 
@@ -46,6 +46,17 @@ server/              Vyrden Server.
 
 ## Current Focus
 
+The current design foundation covers:
+
+- Movie detail.
+- Series detail.
+- Playback overlay.
+- Version selector.
+- Audio and subtitle selector.
+- Download selector.
+- Playback inspector.
+- First-run server setup.
+
 The first technical milestone is a playback decision prototype:
 
 1. Scan a local media folder.
@@ -66,5 +77,6 @@ The first technical milestone is a playback decision prototype:
 - [Remote Access](docs/remote-access.md)
 - [Monetization](docs/monetization.md)
 - [Roadmap](docs/roadmap.md)
+- [Build Plan](docs/build-plan.md)
 - [Competitive Notes](docs/competitive-notes.md)
 - [Design](docs/design/README.md)

@@ -43,4 +43,34 @@ The audio and subtitle selector concept is:
 apps/web/prototypes/vyrden-track-selector/index.html
 ```
 
+The version selector concept is:
+
+```text
+apps/web/prototypes/vyrden-version-selector/index.html
+```
+
+The series detail concept is:
+
+```text
+apps/web/prototypes/vyrden-series-detail/index.html
+```
+
+The download selector concept is:
+
+```text
+apps/web/prototypes/vyrden-download-selector/index.html
+```
+
+The server setup concept is:
+
+```text
+apps/web/prototypes/vyrden-server-setup/index.html
+```
+
+The playback inspector concept is:
+
+```text
+apps/web/prototypes/vyrden-playback-inspector/index.html
+```
+
 The prototypes use fictional titles and original poster-style artwork. Use arrow keys across media cards and controls to test the first pass of remote-style focus behavior.
