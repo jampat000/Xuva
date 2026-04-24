@@ -43,8 +43,12 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
-  padding: 26px 16px;
-  background: rgba(7, 7, 7, 0.78);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 14px;
+  background:
+    linear-gradient(180deg, rgba(12, 12, 11, 0.94), rgba(7, 7, 7, 0.82)),
+    rgba(7, 7, 7, 0.78);
   border-right: 1px solid rgba(244, 239, 228, 0.08);
   backdrop-filter: blur(22px);
 }
@@ -53,7 +57,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 30px;
+  min-height: 52px;
+  margin-bottom: 26px;
 }
 .mark {
   display: grid;
@@ -63,7 +68,7 @@ body {
   border: 1px solid rgba(216, 179, 106, 0.42);
   background: linear-gradient(180deg, rgba(216,179,106,0.14), rgba(216,179,106,0.04));
   color: var(--champagne);
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 23px;
   font-weight: 800;
 }
@@ -80,52 +85,107 @@ body {
 
 .nav-group {
   display: grid;
-  gap: 6px;
-  margin-top: 14px;
+  gap: 5px;
+  margin-top: 10px;
 }
 .nav-label {
-  margin: 20px 10px 7px;
+  margin: 22px 10px 8px;
   color: var(--quiet);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 42px;
+  gap: 10px;
+  min-height: 44px;
   width: 100%;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--soft);
   font: inherit;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  text-align: left;
 }
 .nav-item::before {
   content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 99px;
-  background: currentColor;
-  opacity: 0.55;
+  position: absolute;
+  left: -14px;
+  top: 9px;
+  width: 3px;
+  height: 26px;
+  border-radius: 0 99px 99px 0;
+  background: transparent;
 }
 .nav-item.active,
 .nav-item:hover,
 .nav-item:focus-visible {
-  border-color: rgba(216, 179, 106, 0.34);
-  background: rgba(216, 179, 106, 0.09);
+  border-color: rgba(244, 239, 228, 0.1);
+  background: rgba(244, 239, 228, 0.055);
   color: var(--text);
   outline: none;
 }
 .nav-item.active::before {
   background: var(--champagne);
-  opacity: 1;
-  box-shadow: 0 0 16px rgba(216,179,106,0.42);
+  box-shadow: 0 0 18px rgba(216,179,106,0.48);
+}
+.nav-item.active {
+  border-color: rgba(216, 179, 106, 0.34);
+  background:
+    linear-gradient(90deg, rgba(216, 179, 106, 0.16), rgba(216, 179, 106, 0.055));
+}
+.nav-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(244, 239, 228, 0.095);
+  border-radius: 7px;
+  background: rgba(244, 239, 228, 0.045);
+  color: var(--quiet);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1;
+}
+.nav-item.active .nav-icon {
+  border-color: rgba(216, 179, 106, 0.38);
+  background: rgba(216, 179, 106, 0.13);
+  color: var(--champagne);
+}
+.nav-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-footer {
+  margin-top: auto;
+  padding: 14px;
+  border: 1px solid rgba(244, 239, 228, 0.08);
+  border-radius: 10px;
+  background: rgba(244, 239, 228, 0.035);
+}
+.nav-footer span,
+.nav-footer strong {
+  display: block;
+}
+.nav-footer span {
+  color: var(--quiet);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.nav-footer strong {
+  margin-top: 5px;
+  color: var(--soft);
+  font-size: 13px;
 }
 
 .main {
@@ -893,9 +953,19 @@ pre {
   .app { grid-template-columns: 92px minmax(0, 1fr); }
   .brand div,
   .nav-label,
-  .nav-item span { display: none; }
-  .nav-item { justify-content: center; }
-  .nav-item::before { width: 12px; height: 12px; }
+  .nav-text,
+  .nav-footer { display: none; }
+  .nav { align-items: center; padding-inline: 14px; }
+  .nav-item {
+    justify-content: center;
+    width: 56px;
+    padding: 0;
+  }
+  .nav-item::before {
+    left: -14px;
+    top: 10px;
+    height: 24px;
+  }
   .hero,
   .detail-command,
   .dashboard-grid,
@@ -912,6 +982,7 @@ pre {
     height: auto;
     padding: 14px;
     overflow: hidden;
+    align-items: stretch;
   }
   .brand { margin-bottom: 12px; }
   .brand div { display: block; }
@@ -926,8 +997,10 @@ pre {
   .nav-item {
     flex: 0 0 auto;
     width: auto;
+    padding: 0 10px;
   }
-  .nav-item span { display: inline; }
+  .nav-text { display: inline; }
+  .nav-footer { display: none; }
   .main {
     width: 100%;
     padding: 18px 14px 30px;
