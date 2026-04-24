@@ -40,6 +40,15 @@ Required sections:
 - Collection context.
 - Playback compatibility preview.
 
+Design intent:
+
+- Keep the screen cinematic and poster-led.
+- Show version selection before playback.
+- Surface the selected audio and subtitle tracks as first-class choices.
+- Forecast the playback path before the user presses play.
+- Explain whether the server will direct-play, remux, transcode audio, burn subtitles, or transcode video.
+- Make offline download quality choices visible without hiding them in settings.
+
 ### Playback Overlay
 
 Purpose: support watching without visual clutter.
@@ -109,4 +118,3 @@ Relevant external guidance:
 
 - Apple tvOS Human Interface Guidelines.
 - Android TV design and focus/navigation guidance.
-

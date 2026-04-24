@@ -19,6 +19,11 @@ First design set:
 - User profile picker.
 - Settings.
 
+Completed prototype passes:
+
+- TV Home Concept: `apps/web/prototypes/vyrden-tv-home/index.html`
+- Movie Detail Concept: `apps/web/prototypes/vyrden-movie-detail/index.html`
+
 ## Web Admin
 
 First design set:
@@ -59,4 +64,3 @@ Later design set:
 - Docs home.
 - App-store screenshots.
 - Social launch graphics.
-

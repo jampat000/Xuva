@@ -23,4 +23,10 @@ The first runnable UI concept is:
 apps/web/prototypes/vyrden-tv-home/index.html
 ```
 
-It is a static TV-home concept using fictional titles and original poster-style artwork. Use arrow keys across media cards to test the first pass of remote-style focus behavior.
+The second runnable UI concept is:
+
+```text
+apps/web/prototypes/vyrden-movie-detail/index.html
+```
+
+The prototypes use fictional titles and original poster-style artwork. Use arrow keys across media cards and controls to test the first pass of remote-style focus behavior.
