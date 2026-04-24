@@ -44,7 +44,7 @@ func TestHealthUsesStableStartedAt(t *testing.T) {
 	}
 }
 
-func TestRootServesDevConsole(t *testing.T) {
+func TestRootServesWebApp(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
@@ -58,8 +58,8 @@ func TestRootServesDevConsole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if !bytes.Contains(body, []byte("Vyrden Dev Console")) {
-		t.Fatalf("expected dev console html, got %s", string(body))
+	if !bytes.Contains(body, []byte("Vyrden")) || !bytes.Contains(body, []byte("/app.js")) {
+		t.Fatalf("expected web app html, got %s", string(body))
 	}
 }
 

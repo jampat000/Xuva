@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyrden</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <div>
+          <strong>Vyrden</strong>
+          <small>Local media system</small>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">Dashboard</button>
+        <button class="nav-item" data-view="movies">Movies</button>
+        <button class="nav-item" data-view="tv">TV</button>
+        <button class="nav-item" data-view="activity">Activity</button>
+        <button class="nav-item" data-view="health">Health</button>
+        <button class="nav-item" data-view="playback">Playback Lab</button>
+        <button class="nav-item" data-view="settings">Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Windows user-session build</p>
+          <h1 id="viewTitle">Dashboard</h1>
+        </div>
+        <div class="server-state">
+          <span id="serverDot"></span>
+          <strong id="serverStatus">Checking</strong>
+        </div>
+      </header>
+
+      <section id="view" class="view"></section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
