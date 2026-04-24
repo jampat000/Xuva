@@ -556,12 +556,29 @@ func playerHandler(deps Deps) http.HandlerFunc {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>%s - Vyrden</title>
+  <style>
+    :root { color-scheme: dark; --text:#f7f1e7; --muted:#aaa198; --signal:#d8f36a; --line:rgba(245,240,231,.14); }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 20%% 0%%, rgba(216,243,106,.12), transparent 28rem), #050609; color:var(--text); font-family:Inter, system-ui, Segoe UI, sans-serif; }
+    .stage { min-height:100vh; display:grid; grid-template-rows:1fr auto; }
+    video { width:100vw; height:100vh; object-fit:contain; background:#020304; }
+    .overlay { position:fixed; left:18px; right:18px; bottom:18px; display:flex; justify-content:space-between; gap:14px; align-items:end; pointer-events:none; }
+    .panel { max-width:min(720px, calc(100vw - 36px)); border:1px solid var(--line); border-radius:8px; background:rgba(5,6,9,.72); backdrop-filter:blur(18px); padding:14px; box-shadow:0 24px 70px rgba(0,0,0,.46); }
+    strong { display:block; font-size:18px; }
+    #decision { color:var(--signal); font-size:13px; margin-top:6px; }
+    .brand { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; }
+  </style>
 </head>
-<body style="margin:0;background:#05070a;color:white;font-family:system-ui">
-  <video id="player" src="/api/media-sources/%s/stream" controls autoplay style="width:100vw;height:100vh"></video>
-  <div style="position:fixed;left:16px;bottom:16px;background:#000a;padding:10px;border-radius:8px">
-    <strong>%s</strong>
-    <div id="decision" style="font-size:13px;color:#d8f36a;margin-top:4px">Preparing playback</div>
+<body>
+  <div class="stage">
+    <video id="player" src="/api/media-sources/%s/stream" controls autoplay></video>
+  </div>
+  <div class="overlay">
+    <div class="panel">
+      <span class="brand">Vyrden Player</span>
+      <strong>%s</strong>
+      <div id="decision">Preparing playback</div>
+    </div>
   </div>
   <script>
     const mediaSourceId = %q;

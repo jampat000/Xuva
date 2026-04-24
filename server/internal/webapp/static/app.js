@@ -66,25 +66,34 @@ async function renderDashboard() {
   ]);
   view.innerHTML = `
     <div class="stack">
-      <div class="grid">
-        ${metric("Libraries", summary.libraries)}
-        ${metric("Media", summary.mediaSources)}
-        ${metric("Movies", summary.movies)}
-        ${metric("Series", summary.series)}
-        ${metric("Episodes", summary.episodes)}
-        ${metric("Active", sessions.sessions.length)}
-      </div>
       <div class="hero-strip">
-        <div><span>Vyrden Signal</span><strong>${summary.movies || 0} movies, ${summary.episodes || 0} episodes, ${summary.unprobed || 0} waiting for probe</strong></div>
-        <button class="primary" onclick="navigate('movies')">Browse Library</button>
+        <div class="hero-copy">
+          <span>Vyrden Signal</span>
+          <strong>Your library is local, fast, and under control.</strong>
+          <p>${summary.movies || 0} movies, ${summary.series || 0} series, ${summary.episodes || 0} episodes. ${summary.unprobed || 0} sources are waiting for probe analysis.</p>
+          <div class="detail-actions">
+            <button class="primary" onclick="navigate('movies')">Browse Movies</button>
+            <button class="ghost" onclick="navigate('tv')">Browse TV</button>
+          </div>
+        </div>
+        <div class="signal-stack">
+          ${signalPill("Libraries", summary.libraries)}
+          ${signalPill("Active sessions", sessions.sessions.length)}
+          ${signalPill("Media sources", summary.mediaSources)}
+        </div>
       </div>
       <div class="grid two">
         <div class="card"><h2>Resume</h2>${mediaCards(recent.recent, "recent")}</div>
         <div class="card"><h2>Storage</h2>${libraryCards(libraries.libraries)}</div>
       </div>
+      <div class="grid three">
+        ${metric("Movies", summary.movies)}
+        ${metric("Series", summary.series)}
+        ${metric("Episodes", summary.episodes)}
+      </div>
       <div class="grid two">
-        <div class="card"><h2>Recent Scans</h2>${jobTable(scans.scans)}</div>
-        <div class="card"><h2>Recent Probes</h2>${jobTable(probes.probes)}</div>
+        <div class="card"><h2>Recent Scans</h2>${jobCards(scans.scans)}</div>
+        <div class="card"><h2>Recent Probes</h2>${jobCards(probes.probes)}</div>
       </div>
     </div>`;
 }
@@ -93,6 +102,12 @@ async function renderMovies() {
   const payload = await api("/api/movies?limit=500");
   view.innerHTML = `
     <div class="stack">
+      <div class="shelf-head">
+        <div>
+          <h2>Movie Wall</h2>
+          <p>Poster-first browsing with version and review signals kept close to the title.</p>
+        </div>
+      </div>
       <div class="toolbar">
         <button class="primary" onclick="startScan('/api/libraries/movies/scan')">Scan Movies</button>
         <input class="search" id="movieFilter" placeholder="Filter movies" oninput="filterCards(this.value)">
@@ -114,42 +129,56 @@ function movieCard(item) {
 
 async function showMovie(id) {
   const movie = await api(`/api/movies/${id}`);
-  const rows = await Promise.all(movie.versions.map(async version => {
+  const rows = await Promise.all(movie.versions.map(async (version, index) => {
     const state = await api(`/api/playback/state/${version.mediaSourceId}`);
-    return versionRow(version, state);
+    return versionCard(version, state, index === 0);
   }));
   viewTitle.textContent = movie.title;
   view.innerHTML = `
     <div class="detail-shell">
       <section class="detail-hero">
         <img alt="" src="/api/artwork/movie/${movie.id}">
-        <button onclick="navigate('movies')">Back</button>
-        <h2>${escapeHTML(movie.title)}</h2>
-        <p>${movie.year || "Unknown year"} - ${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</p>
-        ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
+        <div class="detail-poster"><img alt="" src="/api/artwork/movie/${movie.id}"></div>
+        <div class="detail-copy">
+          <button class="ghost" onclick="navigate('movies')">Back to Movies</button>
+          <h2>${escapeHTML(movie.title)}</h2>
+          <p>${movie.year || "Unknown year"} - ${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"} - ${movie.needsReview ? "Needs metadata review" : "Ready"}</p>
+          <div class="detail-actions">
+            ${movie.versions[0] ? `<a class="button primary" href="/play/${movie.versions[0].mediaSourceId}" target="_blank">Play</a>` : ""}
+            ${movie.versions[0] ? `<button onclick="markWatched('${movie.versions[0].mediaSourceId}', true)">Mark Watched</button>` : ""}
+            ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
+          </div>
+        </div>
       </section>
-      <section class="card"><h2>Versions</h2>${table(["Quality", "File", "State", "Controls"], rows)}</section>
+      <section class="card"><h2>Available Versions</h2><div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div></section>
     </div>`;
 }
 
-function versionRow(version, state) {
+function versionCard(version, state, selected) {
   const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round(state.percent * 100)}%` : "Unplayed";
-  return [
-    version.qualityLabel || "Source",
-    version.relPath,
-    watched,
-    `<div class="inline-actions">
+  return `<article class="version-card">
+    <div>
+      <strong>${escapeHTML(version.qualityLabel || "Source")}${selected ? " - selected" : ""}</strong>
+      <small>${escapeHTML(version.relPath)} - ${watched}</small>
+    </div>
+    <div class="inline-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">Play</a>
       <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
-    </div>`,
-  ];
+    </div>
+  </article>`;
 }
 
 async function renderTV() {
   const payload = await api("/api/series?limit=500");
   view.innerHTML = `
     <div class="stack">
+      <div class="shelf-head">
+        <div>
+          <h2>Series Wall</h2>
+          <p>Shows stay grouped by season with immediate episode playback.</p>
+        </div>
+      </div>
       <div class="toolbar">
         <button class="primary" onclick="startScan('/api/libraries/tv/scan')">Scan TV</button>
         <input class="search" placeholder="Filter shows" oninput="filterCards(this.value)">
@@ -175,9 +204,12 @@ async function showSeries(id) {
     <div class="detail-shell">
       <section class="detail-hero">
         <img alt="" src="/api/artwork/series/${series.id}">
-        <button onclick="navigate('tv')">Back</button>
-        <h2>${escapeHTML(series.title)}</h2>
-        <p>${series.seasonCount} seasons - ${series.episodeCount} episodes</p>
+        <div class="detail-poster"><img alt="" src="/api/artwork/series/${series.id}"></div>
+        <div class="detail-copy">
+          <button class="ghost" onclick="navigate('tv')">Back to TV</button>
+          <h2>${escapeHTML(series.title)}</h2>
+          <p>${series.seasonCount} seasons - ${series.episodeCount} episodes</p>
+        </div>
       </section>
       <div class="stack">
         ${series.seasons.map(season => `<section class="card"><h2>Season ${season.seasonNumber}</h2>${episodeList(season.episodes)}</section>`).join("")}
@@ -251,17 +283,29 @@ async function renderActivity() {
   const [scans, probes, work, sessions] = await Promise.all([api("/api/scans"), api("/api/probes"), api("/api/work"), api("/api/sessions")]);
   view.innerHTML = `
     <div class="stack">
+      <div class="hero-strip">
+        <div class="hero-copy">
+          <span>Operations</span>
+          <strong>Background work stays visible without taking over playback.</strong>
+          <p>Scanning, probing, and transcode jobs run in separate queues so library maintenance does not fight active playback.</p>
+        </div>
+        <div class="signal-stack">
+          ${signalPill("Sessions", sessions.sessions.length)}
+          ${signalPill("Scans", scans.scans.length)}
+          ${signalPill("Work jobs", work.work.length)}
+        </div>
+      </div>
       <div class="toolbar">
         <button class="primary" onclick="startScan('/api/libraries/scan')">Scan Movies + TV</button>
         <button onclick="startProbe()">Probe Unprobed</button>
       </div>
       <div class="grid two">
-        <div class="card"><h2>Active Sessions</h2>${sessionTable(sessions.sessions)}</div>
-        <div class="card"><h2>Work</h2>${jobTable(work.work)}</div>
+        <div class="card"><h2>Active Sessions</h2>${sessionCards(sessions.sessions)}</div>
+        <div class="card"><h2>Work</h2>${jobCards(work.work)}</div>
       </div>
       <div class="grid two">
-        <div class="card"><h2>Scans</h2>${jobTable(scans.scans)}</div>
-        <div class="card"><h2>Probes</h2>${jobTable(probes.probes)}</div>
+        <div class="card"><h2>Scans</h2>${jobCards(scans.scans)}</div>
+        <div class="card"><h2>Probes</h2>${jobCards(probes.probes)}</div>
       </div>
     </div>`;
 }
@@ -270,6 +314,18 @@ async function renderHealth() {
   const [health, review, versions] = await Promise.all([api("/api/catalog/health"), api("/api/review"), api("/api/versions")]);
   view.innerHTML = `
     <div class="stack">
+      <div class="hero-strip">
+        <div class="hero-copy">
+          <span>Review Signal</span>
+          <strong>Fix noisy files before they become a bad library.</strong>
+          <p>${health.needsReview || 0} items need review, ${health.unprobed || 0} are unprobed, and ${health.unsupported || 0} may need playback help.</p>
+        </div>
+        <div class="signal-stack">
+          ${signalPill("Needs review", health.needsReview)}
+          ${signalPill("High bitrate", health.highBitrate)}
+          ${signalPill("Subtitles", health.withSubtitles)}
+        </div>
+      </div>
       <div class="grid">
         ${metric("Needs Review", health.needsReview)}
         ${metric("Unprobed", health.unprobed)}
@@ -279,8 +335,8 @@ async function renderHealth() {
         ${metric("Versions", versions.versions.length)}
       </div>
       <div class="grid two">
-        <div class="card"><h2>Review Queue</h2>${reviewTable(review.items)}</div>
-        <div class="card"><h2>Version Groups</h2>${table(["Kind", "Title", "Versions"], versions.versions.map(item => [item.kind, item.title, item.versionCount]))}</div>
+        <div class="card"><h2>Review Queue</h2>${reviewCards(review.items)}</div>
+        <div class="card"><h2>Version Groups</h2>${versionGroups(versions.versions)}</div>
       </div>
     </div>`;
 }
@@ -288,15 +344,8 @@ async function renderHealth() {
 async function renderPlaybackLab() {
   const [payload, profiles] = await Promise.all([api("/api/media-sources?limit=200"), api("/api/devices/profiles")]);
   view.innerHTML = `<div class="stack">
-    <div class="card"><h2>Client Profiles</h2>${table(["Profile", "Containers", "Video"], profiles.profiles.map(item => [item.name, item.containers.join(", "), item.videoCodecs.join(", ")]))}</div>
-    <div class="card"><h2>Playback Lab</h2>${table(["Name", "Kind", "Probed", "Decision", "Work", "Player"], payload.mediaSources.map(item => [
-      item.name,
-      item.kind,
-      item.probed ? "Yes" : "No",
-      link(`/api/playback/decision?mediaSourceId=${item.id}&clientProfile=web`, "Decision"),
-      `<button onclick="startWork('${item.id}','remux')">Remux</button> <button onclick="startWork('${item.id}','transcode')">Transcode</button>`,
-      link(`/play/${item.id}`, "Open"),
-    ]))}</div>
+    <div class="card"><h2>Client Profiles</h2>${profileCards(profiles.profiles)}</div>
+    <div class="card"><h2>Playback Lab</h2>${playbackCards(payload.mediaSources)}</div>
   </div>`;
 }
 
@@ -304,7 +353,7 @@ async function renderRemote() {
   const payload = await api("/api/remote/access");
   view.innerHTML = `<div class="stack">
     <div class="hero-strip">
-      <div><span>Remote Access</span><strong>Your server stays yours. Vyrden helps you expose it safely.</strong></div>
+      <div class="hero-copy"><span>Remote Access</span><strong>Your server stays yours. Vyrden helps you expose it safely.</strong><p>Vyrden shows network facts and guidance, but users stay responsible for their own VPN, reverse proxy, or port forwarding.</p></div>
       <button class="primary" onclick="lookupWan()">Detect WAN IP</button>
     </div>
     <div class="grid two">
@@ -331,9 +380,12 @@ async function lookupWan() {
 async function renderSettings() {
   const [settings, performance] = await Promise.all([api("/api/settings"), api("/api/settings/performance")]);
   view.innerHTML = `<div class="stack">
+    <div class="hero-strip">
+      <div class="hero-copy"><span>Runtime</span><strong>Local-first settings before tray and installer.</strong><p>These values are persisted locally and give the future tray app a real product runtime to control.</p></div>
+      <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
+    </div>
     <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
     <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
-    <div class="card"><h2>Runtime Direction</h2><p class="muted">Product UI and persisted configuration come first. The Windows tray app can then manage a real local product instead of a dev server.</p></div>
   </div>`;
 }
 
@@ -379,26 +431,65 @@ function metric(label, value) {
   return `<div class="card metric"><span>${escapeHTML(label)}</span><strong>${value ?? 0}</strong></div>`;
 }
 
+function signalPill(label, value) {
+  return `<div class="signal-pill"><small>${escapeHTML(label)}</small><b>${escapeHTML(value ?? 0)}</b></div>`;
+}
+
 function mediaCards(items = []) {
   if (!items.length) return empty("Nothing to resume yet.");
   return `<div class="mini-list">${items.slice(0, 6).map(item => `<a href="/play/${item.mediaSourceId}" target="_blank"><strong>${escapeHTML(item.name)}</strong><span>${Math.round((item.percent || 0) * 100)}% - ${escapeHTML(item.kind)}</span></a>`).join("")}</div>`;
 }
 
-function reviewTable(items = []) {
-  return table(["Kind", "Title", "Reason", "Fix"], items.map(item => [
-    item.kind,
-    item.title,
-    item.reviewReason,
-    `<button onclick="openMetadataFix('${item.kind}','${item.id}','${escapeAttr(item.title)}',0)">Fix Match</button>`,
-  ]));
+function reviewCards(items = []) {
+  if (!items.length) return empty("No review items.");
+  return `<div class="version-grid">${items.map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.kind)} - ${escapeHTML(item.reviewReason)}</small></div>
+    <button onclick="openMetadataFix('${item.kind}','${item.id}','${escapeAttr(item.title)}',0)">Fix Match</button>
+  </article>`).join("")}</div>`;
 }
 
-function sessionTable(items = []) {
-  return table(["Device", "Media", "Status", "Progress"], items.map(item => [item.deviceId, item.mediaSourceId, item.status, Math.round(item.progressSeconds || 0) + "s"]));
+function versionGroups(items = []) {
+  if (!items.length) return empty("No duplicate version groups.");
+  return `<div class="version-grid">${items.map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.kind)} - ${item.versionCount} versions</small></div>
+  </article>`).join("")}</div>`;
 }
 
-function jobTable(items = []) {
-  return table(["ID", "Status", "Done", "Last"], items.slice(0, 8).map(item => [item.id || "", item.status || "", item.completed ?? item.mediaFiles ?? "", item.lastPath || item.outputPath || ""]));
+function sessionCards(items = []) {
+  if (!items.length) return empty("No active sessions.");
+  return `<div class="version-grid">${items.map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.deviceId)}</strong><small>${escapeHTML(item.status)} - ${Math.round(item.progressSeconds || 0)}s</small></div>
+    <small>${escapeHTML(item.mediaSourceId)}</small>
+  </article>`).join("")}</div>`;
+}
+
+function jobCards(items = []) {
+  if (!items || !items.length) return empty("No jobs yet.");
+  return `<div class="version-grid">${items.slice(0, 8).map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.status || "queued")}</strong><small>${escapeHTML(item.id || "")}</small></div>
+    <small>${escapeHTML(item.lastPath || item.outputPath || item.mediaFiles || item.completed || "")}</small>
+  </article>`).join("")}</div>`;
+}
+
+function profileCards(items = []) {
+  if (!items.length) return empty("No client profiles.");
+  return `<div class="version-grid">${items.map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.containers.join(", "))}</small></div>
+    <small>${escapeHTML(item.videoCodecs.join(", "))}</small>
+  </article>`).join("")}</div>`;
+}
+
+function playbackCards(items = []) {
+  if (!items.length) return empty("No media sources.");
+  return `<div class="version-grid">${items.map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.kind)} - ${item.probed ? "probed" : "needs probe"}</small></div>
+    <div class="inline-actions">
+      <a class="button" href="/api/playback/decision?mediaSourceId=${item.id}&clientProfile=web" target="_blank">Decision</a>
+      <button onclick="startWork('${item.id}','remux')">Remux</button>
+      <button onclick="startWork('${item.id}','transcode')">Transcode</button>
+      <a class="button primary" href="/play/${item.id}" target="_blank">Play</a>
+    </div>
+  </article>`).join("")}</div>`;
 }
 
 function table(headers, rows) {
