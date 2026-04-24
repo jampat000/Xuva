@@ -58,6 +58,23 @@ func New(cfg config.Config) *Application {
 	}
 	manager := resources.NewManager(limits)
 	bus := events.NewBus(cfg.EventBuffer)
+	libraryService := libraries.NewService()
+	if cfg.MovieLibraryPath != "" {
+		libraryService.Set(libraries.Library{
+			ID:   "movies",
+			Name: "Movies",
+			Path: cfg.MovieLibraryPath,
+			Kind: libraries.KindMovies,
+		})
+	}
+	if cfg.TVLibraryPath != "" {
+		libraryService.Set(libraries.Library{
+			ID:   "tv",
+			Name: "TV",
+			Path: cfg.TVLibraryPath,
+			Kind: libraries.KindTV,
+		})
+	}
 
 	return &Application{
 		Config:    cfg,
@@ -66,7 +83,7 @@ func New(cfg config.Config) *Application {
 		Events:    bus,
 		Resources: manager,
 		Jobs:      jobs.NewRegistry(manager),
-		Libraries: libraries.NewService(),
+		Libraries: libraryService,
 		Scanner:   scanner.NewService(),
 		Probe:     probe.NewService(),
 		Media:     media.NewService(),
@@ -89,6 +106,8 @@ func (a *Application) Router() http.Handler {
 		Events:    a.Events,
 		Resources: a.Resources,
 		Jobs:      a.Jobs,
+		Libraries: a.Libraries,
+		Scanner:   a.Scanner,
 		Media:     a.Media,
 		Movies:    a.Movies,
 		TV:        a.TV,

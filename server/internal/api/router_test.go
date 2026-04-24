@@ -1,19 +1,24 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
+	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
+	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
@@ -62,6 +67,63 @@ func TestPlaybackDecisionEndpointIsExplicitlyDeferred(t *testing.T) {
 	}
 }
 
+func TestMovieScanEndpointUsesMovieClassifier(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Dune Part Two (2024)", "Dune.Part.Two.2024.2160p.REMUX.mkv"))
+	writeTestFile(t, filepath.Join(root, "poster.jpg"))
+
+	router := NewRouter(testDeps(time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{
+		"path":        root,
+		"sampleLimit": 10,
+	})
+
+	if payload["moviesFound"] != float64(1) {
+		t.Fatalf("expected one movie, got %#v", payload["moviesFound"])
+	}
+	movies := payload["movies"].([]any)
+	movie := movies[0].(map[string]any)
+	if movie["title"] != "Dune Part Two" {
+		t.Fatalf("expected parsed movie title, got %#v", movie["title"])
+	}
+	if movie["year"] != float64(2024) {
+		t.Fatalf("expected parsed movie year, got %#v", movie["year"])
+	}
+	if movie["qualityLabel"] != "4K Remux" {
+		t.Fatalf("expected parsed quality, got %#v", movie["qualityLabel"])
+	}
+}
+
+func TestTVScanEndpointUsesEpisodeClassifier(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "The Bear", "Season 02", "The.Bear.S02E03.Sundae.1080p.WEB-DL.mkv"))
+	writeTestFile(t, filepath.Join(root, "The Bear", "Season 02", "notes.txt"))
+
+	router := NewRouter(testDeps(time.Now()))
+	payload := postJSON(t, router, "/api/libraries/tv/scan", map[string]any{
+		"path":        root,
+		"sampleLimit": 10,
+	})
+
+	if payload["episodesFound"] != float64(1) {
+		t.Fatalf("expected one episode, got %#v", payload["episodesFound"])
+	}
+	episodes := payload["episodes"].([]any)
+	episode := episodes[0].(map[string]any)
+	if episode["seriesTitle"] != "The Bear" {
+		t.Fatalf("expected parsed series title, got %#v", episode["seriesTitle"])
+	}
+	if episode["seasonNumber"] != float64(2) {
+		t.Fatalf("expected parsed season, got %#v", episode["seasonNumber"])
+	}
+	if episode["episodeNumber"] != float64(3) {
+		t.Fatalf("expected parsed episode, got %#v", episode["episodeNumber"])
+	}
+	if episode["episodeTitle"] != "Sundae" {
+		t.Fatalf("expected parsed episode title, got %#v", episode["episodeTitle"])
+	}
+}
+
 func testDeps(startedAt time.Time) Deps {
 	cfg := config.Config{
 		HTTPAddr:         "127.0.0.1:8097",
@@ -83,6 +145,8 @@ func testDeps(startedAt time.Time) Deps {
 		Events:    events.NewBus(cfg.EventBuffer),
 		Resources: manager,
 		Jobs:      jobs.NewRegistry(manager),
+		Libraries: libraries.NewService(),
+		Scanner:   scanner.NewService(),
 		Media:     media.NewService(),
 		Movies:    movies.NewService(),
 		TV:        tv.NewService(),
@@ -107,4 +171,38 @@ func getJSON(t *testing.T, router http.Handler, path string) map[string]any {
 		t.Fatalf("decode json: %v", err)
 	}
 	return payload
+}
+
+func postJSON(t *testing.T, router http.Handler, path string, body any) map[string]any {
+	t.Helper()
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode json: %v", err)
+	}
+	return payload
+}
+
+func writeTestFile(t *testing.T, path string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
 }

@@ -46,6 +46,8 @@ Internal separation:
 - WebSocket later only for two-way playback/remote-control surfaces.
 - Separate packages for Movies, TV, shared media sources, playback, subtitles, scanner, probe, transcode, sessions, downloads, events, and resources.
 - Separate bounded queues for scan, probe, and transcode work.
+- Shared filesystem walker with separate movie and TV classifiers.
+- Separate scan endpoints for Movies, TV, and combined library scans.
 
 ## Client Skeleton
 

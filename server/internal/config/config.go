@@ -8,6 +8,8 @@ import (
 type Config struct {
 	HTTPAddr         string `json:"httpAddr"`
 	DataDir          string `json:"dataDir"`
+	MovieLibraryPath string `json:"movieLibraryPath,omitempty"`
+	TVLibraryPath    string `json:"tvLibraryPath,omitempty"`
 	EventBuffer      int    `json:"eventBuffer"`
 	ScanWorkers      int    `json:"scanWorkers"`
 	ProbeWorkers     int    `json:"probeWorkers"`
@@ -19,6 +21,8 @@ func FromEnv() Config {
 	return Config{
 		HTTPAddr:         envString("VYRDEN_HTTP_ADDR", "127.0.0.1:8097"),
 		DataDir:          envString("VYRDEN_DATA_DIR", "data"),
+		MovieLibraryPath: envString("VYRDEN_MOVIES_PATH", ""),
+		TVLibraryPath:    envString("VYRDEN_TV_PATH", ""),
 		EventBuffer:      envInt("VYRDEN_EVENT_BUFFER", 128),
 		ScanWorkers:      envInt("VYRDEN_SCAN_WORKERS", 1),
 		ProbeWorkers:     envInt("VYRDEN_PROBE_WORKERS", 2),

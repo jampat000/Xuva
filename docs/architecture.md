@@ -52,11 +52,11 @@ server/
   internal/config/   Runtime configuration.
   internal/database/ SQLite connection and migrations.
   internal/libraries Library folders and scan scheduling.
-  internal/scanner/  Filesystem walking.
+  internal/scanner/  Shared filesystem walking and media extension filtering.
   internal/probe/    ffprobe worker pool.
   internal/media/    Shared media sources, streams, versions.
-  internal/movies/   Movie grouping, collections, editions.
-  internal/tv/       Series, seasons, episodes, next-up.
+  internal/movies/   Movie naming, grouping, editions, cuts, collections.
+  internal/tv/       Series, seasons, episodes, specials, next-up.
   internal/playback/ Playback decision engine.
   internal/streaming Direct file/range streaming.
   internal/transcode FFmpeg jobs and worker pools.
@@ -143,6 +143,9 @@ Rules:
 - Movies own collections, editions, cuts, and extras.
 - TV owns series, seasons, episodes, specials, and next-up.
 - Scanner, probe, subtitles, versions, streaming, transcode, downloads, devices, and sessions are shared services.
+- The filesystem walker is shared; movie and TV classification logic is separate.
+- `X:\Movies` and `X:\TV` should be scanned as separate libraries, even though their files feed the same media source and playback engine.
+- A movie scan can be rescheduled without touching TV, and a TV scan can be rescheduled without touching movies.
 
 ## Resource Scheduling
 
