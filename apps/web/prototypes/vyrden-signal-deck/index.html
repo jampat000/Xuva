@@ -225,6 +225,44 @@
         line-height: 1.48;
       }
 
+      .media-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        max-width: 860px;
+        margin-top: 20px;
+      }
+
+      .media-action {
+        min-width: 108px;
+        height: 42px;
+        padding: 0 15px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.08);
+        color: var(--text);
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .media-action.primary {
+        min-width: 128px;
+        border-color: rgba(246, 183, 86, 0.72);
+        background: var(--action);
+        color: #080705;
+      }
+
+      .media-action.state {
+        min-width: 126px;
+        border-color: rgba(79, 230, 200, 0.26);
+      }
+
+      .media-action:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.18);
+        outline: none;
+      }
+
       .meta {
         display: flex;
         flex-wrap: wrap;
@@ -285,8 +323,8 @@
       }
 
       .route-panel {
-        margin-top: 42px;
-        padding: 18px;
+        margin-top: 24px;
+        padding: 16px;
         border: 1px solid rgba(255, 247, 234, 0.12);
         border-radius: 10px;
         background: rgba(17, 16, 13, 0.66);
@@ -298,7 +336,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 18px;
-        margin-bottom: 18px;
+        margin-bottom: 12px;
       }
 
       .route-head strong {
@@ -319,8 +357,8 @@
 
       .step {
         position: relative;
-        min-height: 74px;
-        padding: 12px;
+        min-height: 66px;
+        padding: 10px;
         border: 1px solid rgba(255, 247, 234, 0.12);
         border-radius: 8px;
         background: rgba(255, 247, 234, 0.045);
@@ -361,7 +399,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        height: 244px;
+        height: 230px;
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
         gap: 14px;
@@ -463,11 +501,11 @@
       .watch-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: 8px;
       }
 
       .action {
-        min-height: 48px;
+        min-height: 40px;
         border: 1px solid rgba(255, 247, 234, 0.12);
         border-radius: 8px;
         background: rgba(255, 247, 234, 0.08);
@@ -490,13 +528,13 @@
       }
 
       .map-panel {
-        padding: 18px;
+        padding: 16px;
         overflow: hidden;
       }
 
       .rail-map {
         display: grid;
-        gap: 12px;
+        gap: 10px;
       }
 
       .channel {
@@ -504,8 +542,8 @@
         grid-template-columns: 92px minmax(0, 1fr);
         gap: 12px;
         align-items: center;
-        min-height: 82px;
-        padding: 12px;
+        min-height: 74px;
+        padding: 10px;
         border: 1px solid rgba(255, 247, 234, 0.1);
         border-radius: 8px;
         background: rgba(255, 247, 234, 0.045);
@@ -634,6 +672,15 @@
                     <span>TrueHD 7.1</span>
                     <span class="pill">Direct Play</span>
                   </div>
+                  <div class="media-actions" aria-label="Focused media actions">
+                    <button class="media-action primary" id="primary-button">Resume</button>
+                    <button class="media-action" id="play-button">Play From Start</button>
+                    <button class="media-action state" id="watched-button">Mark Watched</button>
+                    <button class="media-action">Versions</button>
+                    <button class="media-action">Audio</button>
+                    <button class="media-action">Subtitles</button>
+                    <button class="media-action">Download</button>
+                  </div>
                 </div>
                 <div class="poster-window">
                   <div class="poster-art art-a" id="poster-art"></div>
@@ -656,19 +703,19 @@
               </div>
 
               <div class="signal-deck" aria-label="Media signal deck">
-                <button class="slate art-a is-active" style="--height: 214px" data-index="0" data-kicker="Resume watching" data-title="The Meridian Signal" data-summary="A private research vessel follows a repeating transmission beyond the edge of charted space and finds a signal that seems to know every film in its archive." data-meta="2026|2h 18m|4K HDR10+|TrueHD 7.1|Direct Play" data-route="Direct Play Route" data-cost="0% transcode load" data-source="MKV · 72 Mbps" data-video="HEVC Main10 HDR10+" data-audio="TrueHD 7.1" data-subs="SRT optional" data-client="Apple TV ready" data-poster="MERIDIAN SIGNAL" data-art="art-a">
+                <button class="slate art-a is-active" style="--height: 214px" data-index="0" data-kicker="Resume watching" data-title="The Meridian Signal" data-summary="A private research vessel follows a repeating transmission beyond the edge of charted space and finds a signal that seems to know every film in its archive." data-meta="2026|2h 18m|4K HDR10+|TrueHD 7.1|Direct Play" data-route="Direct Play Route" data-cost="0% transcode load" data-source="MKV · 72 Mbps" data-video="HEVC Main10 HDR10+" data-audio="TrueHD 7.1" data-subs="SRT optional" data-client="Apple TV ready" data-poster="MERIDIAN SIGNAL" data-art="art-a" data-primary="Resume" data-secondary="Play From Start" data-watched="Mark Watched">
                   <span class="slate-content"><span class="slate-kicker">Resume</span><span class="slate-title">The Meridian Signal</span><span class="slate-detail">64% watched · Direct</span></span>
                 </button>
-                <button class="slate art-b" style="--height: 176px" data-index="1" data-kicker="Next episode" data-title="Northline" data-summary="The crew reaches a mountain pass where every relay station has gone silent, and an old archive key becomes the only way through." data-meta="S2 E4|48m|1080p|EAC3 5.1|Direct Play" data-route="Direct Play Route" data-cost="0% transcode load" data-source="MP4 · 9 Mbps" data-video="H.264 High 1080p" data-audio="EAC3 5.1" data-subs="SRT selected" data-client="Android TV ready" data-poster="NORTHLINE" data-art="art-b">
+                <button class="slate art-b" style="--height: 176px" data-index="1" data-kicker="Next episode" data-title="Northline" data-summary="The crew reaches a mountain pass where every relay station has gone silent, and an old archive key becomes the only way through." data-meta="S2 E4|48m|1080p|EAC3 5.1|Direct Play" data-route="Direct Play Route" data-cost="0% transcode load" data-source="MP4 · 9 Mbps" data-video="H.264 High 1080p" data-audio="EAC3 5.1" data-subs="SRT selected" data-client="Android TV ready" data-poster="NORTHLINE" data-art="art-b" data-primary="Resume Episode" data-secondary="Play Season" data-watched="Mark Episode Played">
                   <span class="slate-content"><span class="slate-kicker">Series</span><span class="slate-title">Northline</span><span class="slate-detail">S2 E4 · Direct</span></span>
                 </button>
-                <button class="slate art-c" style="--height: 198px" data-index="2" data-kicker="Movie night" data-title="Low Sun Protocol" data-summary="An analyst discovers that a failed satellite launch was only the opening move in a quiet war between private stations." data-meta="2025|1h 54m|4K Dolby Vision|DTS-HD MA|Audio Transcode" data-route="Audio Transcode Route" data-cost="Low CPU · no video transcode" data-source="MKV · 64 Mbps" data-video="HEVC Main10 Dolby Vision" data-audio="DTS-HD MA to EAC3" data-subs="PGS optional" data-client="TV audio fallback" data-poster="LOW SUN" data-art="art-c">
+                <button class="slate art-c" style="--height: 198px" data-index="2" data-kicker="Movie night" data-title="Low Sun Protocol" data-summary="An analyst discovers that a failed satellite launch was only the opening move in a quiet war between private stations." data-meta="2025|1h 54m|4K Dolby Vision|DTS-HD MA|Audio Transcode" data-route="Audio Transcode Route" data-cost="Low CPU · no video transcode" data-source="MKV · 64 Mbps" data-video="HEVC Main10 Dolby Vision" data-audio="DTS-HD MA to EAC3" data-subs="PGS optional" data-client="TV audio fallback" data-poster="LOW SUN" data-art="art-c" data-primary="Play" data-secondary="Trailer" data-watched="Mark Watched">
                   <span class="slate-content"><span class="slate-kicker">Movie</span><span class="slate-title">Low Sun Protocol</span><span class="slate-detail">Audio only</span></span>
                 </button>
-                <button class="slate art-d" style="--height: 158px" data-index="3" data-kicker="Recently added" data-title="Archive Black" data-summary="A restoration specialist finds hidden frames in a lost noir print that point to a citywide cover-up." data-meta="2024|2h 07m|4K HDR10|EAC3 5.1|Direct Play" data-route="Direct Play Route" data-cost="0% transcode load" data-source="MKV · 48 Mbps" data-video="AV1 Main10 HDR10" data-audio="EAC3 5.1" data-subs="ASS optional" data-client="Desktop ready" data-poster="ARCHIVE BLACK" data-art="art-d">
+                <button class="slate art-d" style="--height: 158px" data-index="3" data-kicker="Recently added" data-title="Archive Black" data-summary="A restoration specialist finds hidden frames in a lost noir print that point to a citywide cover-up." data-meta="2024|2h 07m|4K HDR10|EAC3 5.1|Direct Play" data-route="Direct Play Route" data-cost="0% transcode load" data-source="MKV · 48 Mbps" data-video="AV1 Main10 HDR10" data-audio="EAC3 5.1" data-subs="ASS optional" data-client="Desktop ready" data-poster="ARCHIVE BLACK" data-art="art-d" data-primary="Play" data-secondary="Details" data-watched="Mark Watched">
                   <span class="slate-content"><span class="slate-kicker">New</span><span class="slate-title">Archive Black</span><span class="slate-detail">AV1 · Direct</span></span>
                 </button>
-                <button class="slate art-e" style="--height: 186px" data-index="4" data-kicker="Travel ready" data-title="Glass Horizon" data-summary="A family crosses a desert made of mirrored towers, chasing a broadcast that only appears at sunrise." data-meta="2023|2h 21m|4K|AAC 5.1|Remux" data-route="Remux Route" data-cost="Low CPU · no video transcode" data-source="MKV to MP4" data-video="H.264 High 4K" data-audio="AAC 5.1" data-subs="WebVTT optional" data-client="Mobile route ready" data-poster="GLASS HORIZON" data-art="art-e">
+                <button class="slate art-e" style="--height: 186px" data-index="4" data-kicker="Travel ready" data-title="Glass Horizon" data-summary="A family crosses a desert made of mirrored towers, chasing a broadcast that only appears at sunrise." data-meta="2023|2h 21m|4K|AAC 5.1|Remux" data-route="Remux Route" data-cost="Low CPU · no video transcode" data-source="MKV to MP4" data-video="H.264 High 4K" data-audio="AAC 5.1" data-subs="WebVTT optional" data-client="Mobile route ready" data-poster="GLASS HORIZON" data-art="art-e" data-primary="Play Offline" data-secondary="Details" data-watched="Mark Watched">
                   <span class="slate-content"><span class="slate-kicker">Download</span><span class="slate-title">Glass Horizon</span><span class="slate-detail">Balanced copy</span></span>
                 </button>
               </div>
@@ -676,13 +723,16 @@
 
             <aside class="side">
               <section class="watch-panel">
-                <div class="panel-label">Focused Action</div>
+                <div class="panel-label">Focused Controls</div>
                 <div class="watch-actions">
-                  <button class="action primary">Resume</button>
+                  <button class="action primary" id="side-primary">Resume</button>
+                  <button class="action" id="side-play">Play</button>
+                  <button class="action" id="side-watched">Mark Watched</button>
                   <button class="action">Versions</button>
                   <button class="action">Audio</button>
                   <button class="action">Subtitles</button>
                   <button class="action">Download</button>
+                  <button class="action">More</button>
                 </div>
               </section>
 
@@ -718,8 +768,17 @@
       const subs = document.querySelector("#subs");
       const client = document.querySelector("#client");
       const slates = [...document.querySelectorAll(".slate")];
+      const mediaActions = [...document.querySelectorAll(".media-action")];
+      const primaryButton = document.querySelector("#primary-button");
+      const playButton = document.querySelector("#play-button");
+      const watchedButton = document.querySelector("#watched-button");
+      const sidePrimary = document.querySelector("#side-primary");
+      const sidePlay = document.querySelector("#side-play");
+      const sideWatched = document.querySelector("#side-watched");
+      let activeSlate = slates[0];
 
       function activate(slate) {
+        activeSlate = slate;
         slates.forEach((item) => item.classList.remove("is-active"));
         slate.classList.add("is-active");
         title.textContent = slate.dataset.title;
@@ -739,6 +798,13 @@
         const parts = slate.dataset.meta.split("|");
         const path = parts.pop();
         meta.innerHTML = parts.map((part) => `<span>${part}</span>`).join("") + `<span class="pill">${path}</span>`;
+
+        primaryButton.textContent = slate.dataset.primary;
+        playButton.textContent = slate.dataset.secondary;
+        watchedButton.textContent = slate.dataset.watched;
+        sidePrimary.textContent = slate.dataset.primary;
+        sidePlay.textContent = slate.dataset.secondary;
+        sideWatched.textContent = slate.dataset.watched;
       }
 
       slates.forEach((slate) => {
@@ -748,19 +814,37 @@
 
       document.addEventListener("keydown", (event) => {
         const active = document.activeElement;
-        const index = slates.indexOf(active);
-        if (index < 0) return;
+        const slateIndex = slates.indexOf(active);
+        const actionIndex = mediaActions.indexOf(active);
 
-        if (event.key === "ArrowRight" && slates[index + 1]) {
-          slates[index + 1].focus();
+        if (slateIndex >= 0 && event.key === "ArrowRight" && slates[slateIndex + 1]) {
+          slates[slateIndex + 1].focus();
           event.preventDefault();
         }
-        if (event.key === "ArrowLeft" && slates[index - 1]) {
-          slates[index - 1].focus();
+        if (slateIndex >= 0 && event.key === "ArrowLeft" && slates[slateIndex - 1]) {
+          slates[slateIndex - 1].focus();
+          event.preventDefault();
+        }
+        if (slateIndex >= 0 && event.key === "ArrowUp") {
+          mediaActions[Math.min(slateIndex, mediaActions.length - 1)]?.focus();
+          event.preventDefault();
+        }
+
+        if (actionIndex >= 0 && event.key === "ArrowRight" && mediaActions[actionIndex + 1]) {
+          mediaActions[actionIndex + 1].focus();
+          event.preventDefault();
+        }
+        if (actionIndex >= 0 && event.key === "ArrowLeft" && mediaActions[actionIndex - 1]) {
+          mediaActions[actionIndex - 1].focus();
+          event.preventDefault();
+        }
+        if (actionIndex >= 0 && event.key === "ArrowDown") {
+          activeSlate?.focus();
           event.preventDefault();
         }
       });
 
+      activate(slates[0]);
       slates[0]?.focus();
     </script>
   </body>

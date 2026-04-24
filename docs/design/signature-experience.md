@@ -50,8 +50,25 @@ Focus changes:
 - Codec path.
 - Server cost.
 - Download suggestion.
+- Primary actions for the focused item.
 
 The design should feel like tuning into a private media signal, not browsing a commercial streaming storefront.
+
+## Action Rules
+
+Signal Deck must never hide basic watch controls.
+
+Every focused movie or episode needs visible controls for:
+
+- Resume or play.
+- Play from start.
+- Mark watched or mark episode played.
+- Versions.
+- Audio.
+- Subtitles.
+- Download.
+
+These controls should live near the focused title and also remain reachable from the side control stack for TV remote navigation.
 
 ## Differentiation Rules
 
@@ -83,4 +100,3 @@ Keep:
 - A browsing layout with depth and hierarchy, not only rows.
 - Cinematic visual language that belongs to personal libraries rather than subscription storefronts.
 - Admin-grade clarity without admin-grade ugliness.
-

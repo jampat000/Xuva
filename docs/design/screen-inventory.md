@@ -21,7 +21,6 @@ First design set:
 
 Completed prototype passes:
 
-- TV Home Concept: `apps/web/prototypes/vyrden-tv-home/index.html`
 - Movie Detail Concept: `apps/web/prototypes/vyrden-movie-detail/index.html`
 - Signal Deck Concept: `apps/web/prototypes/vyrden-signal-deck/index.html`
 

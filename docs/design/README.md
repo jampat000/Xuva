@@ -21,16 +21,10 @@ designs.html
 The first runnable UI concept is:
 
 ```text
-apps/web/prototypes/vyrden-tv-home/index.html
-```
-
-The second runnable UI concept is:
-
-```text
 apps/web/prototypes/vyrden-movie-detail/index.html
 ```
 
-The fresh signature exploration is:
+The signature exploration is:
 
 ```text
 apps/web/prototypes/vyrden-signal-deck/index.html
