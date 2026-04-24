@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vyrden Design Prototypes</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080705;
+        --panel: #14120f;
+        --panel-2: #1d1a15;
+        --text: #fff7ea;
+        --muted: #b9b0a2;
+        --quiet: #746c60;
+        --line: #312b23;
+        --focus: #4fe6c8;
+        --action: #f6b756;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 72% 18%, rgba(79, 230, 200, 0.16), transparent 28%),
+          linear-gradient(135deg, #080705 0%, #11100d 52%, #121f1c 100%);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1180px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 56px 0;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 32px;
+        margin-bottom: 32px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border: 1px solid rgba(79, 230, 200, 0.36);
+        border-radius: 14px;
+        background: rgba(79, 230, 200, 0.08);
+        color: var(--focus);
+        font-size: 28px;
+        font-weight: 780;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(34px, 5vw, 56px);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.5;
+      }
+
+      .docs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+
+      .link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 38px;
+        padding: 8px 13px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.06);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 720;
+      }
+
+      .link:hover,
+      .link:focus-visible {
+        border-color: var(--focus);
+        outline: none;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 22px;
+      }
+
+      .card {
+        overflow: hidden;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 10px;
+        background: rgba(20, 18, 15, 0.78);
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.3);
+      }
+
+      .preview {
+        display: block;
+        aspect-ratio: 16 / 9;
+        width: 100%;
+        object-fit: cover;
+        background:
+          linear-gradient(135deg, #2a1c14, #080705 45%, #153b35);
+        border-bottom: 1px solid rgba(255, 247, 234, 0.1);
+      }
+
+      .content {
+        padding: 20px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 21px;
+        line-height: 1.2;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 16px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+        border: 1px solid rgba(79, 230, 200, 0.28);
+        border-radius: 999px;
+        color: var(--focus);
+        font-size: 12px;
+        font-weight: 760;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 9px 15px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.08);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 780;
+      }
+
+      .button.primary {
+        border-color: rgba(246, 183, 86, 0.72);
+        background: var(--action);
+        color: #080705;
+      }
+
+      .button:hover,
+      .button:focus-visible {
+        border-color: var(--focus);
+        outline: none;
+      }
+
+      .note {
+        margin-top: 26px;
+        color: var(--quiet);
+        font-size: 13px;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          width: min(100vw - 32px, 1180px);
+          padding: 32px 0;
+        }
+
+        header {
+          display: block;
+        }
+
+        .docs {
+          justify-content: flex-start;
+          margin-top: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <div class="brand">
+            <div class="mark">V</div>
+            <div>
+              <h1>Vyrden Designs</h1>
+              <p class="subtitle">Movie and TV product prototypes, design direction, and UX specs.</p>
+            </div>
+          </div>
+        </div>
+        <nav class="docs" aria-label="Design docs">
+          <a class="link" href="../../../docs/design/ui-direction.md">UI Direction</a>
+          <a class="link" href="../../../docs/design/design-tokens.md">Tokens</a>
+          <a class="link" href="../../../docs/design/tv-experience.md">TV Spec</a>
+          <a class="link" href="../../../docs/design/screen-inventory.md">Screens</a>
+        </nav>
+      </header>
+
+      <section class="grid" aria-label="Prototype gallery">
+        <article class="card">
+          <img class="preview" src="../../../docs/design/previews/vyrden-tv-home.png" alt="Vyrden TV Home concept preview">
+          <div class="content">
+            <h2>TV Home Concept</h2>
+            <div class="meta">
+              <span class="pill">TV app</span>
+              <span class="pill">Movie and TV</span>
+              <span class="pill">Arrow-key focus</span>
+            </div>
+            <p>A cinematic 10-foot browsing concept with fictional media, poster rails, playback preview, direct-play/transcode status, and remote-style focus movement.</p>
+            <div class="actions">
+              <a class="button primary" href="vyrden-tv-home/index.html">Open Prototype</a>
+              <a class="button" href="../../../docs/design/previews/vyrden-tv-home.png">Open Screenshot</a>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <p class="note">Tip: open the TV Home prototype in a browser and use arrow keys to move focus across movie and TV cards.</p>
+    </main>
+  </body>
+</html>
+

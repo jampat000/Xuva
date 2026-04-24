@@ -11,6 +11,12 @@ The Vyrden design system starts with the movie and TV experience. The TV app sho
 
 ## Prototype
 
+Open the local design launcher from the repository root:
+
+```text
+designs.html
+```
+
 The first runnable UI concept is:
 
 ```text
@@ -18,4 +24,3 @@ apps/web/prototypes/vyrden-tv-home/index.html
 ```
 
 It is a static TV-home concept using fictional titles and original poster-style artwork. Use arrow keys across media cards to test the first pass of remote-style focus behavior.
-

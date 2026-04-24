@@ -57,6 +57,7 @@ The first technical milestone is a playback decision prototype:
 
 ## Documentation
 
+- [Open Design Prototypes](designs.html)
 - [Branding](docs/branding.md)
 - [Product Principles](docs/product-principles.md)
 - [MVP Scope](docs/mvp-scope.md)
