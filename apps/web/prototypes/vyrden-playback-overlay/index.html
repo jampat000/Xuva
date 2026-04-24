@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vyrden Playback Overlay Concept</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080705;
+        --panel: #11100d;
+        --text: #fff7ea;
+        --muted: #b9b0a2;
+        --quiet: #746c60;
+        --line: #312b23;
+        --focus: #4fe6c8;
+        --action: #f6b756;
+        --success: #65d887;
+        --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button { font: inherit; }
+
+      .player {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        isolation: isolate;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 70% 34%, rgba(79, 230, 200, 0.24), transparent 26%),
+          linear-gradient(140deg, #402616 0%, #6e4128 20%, #0a0806 20%, #080705 52%, #153f39 52%, #0c1715 100%);
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        z-index: -2;
+        background:
+          linear-gradient(126deg, rgba(246, 183, 86, 0.64) 0 16%, transparent 16% 44%, rgba(79, 230, 200, 0.5) 44% 61%, transparent 61%),
+          radial-gradient(circle at 78% 24%, rgba(255, 247, 234, 0.88) 0 28px, transparent 30px),
+          linear-gradient(140deg, #3a2116 0%, #080705 42%, #0e2420 100%);
+      }
+
+      .scene::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 247, 234, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 247, 234, 0.026) 1px, transparent 1px);
+        background-size: 88px 88px;
+      }
+
+      .scene::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(8, 7, 5, 0.52) 0%, transparent 22%, transparent 48%, rgba(8, 7, 5, 0.9) 100%),
+          linear-gradient(90deg, rgba(8, 7, 5, 0.9) 0%, transparent 34%, rgba(8, 7, 5, 0.72) 100%);
+      }
+
+      .top {
+        position: absolute;
+        left: 56px;
+        right: 56px;
+        top: 38px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 32px;
+      }
+
+      .identity { display: grid; gap: 12px; }
+
+      .crumb {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(79, 230, 200, 0.36);
+        border-radius: 9px;
+        background: rgba(79, 230, 200, 0.08);
+        color: var(--focus);
+        font-size: 20px;
+        font-weight: 780;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 5px 10px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        background: rgba(8, 7, 5, 0.42);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 730;
+      }
+
+      .chip.direct {
+        border-color: rgba(79, 230, 200, 0.36);
+        color: var(--focus);
+      }
+
+      .session {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 13px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 999px;
+        background: rgba(8, 7, 5, 0.46);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 720;
+        backdrop-filter: blur(18px);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 18px rgba(101, 216, 135, 0.62);
+      }
+
+      .center-pause {
+        position: absolute;
+        left: 50%;
+        top: 46%;
+        display: grid;
+        grid-template-columns: repeat(2, 10px);
+        gap: 12px;
+        place-items: center;
+        width: 92px;
+        height: 92px;
+        border: 1px solid rgba(255, 247, 234, 0.14);
+        border-radius: 50%;
+        background: rgba(8, 7, 5, 0.46);
+        box-shadow: 0 24px 72px rgba(0, 0, 0, 0.36);
+        transform: translate(-50%, -50%);
+        backdrop-filter: blur(18px);
+      }
+
+      .center-pause::before,
+      .center-pause::after {
+        content: "";
+        width: 10px;
+        height: 34px;
+        border-radius: 3px;
+        background: var(--text);
+      }
+
+      .caption {
+        position: absolute;
+        left: 50%;
+        bottom: 260px;
+        width: min(980px, calc(100vw - 160px));
+        padding: 12px 18px;
+        border-radius: 8px;
+        background: rgba(8, 7, 5, 0.68);
+        color: var(--text);
+        text-align: center;
+        font-size: 26px;
+        line-height: 1.34;
+        font-weight: 650;
+        transform: translateX(-50%);
+      }
+
+      .bottom {
+        position: absolute;
+        left: 56px;
+        right: 56px;
+        bottom: 40px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 380px;
+        gap: 24px;
+        align-items: end;
+      }
+
+      .transport,
+      .inspector,
+      .drawer {
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 12px;
+        background: rgba(17, 16, 13, 0.8);
+        box-shadow: 0 30px 86px rgba(0, 0, 0, 0.38);
+        backdrop-filter: blur(20px);
+      }
+
+      .transport { padding: 20px; }
+      .inspector { padding: 18px; }
+
+      .time-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 12px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 760;
+      }
+
+      .timeline {
+        position: relative;
+        height: 18px;
+        margin-bottom: 18px;
+      }
+
+      .track,
+      .buffered,
+      .played {
+        position: absolute;
+        left: 0;
+        top: 7px;
+        height: 4px;
+        border-radius: 999px;
+      }
+
+      .track { right: 0; background: rgba(255, 247, 234, 0.18); }
+      .buffered { width: 76%; background: rgba(255, 247, 234, 0.34); }
+      .played { width: 64%; background: var(--action); }
+
+      .playhead {
+        position: absolute;
+        left: 64%;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--text);
+        box-shadow: 0 0 0 6px rgba(246, 183, 86, 0.18);
+        transform: translate(-50%, -50%);
+      }
+
+      .chapter {
+        position: absolute;
+        top: 3px;
+        width: 2px;
+        height: 12px;
+        border-radius: 2px;
+        background: rgba(255, 247, 234, 0.42);
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(9, minmax(72px, 1fr));
+        gap: 10px;
+      }
+
+      .control {
+        display: grid;
+        place-items: center;
+        min-height: 58px;
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 247, 234, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.07);
+        color: var(--text);
+        cursor: pointer;
+        transition: transform 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease);
+      }
+
+      .control.primary {
+        border-color: rgba(246, 183, 86, 0.7);
+        background: var(--action);
+        color: #080705;
+      }
+
+      .control span:first-child {
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 850;
+      }
+
+      .control span:last-child {
+        margin-top: 5px;
+        font-size: 11px;
+        line-height: 1;
+        font-weight: 780;
+      }
+
+      .control:focus-visible {
+        border-color: var(--focus);
+        box-shadow: 0 0 0 7px rgba(79, 230, 200, 0.18);
+        outline: none;
+        transform: translateY(-4px);
+      }
+
+      .quick-state {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .state-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+        border: 1px solid rgba(255, 247, 234, 0.1);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 740;
+      }
+
+      .state-pill.good {
+        border-color: rgba(79, 230, 200, 0.28);
+        color: var(--focus);
+      }
+
+      .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+
+      .panel-title strong {
+        font-size: 13px;
+        text-transform: uppercase;
+      }
+
+      .panel-title span {
+        color: var(--focus);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .route {
+        display: grid;
+        gap: 8px;
+      }
+
+      .route-row {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        min-height: 38px;
+        padding: 8px 0;
+        border-top: 1px solid rgba(255, 247, 234, 0.08);
+      }
+
+      .route-row span:first-child {
+        color: var(--quiet);
+        font-size: 12px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .route-row span:last-child {
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.25;
+        font-weight: 740;
+        text-align: right;
+      }
+
+      .reason {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid rgba(79, 230, 200, 0.3);
+        border-radius: 8px;
+        background: rgba(79, 230, 200, 0.08);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.4;
+        font-weight: 650;
+      }
+
+      .drawer {
+        position: absolute;
+        right: 56px;
+        top: 134px;
+        width: 420px;
+        padding: 16px;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(18px);
+        transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+      }
+
+      .drawer.is-open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(0);
+      }
+
+      .drawer-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .drawer-card {
+        display: grid;
+        gap: 4px;
+        min-height: 54px;
+        padding: 11px 12px;
+        border: 1px solid rgba(255, 247, 234, 0.1);
+        border-radius: 8px;
+        background: rgba(255, 247, 234, 0.05);
+      }
+
+      .drawer-card strong { font-size: 14px; }
+      .drawer-card span { color: var(--quiet); font-size: 12px; font-weight: 700; }
+
+      @media (max-width: 1280px) {
+        body { overflow: auto; }
+        .bottom { grid-template-columns: 1fr; }
+        .controls { grid-template-columns: repeat(3, 1fr); }
+        .inspector, .drawer { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="player">
+      <div class="scene"></div>
+
+      <header class="top">
+        <section class="identity" aria-label="Now playing">
+          <div class="crumb"><span class="mark">V</span> Movie - The Meridian Signal</div>
+          <h1>The Meridian Signal</h1>
+          <div class="chips">
+            <span class="chip direct" id="mode-chip">Direct Play</span>
+            <span class="chip">HEVC Main10 HDR10+</span>
+            <span class="chip">TrueHD 7.1</span>
+            <span class="chip">English SRT</span>
+          </div>
+        </section>
+        <div class="session"><span class="dot"></span> Atlas Server - LAN - Buffer healthy</div>
+      </header>
+
+      <div class="center-pause" aria-label="Paused"></div>
+
+      <div class="caption">A signal that seems to know every film in its archive.</div>
+
+      <section class="drawer" id="drawer" aria-label="Track and quality drawer">
+        <div class="panel-title"><strong id="drawer-title">Quick Selector</strong><span>changes affect playback path</span></div>
+        <div class="drawer-grid" id="drawer-grid">
+          <div class="drawer-card"><strong>Original 4K</strong><span>Direct Play - 72 Mbps - 86.4 GB</span></div>
+          <div class="drawer-card"><strong>Remote 1080p</strong><span>Video Transcode - 12 Mbps - GPU stream</span></div>
+          <div class="drawer-card"><strong>Balanced Download</strong><span>Pre-transcoded - 14.2 GB</span></div>
+        </div>
+      </section>
+
+      <section class="bottom" aria-label="Playback controls">
+        <div class="transport">
+          <div class="time-row">
+            <span>1:26:48</span>
+            <span>Chapter 9 - The Archive Answers</span>
+            <span>-51:12</span>
+          </div>
+          <div class="timeline" aria-label="Timeline">
+            <div class="track"></div>
+            <div class="buffered"></div>
+            <div class="played"></div>
+            <div class="chapter" style="left: 12%"></div>
+            <div class="chapter" style="left: 38%"></div>
+            <div class="chapter" style="left: 61%"></div>
+            <div class="chapter" style="left: 82%"></div>
+            <div class="playhead"></div>
+          </div>
+
+          <div class="controls">
+            <button class="control" data-panel="none"><span>-10</span><span>Back</span></button>
+            <button class="control primary" data-panel="none"><span>||</span><span>Pause</span></button>
+            <button class="control" data-panel="none"><span>+30</span><span>Skip</span></button>
+            <button class="control" data-panel="versions"><span>4K</span><span>Version</span></button>
+            <button class="control" data-panel="audio"><span>7.1</span><span>Audio</span></button>
+            <button class="control" data-panel="subtitles"><span>CC</span><span>Subtitles</span></button>
+            <button class="control" data-panel="quality"><span>72</span><span>Quality</span></button>
+            <button class="control" data-panel="inspector"><span>i</span><span>Inspector</span></button>
+            <button class="control" data-panel="none"><span>OK</span><span>Watched</span></button>
+          </div>
+
+          <div class="quick-state">
+            <span class="state-pill good">Subtitles: English SRT - Direct render</span>
+            <span class="state-pill good">Audio: TrueHD 7.1 - Direct</span>
+            <span class="state-pill good">Version: Original 4K - Direct Play</span>
+          </div>
+        </div>
+
+        <aside class="inspector" aria-label="Playback inspector">
+          <div class="panel-title"><strong>Playback Inspector</strong><span id="inspector-path">Direct Play</span></div>
+          <div class="route">
+            <div class="route-row"><span>Source</span><span>MKV - 72 Mbps</span></div>
+            <div class="route-row"><span>Video</span><span>HEVC Main10 HDR10+</span></div>
+            <div class="route-row"><span>Audio</span><span>TrueHD 7.1</span></div>
+            <div class="route-row"><span>Subs</span><span>SRT direct render</span></div>
+            <div class="route-row"><span>Server</span><span>0% transcode load</span></div>
+          </div>
+          <div class="reason" id="reason">Apple TV supports the selected video, audio, subtitle, and container path. No remux or transcode required.</div>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const drawer = document.querySelector("#drawer");
+      const drawerTitle = document.querySelector("#drawer-title");
+      const drawerGrid = document.querySelector("#drawer-grid");
+      const modeChip = document.querySelector("#mode-chip");
+      const inspectorPath = document.querySelector("#inspector-path");
+      const reason = document.querySelector("#reason");
+      const controls = [...document.querySelectorAll(".control")];
+
+      const panels = {
+        versions: {
+          title: "Versions",
+          mode: "Direct Play",
+          reason: "Original 4K is selected. The client supports this source, so Vyrden does not need to remux or transcode.",
+          cards: [
+            ["Original 4K", "Direct Play - 72 Mbps - HDR10+"],
+            ["4K MP4 Route", "Remux only - no quality loss"],
+            ["Remote 1080p", "Video transcode - 12 Mbps"]
+          ]
+        },
+        audio: {
+          title: "Audio",
+          mode: "Direct Play",
+          reason: "TrueHD 7.1 is selected and supported by the active output route.",
+          cards: [
+            ["English TrueHD 7.1", "Selected - direct"],
+            ["English EAC3 5.1", "Compatible fallback"],
+            ["Commentary AAC", "Stereo"]
+          ]
+        },
+        subtitles: {
+          title: "Subtitles",
+          mode: "Direct Play",
+          reason: "English SRT is selected and can render on the client without subtitle burn-in.",
+          cards: [
+            ["English SRT", "Selected - direct render"],
+            ["English Forced SRT", "Direct render"],
+            ["English PGS", "Would require subtitle burn-in"]
+          ]
+        },
+        quality: {
+          title: "Quality",
+          mode: "Direct Play",
+          reason: "Current network route supports the original 72 Mbps stream with healthy buffer.",
+          cards: [
+            ["Original", "72 Mbps - Direct Play"],
+            ["Balanced", "24 Mbps - remux if needed"],
+            ["Travel", "8 Mbps - transcode"]
+          ]
+        },
+        inspector: {
+          title: "Inspector",
+          mode: "Direct Play",
+          reason: "This is the full playback explanation. Vyrden should always say why it chose direct play, remux, or transcode.",
+          cards: [
+            ["Path", "Direct Play"],
+            ["Why", "Client supports selected streams"],
+            ["Server cost", "0% transcode load"]
+          ]
+        }
+      };
+
+      function openPanel(name) {
+        if (name === "none") {
+          drawer.classList.remove("is-open");
+          return;
+        }
+
+        const panel = panels[name];
+        drawerTitle.textContent = panel.title;
+        drawerGrid.innerHTML = panel.cards
+          .map(([title, body]) => `<div class="drawer-card"><strong>${title}</strong><span>${body}</span></div>`)
+          .join("");
+        modeChip.textContent = panel.mode;
+        inspectorPath.textContent = panel.mode;
+        reason.textContent = panel.reason;
+        drawer.classList.add("is-open");
+      }
+
+      controls.forEach((control) => {
+        control.addEventListener("focus", () => openPanel(control.dataset.panel));
+        control.addEventListener("mouseenter", () => openPanel(control.dataset.panel));
+      });
+
+      document.addEventListener("keydown", (event) => {
+        const index = controls.indexOf(document.activeElement);
+        if (index < 0) return;
+
+        if (event.key === "ArrowRight" && controls[index + 1]) {
+          controls[index + 1].focus();
+          event.preventDefault();
+        }
+
+        if (event.key === "ArrowLeft" && controls[index - 1]) {
+          controls[index - 1].focus();
+          event.preventDefault();
+        }
+      });
+
+      controls[1]?.focus();
+    </script>
+  </body>
+</html>
+

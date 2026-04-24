@@ -50,3 +50,8 @@ Design the Movie Detail direction into a fuller TV product system:
 - Version selector.
 - Download selector.
 
+Current prototype coverage:
+
+- Movie Detail Concept leads the browsing and detail direction.
+- Playback Overlay Concept extends that direction into the watching state.
+- Signal Deck remains an exploration for playback-route visualization and focus-driven browsing.

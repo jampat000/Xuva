@@ -65,6 +65,14 @@ Required sections:
 - More.
 - Quiet direct-play/transcode state.
 
+Design intent:
+
+- Keep play/pause, skip, version, audio, subtitles, quality, inspector, and watched state visible in one predictable control row.
+- Let audio, subtitle, version, and quality focus open a lightweight selector without leaving playback.
+- Keep direct-play/remux/transcode state visible as a small status, not as a distracting dashboard.
+- Preserve a full inspector path for users who want to know exactly why Vyrden chose the current playback route.
+- Make subtitle burn-in risk visible before the user selects a subtitle track.
+
 ### Playback Inspector
 
 Purpose: make Vyrden's technical advantage visible.
