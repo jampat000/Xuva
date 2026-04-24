@@ -66,4 +66,4 @@ The first technical milestone is a playback decision prototype:
 - [Monetization](docs/monetization.md)
 - [Roadmap](docs/roadmap.md)
 - [Competitive Notes](docs/competitive-notes.md)
-
+- [Design](docs/design/README.md)
