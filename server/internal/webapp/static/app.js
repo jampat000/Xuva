@@ -69,22 +69,26 @@ async function renderDashboard() {
   const reviewCount = health.needsReview || 0;
   const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
   const featured = recent.recent && recent.recent[0];
+  const movieCount = summary.movies || 0;
+  const seriesCount = summary.series || 0;
+  const episodeCount = summary.episodes || 0;
+  const totalTitles = movieCount + seriesCount;
   view.innerHTML = `
     <div class="dashboard stack">
       <section class="hero">
         <article class="feature">
           <div class="feature-content">
             <p class="eyebrow">Media command dashboard</p>
-            <h1>${featured ? escapeHTML(featured.name) : "Your library, fully visible."}</h1>
-            <p class="lead">${summary.movies || 0} movies, ${summary.series || 0} series, and ${summary.episodes || 0} episodes indexed. Vyrden keeps playback decisions, source quality, storage health, and review work visible without turning your media library into a server console.</p>
+            <h1>${dashboardTitle(featured, summary)}</h1>
+            <p class="lead">${dashboardCopy(summary, health, featured)}</p>
             <div class="meta-line">
               <span class="badge">${summary.mediaSources || 0} sources</span>
               <span class="badge">${summary.libraries || 0} libraries</span>
-              <span class="badge">${summary.unprobed || 0} unprobed</span>
-              <span class="badge good">${directPlayable}% playable</span>
+              <span class="badge ${summary.unprobed ? "warn" : "good"}">${summary.unprobed || 0} unprobed</span>
+              <span class="badge ${directPlayable >= 90 ? "good" : "warn"}">${directPlayable}% playable</span>
             </div>
             <div class="actions">
-              <button class="primary" onclick="navigate('movies')">Browse Movies</button>
+              <button class="primary" onclick="navigate('${movieCount ? "movies" : "tv"}')">${movieCount ? "Browse Movies" : "Browse TV"}</button>
               <button onclick="navigate('playback')">Playback Lab</button>
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
@@ -94,7 +98,7 @@ async function renderDashboard() {
         <aside class="panel pad">
           <div class="panel-title"><strong>Playback Decision</strong><span class="badge route">${sessions.sessions.length ? "Live" : "Ready"}</span></div>
           <div class="decision">
-            <strong>${sessions.sessions.length ? `${sessions.sessions.length} Active` : "Direct Ready"}</strong>
+            <strong>${sessions.sessions.length ? `${sessions.sessions.length} Active` : directPlayable >= 90 ? "Direct Ready" : "Needs Probe"}</strong>
             <span>${sessions.sessions.length ? "There are active playback sessions. Monitor route, progress, and server load from Activity." : "No active transcodes. New playback can start with full server headroom."}</span>
           </div>
           <div class="kv">
@@ -108,10 +112,10 @@ async function renderDashboard() {
       </section>
 
       <section class="insight-grid">
-        ${metric("Movies", summary.movies)}
-        ${metric("TV Episodes", summary.episodes)}
-        ${metric("Direct Playable", `${directPlayable}%`)}
-        ${metric("Need Review", reviewCount)}
+        ${metric("Movies", movieCount, movieCount ? "Feature films indexed" : "Add or scan a movie library")}
+        ${metric("Series / Episodes", `${seriesCount} / ${episodeCount}`, "TV hierarchy and episode files")}
+        ${metric("Direct Playable", `${directPlayable}%`, `${health.unsupported || 0} unsupported sources`)}
+        ${metric("Need Review", reviewCount, reviewCount ? "Metadata or match work" : "No review blockers")}
       </section>
 
       <section class="dashboard-grid">
@@ -127,7 +131,7 @@ async function renderDashboard() {
 
       <section class="dashboard-grid">
         <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div>${jobCards(scans.scans)}</div>
-        <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions)}</div>
+        <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions, totalTitles)}</div>
       </section>
     </div>`;
 }
@@ -151,7 +155,7 @@ async function renderMovies() {
 }
 
 function movieCard(item) {
-  return `<article class="poster-card" data-filter="${escapeAttr(item.title)} ${item.year || ""}">
+  return `<article class="poster-card" data-filter="${escapeAttr(item.title)} ${item.year || ""}" data-initial="${escapeAttr(initials(item.title))}">
     <img alt="" src="/api/artwork/movie/${item.id}" loading="lazy">
     <button class="poster-action" onclick="showMovie('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
@@ -171,7 +175,9 @@ async function showMovie(id) {
   viewTitle.textContent = movie.title;
   view.innerHTML = `
     <div class="detail-command">
+      <div class="detail-backdrop"><img alt="" src="/api/artwork/movie/${movie.id}"></div>
       <section class="detail-main">
+        <button class="back-button" onclick="navigate('movies')">Back to Movies</button>
         <div class="eyebrow">Featured from your library</div>
         <h1>${escapeHTML(movie.title)}</h1>
         <div class="meta-line">
@@ -181,6 +187,7 @@ async function showMovie(id) {
           <span class="badge route">${selected ? "Direct Play Candidate" : "No Source"}</span>
         </div>
         <p class="lead">${movie.needsReview ? "This item needs metadata review before Vyrden can fully trust its match." : "Choose a version, confirm the playback route, then play directly from your local library. The selected source stays explicit so users understand quality, route, and server impact before pressing play."}</p>
+        ${selected ? `<div class="source-strip"><div><span>Selected source</span><strong>${escapeHTML(selected.qualityLabel || "Original source")}</strong></div><div><span>File size</span><strong>${formatBytes(selected.sizeBytes)}</strong></div><div><span>Container</span><strong>${escapeHTML((selected.relPath || "").split(".").pop() || "media")}</strong></div></div>` : ""}
         <div class="actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
           ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}" target="_blank">Play From Start</a>` : ""}
@@ -216,7 +223,7 @@ async function showMovie(id) {
             <div><span>Video</span><span>${selected ? escapeHTML(selected.qualityLabel || "Source") : "None"}</span></div>
             <div><span>Audio</span><span>Passthrough ready</span></div>
             <div><span>Subtitles</span><span>SRT optional</span></div>
-            <div><span>File</span><span>${selected ? escapeHTML(selected.relPath) : "None"}</span></div>
+            <div><span>Server</span><span>Low impact route</span></div>
           </div>
         </section>
         <section class="panel pad">
@@ -232,7 +239,7 @@ async function showMovie(id) {
           <div class="panel-title"><strong>Media Intelligence</strong><span class="badge good">Clean</span></div>
           <div class="cast-list">
             <div><i></i><strong>Container</strong><span>${selected ? escapeHTML((selected.relPath || "").split(".").pop() || "media") : "none"}</span></div>
-            <div><i></i><strong>Storage</strong><span>Local library source</span></div>
+            <div><i></i><strong>Storage</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
             <div><i></i><strong>Remote</strong><span>Use alternate encode if needed</span></div>
           </div>
         </section>
@@ -276,7 +283,7 @@ async function renderTV() {
 }
 
 function seriesCard(item) {
-  return `<article class="poster-card" data-filter="${escapeAttr(item.title)}">
+  return `<article class="poster-card" data-filter="${escapeAttr(item.title)}" data-initial="${escapeAttr(initials(item.title))}">
     <img alt="" src="/api/artwork/series/${item.id}" loading="lazy">
     <button class="poster-action" onclick="showSeries('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
@@ -343,7 +350,7 @@ async function renderLibraries() {
 function libraryCards(items = [], controls = false) {
   if (!items.length) return empty("No libraries configured yet.");
   return items.map(item => `<article class="library-card">
-    <div><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.kind)} - ${escapeHTML(item.storageType)}</span></div>
+    <div class="library-card-head"><div><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.kind)} library</span></div><span class="badge">${escapeHTML(item.storageType || "storage")}</span></div>
     <code>${escapeHTML(item.path)}</code>
     ${controls ? `<div class="inline-actions"><button onclick="scanLibrary('${item.id}')">Scan</button><button onclick="deleteLibrary('${item.id}')">Remove</button></div>` : ""}
   </article>`).join("");
@@ -515,8 +522,28 @@ function filterCards(value) {
   });
 }
 
-function metric(label, value) {
-  return `<div class="card metric"><span>${escapeHTML(label)}</span><strong>${value ?? 0}</strong></div>`;
+function dashboardTitle(featured, summary) {
+  if (featured) return escapeHTML(featured.name);
+  if ((summary.movies || 0) > 0) return "Movies ready for inspection.";
+  if ((summary.series || 0) > 0) return "Your TV library, under control.";
+  return "Your media system, at a glance.";
+}
+
+function dashboardCopy(summary, health, featured) {
+  if (featured) {
+    return `${summary.movies || 0} movies, ${summary.series || 0} series, and ${summary.episodes || 0} episodes indexed. Resume playback, inspect source quality, and keep server impact visible from the first screen.`;
+  }
+  if ((summary.movies || 0) === 0 && (summary.series || 0) > 0) {
+    return `${summary.series || 0} series and ${summary.episodes || 0} episodes are indexed. Movie libraries are empty or still scanning, so Vyrden is focusing this dashboard on TV, probes, playback readiness, and storage health.`;
+  }
+  if ((summary.mediaSources || 0) === 0) {
+    return "Add a Movies or TV library to start building the dashboard. Vyrden will surface playback decisions, source quality, storage status, probe health, and review work as soon as media is indexed.";
+  }
+  return `${summary.mediaSources || 0} media sources are indexed, with ${health.needsReview || 0} review items and ${summary.unprobed || 0} sources still needing probe analysis.`;
+}
+
+function metric(label, value, note = "") {
+  return `<div class="card metric"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value ?? 0)}</strong>${note ? `<small>${escapeHTML(note)}</small>` : ""}</div>`;
 }
 
 function signalPill(label, value) {
@@ -533,8 +560,8 @@ function formatBytes(value) {
 }
 
 function mediaCards(items = []) {
-  if (!items.length) return empty("Nothing to resume yet.");
-  return `<div class="mini-list">${items.slice(0, 6).map(item => `<a href="/play/${item.mediaSourceId}" target="_blank"><strong>${escapeHTML(item.name)}</strong><span>${Math.round((item.percent || 0) * 100)}% - ${escapeHTML(item.kind)}</span></a>`).join("")}</div>`;
+  if (!items.length) return empty("Nothing to resume yet. Playback history will appear here after the first session.");
+  return `<div class="mini-list">${items.slice(0, 6).map(item => `<a href="/play/${item.mediaSourceId}" target="_blank"><strong>${escapeHTML(item.name)}</strong><span>${Math.round((item.percent || 0) * 100)}% watched - ${escapeHTML(item.kind)}</span><i style="--progress:${Math.max(4, Math.round((item.percent || 0) * 100))}%"></i></a>`).join("")}</div>`;
 }
 
 function reviewCards(items = []) {
@@ -545,8 +572,8 @@ function reviewCards(items = []) {
   </article>`).join("")}</div>`;
 }
 
-function versionGroups(items = []) {
-  if (!items.length) return empty("No duplicate version groups.");
+function versionGroups(items = [], totalTitles = 0) {
+  if (!items.length) return empty(totalTitles ? "No duplicate version groups found." : "No version groups yet. Scan libraries to build movie and TV source intelligence.");
   return `<div class="version-grid">${items.map(item => `<article class="version-card">
     <div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.kind)} - ${item.versionCount} versions</small></div>
   </article>`).join("")}</div>`;
@@ -561,7 +588,7 @@ function sessionCards(items = []) {
 }
 
 function jobCards(items = []) {
-  if (!items || !items.length) return empty("No jobs yet.");
+  if (!items || !items.length) return empty("No jobs yet. Scans, probes, remuxes, and transcodes will show here when they run.");
   return `<div class="version-grid">${items.slice(0, 8).map(item => `<article class="version-card">
     <div><strong>${escapeHTML(item.status || "queued")}</strong><small>${escapeHTML(item.id || "")}</small></div>
     <small>${escapeHTML(item.lastPath || item.outputPath || item.mediaFiles || item.completed || "")}</small>
@@ -604,6 +631,11 @@ function link(href, text) {
 
 function escapeAttr(value) {
   return escapeHTML(value).replace(/`/g, "&#096;");
+}
+
+function initials(value) {
+  const words = String(value || "V").trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 2).map(word => word[0]).join("").toUpperCase() || "V";
 }
 
 function escapeHTML(value) {
