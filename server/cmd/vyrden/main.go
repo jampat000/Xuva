@@ -16,7 +16,11 @@ import (
 
 func main() {
 	cfg := config.FromEnv()
-	application := app.New(cfg)
+	application, err := app.New(context.Background(), cfg)
+	if err != nil {
+		slog.Error("server startup failed", "error", err)
+		os.Exit(1)
+	}
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

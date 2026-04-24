@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
+	"github.com/vyrdenhq/vyrden/server/internal/database"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
@@ -25,7 +28,7 @@ import (
 
 func TestHealthUsesStableStartedAt(t *testing.T) {
 	startedAt := time.Date(2026, 4, 24, 3, 4, 5, 0, time.UTC)
-	router := NewRouter(testDeps(startedAt))
+	router := NewRouter(testDeps(t, startedAt))
 
 	first := getJSON(t, router, "/api/health")
 	second := getJSON(t, router, "/api/health")
@@ -39,7 +42,7 @@ func TestHealthUsesStableStartedAt(t *testing.T) {
 }
 
 func TestArchitectureExposesSeparateQueuesAndWorkloads(t *testing.T) {
-	router := NewRouter(testDeps(time.Now()))
+	router := NewRouter(testDeps(t, time.Now()))
 	payload := getJSON(t, router, "/api/architecture")
 
 	queues, ok := payload["queues"].([]any)
@@ -53,7 +56,7 @@ func TestArchitectureExposesSeparateQueuesAndWorkloads(t *testing.T) {
 }
 
 func TestPlaybackDecisionEndpointIsExplicitlyDeferred(t *testing.T) {
-	router := NewRouter(testDeps(time.Now()))
+	router := NewRouter(testDeps(t, time.Now()))
 	payload := getJSON(t, router, "/api/playback/decision?mediaSourceId=abc&clientProfile=android-tv")
 
 	if payload["mode"] != string(playback.DecisionDeferred) {
@@ -72,7 +75,7 @@ func TestMovieScanEndpointUsesMovieClassifier(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "Dune Part Two (2024)", "Dune.Part.Two.2024.2160p.REMUX.mkv"))
 	writeTestFile(t, filepath.Join(root, "poster.jpg"))
 
-	router := NewRouter(testDeps(time.Now()))
+	router := NewRouter(testDeps(t, time.Now()))
 	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{
 		"path":        root,
 		"sampleLimit": 10,
@@ -92,6 +95,10 @@ func TestMovieScanEndpointUsesMovieClassifier(t *testing.T) {
 	if movie["qualityLabel"] != "4K Remux" {
 		t.Fatalf("expected parsed quality, got %#v", movie["qualityLabel"])
 	}
+	persisted := payload["persisted"].(map[string]any)
+	if persisted["mediaSources"] != float64(1) {
+		t.Fatalf("expected one persisted media source, got %#v", persisted["mediaSources"])
+	}
 }
 
 func TestTVScanEndpointUsesEpisodeClassifier(t *testing.T) {
@@ -99,7 +106,7 @@ func TestTVScanEndpointUsesEpisodeClassifier(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "The Bear", "Season 02", "The.Bear.S02E03.Sundae.1080p.WEB-DL.mkv"))
 	writeTestFile(t, filepath.Join(root, "The Bear", "Season 02", "notes.txt"))
 
-	router := NewRouter(testDeps(time.Now()))
+	router := NewRouter(testDeps(t, time.Now()))
 	payload := postJSON(t, router, "/api/libraries/tv/scan", map[string]any{
 		"path":        root,
 		"sampleLimit": 10,
@@ -124,7 +131,37 @@ func TestTVScanEndpointUsesEpisodeClassifier(t *testing.T) {
 	}
 }
 
-func testDeps(startedAt time.Time) Deps {
+func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
+	movieRoot := t.TempDir()
+	tvRoot := t.TempDir()
+	writeTestFile(t, filepath.Join(movieRoot, "Heat (1995)", "Heat.1995.1080p.BluRay.mkv"))
+	writeTestFile(t, filepath.Join(tvRoot, "The Bear", "Season 02", "The.Bear.S02E03.Sundae.1080p.WEB-DL.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	postJSON(t, router, "/api/libraries/scan", map[string]any{
+		"moviesPath":  movieRoot,
+		"tvPath":      tvRoot,
+		"sampleLimit": 10,
+	})
+	summary := getJSON(t, router, "/api/catalog/summary")
+
+	if summary["libraries"] != float64(2) {
+		t.Fatalf("expected two libraries, got %#v", summary["libraries"])
+	}
+	if summary["mediaSources"] != float64(2) {
+		t.Fatalf("expected two media sources, got %#v", summary["mediaSources"])
+	}
+	if summary["movies"] != float64(1) {
+		t.Fatalf("expected one movie, got %#v", summary["movies"])
+	}
+	if summary["episodes"] != float64(1) {
+		t.Fatalf("expected one episode, got %#v", summary["episodes"])
+	}
+}
+
+func testDeps(t *testing.T, startedAt time.Time) Deps {
+	t.Helper()
+
 	cfg := config.Config{
 		HTTPAddr:         "127.0.0.1:8097",
 		EventBuffer:      2,
@@ -139,6 +176,15 @@ func testDeps(startedAt time.Time) Deps {
 		TranscodeWorkers: cfg.TranscodeWorkers,
 		GPUWorkers:       cfg.GPUWorkers,
 	})
+	db, err := database.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("close database: %v", err)
+		}
+	})
 	return Deps{
 		Config:    cfg,
 		StartedAt: startedAt,
@@ -147,6 +193,7 @@ func testDeps(startedAt time.Time) Deps {
 		Jobs:      jobs.NewRegistry(manager),
 		Libraries: libraries.NewService(),
 		Scanner:   scanner.NewService(),
+		Catalog:   catalog.NewService(db),
 		Media:     media.NewService(),
 		Movies:    movies.NewService(),
 		TV:        tv.NewService(),

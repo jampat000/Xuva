@@ -16,6 +16,8 @@ Structure:
 - `cmd/vyrden`: process entrypoint.
 - `internal/api`: HTTP/JSON and SSE.
 - `internal/app`: service wiring and lifecycle.
+- `internal/database`: SQLite connection, pragmas, and migrations.
+- `internal/catalog`: SQLite-backed library and media catalog persistence.
 - `internal/libraries`: configured movie and TV roots.
 - `internal/scanner`: shared filesystem walking and media extension detection.
 - `internal/media`: shared media source model.
@@ -33,6 +35,10 @@ Initial scan endpoints:
 - `POST /api/libraries/scan`
 
 Scan requests can pass `path`, or use `VYRDEN_MOVIES_PATH` and `VYRDEN_TV_PATH` when those environment variables are configured.
+
+Catalog endpoints:
+
+- `GET /api/catalog/summary`
 
 First milestone:
 

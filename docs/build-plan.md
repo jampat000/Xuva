@@ -48,6 +48,8 @@ Internal separation:
 - Separate bounded queues for scan, probe, and transcode work.
 - Shared filesystem walker with separate movie and TV classifiers.
 - Separate scan endpoints for Movies, TV, and combined library scans.
+- SQLite migrations for libraries, media sources, movies, TV series/seasons/episodes, versions, and scan runs.
+- Scan endpoint persistence with idempotent upserts.
 
 ## Client Skeleton
 

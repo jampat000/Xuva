@@ -51,6 +51,7 @@ server/
   internal/app/      Dependency wiring and lifecycle.
   internal/config/   Runtime configuration.
   internal/database/ SQLite connection and migrations.
+  internal/catalog/  SQLite-backed media catalog persistence.
   internal/libraries Library folders and scan scheduling.
   internal/scanner/  Shared filesystem walking and media extension filtering.
   internal/probe/    ffprobe worker pool.
@@ -146,6 +147,7 @@ Rules:
 - The filesystem walker is shared; movie and TV classification logic is separate.
 - `X:\Movies` and `X:\TV` should be scanned as separate libraries, even though their files feed the same media source and playback engine.
 - A movie scan can be rescheduled without touching TV, and a TV scan can be rescheduled without touching movies.
+- Scan results persist into SQLite as libraries, media sources, movie versions, series, seasons, episodes, and scan runs.
 
 ## Resource Scheduling
 
@@ -177,6 +179,7 @@ Implementation rules:
 - Transcoding has a strict worker pool.
 - GPU jobs have a separate limiter.
 - SQLite writes should use short transactions and batching where appropriate.
+- SQLite should run locally in WAL mode with a short busy timeout and foreign keys enabled.
 - SSE fanout must be non-blocking so a slow browser cannot block playback or scanning.
 - Direct streaming must not wait behind scan/probe jobs.
 - Movies and TV can scan independently, but both feed the shared media source store.

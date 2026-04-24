@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/api"
+	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/database"
 	"github.com/vyrdenhq/vyrden/server/internal/devices"
@@ -30,6 +31,7 @@ type Application struct {
 	Config    config.Config
 	StartedAt time.Time
 	Database  *database.Service
+	Catalog   *catalog.Service
 	Events    *events.Bus
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
@@ -49,7 +51,7 @@ type Application struct {
 	Downloads *downloads.Service
 }
 
-func New(cfg config.Config) *Application {
+func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	limits := resources.Limits{
 		ScanWorkers:      cfg.ScanWorkers,
 		ProbeWorkers:     cfg.ProbeWorkers,
@@ -58,6 +60,11 @@ func New(cfg config.Config) *Application {
 	}
 	manager := resources.NewManager(limits)
 	bus := events.NewBus(cfg.EventBuffer)
+	databaseService, err := database.Open(ctx, cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	catalogService := catalog.NewService(databaseService)
 	libraryService := libraries.NewService()
 	if cfg.MovieLibraryPath != "" {
 		libraryService.Set(libraries.Library{
@@ -79,7 +86,8 @@ func New(cfg config.Config) *Application {
 	return &Application{
 		Config:    cfg,
 		StartedAt: time.Now().UTC(),
-		Database:  database.NewService(cfg.DataDir),
+		Database:  databaseService,
+		Catalog:   catalogService,
 		Events:    bus,
 		Resources: manager,
 		Jobs:      jobs.NewRegistry(manager),
@@ -96,7 +104,7 @@ func New(cfg config.Config) *Application {
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(),
 		Downloads: downloads.NewService(),
-	}
+	}, nil
 }
 
 func (a *Application) Router() http.Handler {
@@ -108,6 +116,7 @@ func (a *Application) Router() http.Handler {
 		Jobs:      a.Jobs,
 		Libraries: a.Libraries,
 		Scanner:   a.Scanner,
+		Catalog:   a.Catalog,
 		Media:     a.Media,
 		Movies:    a.Movies,
 		TV:        a.TV,
@@ -118,4 +127,5 @@ func (a *Application) Router() http.Handler {
 
 func (a *Application) Shutdown(context.Context) {
 	a.Events.Close()
+	_ = a.Database.Close()
 }

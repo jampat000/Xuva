@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
@@ -30,6 +31,7 @@ type Deps struct {
 	Jobs      *jobs.Registry
 	Libraries *libraries.Service
 	Scanner   *scanner.Service
+	Catalog   *catalog.Service
 	Media     *media.Service
 	Movies    *movies.Service
 	TV        *tv.Service
@@ -43,6 +45,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/events", eventsHandler(deps))
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
+	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
 	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/tv/scan", tvScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/scan", allLibrariesScanHandler(deps))
@@ -85,6 +88,17 @@ func librariesHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"libraries": deps.Libraries.List(),
 		})
+	}
+}
+
+func catalogSummaryHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		summary, err := deps.Catalog.Summary(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "catalog summary failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, summary)
 	}
 }
 
@@ -177,19 +191,21 @@ type libraryScanRequest struct {
 }
 
 type movieScanResponse struct {
-	Kind        scanner.LibraryKind `json:"kind"`
-	Path        string              `json:"path"`
-	Summary     scanner.Summary     `json:"summary"`
-	MoviesFound int                 `json:"moviesFound"`
-	Movies      []movies.Candidate  `json:"movies"`
+	Kind        scanner.LibraryKind    `json:"kind"`
+	Path        string                 `json:"path"`
+	Summary     scanner.Summary        `json:"summary"`
+	Persisted   catalog.PersistSummary `json:"persisted"`
+	MoviesFound int                    `json:"moviesFound"`
+	Movies      []movies.Candidate     `json:"movies"`
 }
 
 type tvScanResponse struct {
-	Kind          scanner.LibraryKind   `json:"kind"`
-	Path          string                `json:"path"`
-	Summary       scanner.Summary       `json:"summary"`
-	EpisodesFound int                   `json:"episodesFound"`
-	Episodes      []tv.EpisodeCandidate `json:"episodes"`
+	Kind          scanner.LibraryKind    `json:"kind"`
+	Path          string                 `json:"path"`
+	Summary       scanner.Summary        `json:"summary"`
+	Persisted     catalog.PersistSummary `json:"persisted"`
+	EpisodesFound int                    `json:"episodesFound"`
+	Episodes      []tv.EpisodeCandidate  `json:"episodes"`
 }
 
 type combinedScanResponse struct {
@@ -206,10 +222,24 @@ func scanMovies(w http.ResponseWriter, r *http.Request, deps Deps, path string, 
 		return movieScanResponse{}, false
 	}
 	candidates := deps.Movies.Classify(result.Files)
+	library := libraries.Library{
+		ID:   "movies",
+		Name: "Movies",
+		Path: result.Root,
+		Kind: libraries.KindMovies,
+	}
+	deps.Libraries.Set(library)
+	persisted, err := deps.Catalog.SaveMovieScan(r.Context(), library, result, candidates)
+	if err != nil {
+		deps.Events.Publish("scan.failed", map[string]string{"kind": string(scanner.KindMovies), "path": result.Root, "error": err.Error()})
+		writeError(w, http.StatusInternalServerError, "movie catalog update failed")
+		return movieScanResponse{}, false
+	}
 	response := movieScanResponse{
 		Kind:        scanner.KindMovies,
 		Path:        result.Root,
 		Summary:     result.Summary,
+		Persisted:   persisted,
 		MoviesFound: len(candidates),
 		Movies:      limitMovies(candidates, sampleLimit),
 	}
@@ -226,10 +256,24 @@ func scanTV(w http.ResponseWriter, r *http.Request, deps Deps, path string, samp
 		return tvScanResponse{}, false
 	}
 	candidates := deps.TV.Classify(result.Files)
+	library := libraries.Library{
+		ID:   "tv",
+		Name: "TV",
+		Path: result.Root,
+		Kind: libraries.KindTV,
+	}
+	deps.Libraries.Set(library)
+	persisted, err := deps.Catalog.SaveTVScan(r.Context(), library, result, candidates)
+	if err != nil {
+		deps.Events.Publish("scan.failed", map[string]string{"kind": string(scanner.KindTV), "path": result.Root, "error": err.Error()})
+		writeError(w, http.StatusInternalServerError, "tv catalog update failed")
+		return tvScanResponse{}, false
+	}
 	response := tvScanResponse{
 		Kind:          scanner.KindTV,
 		Path:          result.Root,
 		Summary:       result.Summary,
+		Persisted:     persisted,
 		EpisodesFound: len(candidates),
 		Episodes:      limitEpisodes(candidates, sampleLimit),
 	}
