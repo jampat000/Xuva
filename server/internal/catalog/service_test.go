@@ -63,6 +63,33 @@ func TestSaveMovieScanIsIdempotent(t *testing.T) {
 	if !ok || len(detail.Versions) != 1 {
 		t.Fatalf("unexpected movie detail: %#v", detail)
 	}
+	sources, err := service.ListMediaSources(ctx, 10, true)
+	if err != nil {
+		t.Fatalf("list media sources: %v", err)
+	}
+	if len(sources) != 1 || sources[0].Probed {
+		t.Fatalf("expected one unprobed source, got %#v", sources)
+	}
+	if err := service.SaveProbe(ctx, sources[0].ID, ProbeResult{
+		Container:       "matroska,webm",
+		DurationSeconds: 120,
+		Bitrate:         1000,
+		VideoCodec:      "h264",
+		Width:           1920,
+		Height:          1080,
+		AudioStreams:    1,
+		SubtitleStreams: 1,
+		RawJSON:         "{}",
+	}); err != nil {
+		t.Fatalf("save probe: %v", err)
+	}
+	source, ok, err := service.GetMediaSource(ctx, sources[0].ID)
+	if err != nil {
+		t.Fatalf("get media source: %v", err)
+	}
+	if !ok || !source.Probed || source.VideoCodec != "h264" {
+		t.Fatalf("unexpected probed source: %#v", source)
+	}
 }
 
 func TestSaveTVScanStoresSeriesEpisodeAndSource(t *testing.T) {

@@ -46,6 +46,14 @@ Scan requests can pass `path`, or use `VYRDEN_MOVIES_PATH` and `VYRDEN_TV_PATH` 
 Catalog endpoints:
 
 - `GET /api/catalog/summary`
+- `GET /api/movies`
+- `GET /api/movies/{id}`
+- `GET /api/series`
+- `GET /api/series/{id}`
+- `GET /api/review`
+- `GET /api/media-sources`
+- `GET /api/media-sources/{id}`
+- `POST /api/media-sources/{id}/probe`
 
 First milestone:
 

@@ -100,6 +100,39 @@ type ReviewItem struct {
 	ReviewReason string `json:"reviewReason"`
 }
 
+type MediaSourceItem struct {
+	ID              string  `json:"id"`
+	LibraryID       string  `json:"libraryId"`
+	Kind            string  `json:"kind"`
+	Path            string  `json:"path"`
+	RelPath         string  `json:"relPath"`
+	Name            string  `json:"name"`
+	Extension       string  `json:"extension"`
+	SizeBytes       int64   `json:"sizeBytes"`
+	ModifiedAt      string  `json:"modifiedAt"`
+	Probed          bool    `json:"probed"`
+	Container       string  `json:"container,omitempty"`
+	DurationSeconds float64 `json:"durationSeconds,omitempty"`
+	Bitrate         int64   `json:"bitrate,omitempty"`
+	VideoCodec      string  `json:"videoCodec,omitempty"`
+	Width           int     `json:"width,omitempty"`
+	Height          int     `json:"height,omitempty"`
+	AudioStreams    int     `json:"audioStreams,omitempty"`
+	SubtitleStreams int     `json:"subtitleStreams,omitempty"`
+}
+
+type ProbeResult struct {
+	Container       string  `json:"container"`
+	DurationSeconds float64 `json:"durationSeconds"`
+	Bitrate         int64   `json:"bitrate"`
+	VideoCodec      string  `json:"videoCodec"`
+	Width           int     `json:"width"`
+	Height          int     `json:"height"`
+	AudioStreams    int     `json:"audioStreams"`
+	SubtitleStreams int     `json:"subtitleStreams"`
+	RawJSON         string  `json:"rawJson"`
+}
+
 func NewService(database *database.Service) *Service {
 	return &Service{db: database.DB()}
 }
@@ -301,6 +334,102 @@ func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, err
 		var item ReviewItem
 		if err := rows.Scan(&item.Kind, &item.ID, &item.Title, &item.ReviewReason); err != nil {
 			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly bool) ([]MediaSourceItem, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	filter := ""
+	if unprobedOnly {
+		filter = "WHERE mp.media_source_id IS NULL"
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ms.id, ms.library_id, ms.kind, ms.path, ms.rel_path, ms.name, ms.extension, ms.size_bytes, ms.modified_at,
+			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
+		FROM media_sources ms
+		LEFT JOIN media_probes mp ON mp.media_source_id = ms.id
+		`+filter+`
+		ORDER BY ms.rel_path
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMediaSources(rows)
+}
+
+func (s *Service) GetMediaSource(ctx context.Context, id string) (MediaSourceItem, bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ms.id, ms.library_id, ms.kind, ms.path, ms.rel_path, ms.name, ms.extension, ms.size_bytes, ms.modified_at,
+			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
+		FROM media_sources ms
+		LEFT JOIN media_probes mp ON mp.media_source_id = ms.id
+		WHERE ms.id = ?
+	`, id)
+	if err != nil {
+		return MediaSourceItem{}, false, err
+	}
+	defer rows.Close()
+	items, err := scanMediaSources(rows)
+	if err != nil {
+		return MediaSourceItem{}, false, err
+	}
+	if len(items) == 0 {
+		return MediaSourceItem{}, false, nil
+	}
+	return items[0], true, nil
+}
+
+func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result ProbeResult) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO media_probes(media_source_id, container, duration_seconds, bitrate, video_codec, width, height, audio_streams, subtitle_streams, raw_json, probed_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(media_source_id) DO UPDATE SET
+			container = excluded.container,
+			duration_seconds = excluded.duration_seconds,
+			bitrate = excluded.bitrate,
+			video_codec = excluded.video_codec,
+			width = excluded.width,
+			height = excluded.height,
+			audio_streams = excluded.audio_streams,
+			subtitle_streams = excluded.subtitle_streams,
+			raw_json = excluded.raw_json,
+			probed_at = excluded.probed_at
+	`, mediaSourceID, result.Container, result.DurationSeconds, result.Bitrate, result.VideoCodec, result.Width, result.Height, result.AudioStreams, result.SubtitleStreams, result.RawJSON, timestamp(time.Now()))
+	return err
+}
+
+func scanMediaSources(rows *sql.Rows) ([]MediaSourceItem, error) {
+	var output []MediaSourceItem
+	for rows.Next() {
+		var item MediaSourceItem
+		var container sql.NullString
+		var duration sql.NullFloat64
+		var bitrate sql.NullInt64
+		var videoCodec sql.NullString
+		var width sql.NullInt64
+		var height sql.NullInt64
+		var audioStreams sql.NullInt64
+		var subtitleStreams sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.LibraryID, &item.Kind, &item.Path, &item.RelPath, &item.Name, &item.Extension, &item.SizeBytes, &item.ModifiedAt, &container, &duration, &bitrate, &videoCodec, &width, &height, &audioStreams, &subtitleStreams); err != nil {
+			return nil, err
+		}
+		item.Probed = container.Valid
+		if container.Valid {
+			item.Container = container.String
+			item.DurationSeconds = duration.Float64
+			item.Bitrate = bitrate.Int64
+			item.VideoCodec = videoCodec.String
+			item.Width = int(width.Int64)
+			item.Height = int(height.Int64)
+			item.AudioStreams = int(audioStreams.Int64)
+			item.SubtitleStreams = int(subtitleStreams.Int64)
 		}
 		output = append(output, item)
 	}

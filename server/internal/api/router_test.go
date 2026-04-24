@@ -21,6 +21,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
+	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
@@ -182,6 +183,17 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	if seriesDetail["title"] != "The Bear" {
 		t.Fatalf("expected The Bear series detail, got %#v", seriesDetail["title"])
 	}
+
+	sources := getJSON(t, router, "/api/media-sources?unprobed=true")
+	sourceList := sources["mediaSources"].([]any)
+	if len(sourceList) != 2 {
+		t.Fatalf("expected two unprobed media sources, got %#v", sourceList)
+	}
+	sourceID := sourceList[0].(map[string]any)["id"].(string)
+	sourceDetail := getJSON(t, router, "/api/media-sources/"+sourceID)
+	if sourceDetail["id"] != sourceID {
+		t.Fatalf("expected media source detail, got %#v", sourceDetail)
+	}
 }
 
 func testDeps(t *testing.T, startedAt time.Time) Deps {
@@ -233,6 +245,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Media:     media.NewService(),
 		Movies:    movieService,
 		TV:        tvService,
+		Probe:     probe.NewService("ffprobe"),
 		Playback:  playback.NewService(),
 		Sessions:  sessions.NewService(),
 	}

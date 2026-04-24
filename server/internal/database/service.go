@@ -103,6 +103,19 @@ var migrations = []string{
 		updated_at TEXT NOT NULL
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_media_sources_library_kind ON media_sources(library_id, kind)`,
+	`CREATE TABLE IF NOT EXISTS media_probes (
+		media_source_id TEXT PRIMARY KEY REFERENCES media_sources(id) ON DELETE CASCADE,
+		container TEXT NOT NULL,
+		duration_seconds REAL NOT NULL,
+		bitrate INTEGER NOT NULL,
+		video_codec TEXT NOT NULL,
+		width INTEGER NOT NULL,
+		height INTEGER NOT NULL,
+		audio_streams INTEGER NOT NULL,
+		subtitle_streams INTEGER NOT NULL,
+		raw_json TEXT NOT NULL,
+		probed_at TEXT NOT NULL
+	)`,
 	`CREATE TABLE IF NOT EXISTS movies (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,

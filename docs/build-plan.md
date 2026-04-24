@@ -51,6 +51,8 @@ Internal separation:
 - SQLite migrations for libraries, media sources, movies, TV series/seasons/episodes, versions, and scan runs.
 - Scan endpoint persistence with idempotent upserts.
 - Background scan jobs with SSE progress and scan job lookup endpoints.
+- Catalog browse APIs for movies, series, review items, and media sources.
+- ffprobe parser and media probe persistence.
 
 ## Client Skeleton
 

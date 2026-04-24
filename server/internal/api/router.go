@@ -17,6 +17,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
+	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
@@ -37,6 +38,7 @@ type Deps struct {
 	Media     *media.Service
 	Movies    *movies.Service
 	TV        *tv.Service
+	Probe     *probe.Service
 	Playback  *playback.Service
 	Sessions  *sessions.Service
 }
@@ -54,6 +56,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/series", seriesHandler(deps))
 	mux.HandleFunc("GET /api/series/{id}", seriesDetailHandler(deps))
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
+	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
+	mux.HandleFunc("POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
 	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
@@ -183,6 +188,66 @@ func reviewHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+func mediaSourcesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Catalog.ListMediaSources(r.Context(), queryInt(r, "limit", 100), r.URL.Query().Get("unprobed") == "true")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source list failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"mediaSources": items})
+	}
+}
+
+func mediaSourceDetailHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source detail failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	}
+}
+
+func mediaSourceProbeHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		result, err := deps.Probe.Probe(r.Context(), item.Path)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "ffprobe failed")
+			return
+		}
+		if err := deps.Catalog.SaveProbe(r.Context(), item.ID, catalog.ProbeResult{
+			Container:       result.Container,
+			DurationSeconds: result.DurationSeconds,
+			Bitrate:         result.Bitrate,
+			VideoCodec:      result.VideoCodec,
+			Width:           result.Width,
+			Height:          result.Height,
+			AudioStreams:    result.AudioStreams,
+			SubtitleStreams: result.SubtitleStreams,
+			RawJSON:         result.RawJSON,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "probe persistence failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

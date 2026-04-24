@@ -106,7 +106,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Libraries: libraryService,
 		Scanner:   scannerService,
 		Scans:     scanService,
-		Probe:     probe.NewService(),
+		Probe:     probe.NewService(cfg.FFprobePath),
 		Media:     media.NewService(),
 		Movies:    movieService,
 		TV:        tvService,
@@ -134,6 +134,7 @@ func (a *Application) Router() http.Handler {
 		Media:     a.Media,
 		Movies:    a.Movies,
 		TV:        a.TV,
+		Probe:     a.Probe,
 		Playback:  a.Playback,
 		Sessions:  a.Sessions,
 	})
