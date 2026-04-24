@@ -15,17 +15,21 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/database"
+	"github.com/vyrdenhq/vyrden/server/internal/devices"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
+	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
+	"github.com/vyrdenhq/vyrden/server/internal/probes"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
+	"github.com/vyrdenhq/vyrden/server/internal/transcode"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
 
@@ -203,6 +207,69 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	}
 }
 
+func TestPlaybackStateAndSessions(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Heat (1995)", "Heat.1995.1080p.BluRay.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	sources := getJSON(t, router, "/api/media-sources")
+	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+
+	state := requestJSON(t, router, http.MethodPut, "/api/playback/state/"+sourceID, map[string]any{
+		"progressSeconds": 91,
+		"durationSeconds": 100,
+	})
+	if state["watched"] != true {
+		t.Fatalf("expected 90 percent progress to mark watched, got %#v", state)
+	}
+	recent := getJSON(t, router, "/api/playback/recent")
+	if len(recent["recent"].([]any)) != 1 {
+		t.Fatalf("expected recent playback item, got %#v", recent)
+	}
+
+	session := postJSON(t, router, "/api/sessions", map[string]any{"mediaSourceId": sourceID, "deviceId": "web"})
+	sessionID := session["id"].(string)
+	updated := requestJSON(t, router, http.MethodPatch, "/api/sessions/"+sessionID, map[string]any{
+		"progressSeconds": 12,
+		"durationSeconds": 100,
+	})
+	if updated["progressSeconds"] != float64(12) {
+		t.Fatalf("expected session progress update, got %#v", updated)
+	}
+	active := getJSON(t, router, "/api/sessions")
+	if len(active["sessions"].([]any)) != 1 {
+		t.Fatalf("expected one active session, got %#v", active)
+	}
+}
+
+func TestMetadataMatchResolvesReview(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Unclear.File.Name.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	review := getJSON(t, router, "/api/review")
+	items := review["items"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("expected review item")
+	}
+	item := items[0].(map[string]any)
+	requestJSON(t, router, http.MethodPut, "/api/metadata/match", map[string]any{
+		"kind":  item["kind"],
+		"id":    item["id"],
+		"title": "Fixed Title",
+		"year":  2026,
+	})
+
+	review = getJSON(t, router, "/api/review")
+	if len(review["items"].([]any)) != 0 {
+		t.Fatalf("expected review queue to be resolved, got %#v", review)
+	}
+}
+
 func testDeps(t *testing.T, startedAt time.Time) Deps {
 	t.Helper()
 
@@ -253,8 +320,12 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Movies:    movieService,
 		TV:        tvService,
 		Probe:     probe.NewService("ffprobe"),
+		Probes:    probes.NewService(eventBus, registry.Probe, catalogService, probe.NewService("ffprobe")),
 		Playback:  playback.NewService(),
-		Sessions:  sessions.NewService(),
+		PlayState: playstate.NewService(db, eventBus),
+		Transcode: transcode.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "transcode")),
+		Devices:   devices.NewService(),
+		Sessions:  sessions.NewService(eventBus),
 	}
 }
 
@@ -296,12 +367,17 @@ func waitForScan(t *testing.T, router http.Handler, id string) map[string]any {
 
 func postJSON(t *testing.T, router http.Handler, path string, body any) map[string]any {
 	t.Helper()
+	return requestJSON(t, router, http.MethodPost, path, body)
+}
+
+func requestJSON(t *testing.T, router http.Handler, method string, path string, body any) map[string]any {
+	t.Helper()
 
 	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal json: %v", err)
 	}
-	request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw))
+	request := httptest.NewRequest(method, path, bytes.NewReader(raw))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)

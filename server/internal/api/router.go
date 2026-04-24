@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"strings"
@@ -11,12 +12,14 @@ import (
 
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
+	"github.com/vyrdenhq/vyrden/server/internal/devices"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
+	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/probes"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
@@ -45,7 +48,9 @@ type Deps struct {
 	Probe     *probe.Service
 	Probes    *probes.Service
 	Playback  *playback.Service
+	PlayState *playstate.Service
 	Transcode *transcode.Service
+	Devices   *devices.Service
 	Sessions  *sessions.Service
 }
 
@@ -63,6 +68,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/series/{id}", seriesDetailHandler(deps))
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
 	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
+	mux.HandleFunc("PUT /api/metadata/match", metadataMatchHandler(deps))
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
@@ -75,6 +81,14 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/probes", probeStartHandler(deps))
 	mux.HandleFunc("GET /api/work", workHandler(deps))
 	mux.HandleFunc("POST /api/work", workStartHandler(deps))
+	mux.HandleFunc("GET /api/devices/profiles", deviceProfilesHandler(deps))
+	mux.HandleFunc("GET /api/sessions", sessionsHandler(deps))
+	mux.HandleFunc("POST /api/sessions", sessionStartHandler(deps))
+	mux.HandleFunc("PATCH /api/sessions/{id}", sessionUpdateHandler(deps))
+	mux.HandleFunc("DELETE /api/sessions/{id}", sessionStopHandler(deps))
+	mux.HandleFunc("GET /api/playback/recent", playbackRecentHandler(deps))
+	mux.HandleFunc("GET /api/playback/state/{id}", playbackStateGetHandler(deps))
+	mux.HandleFunc("PUT /api/playback/state/{id}", playbackStateSetHandler(deps))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
 	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
@@ -220,6 +234,21 @@ func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
 			"suggestions": items,
 			"strategy":    "filename-and-folder-first matching; provider lookup will layer on top later",
 		})
+	}
+}
+
+func metadataMatchHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request catalog.MetadataUpdate
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		if err := deps.Catalog.ApplyMetadata(r.Context(), request); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		deps.Events.Publish("metadata.updated", request)
+		writeJSON(w, http.StatusOK, request)
 	}
 }
 
@@ -378,7 +407,45 @@ func playerHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, `<!doctype html><title>Vyrden Player</title><body style="margin:0;background:#05070a;color:white;font-family:system-ui"><video src="/api/media-sources/%s/stream" controls autoplay style="width:100vw;height:100vh"></video><div style="position:fixed;left:16px;bottom:16px;background:#000a;padding:10px;border-radius:8px">%s</div></body>`, id, item.Name)
+		_, _ = fmt.Fprintf(w, `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>%s · Vyrden</title>
+</head>
+<body style="margin:0;background:#05070a;color:white;font-family:system-ui">
+  <video id="player" src="/api/media-sources/%s/stream" controls autoplay style="width:100vw;height:100vh"></video>
+  <div style="position:fixed;left:16px;bottom:16px;background:#000a;padding:10px;border-radius:8px">%s</div>
+  <script>
+    const mediaSourceId = %q;
+    let sessionId = "";
+    const player = document.getElementById("player");
+    async function send(path, body, method = "POST") {
+      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+      return response.ok ? response.json() : {};
+    }
+    async function start() {
+      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", mode: "direct" });
+      sessionId = session.id || "";
+    }
+    async function tick(status) {
+      if (!sessionId) return;
+      const body = { progressSeconds: player.currentTime || 0, durationSeconds: player.duration || 0, status: status || (player.paused ? "paused" : "playing") };
+      await send("/api/sessions/" + sessionId, body, "PATCH");
+      await send("/api/playback/state/" + mediaSourceId, body, "PUT");
+    }
+    player.addEventListener("play", () => tick("playing"));
+    player.addEventListener("pause", () => tick("paused"));
+    player.addEventListener("ended", () => tick("completed"));
+    setInterval(() => tick(), 10000);
+    window.addEventListener("beforeunload", () => {
+      if (sessionId) navigator.sendBeacon("/api/sessions/" + sessionId, new Blob([JSON.stringify({ status: "stopped", progressSeconds: player.currentTime || 0, durationSeconds: player.duration || 0 })], { type: "application/json" }));
+    });
+    start();
+  </script>
+</body>
+</html>`, html.EscapeString(item.Name), id, html.EscapeString(item.Name), id)
 	}
 }
 
@@ -409,12 +476,119 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
+		if request.MediaSourceID != "" && request.SourcePath == "" {
+			source, ok, err := deps.Catalog.GetMediaSource(r.Context(), request.MediaSourceID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "media source lookup failed")
+				return
+			}
+			if !ok {
+				writeError(w, http.StatusNotFound, "media source not found")
+				return
+			}
+			request.SourcePath = source.Path
+		}
 		job, err := deps.Transcode.Start(r.Context(), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
+func deviceProfilesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"profiles": deps.Devices.Profiles()})
+	}
+}
+
+func sessionsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": deps.Sessions.List()})
+	}
+}
+
+func sessionStartHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request sessions.StartRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		session, err := deps.Sessions.Start(request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, session)
+	}
+}
+
+func sessionUpdateHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request sessions.UpdateRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		session, ok := deps.Sessions.Update(r.PathValue("id"), request)
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		_, _ = deps.PlayState.Set(r.Context(), session.MediaSourceID, playstate.Update{
+			UserID:          session.UserID,
+			ProgressSeconds: session.Progress,
+			DurationSeconds: session.Duration,
+		})
+		writeJSON(w, http.StatusOK, session)
+	}
+}
+
+func sessionStopHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, ok := deps.Sessions.Stop(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, session)
+	}
+}
+
+func playbackRecentHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.PlayState.Recent(r.Context(), r.URL.Query().Get("userId"), queryInt(r, "limit", 24))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "recent playback lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"recent": items})
+	}
+}
+
+func playbackStateGetHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		state, _, err := deps.PlayState.Get(r.Context(), r.URL.Query().Get("userId"), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "playback state lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
+	}
+}
+
+func playbackStateSetHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request playstate.Update
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		state, err := deps.PlayState.Set(r.Context(), r.PathValue("id"), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
 	}
 }
 

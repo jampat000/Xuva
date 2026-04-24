@@ -11,6 +11,7 @@ type Config struct {
 	MovieLibraryPath string `json:"movieLibraryPath,omitempty"`
 	TVLibraryPath    string `json:"tvLibraryPath,omitempty"`
 	FFprobePath      string `json:"ffprobePath"`
+	FFmpegPath       string `json:"ffmpegPath"`
 	EventBuffer      int    `json:"eventBuffer"`
 	ScanWorkers      int    `json:"scanWorkers"`
 	ProbeWorkers     int    `json:"probeWorkers"`
@@ -25,6 +26,7 @@ func FromEnv() Config {
 		MovieLibraryPath: envString("VYRDEN_MOVIES_PATH", ""),
 		TVLibraryPath:    envString("VYRDEN_TV_PATH", ""),
 		FFprobePath:      envString("VYRDEN_FFPROBE_PATH", "ffprobe"),
+		FFmpegPath:       envString("VYRDEN_FFMPEG_PATH", "ffmpeg"),
 		EventBuffer:      envInt("VYRDEN_EVENT_BUFFER", 128),
 		ScanWorkers:      envInt("VYRDEN_SCAN_WORKERS", 1),
 		ProbeWorkers:     envInt("VYRDEN_PROBE_WORKERS", 2),

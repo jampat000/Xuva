@@ -190,4 +190,31 @@ var migrations = []string{
 		ignored_files INTEGER NOT NULL,
 		error_count INTEGER NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		display_name TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		updated_at TEXT NOT NULL
+	)`,
+	`INSERT OR IGNORE INTO users(id, display_name, updated_at) VALUES('local', 'Local User', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+	`CREATE TABLE IF NOT EXISTS playback_states (
+		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		media_source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,
+		watched INTEGER NOT NULL DEFAULT 0,
+		progress_seconds REAL NOT NULL DEFAULT 0,
+		duration_seconds REAL NOT NULL DEFAULT 0,
+		last_played_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(user_id, media_source_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_playback_states_recent ON playback_states(user_id, last_played_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS metadata_overrides (
+		kind TEXT NOT NULL,
+		item_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		year INTEGER NOT NULL DEFAULT 0,
+		review_resolved INTEGER NOT NULL DEFAULT 0,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(kind, item_id)
+	)`,
 }

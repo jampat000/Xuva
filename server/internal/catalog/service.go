@@ -94,13 +94,14 @@ type SeasonDetail struct {
 }
 
 type EpisodeBrief struct {
-	ID            string `json:"id"`
-	SeasonNumber  int    `json:"seasonNumber"`
-	EpisodeNumber int    `json:"episodeNumber"`
-	EpisodeEnd    int    `json:"episodeEnd,omitempty"`
-	Title         string `json:"title,omitempty"`
-	NeedsReview   bool   `json:"needsReview"`
-	VersionCount  int    `json:"versionCount"`
+	ID            string         `json:"id"`
+	SeasonNumber  int            `json:"seasonNumber"`
+	EpisodeNumber int            `json:"episodeNumber"`
+	EpisodeEnd    int            `json:"episodeEnd,omitempty"`
+	Title         string         `json:"title,omitempty"`
+	NeedsReview   bool           `json:"needsReview"`
+	VersionCount  int            `json:"versionCount"`
+	Versions      []MovieVersion `json:"versions,omitempty"`
 }
 
 type ReviewItem struct {
@@ -115,6 +116,14 @@ type VersionGroup struct {
 	ID           string `json:"id"`
 	Title        string `json:"title"`
 	VersionCount int    `json:"versionCount"`
+}
+
+type MetadataUpdate struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Year   int    `json:"year,omitempty"`
+	Review bool   `json:"review"`
 }
 
 type MediaSourceItem struct {
@@ -216,7 +225,7 @@ func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, e
 	}
 	defer rows.Close()
 
-	var output []MovieListItem
+	output := []MovieListItem{}
 	for rows.Next() {
 		var item MovieListItem
 		var needsReview int
@@ -286,7 +295,7 @@ func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, 
 	}
 	defer rows.Close()
 
-	var output []SeriesListItem
+	output := []SeriesListItem{}
 	for rows.Next() {
 		var item SeriesListItem
 		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
@@ -329,6 +338,7 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 	defer rows.Close()
 
 	seasonIndex := map[string]int{}
+	episodeLocation := map[string][2]int{}
 	for rows.Next() {
 		var seasonID string
 		var seasonNumber int
@@ -346,9 +356,38 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 		if episode.ID != "" {
 			episode.NeedsReview = needsReview != 0
 			detail.Seasons[index].Episodes = append(detail.Seasons[index].Episodes, episode)
+			episodeLocation[episode.ID] = [2]int{index, len(detail.Seasons[index].Episodes) - 1}
 		}
 	}
-	return detail, true, rows.Err()
+	if err := rows.Err(); err != nil {
+		return SeriesDetail{}, false, err
+	}
+
+	versionRows, err := s.db.QueryContext(ctx, `
+		SELECT ev.episode_id, ms.id, ms.path, ms.rel_path, '' AS edition, ev.quality_label, ms.size_bytes, ms.modified_at
+		FROM episode_versions ev
+		JOIN media_sources ms ON ms.id = ev.media_source_id
+		JOIN tv_episodes e ON e.id = ev.episode_id
+		WHERE e.series_id = ?
+		ORDER BY e.season_number, e.episode_number, ev.quality_label DESC
+	`, id)
+	if err != nil {
+		return SeriesDetail{}, false, err
+	}
+	defer versionRows.Close()
+	for versionRows.Next() {
+		var episodeID string
+		var version MovieVersion
+		if err := versionRows.Scan(&episodeID, &version.MediaSourceID, &version.Path, &version.RelPath, &version.Edition, &version.QualityLabel, &version.SizeBytes, &version.ModifiedAt); err != nil {
+			return SeriesDetail{}, false, err
+		}
+		location, ok := episodeLocation[episodeID]
+		if ok {
+			episode := &detail.Seasons[location[0]].Episodes[location[1]]
+			episode.Versions = append(episode.Versions, version)
+		}
+	}
+	return detail, true, versionRows.Err()
 }
 
 func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, error) {
@@ -370,7 +409,7 @@ func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, err
 	}
 	defer rows.Close()
 
-	var output []ReviewItem
+	output := []ReviewItem{}
 	for rows.Next() {
 		var item ReviewItem
 		if err := rows.Scan(&item.Kind, &item.ID, &item.Title, &item.ReviewReason); err != nil {
@@ -403,7 +442,7 @@ func (s *Service) VersionGroups(ctx context.Context, limit int) ([]VersionGroup,
 		return nil, err
 	}
 	defer rows.Close()
-	var output []VersionGroup
+	output := []VersionGroup{}
 	for rows.Next() {
 		var item VersionGroup
 		if err := rows.Scan(&item.Kind, &item.ID, &item.Title, &item.VersionCount); err != nil {
@@ -412,6 +451,52 @@ func (s *Service) VersionGroups(ctx context.Context, limit int) ([]VersionGroup,
 		output = append(output, item)
 	}
 	return output, rows.Err()
+}
+
+func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) error {
+	update.Title = strings.TrimSpace(update.Title)
+	if update.Kind == "" || update.ID == "" || update.Title == "" {
+		return errors.New("kind, id, and title are required")
+	}
+	now := timestamp(time.Now())
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	switch update.Kind {
+	case "movie":
+		_, err = tx.ExecContext(ctx, `
+			UPDATE movies
+			SET title = ?, year = ?, sort_title = ?, needs_review = ?, review_reason = '', updated_at = ?
+			WHERE id = ?
+		`, update.Title, update.Year, sortTitle(update.Title), boolInt(update.Review), now, update.ID)
+	case "episode":
+		_, err = tx.ExecContext(ctx, `
+			UPDATE tv_episodes
+			SET title = ?, needs_review = ?, review_reason = '', updated_at = ?
+			WHERE id = ?
+		`, update.Title, boolInt(update.Review), now, update.ID)
+	default:
+		return errors.New("metadata kind must be movie or episode")
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO metadata_overrides(kind, item_id, title, year, review_resolved, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?)
+		ON CONFLICT(kind, item_id) DO UPDATE SET
+			title = excluded.title,
+			year = excluded.year,
+			review_resolved = excluded.review_resolved,
+			updated_at = excluded.updated_at
+	`, update.Kind, update.ID, update.Title, update.Year, boolInt(!update.Review), now)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly bool) ([]MediaSourceItem, error) {
@@ -480,7 +565,7 @@ func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result Pr
 }
 
 func scanMediaSources(rows *sql.Rows) ([]MediaSourceItem, error) {
-	var output []MediaSourceItem
+	output := []MediaSourceItem{}
 	for rows.Next() {
 		var item MediaSourceItem
 		var container sql.NullString
@@ -527,8 +612,10 @@ func (s *Service) SaveMovieScan(ctx context.Context, library libraries.Library, 
 
 	now := timestamp(time.Now())
 	movieIDs := make(map[string]struct{}, len(candidates))
+	sourceIDs := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		sourceID := sourceID(candidate.Media.Path)
+		sourceIDs = append(sourceIDs, sourceID)
 		if err := upsertMediaSource(ctx, tx, library.ID, media.KindMovie, sourceID, candidate.Media, now); err != nil {
 			return PersistSummary{}, err
 		}
@@ -540,6 +627,9 @@ func (s *Service) SaveMovieScan(ctx context.Context, library libraries.Library, 
 		if err := upsertMovieVersion(ctx, tx, movieID, sourceID, candidate, now); err != nil {
 			return PersistSummary{}, err
 		}
+	}
+	if err := deleteMissingSources(ctx, tx, library.ID, sourceIDs); err != nil {
+		return PersistSummary{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -570,8 +660,10 @@ func (s *Service) SaveTVScan(ctx context.Context, library libraries.Library, res
 
 	now := timestamp(time.Now())
 	episodeIDs := make(map[string]struct{}, len(candidates))
+	sourceIDs := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		sourceID := sourceID(candidate.Media.Path)
+		sourceIDs = append(sourceIDs, sourceID)
 		if err := upsertMediaSource(ctx, tx, library.ID, media.KindEpisode, sourceID, candidate.Media, now); err != nil {
 			return PersistSummary{}, err
 		}
@@ -591,6 +683,9 @@ func (s *Service) SaveTVScan(ctx context.Context, library libraries.Library, res
 		if err := upsertEpisodeVersion(ctx, tx, episodeID, sourceID, candidate, now); err != nil {
 			return PersistSummary{}, err
 		}
+	}
+	if err := deleteMissingSources(ctx, tx, library.ID, sourceIDs); err != nil {
+		return PersistSummary{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -713,6 +808,21 @@ func upsertEpisodeVersion(ctx context.Context, tx *sql.Tx, episodeID string, sou
 			quality_label = excluded.quality_label,
 			updated_at = excluded.updated_at
 	`, episodeID, sourceID, candidate.QualityLabel, now)
+	return err
+}
+
+func deleteMissingSources(ctx context.Context, tx *sql.Tx, libraryID string, sourceIDs []string) error {
+	if len(sourceIDs) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM media_sources WHERE library_id = ?", libraryID)
+		return err
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(sourceIDs)), ",")
+	args := make([]any, 0, len(sourceIDs)+1)
+	args = append(args, libraryID)
+	for _, id := range sourceIDs {
+		args = append(args, id)
+	}
+	_, err := tx.ExecContext(ctx, "DELETE FROM media_sources WHERE library_id = ? AND id NOT IN ("+placeholders+")", args...)
 	return err
 }
 

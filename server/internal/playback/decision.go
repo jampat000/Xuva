@@ -69,6 +69,9 @@ func (s *Service) Decide(_ context.Context, request Request) Decision {
 }
 
 func (s *Service) DecideSource(_ context.Context, request Request, source SourceFacts) Decision {
+	if request.ClientProfile == "" {
+		request.ClientProfile = "web"
+	}
 	decision := Decision{
 		MediaSourceID:           request.MediaSourceID,
 		ClientProfile:           request.ClientProfile,
@@ -91,15 +94,28 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 
 	decision.Selected["container"] = source.Container
 	decision.Selected["videoCodec"] = source.VideoCodec
-	if isBrowserDirectPlayable(source.Container, source.VideoCodec) {
+	if isDirectPlayable(request.ClientProfile, source.Container, source.VideoCodec) {
 		decision.Mode = DirectPlay
-		decision.Reason = "Container and video codec are browser-compatible, so the server can stream the source directly."
+		decision.Reason = "Container and video codec match the selected client profile, so the server can stream the source directly."
 		decision.ContainerAction = "direct"
 		decision.VideoAction = "direct"
 		decision.AudioAction = "direct"
 		decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
 		decision.EstimatedCPUCost = "none"
 		decision.EstimatedGPUCost = "none"
+		return decision
+	}
+
+	if canRemux(request.ClientProfile, source.VideoCodec) {
+		decision.Mode = Remux
+		decision.Reason = "The video codec is compatible, but the container is not ideal for the selected client profile."
+		decision.ContainerAction = "remux"
+		decision.VideoAction = "copy"
+		decision.AudioAction = "copy_or_transcode"
+		decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
+		decision.EstimatedCPUCost = "low"
+		decision.EstimatedGPUCost = "none"
+		decision.SuggestedFixes = []string{"Run an ffmpeg remux job for streamable output"}
 		return decision
 	}
 
@@ -113,6 +129,46 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	decision.EstimatedGPUCost = "optional"
 	decision.SuggestedFixes = []string{"Add client capability profiles", "Implement remux/transcode pipeline"}
 	return decision
+}
+
+func isDirectPlayable(profile string, container string, videoCodec string) bool {
+	switch profile {
+	case "android-tv":
+		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9") && containerIn(container, "mp4", "matroska", "webm", "mpegts")
+	case "apple-tv":
+		return codecIn(videoCodec, "h264", "hevc") && containerIn(container, "mp4", "mov")
+	default:
+		return codecIn(videoCodec, "h264", "av1", "vp9") && containerIn(container, "mp4", "mov", "webm")
+	}
+}
+
+func canRemux(profile string, videoCodec string) bool {
+	switch profile {
+	case "android-tv":
+		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9")
+	case "apple-tv":
+		return codecIn(videoCodec, "h264", "hevc")
+	default:
+		return codecIn(videoCodec, "h264", "av1", "vp9")
+	}
+}
+
+func codecIn(value string, codecs ...string) bool {
+	for _, codec := range codecs {
+		if value == codec {
+			return true
+		}
+	}
+	return false
+}
+
+func containerIn(container string, values ...string) bool {
+	for _, value := range values {
+		if contains(container, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func isBrowserDirectPlayable(container string, videoCodec string) bool {

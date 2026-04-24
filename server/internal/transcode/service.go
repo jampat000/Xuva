@@ -3,6 +3,9 @@ package transcode
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -28,6 +31,7 @@ const (
 type Request struct {
 	MediaSourceID string `json:"mediaSourceId"`
 	Mode          Mode   `json:"mode"`
+	SourcePath    string `json:"sourcePath,omitempty"`
 }
 
 type Job struct {
@@ -35,6 +39,9 @@ type Job struct {
 	MediaSourceID string    `json:"mediaSourceId"`
 	Mode          Mode      `json:"mode"`
 	Status        Status    `json:"status"`
+	SourcePath    string    `json:"sourcePath,omitempty"`
+	OutputPath    string    `json:"outputPath,omitempty"`
+	Command       []string  `json:"command,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	StartedAt     time.Time `json:"startedAt,omitempty"`
 	CompletedAt   time.Time `json:"completedAt,omitempty"`
@@ -44,13 +51,21 @@ type Job struct {
 type Service struct {
 	events *events.Bus
 	queue  *jobs.Queue
+	ffmpeg string
+	outDir string
 	nextID atomic.Uint64
 	mu     sync.RWMutex
 	jobs   map[string]Job
 }
 
-func NewService(eventBus *events.Bus, queue *jobs.Queue) *Service {
-	return &Service{events: eventBus, queue: queue, jobs: map[string]Job{}}
+func NewService(eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outputDir string) *Service {
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	if outputDir == "" {
+		outputDir = filepath.Join("data", "transcode")
+	}
+	return &Service{events: eventBus, queue: queue, ffmpeg: ffmpegPath, outDir: outputDir, jobs: map[string]Job{}}
 }
 
 func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
@@ -60,7 +75,9 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	if request.Mode == "" {
 		request.Mode = ModeRemux
 	}
-	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, Status: StatusQueued, CreatedAt: time.Now().UTC()}
+	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, Status: StatusQueued, CreatedAt: time.Now().UTC()}
+	job.OutputPath = filepath.Join(s.outDir, job.ID+".mp4")
+	job.Command = s.command(job)
 	s.store(job)
 	s.publish("transcode.queued", job)
 	if err := s.queue.Submit(ctx, func(workerCtx context.Context) {
@@ -69,11 +86,10 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		job.StartedAt = time.Now().UTC()
 		s.store(job)
 		s.publish("transcode.started", job)
-		select {
-		case <-workerCtx.Done():
+		if err := s.execute(workerCtx, job); err != nil {
 			job.Status = StatusFailed
-			job.Error = workerCtx.Err().Error()
-		default:
+			job.Error = err.Error()
+		} else {
 			job.Status = StatusCompleted
 		}
 		job.CompletedAt = time.Now().UTC()
@@ -83,6 +99,36 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		return Job{}, err
 	}
 	return job, nil
+}
+
+func (s *Service) execute(ctx context.Context, job Job) error {
+	if job.SourcePath == "" {
+		return errors.New("source path is required")
+	}
+	if err := os.MkdirAll(filepath.Dir(job.OutputPath), 0o755); err != nil {
+		return err
+	}
+	args := job.Command[1:]
+	cmd := exec.CommandContext(ctx, s.ffmpeg, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if len(output) > 0 {
+			return errors.New(string(output))
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Service) command(job Job) []string {
+	args := []string{s.ffmpeg, "-y", "-i", job.SourcePath}
+	switch job.Mode {
+	case ModeTranscode:
+		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-movflags", "+faststart", job.OutputPath)
+	default:
+		args = append(args, "-map", "0", "-c", "copy", "-movflags", "+faststart", job.OutputPath)
+	}
+	return args
 }
 
 func (s *Service) Get(id string) (Job, bool) {

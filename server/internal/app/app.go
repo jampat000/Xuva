@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/api"
@@ -17,6 +18,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
+	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/probes"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
@@ -48,6 +50,7 @@ type Application struct {
 	Movies    *movies.Service
 	TV        *tv.Service
 	Playback  *playback.Service
+	PlayState *playstate.Service
 	Streaming *streaming.Service
 	Transcode *transcode.Service
 	Subtitles *subtitles.Service
@@ -98,6 +101,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	probeService := probe.NewService(cfg.FFprobePath)
 	probesService := probes.NewService(bus, jobRegistry.Probe, catalogService, probeService)
 
+	playStateService := playstate.NewService(databaseService, bus)
+
 	return &Application{
 		Config:    cfg,
 		StartedAt: time.Now().UTC(),
@@ -116,11 +121,12 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Movies:    movieService,
 		TV:        tvService,
 		Playback:  playback.NewService(),
+		PlayState: playStateService,
 		Streaming: streaming.NewService(),
-		Transcode: transcode.NewService(bus, jobRegistry.Transcode),
+		Transcode: transcode.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, filepath.Join(cfg.DataDir, "transcode")),
 		Subtitles: subtitles.NewService(),
 		Devices:   devices.NewService(),
-		Sessions:  sessions.NewService(),
+		Sessions:  sessions.NewService(bus),
 		Downloads: downloads.NewService(),
 	}, nil
 }
@@ -142,7 +148,9 @@ func (a *Application) Router() http.Handler {
 		Probe:     a.Probe,
 		Probes:    a.Probes,
 		Playback:  a.Playback,
+		PlayState: a.PlayState,
 		Transcode: a.Transcode,
+		Devices:   a.Devices,
 		Sessions:  a.Sessions,
 	})
 }
