@@ -1,0 +1,61 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Node / web
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Go
+bin/
+*.test
+*.out
+
+# Rust
+target/
+
+# Python helpers
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Android
+.gradle/
+local.properties
+captures/
+*.apk
+*.aab
+
+# Apple / Xcode
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Media test artifacts
+fixtures/media-local/
+tmp/
+temp/
+
