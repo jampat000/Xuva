@@ -390,13 +390,15 @@ async function showMovie(id) {
 }
 
 async function loadVersionModel(version = {}) {
-  const [state, source, tracks, decision] = await Promise.all([
+  const forecastProfiles = ["web", "android-tv", "apple-tv", "chromecast"];
+  const [state, source, tracks, decision, deviceDecisions] = await Promise.all([
     api(`/api/playback/state/${version.mediaSourceId}`).catch(() => ({})),
     api(`/api/media-sources/${version.mediaSourceId}`).catch(() => ({})),
     api(`/api/media-sources/${version.mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })),
     api(`/api/playback/decision?mediaSourceId=${version.mediaSourceId}&clientProfile=web`).catch(() => ({})),
+    Promise.all(forecastProfiles.map(profile => api(`/api/playback/decision?mediaSourceId=${version.mediaSourceId}&clientProfile=${profile}`).catch(() => ({ clientProfile: profile })))),
   ]);
-  return { ...version, state, source, tracks, decision };
+  return { ...version, state, source, tracks, decision, deviceDecisions };
 }
 
 function versionCard(model, selected) {
@@ -426,6 +428,7 @@ function versionCard(model, selected) {
       ${sourceCardFact("Video file details", sourceFacts)}
     </div>
     <p>${escapeHTML(playbackReason(decision))}</p>
+    ${deviceForecast(version.deviceDecisions)}
     <div class="inline-actions source-card-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
       <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
@@ -439,6 +442,31 @@ function versionCard(model, selected) {
 
 function sourceCardFact(label, value) {
   return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
+}
+
+function deviceForecast(decisions = []) {
+  if (!Array.isArray(decisions) || !decisions.length) return "";
+  return `<div class="device-forecast">
+    <div class="device-forecast-title">Player impact</div>
+    <div class="device-forecast-grid">
+      ${decisions.map(decision => `<div>
+        <span>${escapeHTML(profileName(decision.clientProfile))}</span>
+        <strong>${escapeHTML(playbackReadinessLabel(decision))}</strong>
+        <small>${escapeHTML(playbackEffortLabel(decision))}</small>
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+
+function profileName(value = "") {
+  const labels = {
+    web: "Web",
+    "android-tv": "Android TV",
+    "apple-tv": "Apple TV",
+    chromecast: "Chromecast",
+    ios: "iPhone / iPad",
+  };
+  return labels[String(value || "").toLowerCase()] || value || "Player";
 }
 
 function movieDetailRail(movie = {}, selected = null) {
@@ -751,12 +779,16 @@ function playbackReason(decision = {}) {
   const mode = String(decision.mode || "").toLowerCase();
   if (!reason) return "Vyrden is checking this file before choosing the best playback path.";
   if (reason.includes("has not been probed")) return "Vyrden needs to check this file once before it can confirm the best playback path.";
+  if (reason.includes("Container and video codec match")) return "This player can stream the file directly. Vyrden should not need extra CPU, GPU, or temporary disk work.";
+  if (reason.includes("Video can direct play")) return "The video can play as-is, but Vyrden may convert the audio track for this player. Expect a light CPU load.";
+  if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Vyrden may need to repackage the file for this player. This is usually quick and low impact.";
+  if (reason.includes("subtitle track is image-based")) return "This file can still play, but image subtitles may need to be burned into the video. That is a heavy path and can use significant CPU/GPU.";
   if (reason.includes("not safely direct-playable")) {
-    if (mode === "video transcode") return "The current player cannot use this file as-is, so Vyrden may need to convert the video while it plays. Expect higher CPU/GPU use and more power draw.";
-    if (mode === "subtitle burn") return "The current player cannot overlay these subtitles directly, so Vyrden may need to burn them into the video. This is one of the heaviest playback paths.";
-    if (mode === "audio transcode") return "The video can stay intact, but the audio may need conversion for the current player. This is usually a light PC load.";
-    if (mode === "remux") return "The video and audio are usable, but the container may need a quick repack for the current player. This is usually low impact.";
-    return "The current player may not support this file directly, so Vyrden may need to prepare it before or during playback.";
+    if (mode === "video transcode") return "This file can still play, but this player profile would need Vyrden to convert the video while it plays. Expect higher CPU/GPU use, more power draw, and more heat.";
+    if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
+    if (mode === "audio transcode") return "The video can stay intact, but Vyrden may convert audio for this player. This is usually a light PC load.";
+    if (mode === "remux") return "The streams can stay intact, but Vyrden may repackage the file for this player. This is usually low impact.";
+    return "This file can still play, but Vyrden may need to prepare it before or during playback for this player profile.";
   }
   return reason;
 }

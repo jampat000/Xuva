@@ -1623,6 +1623,46 @@ a:focus-visible {
   font-weight: 700;
   line-height: 1.45;
 }
+.device-forecast {
+  display: grid;
+  gap: calc(9px * var(--density-scale));
+  padding-top: calc(2px * var(--density-scale));
+}
+.device-forecast-title {
+  color: var(--champagne);
+  font-size: var(--tiny-font);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+.device-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: calc(8px * var(--density-scale));
+}
+.device-forecast-grid div {
+  display: grid;
+  gap: calc(4px * var(--density-scale));
+  min-width: 0;
+  padding: calc(10px * var(--density-scale));
+  border: 1px solid rgba(244,239,228,0.08);
+  border-radius: 8px;
+  background: rgba(244,239,228,0.035);
+}
+.device-forecast-grid span,
+.device-forecast-grid small {
+  min-width: 0;
+  color: var(--quiet);
+  font-size: var(--tiny-font);
+  font-weight: 850;
+  white-space: normal;
+}
+.device-forecast-grid strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--small-font);
+  line-height: 1.18;
+  white-space: normal;
+}
 .source-card-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(calc(116px * var(--density-scale)), max-content));
@@ -2830,6 +2870,7 @@ body[data-theme="light"] .path-form input {
   }
   .source-strip { grid-template-columns: 1fr; }
   .source-card-grid,
+  .device-forecast-grid,
   .source-control-metrics,
   .source-control-actions,
   .download-plan {
