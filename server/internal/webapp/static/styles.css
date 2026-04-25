@@ -66,6 +66,7 @@ body[data-density="compact"] {
   --hero-min: 342px;
   --hero-pad-x: 34px;
   --hero-pad-y: 32px;
+  --hero-side: 320px;
   --poster-min: clamp(138px, 7.9vw, 166px);
   --poster-height: clamp(221px, 12.6vw, 266px);
   --control-height: 36px;
@@ -85,6 +86,7 @@ body[data-density="balanced"] {
   --hero-min: 430px;
   --hero-pad-x: 46px;
   --hero-pad-y: 44px;
+  --hero-side: 380px;
   --poster-min: clamp(178px, 9.9vw, 216px);
   --poster-height: clamp(286px, 15.9vw, 344px);
   --control-height: 46px;
@@ -104,6 +106,7 @@ body[data-density="comfortable"] {
   --hero-min: 520px;
   --hero-pad-x: 58px;
   --hero-pad-y: 56px;
+  --hero-side: 430px;
   --poster-min: clamp(228px, 12.7vw, 286px);
   --poster-height: clamp(365px, 20.3vw, 458px);
   --control-height: 56px;
@@ -123,6 +126,7 @@ body[data-density="cinematic"] {
   --hero-min: 620px;
   --hero-pad-x: 72px;
   --hero-pad-y: 70px;
+  --hero-side: 500px;
   --poster-min: clamp(286px, 15.9vw, 366px);
   --poster-height: clamp(458px, 25.5vw, 586px);
   --control-height: 68px;
@@ -442,7 +446,9 @@ h1 {
   font-size: var(--h1-font);
   line-height: 1.01;
   letter-spacing: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 h2 {
   margin: 0 0 14px;
@@ -487,6 +493,7 @@ h2 {
 button,
 .button {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   min-height: var(--button-height);
@@ -499,6 +506,7 @@ button,
   font-size: var(--ui-font);
   font-weight: 800;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
 }
 button.primary,
@@ -542,13 +550,19 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: calc(14px * var(--density-scale));
   margin-bottom: calc(18px * var(--density-scale));
   color: var(--soft);
+  min-width: 0;
 }
 .panel-title strong {
+  min-width: 0;
   font-size: var(--ui-font);
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .decision {
   padding: calc(15px * var(--density-scale));
@@ -561,6 +575,9 @@ a:focus-visible {
   color: var(--ice);
   font-size: calc(23px * var(--font-scale));
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .decision span {
   display: block;
@@ -584,12 +601,17 @@ a:focus-visible {
 .kv span:first-child {
   color: var(--quiet);
   font-weight: 750;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kv span:last-child {
   color: var(--text);
   font-weight: 720;
   text-align: right;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .insight-grid {
@@ -623,6 +645,9 @@ a:focus-visible {
 .now-idle strong {
   color: var(--ice);
   font-size: calc(22px * var(--font-scale));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .now-idle span {
   color: var(--soft);
@@ -653,6 +678,10 @@ a:focus-visible {
 .session-card small,
 .session-card b {
   display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .session-card strong { color: var(--text); }
 .session-card span,
@@ -684,6 +713,9 @@ a:focus-visible {
   font-size: calc(11px * var(--font-scale));
   font-weight: 800;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .usage {
@@ -694,6 +726,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   gap: calc(10px * var(--density-scale));
 }
 .usage span,
@@ -705,6 +738,9 @@ a:focus-visible {
 }
 .usage strong {
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .usage i {
   display: block;
@@ -736,7 +772,10 @@ a:focus-visible {
 .folder-row strong,
 .folder-row span {
   display: block;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .path-form {
   display: grid;
@@ -762,7 +801,9 @@ a:focus-visible {
   color: var(--text);
   font-size: calc(24px * var(--font-scale));
   line-height: 1;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .quality-tile small {
   margin-top: 8px;
@@ -795,16 +836,24 @@ a:focus-visible {
   color: var(--soft);
   font-size: var(--small-font);
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ops-list span,
 .attention-list strong {
   color: var(--text);
   font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ops-list small {
   grid-column: 1 / -1;
   color: var(--quiet);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .attention-list .warn strong { color: var(--champagne); }
 .attention-list .good strong { color: var(--green); }
@@ -818,12 +867,18 @@ a:focus-visible {
   font-size: var(--small-font);
   font-weight: 800;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .metric strong {
   display: block;
   margin-top: calc(10px * var(--density-scale));
   font-size: clamp(28px, 3vw, 40px);
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .metric small {
   display: block;
@@ -831,6 +886,9 @@ a:focus-visible {
   color: var(--quiet);
   font-size: var(--small-font);
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shelf-head,
@@ -917,18 +975,27 @@ a:focus-visible {
 }
 .poster-title {
   display: block;
+  max-width: 100%;
   color: var(--text);
   font-size: var(--poster-title-font);
   font-weight: 900;
   line-height: 1.12;
   text-shadow: 0 2px 14px color-mix(in srgb, var(--void) 72%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .poster-action small,
 .poster-action em {
+  display: block;
+  max-width: 100%;
   color: var(--soft);
   font-size: var(--small-font);
   font-style: normal;
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .poster-action em { color: var(--champagne); }
 
@@ -1010,6 +1077,10 @@ a:focus-visible {
 .source-strip span,
 .source-strip strong {
   display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .source-strip span {
   color: var(--quiet);
@@ -1021,7 +1092,6 @@ a:focus-visible {
   margin-top: 6px;
   color: var(--text);
   font-size: var(--ui-font);
-  overflow-wrap: anywhere;
 }
 
 .version-grid {
@@ -1045,14 +1115,26 @@ a:focus-visible {
 .version-title {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  min-width: 0;
   gap: calc(12px * var(--density-scale));
   font-size: var(--ui-font);
   font-weight: 850;
+}
+.version-title strong,
+.version-title span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .version-path {
   color: var(--ice);
   font-size: var(--tiny-font);
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .version-details {
   display: grid;
@@ -1061,7 +1143,13 @@ a:focus-visible {
   color: var(--soft);
   font-size: var(--small-font);
   font-weight: 650;
-  overflow-wrap: anywhere;
+}
+.version-details span,
+.version-details div {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .version .inline-actions { margin-top: calc(14px * var(--density-scale)); }
 .version .button,
@@ -1116,6 +1204,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: calc(12px * var(--density-scale));
   min-height: var(--pill-height);
   padding: 0 var(--pill-pad-x);
   border: 1px solid rgba(244, 239, 228, 0.1);
@@ -1124,6 +1213,15 @@ a:focus-visible {
   color: var(--text);
   font-size: var(--ui-font);
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.download-option span,
+.download-option strong,
+.download-option b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cast-list {
   display: grid;
@@ -1147,6 +1245,13 @@ a:focus-visible {
   color: var(--quiet);
   font-size: var(--tiny-font);
   font-weight: 750;
+}
+.cast-list strong,
+.cast-list span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mini-list,
@@ -1292,6 +1397,10 @@ a:focus-visible {
 .version-card strong,
 .version-card small {
   display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .library-card code {
   padding: calc(10px * var(--density-scale)) calc(11px * var(--density-scale));
@@ -1299,13 +1408,19 @@ a:focus-visible {
   border-radius: 7px;
   background: rgba(7, 7, 7, 0.28);
   color: #ddd5c7;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .remote-options strong,
 .remote-options span,
 .settings-grid span,
 .settings-grid strong {
   display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero-strip,
@@ -1326,6 +1441,14 @@ a:focus-visible {
   border: 1px solid rgba(244, 239, 228, 0.1);
   border-radius: var(--bubble-radius);
   background: rgba(244, 239, 228, 0.055);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.signal-pill small,
+.signal-pill b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 table {
@@ -1338,7 +1461,9 @@ th, td {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 th {
   color: var(--soft);

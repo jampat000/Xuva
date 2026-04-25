@@ -100,7 +100,6 @@ async function renderDashboard() {
   ]);
   const reviewCount = health.needsReview || 0;
   const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
-  const featured = recent.recent && recent.recent[0];
   const movieCount = summary.movies || 0;
   const seriesCount = summary.series || 0;
   const episodeCount = summary.episodes || 0;
@@ -119,7 +118,7 @@ async function renderDashboard() {
         <article class="feature">
           <div class="feature-content">
             <p class="eyebrow">Live media command centre</p>
-            <h1>${dashboardCommandTitle(activeSessions, featured, summary)}</h1>
+            <h1>${dashboardCommandTitle(activeSessions, summary)}</h1>
             <p class="lead">${dashboardCommandCopy(activeSessions, summary, health, quality)}</p>
             <div class="meta-line">
               <span class="badge">${summary.mediaSources || 0} sources</span>
@@ -664,11 +663,10 @@ function filterCards(value) {
   });
 }
 
-function dashboardCommandTitle(sessions, featured, summary) {
-  if (sessions.length) return `${sessions.length} stream${sessions.length === 1 ? "" : "s"} active.`;
-  if (featured) return escapeHTML(featured.name);
-  if ((summary.mediaSources || 0) > 0) return "Your library is live.";
-  return "Build your media command centre.";
+function dashboardCommandTitle(sessions, summary) {
+  if (sessions.length) return `${sessions.length} stream${sessions.length === 1 ? "" : "s"} active`;
+  if ((summary.mediaSources || 0) > 0) return "Your library is live";
+  return "Media command centre";
 }
 
 function dashboardCommandCopy(sessions, summary, health, quality) {
@@ -754,13 +752,13 @@ function isActiveJob(item = {}) {
 function playingNow(items = []) {
   if (!items.length) {
     return `<div class="now-idle">
-      <strong>No playback running</strong>
+      <strong>Playback idle</strong>
       <span>Start a movie or episode and this panel becomes a live session monitor with device, route, progress, and server impact.</span>
     </div>
     <div class="kv">
       <div><span>Status</span><span>Ready</span></div>
       <div><span>Server impact</span><span>Idle</span></div>
-      <div><span>Route</span><span>LAN Direct</span></div>
+      <div><span>Route</span><span>LAN</span></div>
     </div>`;
   }
   return `<div class="session-list">${items.slice(0, 4).map(session => {
