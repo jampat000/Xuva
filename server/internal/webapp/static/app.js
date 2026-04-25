@@ -1,4 +1,5 @@
-const state = { activeView: "dashboard", activeSession: "" };
+const densityOptions = new Set(["compact", "balanced", "cinematic"]);
+const state = { activeView: "dashboard", activeSession: "", density: readDensity() };
 
 const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
@@ -8,6 +9,12 @@ const serverDot = document.getElementById("serverDot");
 document.querySelectorAll(".nav-item").forEach(button => {
   button.addEventListener("click", () => navigate(button.dataset.view));
 });
+
+document.querySelectorAll(".density-option").forEach(button => {
+  button.addEventListener("click", () => setDensity(button.dataset.density));
+});
+
+setDensity(state.density, false);
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -35,6 +42,23 @@ async function navigate(name) {
 
 function title(name) {
   return { dashboard: "Home", movies: "Movies", tv: "TV", libraries: "Libraries", activity: "Activity", health: "Review", playback: "Playback Lab", remote: "Remote Access", settings: "Settings" }[name] || name;
+}
+
+function readDensity() {
+  const saved = localStorage.getItem("vyrden:density");
+  return densityOptions.has(saved) ? saved : "balanced";
+}
+
+function setDensity(value, persist = true) {
+  const density = densityOptions.has(value) ? value : "balanced";
+  state.density = density;
+  document.body.dataset.density = density;
+  document.querySelectorAll(".density-option").forEach(button => {
+    const active = button.dataset.density === density;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (persist) localStorage.setItem("vyrden:density", density);
 }
 
 async function refreshShell() {

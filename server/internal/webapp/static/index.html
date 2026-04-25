@@ -19,31 +19,30 @@
 
       <div class="nav-label">Library</div>
       <nav class="nav-group" aria-label="Library">
-        <button class="nav-item active" data-view="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10.5V19h11v-8.5"/></svg></span><span class="nav-text">Home</span></button>
-        <button class="nav-item" data-view="movies"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/></svg></span><span class="nav-text">Movies</span></button>
-        <button class="nav-item" data-view="tv"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><path d="M9 20h6M12 17.5V20"/></svg></span><span class="nav-text">TV Shows</span></button>
-        <button class="nav-item" data-view="libraries"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/><path d="M8 7v10"/></svg></span><span class="nav-text">Libraries</span></button>
+        <button class="nav-item active" data-view="dashboard"><span>Home</span></button>
+        <button class="nav-item" data-view="movies"><span>Movies</span></button>
+        <button class="nav-item" data-view="tv"><span>TV Shows</span></button>
+        <button class="nav-item" data-view="libraries"><span>Collections</span></button>
       </nav>
 
       <div class="nav-label">System</div>
       <nav class="nav-group" aria-label="System">
-        <button class="nav-item" data-view="playback"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m10 8 6 4-6 4V8Z"/><rect x="4" y="5" width="16" height="14" rx="2"/></svg></span><span class="nav-text">Playback</span></button>
-        <button class="nav-item" data-view="activity"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 12h4l2-5 4 10 2-5h4"/></svg></span><span class="nav-text">Activity</span></button>
-        <button class="nav-item" data-view="health"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 4 20 8v5c0 4-3.2 6.5-8 7-4.8-.5-8-3-8-7V8l8-4Z"/><path d="m9 12 2 2 4-5"/></svg></span><span class="nav-text">Review</span></button>
-        <button class="nav-item" data-view="remote"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M4 12h16M12 4c2 2.2 3 4.8 3 8s-1 5.8-3 8M12 4c-2 2.2-3 4.8-3 8s1 5.8 3 8"/></svg></span><span class="nav-text">Remote Access</span></button>
-        <button class="nav-item" data-view="settings"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M5 12h2M17 12h2M12 5v2M12 17v2"/></svg></span><span class="nav-text">Settings</span></button>
+        <button class="nav-item" data-view="playback"><span>Playback</span></button>
+        <button class="nav-item" data-view="activity"><span>Activity</span></button>
+        <button class="nav-item" data-view="remote"><span>Remote Access</span></button>
+        <button class="nav-item" data-view="settings"><span>Settings</span></button>
       </nav>
-
-      <div class="nav-footer">
-        <span>Local server</span>
-        <strong>Private runtime</strong>
-      </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
         <input class="search" id="globalSearch" placeholder="Search movies, shows, codecs, filenames" oninput="filterCards(this.value)">
         <div class="status-row">
+          <div class="density-control" role="group" aria-label="Interface density">
+            <button type="button" class="density-option" data-density="compact" title="Compact density">S</button>
+            <button type="button" class="density-option active" data-density="balanced" title="Balanced density">M</button>
+            <button type="button" class="density-option" data-density="cinematic" title="Cinematic density">L</button>
+          </div>
           <span class="badge good"><i id="serverDot"></i><strong id="serverStatus">Checking</strong></span>
           <span class="badge route">LAN Direct</span>
           <span class="badge warn" id="viewTitle">Home</span>
