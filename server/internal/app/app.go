@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -131,6 +132,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	scanService := scans.NewService(cfg, bus, jobRegistry.Scan, libraryService, scannerService, catalogService, metadataService, movieService, tvService)
 	probeService := probe.NewService(cfg.FFprobePath)
 	probesService := probes.NewService(bus, jobRegistry.Probe, catalogService, probeService)
+	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService)
 
 	playStateService := playstate.NewService(databaseService, bus)
 
@@ -161,6 +163,67 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Sessions:  sessions.NewService(bus),
 		Downloads: downloads.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.DownloadsDir),
 	}, nil
+}
+
+func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.Bus, scanService *scans.Service, probesService *probes.Service) {
+	if cfg.LibrarySyncMode == "manual" {
+		return
+	}
+	interval := time.Duration(cfg.SyncIntervalMins) * time.Minute
+	if interval < 15*time.Minute {
+		interval = 15 * time.Minute
+	}
+	probeLimit := cfg.ProbeBatchLimit
+	if probeLimit <= 0 {
+		probeLimit = 50
+	}
+	go func() {
+		timer := time.NewTimer(interval)
+		defer timer.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+				runAutomatedLibrarySync(ctx, bus, scanService, probesService, probeLimit)
+				timer.Reset(interval)
+			}
+		}
+	}()
+}
+
+func runAutomatedLibrarySync(ctx context.Context, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, probeLimit int) {
+	bus.Publish("automation.sync.started", map[string]any{"probeLimit": probeLimit})
+	job, err := scanService.Start(ctx, scans.Request{Kind: scans.KindAll})
+	if err != nil {
+		bus.Publish("automation.sync.failed", map[string]string{"stage": "scan", "error": err.Error()})
+		slog.Debug("automated library scan skipped", "error", err)
+		return
+	}
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			current, ok := scanService.Get(job.ID)
+			if !ok {
+				return
+			}
+			switch current.Status {
+			case scans.StatusCompleted:
+				if _, err := probesService.Start(ctx, probes.Request{Limit: probeLimit}); err != nil {
+					bus.Publish("automation.sync.failed", map[string]string{"stage": "probe", "error": err.Error()})
+				}
+				bus.Publish("automation.sync.completed", map[string]any{"scanId": job.ID, "probeLimit": probeLimit})
+				return
+			case scans.StatusFailed:
+				bus.Publish("automation.sync.failed", map[string]string{"stage": "scan", "error": current.Error})
+				return
+			}
+		}
+	}
 }
 
 func ensureRuntimeDirs(cfg config.Config) error {

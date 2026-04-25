@@ -26,6 +26,9 @@ type Config struct {
 	ProbeWorkers     int    `json:"probeWorkers"`
 	TranscodeWorkers int    `json:"transcodeWorkers"`
 	GPUWorkers       int    `json:"gpuWorkers"`
+	LibrarySyncMode  string `json:"librarySyncMode,omitempty"`
+	SyncIntervalMins int    `json:"syncIntervalMins,omitempty"`
+	ProbeBatchLimit  int    `json:"probeBatchLimit,omitempty"`
 }
 
 func FromEnv() Config {
@@ -49,6 +52,9 @@ func FromEnv() Config {
 		ProbeWorkers:     envInt("VYRDEN_PROBE_WORKERS", 2),
 		TranscodeWorkers: envInt("VYRDEN_TRANSCODE_WORKERS", 1),
 		GPUWorkers:       envInt("VYRDEN_GPU_WORKERS", 1),
+		LibrarySyncMode:  envString("VYRDEN_LIBRARY_SYNC_MODE", "daily"),
+		SyncIntervalMins: envInt("VYRDEN_SYNC_INTERVAL_MINS", 1440),
+		ProbeBatchLimit:  envInt("VYRDEN_PROBE_BATCH_LIMIT", 50),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
@@ -71,6 +77,9 @@ func FromEnv() Config {
 	cfg.ProbeWorkers = envInt("VYRDEN_PROBE_WORKERS", cfg.ProbeWorkers)
 	cfg.TranscodeWorkers = envInt("VYRDEN_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
 	cfg.GPUWorkers = envInt("VYRDEN_GPU_WORKERS", cfg.GPUWorkers)
+	cfg.LibrarySyncMode = envString("VYRDEN_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
+	cfg.SyncIntervalMins = envInt("VYRDEN_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
+	cfg.ProbeBatchLimit = envInt("VYRDEN_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
 	return cfg
 }
 
@@ -152,7 +161,30 @@ func merge(base Config, saved Config) Config {
 	if saved.GPUWorkers > 0 {
 		base.GPUWorkers = saved.GPUWorkers
 	}
+	if saved.LibrarySyncMode != "" {
+		base.LibrarySyncMode = saved.LibrarySyncMode
+	}
+	if saved.SyncIntervalMins > 0 {
+		base.SyncIntervalMins = saved.SyncIntervalMins
+	}
+	if saved.ProbeBatchLimit > 0 {
+		base.ProbeBatchLimit = saved.ProbeBatchLimit
+	}
 	return base
+}
+
+func defaultSyncMode(value string) string {
+	if value == "" {
+		return "daily"
+	}
+	return value
+}
+
+func defaultInt(value int, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
 }
 
 func defaultDir(value string, dataDir string, name string) string {

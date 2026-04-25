@@ -611,6 +611,9 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeInt(&updated.ProbeWorkers, request.ProbeWorkers)
 		mergeInt(&updated.TranscodeWorkers, request.TranscodeWorkers)
 		mergeInt(&updated.GPUWorkers, request.GPUWorkers)
+		mergeString(&updated.LibrarySyncMode, request.LibrarySyncMode)
+		mergeInt(&updated.SyncIntervalMins, request.SyncIntervalMins)
+		mergeInt(&updated.ProbeBatchLimit, request.ProbeBatchLimit)
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
 			return
@@ -663,6 +666,9 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"probeWorkers":     cfg.ProbeWorkers,
 		"transcodeWorkers": cfg.TranscodeWorkers,
 		"gpuWorkers":       cfg.GPUWorkers,
+		"librarySyncMode":  cfg.LibrarySyncMode,
+		"syncIntervalMins": cfg.SyncIntervalMins,
+		"probeBatchLimit":  cfg.ProbeBatchLimit,
 		"metadataProviders": map[string]any{
 			"omdb": map[string]any{
 				"configured": cfg.OMDbAPIKey != "",

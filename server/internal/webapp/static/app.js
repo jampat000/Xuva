@@ -128,7 +128,7 @@ async function render(name) {
 }
 
 async function renderDashboard() {
-  const [summary, libraries, scans, probes, work, downloads, recent, sessions, health, versions, sources, system] = await Promise.all([
+  const [summary, libraries, scans, probes, work, downloads, recent, sessions, health, versions, sources, system, settings] = await Promise.all([
     api("/api/catalog/summary"),
     api("/api/libraries"),
     api("/api/scans"),
@@ -141,6 +141,7 @@ async function renderDashboard() {
     api("/api/versions"),
     api("/api/media-sources?limit=200"),
     api("/api/system/status"),
+    api("/api/settings"),
   ]);
   const reviewCount = health.needsReview || 0;
   const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
@@ -173,7 +174,6 @@ async function renderDashboard() {
             </div>
             <div class="actions">
               <button class="primary" onclick="navigate('${movieCount ? "movies" : "tv"}')">${movieCount ? "Movies" : "TV"}</button>
-              <button onclick="syncAndProbe()">Sync + Probe</button>
               <button onclick="navigate('activity')">Activity</button>
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
@@ -229,7 +229,7 @@ async function renderDashboard() {
           <div class="panel-title"><strong>Libraries & Storage</strong><button onclick="navigate('libraries')">Manage</button></div>
           ${libraryCards(libraries.libraries)}
         </div>
-        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div><div data-live="recent-scans">${jobCards(scanJobs)}</div></div>
+        <div class="panel pad"><div class="panel-title"><strong>Library Automation</strong><button onclick="navigate('settings')">Schedule</button></div>${automationStatus(settings.config || {}, scanJobs, probeJobs)}</div>
       </section>
 
       <section class="dashboard-grid">
@@ -354,7 +354,7 @@ async function showMovie(id) {
           <span class="badge">${movie.year || "Unknown year"}</span>
           <span class="badge">${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</span>
           <span class="badge ${movie.needsReview ? "warn" : "good"}">${movie.needsReview ? "Needs Review" : "Matched"}</span>
-          <span class="badge route">${selected ? "Direct Play" : "No Source"}</span>
+          <span class="badge route">${selected ? escapeHTML(playbackReadinessLabel(selected.decision)) : "No Source"}</span>
           ${metadataBadges(movie.metadata)}
         </div>
         <p class="lead">${movieOverview(movie)}</p>
@@ -371,7 +371,7 @@ async function showMovie(id) {
         <section class="section">
           <div class="section-head">
             <div class="section-title">Versions</div>
-          <div class="section-note">Choose source quality before playback</div>
+            <div class="section-note">Pick the file version Vyrden should use</div>
           </div>
           <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
         </section>
@@ -411,11 +411,11 @@ async function showMovie(id) {
           <div class="inline-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
         </section>
         <section class="panel pad">
-          <div class="panel-title"><strong>Media Intelligence</strong><span class="badge good">Clean</span></div>
+          <div class="panel-title"><strong>Media Intelligence</strong><span class="badge ${selected?.source?.probed ? "good" : "warn"}">${selected?.source?.probed ? "Ready" : "Check needed"}</span></div>
           <div class="cast-list">
             <div><i></i><strong>Container</strong><span>${selected ? escapeHTML((selected.relPath || "").split(".").pop() || "media") : "none"}</span></div>
             <div><i></i><strong>Storage</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
-            <div><i></i><strong>Route</strong><span>${selected ? escapeHTML(selected.decision?.mode || "Decision pending") : "No route"}</span></div>
+            <div><i></i><strong>Playback</strong><span>${selected ? escapeHTML(playbackReadinessLabel(selected.decision)) : "No source"}</span></div>
           </div>
         </section>
       </aside>
@@ -439,8 +439,8 @@ function versionCard(model, selected) {
   const source = version.source || {};
   const decision = version.decision || {};
   const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round((state.percent || 0) * 100)}%` : "Unplayed";
-  const routeTone = decision.mode === "Direct Play" ? "Direct Play" : decision.mode || watched;
-  const probeTone = source.probed ? "Probed" : "Probe needed";
+  const routeTone = decision.mode ? playbackReadinessLabel(decision) : watched;
+  const probeTone = source.probed ? "Media checked" : "Media check needed";
   const sourceFacts = [
     source.container ? String(source.container).toUpperCase() : "container pending",
     source.width && source.height ? `${source.width}x${source.height}` : "resolution pending",
@@ -450,13 +450,13 @@ function versionCard(model, selected) {
     <div class="version-title"><strong>${escapeHTML(version.qualityLabel || sourceQualityLabel(source) || "Source")}</strong><span class="version-path">${escapeHTML(routeTone)}</span></div>
     <div class="source-badges">
       <span class="badge ${source.probed ? "good" : "warn"}">${escapeHTML(probeTone)}</span>
-      <span class="badge route">${escapeHTML(serverImpact(decision))}</span>
+      <span class="badge route">${escapeHTML(playbackEffortLabel(decision))}</span>
     </div>
     <div class="version-details">
       <span>${escapeHTML(version.relPath)}</span>
       <div>${formatBytes(version.sizeBytes)} - ${escapeHTML(sourceCodecLine(source))}</div>
       <div>${escapeHTML(sourceFacts)}</div>
-      <div>${escapeHTML(decision.reason || "Playback decision pending.")}</div>
+      <div>${escapeHTML(playbackReason(decision))}</div>
     </div>
     <div class="inline-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
@@ -488,14 +488,14 @@ async function openSourceInspector(mediaSourceId) {
       </div>
       <button type="button" onclick="closeSourceInspector()">Close</button>
     </div>
-    <div class="decision"><strong>${escapeHTML(decision.mode || "Decision Pending")}</strong><span>${escapeHTML(decision.reason || "Probe this source so Vyrden can safely choose direct play, remux, or transcode.")}</span></div>
+    <div class="decision"><strong>${escapeHTML(playbackReadinessLabel(decision))}</strong><span>${escapeHTML(playbackReason(decision))}</span></div>
     <div class="source-inspector-grid">
       ${inspectorFact("Probe", source.probed ? "Complete" : "Needed", source.probed ? "Media facts are cached locally." : "Run ffprobe for this one source now.")}
       ${inspectorFact("Container", source.container || "Pending", sourceCodecLine(source))}
       ${inspectorFact("Video", sourceVideoLine(source, decision), source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending")}
       ${inspectorFact("Tracks", `${tracks.audioTracks?.length || 0} audio / ${tracks.subtitleTracks?.length || 0} subtitles`, source.subtitleStreams ? `${source.subtitleStreams} embedded subtitle streams` : "No subtitle facts yet")}
       ${inspectorFact("Progress", playbackState.watched ? "Watched" : `${Math.round((playbackState.percent || 0) * 100)}%`, playbackState.progressSeconds ? formatDuration(playbackState.progressSeconds) : "Not started")}
-      ${inspectorFact("Server", serverImpact(decision), loadLabel(decision))}
+      ${inspectorFact("Server work", playbackEffortLabel(decision), loadLabel(decision))}
     </div>
     <div class="drawer-section">
       <div class="panel-title"><strong>Audio Tracks</strong></div>
@@ -548,29 +548,29 @@ function sourceStrip(model = {}) {
   const source = model.source || {};
   return `<div class="source-strip">
     <div><span>Selected source</span><strong>${escapeHTML(model.qualityLabel || sourceQualityLabel(source) || "Original source")}</strong></div>
-    <div><span>Codec route</span><strong>${escapeHTML(sourceCodecLine(source))}</strong></div>
+    <div><span>Playback readiness</span><strong>${escapeHTML(playbackReadinessLabel(model.decision))}</strong></div>
     <div><span>Bitrate / size</span><strong>${escapeHTML(source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending")} - ${formatBytes(model.sizeBytes)}</strong></div>
   </div>`;
 }
 
 function playbackForecastMarkup(model) {
   if (!model) {
-    return `<div class="panel-title"><strong>Playback Forecast</strong><span class="badge warn">No Source</span></div>
+    return `<div class="panel-title"><strong>Playback Readiness</strong><span class="badge warn">No Source</span></div>
       <div class="decision"><strong id="forecastMode">No Source</strong><span id="forecastReason">Scan or attach a source before playback.</span></div>`;
   }
   const source = model.source || {};
   const decision = model.decision || {};
-  return `<div class="panel-title"><strong>Playback Forecast</strong><span class="badge route" id="forecastLoad">${escapeHTML(loadLabel(decision))}</span></div>
-    <div class="decision"><strong id="forecastMode">${escapeHTML(decision.mode || "Decision Pending")}</strong><span id="forecastReason">${escapeHTML(decision.reason || "Vyrden is still collecting media facts for this source.")}</span></div>
+  return `<div class="panel-title"><strong>Playback Readiness</strong><span class="badge route" id="forecastLoad">${escapeHTML(loadLabel(decision))}</span></div>
+    <div class="decision"><strong id="forecastMode">${escapeHTML(playbackReadinessLabel(decision))}</strong><span id="forecastReason">${escapeHTML(playbackReason(decision))}</span></div>
     <div class="kv">
-      <div><span>Reason</span><span id="forecastReasonShort">${escapeHTML(decision.containerAction || "pending")}</span></div>
+      <div><span>Status</span><span id="forecastReasonShort">${escapeHTML(playbackActionLabel(decision.containerAction || "pending"))}</span></div>
       <div><span>Video</span><span id="forecastVideo">${escapeHTML(sourceVideoLine(source, decision))}</span></div>
-      <div><span>Audio</span><span id="forecastAudio">${escapeHTML(decision.audioAction || "pending")}</span></div>
-      <div><span>Subtitles</span><span id="forecastSubtitles">${escapeHTML(decision.subtitleAction || "none")}</span></div>
+      <div><span>Audio</span><span id="forecastAudio">${escapeHTML(playbackActionLabel(decision.audioAction || "pending"))}</span></div>
+      <div><span>Subtitles</span><span id="forecastSubtitles">${escapeHTML(playbackActionLabel(decision.subtitleAction || "none"))}</span></div>
       <div><span>Network</span><span>${escapeHTML(decision.estimatedNetworkBitrate ? formatBitrate(decision.estimatedNetworkBitrate) : "pending")}</span></div>
-      <div><span>Server</span><span id="forecastServer">${escapeHTML(serverImpact(decision))}</span></div>
+      <div><span>Server</span><span id="forecastServer">${escapeHTML(playbackEffortLabel(decision))}</span></div>
     </div>
-    ${decision.suggestedFixes?.length ? `<div class="mini-list">${decision.suggestedFixes.map(item => `<div><strong>${escapeHTML(item)}</strong><span>Suggested improvement</span></div>`).join("")}</div>` : ""}`;
+    ${decision.suggestedFixes?.length ? `<div class="mini-list">${decision.suggestedFixes.map(item => `<div><strong>${escapeHTML(friendlyFix(item))}</strong><span>Recommended next step</span></div>`).join("")}</div>` : ""}`;
 }
 
 function sourceQualityLabel(source = {}) {
@@ -580,12 +580,12 @@ function sourceQualityLabel(source = {}) {
 }
 
 function sourceCodecLine(source = {}) {
-  if (!source.probed) return "Probe required";
+  if (!source.probed) return "Media check needed";
   return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "video", source.container ? String(source.container).toUpperCase() : "container", source.audioStreams ? `${source.audioStreams} audio` : "", source.subtitleStreams ? `${source.subtitleStreams} subs` : ""].filter(Boolean).join(" - ");
 }
 
 function sourceVideoLine(source = {}, decision = {}) {
-  return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "Video pending", source.width && source.height ? `${source.width}x${source.height}` : "", decision.videoAction || ""].filter(Boolean).join(" - ");
+  return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "Video pending", source.width && source.height ? `${source.width}x${source.height}` : "", playbackActionLabel(decision.videoAction || "")].filter(Boolean).join(" - ");
 }
 
 function loadLabel(decision = {}) {
@@ -660,12 +660,12 @@ async function updatePlaybackForecast(mediaSourceId) {
     params.set("subtitleCodec", selected.subtitle.codec || "");
   }
   const decision = await api(`/api/playback/decision?${params.toString()}`);
-  setText("forecastMode", decision.mode);
-  setText("forecastReason", decision.reason);
-  setText("forecastReasonShort", decision.containerAction || "selected source");
-  setText("forecastAudio", decision.audioAction || "pending");
-  setText("forecastSubtitles", decision.subtitleAction || "none");
-  setText("forecastServer", serverImpact(decision));
+  setText("forecastMode", playbackReadinessLabel(decision));
+  setText("forecastReason", playbackReason(decision));
+  setText("forecastReasonShort", playbackActionLabel(decision.containerAction || "selected source"));
+  setText("forecastAudio", playbackActionLabel(decision.audioAction || "pending"));
+  setText("forecastSubtitles", playbackActionLabel(decision.subtitleAction || "none"));
+  setText("forecastServer", playbackEffortLabel(decision));
   setText("forecastLoad", decision.estimatedCpuCost === "high" ? "high load" : decision.estimatedCpuCost === "medium" ? "some load" : "low load");
 }
 
@@ -680,6 +680,57 @@ function serverImpact(decision = {}) {
   if (decision.mode === "Remux") return "Container remux";
   if (decision.mode === "Direct Play") return "Low impact route";
   return "Decision pending";
+}
+
+function playbackReadinessLabel(decision = {}) {
+  const mode = String(decision.mode || "").toLowerCase();
+  if (mode === "direct play") return "Ready to play";
+  if (mode === "remux") return "Quick prepare";
+  if (mode === "audio transcode") return "Audio conversion";
+  if (mode === "video transcode") return "Video conversion";
+  if (mode === "subtitle burn") return "Subtitle conversion";
+  if (mode === "decision deferred") return "Needs media check";
+  if (!mode) return "Checking";
+  return decision.mode;
+}
+
+function playbackEffortLabel(decision = {}) {
+  const mode = String(decision.mode || "").toLowerCase();
+  if (mode === "direct play") return "No server work";
+  if (mode === "remux") return "Light server work";
+  if (mode === "audio transcode") return "Audio work";
+  if (mode === "video transcode" || mode === "subtitle burn") return "Heavy server work";
+  if (mode === "decision deferred") return "Waiting for check";
+  return serverImpact(decision);
+}
+
+function playbackReason(decision = {}) {
+  const reason = String(decision.reason || "");
+  if (!reason) return "Vyrden is checking this file before choosing the best playback path.";
+  if (reason.includes("has not been probed")) return "Vyrden needs to inspect this file once before it can confirm the best playback path.";
+  if (reason.includes("not safely direct-playable")) return "This file may need preparation for the selected device.";
+  return reason;
+}
+
+function playbackActionLabel(value = "") {
+  const labels = {
+    probe_required: "Needs media check",
+    pending: "Checking",
+    none: "None",
+    direct: "Ready",
+    direct_play: "Ready",
+    copy: "No conversion",
+    remux: "Quick prepare",
+    transcode: "Convert",
+    burn_in: "Burn subtitles",
+    selected_source: "Selected source",
+  };
+  return labels[String(value).toLowerCase()] || value;
+}
+
+function friendlyFix(value = "") {
+  if (String(value).toLowerCase().includes("ffprobe")) return "Run media check for this file";
+  return value;
 }
 
 function trackLanguage(item = {}) {
@@ -830,7 +881,7 @@ async function showEpisode(seriesId, episodeId) {
           <div class="panel-title"><strong>Episode Source</strong></div>
           <div class="cast-list">
             <div><i></i><strong>File</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
-            <div><i></i><strong>Route</strong><span>${selected ? escapeHTML(selected.decision?.mode || "Decision pending") : "No route"}</span></div>
+            <div><i></i><strong>Playback</strong><span>${selected ? escapeHTML(playbackReadinessLabel(selected.decision)) : "No source"}</span></div>
             <div><i></i><strong>Size</strong><span>${selected ? formatBytes(selected.sizeBytes) : "None"}</span></div>
           </div>
         </section>
@@ -1004,11 +1055,33 @@ async function renderSettings() {
       <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
     </div>
     <div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div>
+    <div class="card"><h2>Library Automation</h2>${automationSettingsForm(settings.config)}</div>
     <div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>
     <div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>
     <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
     <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
   </div>`;
+}
+
+function automationSettingsForm(config = {}) {
+  const mode = config.librarySyncMode || "daily";
+  const interval = Number(config.syncIntervalMins || 1440);
+  const probeLimit = Number(config.probeBatchLimit || 50);
+  return `<form class="path-form automation-form" onsubmit="saveAutomationSettings(event)">
+    <label><span>Library sync</span><select name="librarySyncMode">
+      ${option("manual", "Manual only", mode)}
+      ${option("hourly", "Hourly", mode)}
+      ${option("daily", "Daily", mode)}
+      ${option("custom", "Custom interval", mode)}
+    </select></label>
+    <label><span>Custom interval</span><input name="syncIntervalMins" value="${escapeAttr(interval)}" inputmode="numeric"></label>
+    <label><span>Probe batch size</span><input name="probeBatchLimit" value="${escapeAttr(probeLimit)}" inputmode="numeric"></label>
+    <div class="inline-actions"><button class="primary" type="submit">Save automation</button><span class="muted">Scans stay quick. Media checks run in batches so NAS, USB, and local disks are not hammered.</span></div>
+  </form>`;
+}
+
+function option(value, label, selected) {
+  return `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHTML(label)}</option>`;
 }
 
 function runtimePathForm(paths = {}) {
@@ -1077,6 +1150,22 @@ async function saveRuntimePaths(event) {
   navigate("settings");
 }
 
+async function saveAutomationSettings(event) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const mode = String(data.get("librarySyncMode") || "daily");
+  const intervalByMode = { manual: 1440, hourly: 60, daily: 1440 };
+  const interval = mode === "custom" ? Number(data.get("syncIntervalMins") || 1440) : intervalByMode[mode] || 1440;
+  const probeLimit = Number(data.get("probeBatchLimit") || 50);
+  const result = await send("/api/settings", {
+    librarySyncMode: mode,
+    syncIntervalMins: Math.max(15, interval),
+    probeBatchLimit: Math.max(1, Math.min(500, probeLimit)),
+  }, "PUT");
+  alert(result.restartRequired ? "Saved. Restart Vyrden for the scheduler to use the new cadence." : "Saved.");
+  navigate("settings");
+}
+
 async function markWatched(mediaSourceId, watched) {
   await send(`/api/playback/state/${mediaSourceId}`, { watched, progressSeconds: 0 }, "PUT");
   navigate(state.activeView);
@@ -1098,12 +1187,6 @@ async function startScan(path) {
 }
 
 async function startProbe() {
-  await send("/api/probes", { limit: 50 });
-  navigate("activity");
-}
-
-async function syncAndProbe() {
-  await send("/api/libraries/scan", { sampleLimit: 50 });
   await send("/api/probes", { limit: 50 });
   navigate("activity");
 }
@@ -1254,6 +1337,29 @@ function dashboardSnapshot({ activeSessions = [], activeJobs = [], summary = {},
     ${snapshotTile("Server Load", `${Math.round(serverLoad || 0)}%`, `${activeJobs.length} background job${activeJobs.length === 1 ? "" : "s"}`, serverLoad > 75 || activeJobs.length ? "warn" : "good")}
     ${snapshotTile("Storage", disk.usedPercent ? `${Math.round(disk.usedPercent)}% used` : "Ready", storageDetail, disk.usedPercent > 85 ? "warn" : "route")}
   </div>`;
+}
+
+function automationStatus(config = {}, scans = [], probes = []) {
+  const mode = config.librarySyncMode || "daily";
+  const activeScan = scans.find(isActiveJob);
+  const activeProbe = probes.find(isActiveJob);
+  const modeLabel = { manual: "Manual", hourly: "Hourly", daily: "Daily", custom: "Custom" }[mode] || mode;
+  const interval = Number(config.syncIntervalMins || 1440);
+  return `<div class="automation-status">
+    <div class="automation-primary"><strong>${escapeHTML(modeLabel)} library care</strong><span>${mode === "manual" ? "Automatic scans are off." : `Runs every ${formatInterval(interval)} after server start.`}</span></div>
+    <div class="quality-grid">
+      ${qualityTile("Scan", activeScan ? "Running" : "Ready", activeScan?.lastPath || "Fast library discovery")}
+      ${qualityTile("Media checks", activeProbe ? "Running" : "Batched", activeProbe?.lastPath || `${config.probeBatchLimit || 50} files per pass`)}
+      ${qualityTile("Storage impact", "Low", "Separate scan and probe queues")}
+    </div>
+  </div>`;
+}
+
+function formatInterval(minutes) {
+  const value = Number(minutes || 0);
+  if (value >= 1440 && value % 1440 === 0) return `${value / 1440} day${value === 1440 ? "" : "s"}`;
+  if (value >= 60 && value % 60 === 0) return `${value / 60} hour${value === 60 ? "" : "s"}`;
+  return `${value} minutes`;
 }
 
 function snapshotTile(label, value, note, tone = "") {
