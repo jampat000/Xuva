@@ -67,7 +67,7 @@ async function navigate(name) {
 }
 
 function title(name) {
-  return { dashboard: "Home", movies: "Movies", tv: "TV", libraries: "Libraries", activity: "Activity", health: "Review", playback: "Playback Lab", remote: "Remote Access", settings: "Settings" }[name] || name;
+  return { dashboard: "Home", movies: "Movies", tv: "TV", libraries: "Libraries", activity: "Activity", health: "Review", playback: "Source Inspector", remote: "Remote Access", settings: "Settings" }[name] || name;
 }
 
 function applyTheme(theme) {
@@ -173,7 +173,7 @@ async function renderDashboard() {
             </div>
             <div class="actions">
               <button class="primary" onclick="navigate('${movieCount ? "movies" : "tv"}')">${movieCount ? "Movies" : "TV"}</button>
-              <button onclick="navigate('playback')">Playback</button>
+              <button onclick="syncAndProbe()">Sync + Probe</button>
               <button onclick="navigate('activity')">Activity</button>
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
@@ -196,7 +196,7 @@ async function renderDashboard() {
 
       <section class="command-grid">
         <div class="panel pad">
-          <div class="panel-title"><strong>File Intelligence</strong><button onclick="navigate('playback')">Inspect</button></div>
+          <div class="panel-title"><strong>File Intelligence</strong><button onclick="navigate('movies')">Browse</button></div>
           ${fileIntelligence(quality, summary, health)}
         </div>
         <div class="panel pad">
@@ -440,20 +440,108 @@ function versionCard(model, selected) {
   const decision = version.decision || {};
   const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round((state.percent || 0) * 100)}%` : "Unplayed";
   const routeTone = decision.mode === "Direct Play" ? "Direct Play" : decision.mode || watched;
+  const probeTone = source.probed ? "Probed" : "Probe needed";
+  const sourceFacts = [
+    source.container ? String(source.container).toUpperCase() : "container pending",
+    source.width && source.height ? `${source.width}x${source.height}` : "resolution pending",
+    source.bitrate ? formatBitrate(source.bitrate) : "bitrate pending",
+  ].filter(Boolean).join(" - ");
   return `<article class="version ${selected ? "is-selected" : ""}">
     <div class="version-title"><strong>${escapeHTML(version.qualityLabel || sourceQualityLabel(source) || "Source")}</strong><span class="version-path">${escapeHTML(routeTone)}</span></div>
+    <div class="source-badges">
+      <span class="badge ${source.probed ? "good" : "warn"}">${escapeHTML(probeTone)}</span>
+      <span class="badge route">${escapeHTML(serverImpact(decision))}</span>
+    </div>
     <div class="version-details">
       <span>${escapeHTML(version.relPath)}</span>
       <div>${formatBytes(version.sizeBytes)} - ${escapeHTML(sourceCodecLine(source))}</div>
+      <div>${escapeHTML(sourceFacts)}</div>
       <div>${escapeHTML(decision.reason || "Playback decision pending.")}</div>
     </div>
     <div class="inline-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
       <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
+      ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Probe</button>`}
+      <button onclick="openSourceInspector('${version.mediaSourceId}')">Inspect Source</button>
       <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
     </div>
   </article>`;
+}
+
+async function openSourceInspector(mediaSourceId) {
+  const [source, tracks, decision, playbackState] = await Promise.all([
+    api(`/api/media-sources/${mediaSourceId}`).catch(() => ({})),
+    api(`/api/media-sources/${mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })),
+    api(`/api/playback/decision?mediaSourceId=${mediaSourceId}&clientProfile=web`).catch(() => ({})),
+    api(`/api/playback/state/${mediaSourceId}`).catch(() => ({})),
+  ]);
+  closeSourceInspector();
+  const overlay = document.createElement("div");
+  overlay.className = "source-drawer-backdrop";
+  overlay.id = "sourceInspector";
+  overlay.innerHTML = `<aside class="source-drawer" role="dialog" aria-modal="true" aria-label="Source inspector">
+    <div class="drawer-head">
+      <div>
+        <span>Source intelligence</span>
+        <strong>${escapeHTML(source.name || source.relPath || mediaSourceId)}</strong>
+      </div>
+      <button type="button" onclick="closeSourceInspector()">Close</button>
+    </div>
+    <div class="decision"><strong>${escapeHTML(decision.mode || "Decision Pending")}</strong><span>${escapeHTML(decision.reason || "Probe this source so Vyrden can safely choose direct play, remux, or transcode.")}</span></div>
+    <div class="source-inspector-grid">
+      ${inspectorFact("Probe", source.probed ? "Complete" : "Needed", source.probed ? "Media facts are cached locally." : "Run ffprobe for this one source now.")}
+      ${inspectorFact("Container", source.container || "Pending", sourceCodecLine(source))}
+      ${inspectorFact("Video", sourceVideoLine(source, decision), source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending")}
+      ${inspectorFact("Tracks", `${tracks.audioTracks?.length || 0} audio / ${tracks.subtitleTracks?.length || 0} subtitles`, source.subtitleStreams ? `${source.subtitleStreams} embedded subtitle streams` : "No subtitle facts yet")}
+      ${inspectorFact("Progress", playbackState.watched ? "Watched" : `${Math.round((playbackState.percent || 0) * 100)}%`, playbackState.progressSeconds ? formatDuration(playbackState.progressSeconds) : "Not started")}
+      ${inspectorFact("Server", serverImpact(decision), loadLabel(decision))}
+    </div>
+    <div class="drawer-section">
+      <div class="panel-title"><strong>Audio Tracks</strong></div>
+      <div class="mini-list">${trackSummaryRows(tracks.audioTracks, "No audio tracks cached. Probe this source.")}</div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-title"><strong>Subtitle Tracks</strong></div>
+      <div class="mini-list">${trackSummaryRows(tracks.subtitleTracks, "No subtitle tracks cached or available.")}</div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-title"><strong>Actions</strong></div>
+      <div class="inline-actions">
+        <button class="primary" onclick="probeSource('${mediaSourceId}')">${source.probed ? "Re-probe" : "Probe Now"}</button>
+        <button onclick="startWork('${mediaSourceId}','remux')">Prepare Remux</button>
+        <button onclick="startWork('${mediaSourceId}','transcode')">Prepare Transcode</button>
+        <button onclick="startDownload('${mediaSourceId}','balanced')">Prepare Download</button>
+        <a class="button" href="/api/playback/decision?mediaSourceId=${mediaSourceId}&clientProfile=web" target="_blank">Raw Decision</a>
+      </div>
+    </div>
+  </aside>`;
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) closeSourceInspector();
+  });
+  document.body.appendChild(overlay);
+}
+
+function closeSourceInspector() {
+  document.getElementById("sourceInspector")?.remove();
+}
+
+function inspectorFact(label, value, note) {
+  return `<div class="inspector-fact"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong><small>${escapeHTML(note || "")}</small></div>`;
+}
+
+function trackSummaryRows(items = [], emptyText = "No tracks cached.") {
+  if (!items || !items.length) return `<div><strong>${escapeHTML(emptyText)}</strong><span>Source probe required</span></div>`;
+  return items.map(item => `<div><strong>${escapeHTML(trackLanguage(item))} - ${escapeHTML(String(item.codec || "track").toUpperCase())}</strong><span>${escapeHTML(trackDescriptor(item))}</span></div>`).join("");
+}
+
+function trackDescriptor(item = {}) {
+  const details = [];
+  if (item.channels) details.push(`${item.channels} channels`);
+  if (item.default) details.push("default");
+  if (item.forced) details.push("forced");
+  if (item.title) details.push(item.title);
+  return details.join(" - ") || "Selectable track";
 }
 
 function sourceStrip(model = {}) {
@@ -871,11 +959,11 @@ async function renderPlaybackLab() {
   const [payload, profiles, downloads] = await Promise.all([api("/api/media-sources?limit=200"), api("/api/devices/profiles"), api("/api/downloads")]);
   view.innerHTML = `<div class="stack">
     <div class="hero-strip">
-      <div class="hero-copy"><span>Playback Lab</span><strong>Raw file diagnostics before the polished play button.</strong><p>This is Vyrden's workshop for client profiles, direct-play decisions, remux/transcode tests, probes, and offline download preparation. Movie and TV pages are for normal use; Playback Lab is for proving why a file behaves the way it does.</p></div>
+      <div class="hero-copy"><span>Source Inspector</span><strong>Advanced diagnostics now live on each movie and episode source.</strong><p>This screen remains as an internal safety net, but normal users should inspect playback routes from the version cards inside Movies and TV Shows.</p></div>
       <div class="signal-stack">${signalPill("Sources", payload.mediaSources.length)}${signalPill("Profiles", profiles.profiles.length)}${signalPill("Downloads", downloads.downloads.length)}</div>
     </div>
     <div class="card"><h2>Client Profiles</h2>${profileCards(profiles.profiles)}</div>
-    <div class="card"><h2>Playback Lab</h2>${playbackCards(payload.mediaSources)}</div>
+    <div class="card"><h2>Source Inspector</h2>${playbackCards(payload.mediaSources)}</div>
     <div class="card"><h2>Offline Downloads</h2><div data-live="playback-downloads">${downloadCards(downloads.downloads)}</div></div>
   </div>`;
 }
@@ -1001,7 +1089,7 @@ async function startWork(mediaSourceId, mode) {
 
 async function startDownload(mediaSourceId, targetProfile) {
   await send("/api/downloads", { mediaSourceId, targetProfile });
-  navigate("playback");
+  navigate("activity");
 }
 
 async function startScan(path) {
@@ -1012,6 +1100,33 @@ async function startScan(path) {
 async function startProbe() {
   await send("/api/probes", { limit: 50 });
   navigate("activity");
+}
+
+async function syncAndProbe() {
+  await send("/api/libraries/scan", { sampleLimit: 50 });
+  await send("/api/probes", { limit: 50 });
+  navigate("activity");
+}
+
+async function probeSource(mediaSourceId) {
+  const button = event?.currentTarget;
+  const original = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Probing...";
+  }
+  try {
+    await send(`/api/media-sources/${mediaSourceId}/probe`, {});
+    closeSourceInspector();
+    navigate(state.activeView);
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
 }
 
 function openMetadataFix(kind, id, currentTitle, year) {
@@ -1443,7 +1558,7 @@ function mediaCards(items = []) {
 }
 
 function shelfPoster(label, index) {
-  return `<button class="shelf-poster" type="button" onclick="navigate('${index < 1 ? "movies" : index < 2 ? "tv" : "playback"}')" data-initial="${escapeAttr(initials(label))}" style="--tone:${index}">
+  return `<button class="shelf-poster" type="button" onclick="navigate('${index < 1 ? "movies" : index < 2 ? "tv" : "health"}')" data-initial="${escapeAttr(initials(label))}" style="--tone:${index}">
     <strong>${escapeHTML(label)}</strong>
     <span>${index < 2 ? "Browse library" : "Open signal"}</span>
   </button>`;
@@ -1532,7 +1647,8 @@ function playbackCards(items = []) {
   return `<div class="version-grid">${items.map(item => `<article class="version-card">
     <div><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.kind)} - ${item.probed ? "probed" : "needs probe"}</small></div>
     <div class="inline-actions">
-      <a class="button" href="/api/playback/decision?mediaSourceId=${item.id}&clientProfile=web" target="_blank">Decision</a>
+      <button onclick="openSourceInspector('${item.id}')">Inspect</button>
+      ${item.probed ? "" : `<button onclick="probeSource('${item.id}')">Probe</button>`}
       <button onclick="startWork('${item.id}','remux')">Remux</button>
       <button onclick="startWork('${item.id}','transcode')">Transcode</button>
       <button onclick="startDownload('${item.id}','balanced')">Download</button>
@@ -1542,7 +1658,7 @@ function playbackCards(items = []) {
 }
 
 function downloadCards(items = []) {
-  if (!items.length) return empty("No prepared downloads yet. Start one from a media source in Playback Lab.");
+  if (!items.length) return empty("No prepared downloads yet. Start one from a movie or episode source.");
   return `<div class="version-grid">${items.map(item => `<article class="version-card">
     <div><strong>${escapeHTML(item.targetProfile)}</strong><small>${escapeHTML(item.status)} - ${escapeHTML(item.mediaSourceId)}</small></div>
     <div class="inline-actions">
