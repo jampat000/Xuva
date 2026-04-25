@@ -385,7 +385,7 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			}
 		}
 		w.Header().Set("Content-Type", "image/svg+xml")
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = fmt.Fprintf(w, `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
 <defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#171815"/><stop offset="1" stop-color="#0c0d0c"/></linearGradient></defs>
 <rect width="600" height="900" fill="#070807"/>

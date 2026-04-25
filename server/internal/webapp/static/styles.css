@@ -7,8 +7,8 @@
   --smoke: #2c2b27;
   --line: #34312a;
   --text: #f4efe4;
-  --soft: #c0b8aa;
-  --quiet: #81786b;
+  --soft: #d2cabd;
+  --quiet: #aaa092;
   --champagne: #cfae73;
   --steel: #8fa6b3;
   --ice: #9accc6;
@@ -16,19 +16,46 @@
   --green: #8abf8f;
   --shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
   --sidebar-width: 212px;
-  --main-x: 42px;
-  --main-y: 30px;
+  --main-x: clamp(28px, 2.4vw, 46px);
+  --main-y: clamp(22px, 2vw, 34px);
   --shell-gap: 18px;
   --panel-pad: 17px;
   --hero-min: 430px;
   --hero-pad-x: 46px;
   --hero-pad-y: 44px;
   --hero-side: 380px;
-  --poster-min: 184px;
-  --poster-height: 292px;
-  --control-height: 44px;
-  --button-height: 46px;
+  --poster-min: clamp(178px, 9.9vw, 216px);
+  --poster-height: clamp(286px, 15.9vw, 344px);
+  --control-height: 46px;
+  --button-height: 48px;
   --density-scale: 1;
+  --poster-fallback: linear-gradient(180deg, #191a17 0%, #10110f 62%, #070807 100%);
+  --poster-fallback-line: rgba(244,239,228,0.08);
+  --poster-overlay: linear-gradient(180deg, rgba(7,7,7,0), rgba(7,7,7,0.5) 58%, rgba(7,7,7,0.92));
+  --surface-alpha: rgba(22, 22, 20, 0.76);
+}
+
+body[data-theme="light"] {
+  color-scheme: light;
+  --void: #f3f1eb;
+  --carbon: #ebe7df;
+  --graphite: #fffdf8;
+  --graphite-2: #ece7dc;
+  --smoke: #d5ccbd;
+  --line: #c9bead;
+  --text: #191713;
+  --soft: #4f483d;
+  --quiet: #746b5d;
+  --champagne: #9b7338;
+  --steel: #516a78;
+  --ice: #2d766f;
+  --red: #a54c43;
+  --green: #32753c;
+  --shadow: 0 24px 80px rgba(39, 33, 25, 0.18);
+  --poster-fallback: linear-gradient(180deg, #e9e3d8 0%, #d7d0c3 64%, #c3bbac 100%);
+  --poster-fallback-line: rgba(25,23,19,0.12);
+  --poster-overlay: linear-gradient(180deg, rgba(245,242,235,0.02), rgba(245,242,235,0.36) 52%, rgba(245,242,235,0.88));
+  --surface-alpha: rgba(255, 253, 248, 0.78);
 }
 
 * { box-sizing: border-box; }
@@ -37,12 +64,11 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.035), transparent 260px),
-    radial-gradient(circle at 80% 18%, rgba(143,166,179,0.12), transparent 310px),
-    radial-gradient(circle at 72% 82%, rgba(216,179,106,0.09), transparent 360px),
+    linear-gradient(180deg, rgba(255,255,255,0.045), transparent 260px),
     var(--void);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
   letter-spacing: 0;
   overflow-x: hidden;
 }
@@ -58,7 +84,7 @@ body {
   top: 0;
   height: 100vh;
   padding: 26px 18px;
-  background: rgba(7, 7, 7, 0.78);
+  background: color-mix(in srgb, var(--void) 84%, transparent);
   border-right: 1px solid rgba(244, 239, 228, 0.08);
   backdrop-filter: blur(22px);
 }
@@ -119,7 +145,7 @@ body {
   background: transparent;
   color: var(--soft);
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 720;
   cursor: pointer;
   text-align: left;
@@ -171,11 +197,12 @@ body {
 .library-form select {
   min-height: var(--control-height);
   padding: 0 16px;
-  border: 1px solid rgba(244, 239, 228, 0.1);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 8px;
-  background: rgba(22, 22, 20, 0.76);
+  background: var(--surface-alpha);
   color: var(--text);
   font: inherit;
+  font-size: 15px;
 }
 .topbar .search { width: min(520px, 42vw); }
 .toolbar .search { min-width: min(420px, 100%); }
@@ -186,6 +213,24 @@ body {
   color: var(--soft);
   font-size: 13px;
   font-weight: 720;
+}
+.theme-toggle {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--graphite) 86%, transparent);
+  color: var(--soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+.theme-toggle:hover,
+.theme-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--champagne) 50%, transparent);
+  color: var(--text);
+  outline: none;
 }
 #serverDot {
   display: inline-block;
@@ -216,7 +261,7 @@ body {
   border-radius: 999px;
   background: rgba(244, 239, 228, 0.05);
   color: var(--soft);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -291,10 +336,10 @@ h1 {
 }
 h2 {
   margin: 0 0 14px;
-  color: var(--soft);
-  font-size: 13px;
+  color: var(--text);
+  font-size: clamp(21px, 1.3vw, 28px);
   font-weight: 850;
-  text-transform: uppercase;
+  text-transform: none;
 }
 .lead {
   max-width: 780px;
@@ -332,7 +377,7 @@ button,
   background: rgba(244, 239, 228, 0.06);
   color: var(--text);
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
@@ -651,7 +696,7 @@ a:focus-visible {
 }
 .metric span {
   color: var(--quiet);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -665,7 +710,7 @@ a:focus-visible {
   display: block;
   margin-top: 8px;
   color: var(--quiet);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -699,9 +744,7 @@ a:focus-visible {
   min-height: var(--poster-height);
   border: 1px solid rgba(244, 239, 228, 0.1);
   border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(244,239,228,0.035), transparent 30%),
-    linear-gradient(135deg, #171815, #10110f 54%, #0a0b0a);
+  background: var(--poster-fallback);
   overflow: hidden;
   box-shadow: 0 18px 42px rgba(0,0,0,0.38);
 }
@@ -711,7 +754,7 @@ a:focus-visible {
   inset: 0;
   display: grid;
   place-items: center;
-  color: rgba(244, 239, 228, 0.18);
+  color: color-mix(in srgb, var(--text) 10%, transparent);
   font-size: clamp(42px, 5vw, 72px);
   font-weight: 850;
   letter-spacing: 0;
@@ -720,7 +763,7 @@ a:focus-visible {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(244,239,228,0.06);
+  border: 1px solid var(--poster-fallback-line);
   background: linear-gradient(180deg, rgba(255,255,255,0.025), transparent 28%);
   pointer-events: none;
 }
@@ -749,19 +792,21 @@ a:focus-visible {
   padding: 15px;
   border: 0;
   border-radius: 0;
-  background: linear-gradient(180deg, rgba(7,7,7,0.02), rgba(7,7,7,0.66) 62%, rgba(7,7,7,0.96));
+  background: var(--poster-overlay);
   text-align: left;
 }
 .poster-title {
   display: block;
   color: var(--text);
-  font-size: 18px;
+  font-size: clamp(17px, 0.92vw, 20px);
   font-weight: 900;
-  line-height: 1.08;
+  line-height: 1.12;
+  text-shadow: 0 2px 14px color-mix(in srgb, var(--void) 72%, transparent);
 }
 .poster-action small,
 .poster-action em {
   color: var(--soft);
+  font-size: 13px;
   font-style: normal;
   font-weight: 800;
 }

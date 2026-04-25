@@ -4,6 +4,13 @@ const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
 const serverStatus = document.getElementById("serverStatus");
 const serverDot = document.getElementById("serverDot");
+const themeToggle = document.getElementById("themeToggle");
+
+const savedTheme = localStorage.getItem("vyrden-theme") || "dark";
+applyTheme(savedTheme);
+themeToggle?.addEventListener("click", () => {
+  applyTheme(document.body.dataset.theme === "light" ? "dark" : "light");
+});
 
 document.querySelectorAll(".nav-item").forEach(button => {
   button.addEventListener("click", () => navigate(button.dataset.view));
@@ -35,6 +42,13 @@ async function navigate(name) {
 
 function title(name) {
   return { dashboard: "Home", movies: "Movies", tv: "TV", libraries: "Libraries", activity: "Activity", health: "Review", playback: "Playback Lab", remote: "Remote Access", settings: "Settings" }[name] || name;
+}
+
+function applyTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  document.body.dataset.theme = next;
+  localStorage.setItem("vyrden-theme", next);
+  if (themeToggle) themeToggle.textContent = next === "light" ? "Light" : "Dark";
 }
 
 async function refreshShell() {
@@ -192,7 +206,7 @@ async function renderMovies() {
 
 function movieCard(item) {
   return `<article class="poster-card" data-filter="${escapeAttr(item.title)} ${item.year || ""}" data-initial="${escapeAttr(initials(item.title))}">
-    <img alt="" src="/api/artwork/movie/${item.id}" loading="lazy">
+    <img alt="" src="${artworkURL("movie", item.id)}" loading="lazy">
     <button class="poster-action" onclick="showMovie('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
       <small>${item.year || "Unknown year"} - ${item.versionCount || 0} version${item.versionCount === 1 ? "" : "s"}</small>
@@ -212,7 +226,7 @@ async function showMovie(id) {
   viewTitle.textContent = movie.title;
   view.innerHTML = `
     <div class="detail-command">
-      <div class="detail-backdrop"><img alt="" src="/api/artwork/movie/${movie.id}"></div>
+      <div class="detail-backdrop"><img alt="" src="${artworkURL("movie", movie.id)}"></div>
       <section class="detail-main">
         <button class="back-button" onclick="navigate('movies')">Back to Movies</button>
         <div class="eyebrow">Featured from your library</div>
@@ -357,7 +371,7 @@ async function renderTV() {
 
 function seriesCard(item) {
   return `<article class="poster-card" data-filter="${escapeAttr(item.title)}" data-initial="${escapeAttr(initials(item.title))}">
-    <img alt="" src="/api/artwork/series/${item.id}" loading="lazy">
+    <img alt="" src="${artworkURL("series", item.id)}" loading="lazy">
     <button class="poster-action" onclick="showSeries('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
       <small>${item.seasonCount || 0} seasons - ${item.episodeCount || 0} episodes</small>
@@ -371,8 +385,8 @@ async function showSeries(id) {
   view.innerHTML = `
     <div class="detail-shell">
       <section class="detail-hero">
-        <img alt="" src="/api/artwork/series/${series.id}">
-        <div class="detail-poster"><img alt="" src="/api/artwork/series/${series.id}"></div>
+        <img alt="" src="${artworkURL("series", series.id)}">
+        <div class="detail-poster"><img alt="" src="${artworkURL("series", series.id)}"></div>
         <div class="detail-copy">
           <button class="ghost" onclick="navigate('tv')">Back to TV</button>
           <h2>${escapeHTML(series.title)}</h2>
@@ -971,6 +985,10 @@ function link(href, text) {
 
 function escapeAttr(value) {
   return escapeHTML(value).replace(/`/g, "&#096;");
+}
+
+function artworkURL(kind, id) {
+  return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral`;
 }
 
 function initials(value) {
