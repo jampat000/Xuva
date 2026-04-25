@@ -32,6 +32,8 @@ type Request struct {
 	MediaSourceID string `json:"mediaSourceId"`
 	Mode          Mode   `json:"mode"`
 	SourcePath    string `json:"sourcePath,omitempty"`
+	Acceleration  string `json:"acceleration,omitempty"`
+	VideoEncoder  string `json:"videoEncoder,omitempty"`
 }
 
 type Job struct {
@@ -42,6 +44,8 @@ type Job struct {
 	SourcePath    string    `json:"sourcePath,omitempty"`
 	OutputPath    string    `json:"outputPath,omitempty"`
 	Command       []string  `json:"command,omitempty"`
+	Acceleration  string    `json:"acceleration,omitempty"`
+	VideoEncoder  string    `json:"videoEncoder,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	StartedAt     time.Time `json:"startedAt,omitempty"`
 	CompletedAt   time.Time `json:"completedAt,omitempty"`
@@ -75,7 +79,7 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	if request.Mode == "" {
 		request.Mode = ModeRemux
 	}
-	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, Status: StatusQueued, CreatedAt: time.Now().UTC()}
+	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: time.Now().UTC()}
 	job.OutputPath = filepath.Join(s.outDir, job.ID+".mp4")
 	job.Command = s.command(job)
 	s.store(job)
@@ -124,7 +128,13 @@ func (s *Service) command(job Job) []string {
 	args := []string{s.ffmpeg, "-y", "-i", job.SourcePath}
 	switch job.Mode {
 	case ModeTranscode:
-		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-movflags", "+faststart", job.OutputPath)
+		args = append(args, "-map", "0:v:0", "-map", "0:a?")
+		if job.Acceleration == "hardware" && job.VideoEncoder != "" {
+			args = append(args, "-c:v", job.VideoEncoder, "-b:v", "8000k", "-maxrate", "9000k", "-bufsize", "18000k")
+		} else {
+			args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20")
+		}
+		args = append(args, "-c:a", "aac", "-movflags", "+faststart", job.OutputPath)
 	default:
 		args = append(args, "-map", "0", "-c", "copy", "-movflags", "+faststart", job.OutputPath)
 	}

@@ -474,9 +474,12 @@ function needsVideoHardware(decision = {}) {
 
 function hardwareImpactNote(decision = {}, hardware = {}) {
   if (!needsVideoHardware(decision)) return "";
-  const title = hardware.available ? "GPU conversion available" : "GPU conversion would help";
-  const detail = hardware.available
-    ? "This file can still play. A paid hardware-transcoding unlock should shift heavy video work to the GPU, reducing CPU load, heat, and stutter risk."
+  const unlocked = hardware.available && hardware.unlockState === "unlocked";
+  const title = unlocked ? "GPU conversion ready" : hardware.available ? "GPU conversion locked" : "GPU conversion would help";
+  const detail = unlocked
+    ? "This file can still play. Vyrden can move heavy video work to the GPU for lower CPU load, less heat, and more headroom."
+    : hardware.available
+    ? "This file can still play. Hardware support is present, but GPU conversion is a paid feature, so this route stays on CPU until unlocked."
     : "This file can still play, but video conversion would run on the CPU. Expect higher CPU use, more heat, and less headroom for other streams.";
   return `<div class="hardware-impact">
     <strong>${escapeHTML(title)}</strong>
@@ -811,7 +814,7 @@ function playbackEffortLabel(decision = {}, hardware = {}) {
   if (mode === "audio transcode") return "Light PC load";
   if (mode === "video transcode" || mode === "subtitle burn") {
     if (hardware.unlockState === "unlocked" && hardware.configured) return "GPU conversion";
-    if (hardware.available) return "GPU available";
+    if (hardware.available) return "GPU locked";
     return "High CPU load";
   }
   if (mode === "decision deferred") return "Waiting for file check";
@@ -828,8 +831,8 @@ function playbackReason(decision = {}, hardware = {}) {
   if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Vyrden may need to repackage the file for this player. This is usually quick and low impact.";
   if (reason.includes("subtitle track is image-based")) return "This file can still play, but image subtitles may need to be burned into the video. That is a heavy path and can use significant CPU/GPU.";
   if (reason.includes("not safely direct-playable")) {
-    if (mode === "video transcode") return hardware.configured
-      ? "This file can still play, but this player profile needs video conversion. GPU acceleration is available and is the right path for keeping CPU load low."
+    if (mode === "video transcode") return hardware.configured && hardware.unlockState === "unlocked"
+      ? "This file can still play, but this player profile needs video conversion. GPU acceleration is unlocked and is the right path for keeping CPU load low."
       : "This file can still play, but this player profile needs video conversion. Without hardware acceleration, expect high CPU use, more power draw, and more heat.";
     if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
     if (mode === "audio transcode") return "The video can stay intact, but Vyrden may convert audio for this player. This is usually a light PC load.";
@@ -1190,7 +1193,7 @@ function hardwareAccelerationPanel(hardware = {}, config = {}) {
   const encoders = Array.isArray(hardware.encoders) ? hardware.encoders : [];
   const available = !!hardware.available;
   const status = available ? "FFmpeg support found" : hardware.status === "unknown" ? "Check failed" : "Not detected";
-  const unlock = hardware.unlockState === "unlocked" ? "Unlocked" : "Premium unlock planned";
+  const unlock = hardware.unlockState === "unlocked" ? "Unlocked" : "Paid feature locked";
   const workers = Number(config.gpuWorkers ?? hardware.gpuWorkers ?? 0);
   const encoderList = encoders.length
     ? `<div class="encoder-grid">${encoders.map(encoder => `<div class="encoder-card">
@@ -1212,9 +1215,14 @@ function hardwareAccelerationPanel(hardware = {}, config = {}) {
     ${encoderList}
     <div class="hardware-note">${escapeHTML(hardware.recommendation || "Hardware acceleration will be used only for routes that need video conversion.")}</div>
     ${hardware.error ? `<div class="hardware-empty warn">${escapeHTML(hardware.error)}</div>` : ""}
+    <div id="hardwareTestResult" class="hardware-test-result"></div>
     <form class="path-form hardware-form" onsubmit="saveHardwareSettings(event)">
       <label><span>GPU worker slots</span><input name="gpuWorkers" value="${escapeAttr(workers)}" inputmode="numeric" autocomplete="off"></label>
-      <div class="inline-actions"><button class="primary" type="submit">Save hardware settings</button><span class="muted">This reserves GPU conversion capacity. Direct play and normal library browsing are unaffected.</span></div>
+      <div class="inline-actions">
+        <button class="primary" type="submit">Save hardware settings</button>
+        <button type="button" onclick="testHardwareAcceleration(event)">Test hardware acceleration</button>
+        <span class="muted">This reserves GPU conversion capacity. Direct play and normal library browsing are unaffected.</span>
+      </div>
     </form>
   </div>`;
 }
@@ -1329,6 +1337,39 @@ async function saveHardwareSettings(event) {
   const result = await send("/api/settings", { gpuWorkers }, "PUT");
   alert(result.restartRequired ? "Saved. Restart Vyrden for hardware worker limits to take effect." : "Saved.");
   navigate("settings");
+}
+
+async function testHardwareAcceleration(event) {
+  const button = event?.currentTarget;
+  const target = document.getElementById("hardwareTestResult");
+  const original = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Testing...";
+  }
+  if (target) target.innerHTML = `<div class="hardware-empty">Running a short FFmpeg encode test for each supported hardware path. This may take a few seconds.</div>`;
+  try {
+    const result = await send("/api/settings/hardware/test", {});
+    const tests = Array.isArray(result.tests) ? result.tests : [];
+    if (target) {
+      target.innerHTML = `<div class="hardware-test-summary">
+        <strong>${escapeHTML(result.working || 0)} of ${escapeHTML(result.tested || tests.length)} hardware paths passed runtime test</strong>
+        <span>${result.working ? "At least one GPU path can encode on this machine. Paid hardware conversion can use a tested route when unlocked." : "FFmpeg lists hardware support, but no tested GPU encode path succeeded yet. Vyrden should keep using CPU conversion until drivers or FFmpeg are fixed."}</span>
+      </div>
+      <div class="encoder-grid">${tests.map(test => `<div class="encoder-card ${test.ok ? "ok" : "fail"}">
+        <span>${escapeHTML(test.vendor || "Hardware")}</span>
+        <strong>${escapeHTML(test.codec || test.id || "Encoder")}</strong>
+        <small>${test.ok ? `Passed in ${escapeHTML(test.durationMs || 0)} ms` : escapeHTML(test.error || "Failed")}</small>
+      </div>`).join("")}</div>`;
+    }
+  } catch (error) {
+    if (target) target.innerHTML = `<div class="hardware-empty warn">${escapeHTML(error.message)}</div>`;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
 }
 
 async function markWatched(mediaSourceId, watched) {

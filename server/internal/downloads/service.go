@@ -33,6 +33,8 @@ type Request struct {
 	TargetProfile string `json:"targetProfile"`
 	SourcePath    string `json:"sourcePath,omitempty"`
 	SourceName    string `json:"sourceName,omitempty"`
+	Acceleration  string `json:"acceleration,omitempty"`
+	VideoEncoder  string `json:"videoEncoder,omitempty"`
 }
 
 type Job struct {
@@ -43,6 +45,8 @@ type Job struct {
 	SourcePath    string    `json:"sourcePath,omitempty"`
 	OutputPath    string    `json:"outputPath,omitempty"`
 	Command       []string  `json:"command,omitempty"`
+	Acceleration  string    `json:"acceleration,omitempty"`
+	VideoEncoder  string    `json:"videoEncoder,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	StartedAt     time.Time `json:"startedAt,omitempty"`
 	CompletedAt   time.Time `json:"completedAt,omitempty"`
@@ -87,6 +91,8 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		MediaSourceID: request.MediaSourceID,
 		TargetProfile: request.TargetProfile,
 		SourcePath:    request.SourcePath,
+		Acceleration:  request.Acceleration,
+		VideoEncoder:  request.VideoEncoder,
 		Status:        StatusQueued,
 		CreatedAt:     time.Now().UTC(),
 	}
@@ -144,13 +150,22 @@ func (s *Service) command(job Job) []string {
 	args := []string{s.ffmpeg, "-y", "-i", job.SourcePath, "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-movflags", "+faststart"}
 	switch job.TargetProfile {
 	case ProfileTravel:
-		args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-b:v", "3000k", "-maxrate", "3500k", "-bufsize", "7000k", "-vf", "scale='min(1280,iw)':-2", "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text")
+		args = appendVideoEncoder(args, job, "3000k", "3500k", "7000k")
+		args = append(args, "-vf", "scale='min(1280,iw)':-2", "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text")
 	case ProfileBalanced:
-		args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-b:v", "8000k", "-maxrate", "9000k", "-bufsize", "18000k", "-vf", "scale='min(1920,iw)':-2", "-c:a", "aac", "-b:a", "384k", "-c:s", "mov_text")
+		args = appendVideoEncoder(args, job, "8000k", "9000k", "18000k")
+		args = append(args, "-vf", "scale='min(1920,iw)':-2", "-c:a", "aac", "-b:a", "384k", "-c:s", "mov_text")
 	default:
 		args = append(args, "-c", "copy")
 	}
 	return append(args, job.OutputPath)
+}
+
+func appendVideoEncoder(args []string, job Job, bitrate string, maxrate string, bufsize string) []string {
+	if job.Acceleration == "hardware" && job.VideoEncoder != "" {
+		return append(args, "-c:v", job.VideoEncoder, "-b:v", bitrate, "-maxrate", maxrate, "-bufsize", bufsize)
+	}
+	return append(args, "-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate, "-maxrate", maxrate, "-bufsize", bufsize)
 }
 
 func (s *Service) outputPath(job Job, sourceName string) string {

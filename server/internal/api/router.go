@@ -90,6 +90,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
 	mux.HandleFunc("GET /api/settings", settingsHandler(deps))
 	mux.HandleFunc("PUT /api/settings", settingsUpdateHandler(deps))
+	mux.HandleFunc("POST /api/settings/hardware/test", hardwareTestHandler(deps))
 	mux.HandleFunc("GET /api/system/status", systemStatusHandler(deps))
 	mux.HandleFunc("GET /api/remote/access", remoteAccessHandler(deps))
 	mux.HandleFunc("POST /api/remote/wan", wanAddressHandler(deps))
@@ -650,6 +651,10 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 func hardwareAccelerationStatus(cfg config.Config) map[string]any {
 	encoders, err := detectHardwareEncoders(cfg.FFmpegPath)
 	available := len(encoders) > 0
+	unlockState := "locked"
+	if cfg.HardwareUnlocked {
+		unlockState = "unlocked"
+	}
 	status := "not_detected"
 	if err != nil {
 		status = "unknown"
@@ -660,7 +665,7 @@ func hardwareAccelerationStatus(cfg config.Config) map[string]any {
 	result := map[string]any{
 		"status":         status,
 		"available":      available,
-		"unlockState":    "planned",
+		"unlockState":    unlockState,
 		"gpuWorkers":     cfg.GPUWorkers,
 		"encoders":       encoders,
 		"recommendation": hardwareAccelerationRecommendation(available, cfg.GPUWorkers),
@@ -679,6 +684,77 @@ func hardwareAccelerationRecommendation(available bool, gpuWorkers int) string {
 		return "FFmpeg exposes hardware encoder support, but GPU worker slots are disabled. Enable one or more slots to reserve GPU conversion capacity."
 	}
 	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Vyrden can use GPU conversion for heavy video routes and subtitle burn-in."
+}
+
+func hardwareTestHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		encoders, err := detectHardwareEncoders(deps.Config.FFmpegPath)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"status": "failed",
+				"error":  err.Error(),
+				"tests":  []map[string]any{},
+			})
+			return
+		}
+		tests := make([]map[string]any, 0, len(encoders))
+		working := 0
+		for _, encoder := range encoders {
+			id := encoder["id"]
+			result := testHardwareEncoder(r.Context(), deps.Config.FFmpegPath, id)
+			if ok, _ := result["ok"].(bool); ok {
+				working++
+			}
+			for key, value := range encoder {
+				result[key] = value
+			}
+			tests = append(tests, result)
+		}
+		status := "failed"
+		if working > 0 {
+			status = "passed"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  status,
+			"working": working,
+			"tested":  len(tests),
+			"tests":   tests,
+		})
+	}
+}
+
+func testHardwareEncoder(parent context.Context, ffmpegPath string, encoder string) map[string]any {
+	if strings.TrimSpace(ffmpegPath) == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	args := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc2=size=128x72:rate=1",
+		"-frames:v", "1", "-an",
+		"-c:v", encoder,
+		"-f", "null", os.DevNull,
+	}
+	output, err := exec.CommandContext(ctx, ffmpegPath, args...).CombinedOutput()
+	result := map[string]any{
+		"ok":         err == nil && ctx.Err() == nil,
+		"durationMs": time.Since(started).Milliseconds(),
+	}
+	if ctx.Err() != nil {
+		result["error"] = ctx.Err().Error()
+	} else if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		if len(message) > 500 {
+			message = message[:500]
+		}
+		result["error"] = message
+	}
+	return result
 }
 
 func detectHardwareEncoders(ffmpegPath string) ([]map[string]string, error) {
@@ -730,6 +806,28 @@ func detectHardwareEncoders(ffmpegPath string) ([]map[string]string, error) {
 	return encoders, nil
 }
 
+func selectedHardwareEncoder(ctx context.Context, cfg config.Config) (string, bool) {
+	if !cfg.HardwareUnlocked || cfg.GPUWorkers <= 0 {
+		return "", false
+	}
+	encoders, err := detectHardwareEncoders(cfg.FFmpegPath)
+	if err != nil {
+		return "", false
+	}
+	preferred := []string{"h264_qsv", "h264_nvenc", "h264_amf", "h264_vaapi", "h264_videotoolbox"}
+	for _, id := range preferred {
+		for _, encoder := range encoders {
+			if encoder["id"] == id {
+				result := testHardwareEncoder(ctx, cfg.FFmpegPath, id)
+				if ok, _ := result["ok"].(bool); ok {
+					return id, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
 func systemStatusHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, systemstats.Collect(runtimePaths(deps.Config)))
@@ -751,6 +849,7 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"probeWorkers":     cfg.ProbeWorkers,
 		"transcodeWorkers": cfg.TranscodeWorkers,
 		"gpuWorkers":       cfg.GPUWorkers,
+		"hardwareUnlocked": cfg.HardwareUnlocked,
 		"librarySyncMode":  cfg.LibrarySyncMode,
 		"syncIntervalMins": cfg.SyncIntervalMins,
 		"probeBatchLimit":  cfg.ProbeBatchLimit,
@@ -1720,6 +1819,12 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 			}
 			request.SourcePath = source.Path
 		}
+		if request.Mode == transcode.ModeTranscode && request.VideoEncoder == "" {
+			if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
+				request.Acceleration = "hardware"
+				request.VideoEncoder = encoder
+			}
+		}
 		job, err := deps.Transcode.Start(r.Context(), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -1779,6 +1884,12 @@ func downloadStartHandler(deps Deps) http.HandlerFunc {
 			}
 			request.SourcePath = source.Path
 			request.SourceName = source.Name
+		}
+		if request.TargetProfile != downloads.ProfileOriginal && request.VideoEncoder == "" {
+			if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
+				request.Acceleration = "hardware"
+				request.VideoEncoder = encoder
+			}
 		}
 		job, err := deps.Downloads.Start(r.Context(), request)
 		if err != nil {

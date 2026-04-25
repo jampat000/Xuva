@@ -26,6 +26,7 @@ type Config struct {
 	ProbeWorkers     int    `json:"probeWorkers"`
 	TranscodeWorkers int    `json:"transcodeWorkers"`
 	GPUWorkers       int    `json:"gpuWorkers"`
+	HardwareUnlocked bool   `json:"hardwareUnlocked,omitempty"`
 	LibrarySyncMode  string `json:"librarySyncMode,omitempty"`
 	SyncIntervalMins int    `json:"syncIntervalMins,omitempty"`
 	ProbeBatchLimit  int    `json:"probeBatchLimit,omitempty"`
@@ -52,6 +53,7 @@ func FromEnv() Config {
 		ProbeWorkers:     envInt("VYRDEN_PROBE_WORKERS", 2),
 		TranscodeWorkers: envInt("VYRDEN_TRANSCODE_WORKERS", 1),
 		GPUWorkers:       envInt("VYRDEN_GPU_WORKERS", 1),
+		HardwareUnlocked: envBool("VYRDEN_HARDWARE_UNLOCKED", false),
 		LibrarySyncMode:  envString("VYRDEN_LIBRARY_SYNC_MODE", "daily"),
 		SyncIntervalMins: envInt("VYRDEN_SYNC_INTERVAL_MINS", 1440),
 		ProbeBatchLimit:  envInt("VYRDEN_PROBE_BATCH_LIMIT", 50),
@@ -77,6 +79,7 @@ func FromEnv() Config {
 	cfg.ProbeWorkers = envInt("VYRDEN_PROBE_WORKERS", cfg.ProbeWorkers)
 	cfg.TranscodeWorkers = envInt("VYRDEN_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
 	cfg.GPUWorkers = envInt("VYRDEN_GPU_WORKERS", cfg.GPUWorkers)
+	cfg.HardwareUnlocked = envBool("VYRDEN_HARDWARE_UNLOCKED", cfg.HardwareUnlocked)
 	cfg.LibrarySyncMode = envString("VYRDEN_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
 	cfg.SyncIntervalMins = envInt("VYRDEN_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
 	cfg.ProbeBatchLimit = envInt("VYRDEN_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
@@ -161,6 +164,9 @@ func merge(base Config, saved Config) Config {
 	if saved.GPUWorkers > 0 {
 		base.GPUWorkers = saved.GPUWorkers
 	}
+	if saved.HardwareUnlocked {
+		base.HardwareUnlocked = saved.HardwareUnlocked
+	}
 	if saved.LibrarySyncMode != "" {
 		base.LibrarySyncMode = saved.LibrarySyncMode
 	}
@@ -209,6 +215,18 @@ func envInt(key string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 1 {
+		return fallback
+	}
+	return parsed
+}
+
+func envBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
 		return fallback
 	}
 	return parsed

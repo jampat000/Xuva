@@ -1172,6 +1172,40 @@ a:focus-visible {
   font-size: var(--small-font);
   font-weight: 760;
 }
+.encoder-card.ok {
+  border-color: rgba(138, 191, 143, 0.34);
+  background: rgba(138, 191, 143, 0.07);
+}
+.encoder-card.fail {
+  border-color: rgba(216, 179, 106, 0.24);
+  background: rgba(216, 179, 106, 0.045);
+}
+.encoder-card.fail small {
+  color: var(--soft);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.hardware-test-result {
+  display: grid;
+  gap: calc(12px * var(--density-scale));
+}
+.hardware-test-summary {
+  display: grid;
+  gap: calc(6px * var(--density-scale));
+  padding: calc(14px * var(--density-scale));
+  border: 1px solid rgba(158, 219, 212, 0.22);
+  border-radius: 8px;
+  background: rgba(158, 219, 212, 0.055);
+}
+.hardware-test-summary strong {
+  color: var(--text);
+  font-size: var(--ui-font);
+}
+.hardware-test-summary span {
+  color: var(--soft);
+  font-size: var(--small-font);
+  line-height: 1.4;
+}
 .hardware-empty {
   padding: calc(14px * var(--density-scale));
   border: 1px solid rgba(216, 179, 106, 0.22);
