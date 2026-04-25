@@ -1195,6 +1195,41 @@ a:focus-visible {
   max-width: calc(820px * var(--density-scale));
   margin-top: calc(22px * var(--density-scale));
 }
+.ratings-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(138px * var(--density-scale))), 1fr));
+  gap: calc(10px * var(--density-scale));
+  margin-top: calc(18px * var(--density-scale));
+  max-width: calc(900px * var(--density-scale));
+}
+.rating-tile {
+  display: grid;
+  align-content: space-between;
+  min-height: calc(82px * var(--density-scale));
+  padding: calc(11px * var(--density-scale));
+  border: 1px solid rgba(244, 239, 228, 0.105);
+  border-radius: 8px;
+  background: rgba(244, 239, 228, 0.055);
+}
+.rating-tile.pending {
+  opacity: 0.72;
+}
+.rating-tile span {
+  color: var(--quiet);
+  font-size: var(--tiny-font);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.rating-tile strong {
+  color: var(--text);
+  font-size: calc(21px * var(--font-scale));
+  line-height: 1.05;
+}
+.rating-tile small {
+  color: var(--soft);
+  font-size: var(--tiny-font);
+  font-weight: 720;
+}
 .source-strip div {
   padding: calc(12px * var(--density-scale)) calc(14px * var(--density-scale));
   border: 1px solid rgba(244, 239, 228, 0.095);
@@ -1823,6 +1858,7 @@ body[data-theme="light"] .detail-command .track-panel,
 body[data-theme="light"] .detail-command .track-row,
 body[data-theme="light"] .detail-command .download-option,
 body[data-theme="light"] .detail-command .source-strip div,
+body[data-theme="light"] .detail-command .rating-tile,
 body[data-theme="light"] .detail-command .decision,
 body[data-theme="light"] .detail-command .cast-list div {
   border-color: rgba(255, 248, 236, 0.12);

@@ -297,6 +297,7 @@ async function showMovie(id) {
           ${metadataBadges(movie.metadata)}
         </div>
         <p class="lead">${movieOverview(movie)}</p>
+        ${ratingsRail(movie.metadata)}
         ${selected ? `<div class="source-strip"><div><span>Selected source</span><strong>${escapeHTML(selected.qualityLabel || "Original source")}</strong></div><div><span>File size</span><strong>${formatBytes(selected.sizeBytes)}</strong></div><div><span>Container</span><strong>${escapeHTML((selected.relPath || "").split(".").pop() || "media")}</strong></div></div>` : ""}
         <div class="actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
@@ -932,6 +933,43 @@ function movieOverview(movie = {}) {
 function metadataBadges(metadata) {
   if (!metadata) return `<span class="badge warn">Metadata pending</span>`;
   return `<span class="badge route">${escapeHTML(providerLabel(metadata.provider))}</span><span class="badge">${metadataConfidenceLabel(metadata)}</span>`;
+}
+
+function ratingsRail(metadata = {}) {
+  const ratings = normalizeRatings(metadata);
+  return `<div class="ratings-rail">
+    ${ratings.map(item => `<div class="rating-tile ${item.pending ? "pending" : ""}">
+      <span>${escapeHTML(item.label)}</span>
+      <strong>${escapeHTML(item.value)}</strong>
+      <small>${escapeHTML(item.note)}</small>
+    </div>`).join("")}
+  </div>`;
+}
+
+function normalizeRatings(metadata = {}) {
+  const raw = metadata?.ratings || {};
+  const lookup = key => raw[key] ?? metadata?.[key];
+  return [
+    ratingItem("IMDb", lookup("imdb"), "User score"),
+    ratingItem("Rotten Critics", lookup("rottenTomatoesCritics"), "Tomatometer"),
+    ratingItem("Rotten Audience", lookup("rottenTomatoesAudience"), "Audience"),
+    ratingItem("TMDB", lookup("tmdb"), "Community"),
+    ratingItem("Metacritic", lookup("metacritic"), "Critic score"),
+  ];
+}
+
+function ratingItem(label, value, note) {
+  if (value === undefined || value === null || value === "") return { label, value: "Pending", note: "Not fetched yet", pending: true };
+  return { label, value: formatRating(value), note, pending: false };
+}
+
+function formatRating(value) {
+  if (typeof value === "string") return value;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  if (number <= 1) return `${Math.round(number * 100)}%`;
+  if (number <= 10) return `${number.toFixed(1)}/10`;
+  return `${Math.round(number)}%`;
 }
 
 function metadataSummary(metadata) {

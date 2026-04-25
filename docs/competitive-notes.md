@@ -75,6 +75,7 @@ These are the complaint themes that should become product requirements:
 - Users do not know why something is transcoding.
 - Subtitles unexpectedly force transcoding or burn-in.
 - Metadata matches are wrong, hard to correct, or inconsistent between movies and TV.
+- Users want clear ratings from multiple trusted sources instead of one opaque score.
 - Large libraries scan slowly or make the server feel busy.
 - Playback stutters because background jobs compete with active sessions.
 - Downloads are unreliable, unclear, or locked behind confusing feature boundaries.
@@ -124,8 +125,27 @@ Required behavior:
 - Review queue for uncertain matches.
 - Movie and TV-specific matching rules.
 - Metadata/artwork cache path configurable outside the install drive.
+- External IDs for IMDb, TMDB, TVDB, and provider-specific records.
+- Ratings as separate source-attributed values, not one blended score.
 
 Acceptance test: a bad match should be fixable from the item page without leaving the app.
+
+### Ratings Clarity
+
+Vyrden should show ratings the way users actually talk about movies and TV: multiple trusted signals side by side.
+
+Required behavior:
+
+- IMDb rating.
+- Rotten Tomatoes critics score.
+- Rotten Tomatoes audience score.
+- TMDB community rating.
+- Metacritic score when available.
+- TVDB rating for series/episodes when available.
+- Source attribution and last-updated timestamp.
+- Per-user preference for which ratings appear first.
+
+Acceptance test: a user should be able to compare IMDb, Rotten Tomatoes, and TMDB without guessing which provider Vyrden used.
 
 ### Library Health Command Centre
 
@@ -238,4 +258,3 @@ Acceptance test: users should understand the value of premium without feeling co
 ## Sources To Recheck Before Public Claims
 
 These notes are product planning, not marketing copy. Before public comparison pages, recheck official docs and current product behavior for Plex, Emby, and Jellyfin.
-

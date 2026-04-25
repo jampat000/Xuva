@@ -33,6 +33,7 @@
 - Library scanning.
 - Movie and TV grouping.
 - Metadata matching.
+- Multi-source ratings for IMDb, Rotten Tomatoes, TMDB, Metacritic, TVDB, and local/manual overrides.
 - Local users.
 - Device pairing.
 - Server settings.
