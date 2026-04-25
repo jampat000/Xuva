@@ -42,7 +42,7 @@
   --lead-font: clamp(calc(18px * var(--font-scale)), calc(1.05vw * var(--font-scale)), calc(22px * var(--font-scale)));
   --brand-mark: calc(44px * var(--density-scale));
   --brand-font: calc(18px * var(--font-scale));
-  --nav-text-min: calc(132px * var(--font-scale));
+  --nav-text-min: calc(158px * var(--font-scale));
   --nav-pad-y: calc(26px * var(--density-scale));
   --nav-pad-x: calc(16px * var(--density-scale));
   --nav-icon-col: calc(22px * var(--density-scale));
@@ -59,7 +59,7 @@
 body[data-density="compact"] {
   --density-scale: 0.84;
   --font-scale: 0.94;
-  --sidebar-width: clamp(184px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (42px * var(--density-scale))), 204px);
+  --sidebar-width: clamp(216px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (42px * var(--density-scale))), 236px);
   --main-x: clamp(18px, 1.5vw, 28px);
   --main-y: clamp(14px, 1.2vw, 22px);
   --shell-gap: 12px;
@@ -79,7 +79,7 @@ body[data-density="compact"] {
 body[data-density="balanced"] {
   --density-scale: 1;
   --font-scale: 1.08;
-  --sidebar-width: clamp(218px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (44px * var(--density-scale))), 236px);
+  --sidebar-width: clamp(244px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (44px * var(--density-scale))), 264px);
   --main-x: clamp(24px, 2vw, 38px);
   --main-y: clamp(22px, 2vw, 34px);
   --shell-gap: 18px;
@@ -99,7 +99,7 @@ body[data-density="balanced"] {
 body[data-density="comfortable"] {
   --density-scale: 1.12;
   --font-scale: 1.2;
-  --sidebar-width: clamp(242px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (46px * var(--density-scale))), 260px);
+  --sidebar-width: clamp(274px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (46px * var(--density-scale))), 296px);
   --main-x: clamp(28px, 2.2vw, 44px);
   --main-y: clamp(26px, 2.2vw, 42px);
   --shell-gap: 22px;
@@ -119,7 +119,7 @@ body[data-density="comfortable"] {
 body[data-density="cinematic"] {
   --density-scale: 1.22;
   --font-scale: 1.32;
-  --sidebar-width: clamp(268px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (48px * var(--density-scale))), 286px);
+  --sidebar-width: clamp(304px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (48px * var(--density-scale))), 328px);
   --main-x: clamp(30px, 2.4vw, 48px);
   --main-y: clamp(30px, 2.5vw, 48px);
   --shell-gap: 24px;
@@ -225,6 +225,7 @@ body {
   font-size: var(--tiny-font);
   font-weight: 650;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .nav-group {
@@ -261,8 +262,6 @@ body {
 .nav-item span {
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nav-item::before {
@@ -318,9 +317,9 @@ body {
   display: flex;
   gap: calc(10px * var(--density-scale));
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   min-width: 0;
-  overflow-x: auto;
+  overflow: visible;
   scrollbar-width: none;
   color: var(--soft);
   font-size: var(--ui-font);
@@ -366,9 +365,7 @@ body {
   opacity: 0.86;
 }
 .density-select span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .density-options {
   position: fixed;
@@ -513,9 +510,10 @@ h1 {
   font-size: var(--h1-font);
   line-height: 1.01;
   letter-spacing: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: balance;
 }
 h2 {
   margin: 0 0 14px;
@@ -533,8 +531,8 @@ h2 {
 }
 .meta-line {
   display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
   scrollbar-width: none;
   gap: calc(9px * var(--density-scale));
   margin-top: calc(18px * var(--density-scale));
@@ -545,8 +543,8 @@ h2 {
 .toolbar,
 .inline-actions {
   display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
   scrollbar-width: none;
   gap: calc(12px * var(--density-scale));
   align-items: center;
@@ -574,8 +572,6 @@ button,
   font-weight: 800;
   text-decoration: none;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   cursor: pointer;
 }
 button.primary,
@@ -619,7 +615,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: calc(14px * var(--density-scale));
   margin-bottom: calc(18px * var(--density-scale));
   color: var(--soft);
@@ -630,8 +626,6 @@ a:focus-visible {
   font-size: var(--ui-font);
   text-transform: uppercase;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .decision {
   padding: calc(15px * var(--density-scale));
@@ -644,9 +638,9 @@ a:focus-visible {
   color: var(--ice);
   font-size: calc(23px * var(--font-scale));
   line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .decision span {
   display: block;
@@ -661,7 +655,7 @@ a:focus-visible {
 }
 .kv div {
   display: grid;
-  grid-template-columns: calc(110px * var(--density-scale)) minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: calc(18px * var(--density-scale));
   padding: calc(10px * var(--density-scale)) 0;
   border-top: 1px solid rgba(244, 239, 228, 0.08);
@@ -671,16 +665,12 @@ a:focus-visible {
   color: var(--quiet);
   font-weight: 750;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .kv span:last-child {
   color: var(--text);
   font-weight: 720;
   text-align: right;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .insight-grid {
@@ -714,9 +704,10 @@ a:focus-visible {
 .now-idle strong {
   color: var(--ice);
   font-size: calc(22px * var(--font-scale));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: balance;
 }
 .now-idle span {
   color: var(--soft);
@@ -764,7 +755,7 @@ a:focus-visible {
 }
 .quality-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(150px * var(--density-scale))), 1fr));
   gap: calc(10px * var(--density-scale));
 }
 .quality-tile {
@@ -782,9 +773,9 @@ a:focus-visible {
   font-size: calc(11px * var(--font-scale));
   font-weight: 800;
   text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .usage {
@@ -795,6 +786,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   min-width: 0;
   gap: calc(10px * var(--density-scale));
 }
@@ -806,8 +798,6 @@ a:focus-visible {
 .usage strong {
   color: var(--text);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .usage i {
   display: block;
@@ -890,8 +880,8 @@ a:focus-visible {
   font-size: calc(24px * var(--font-scale));
   line-height: 1;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 .quality-tile small {
   margin-top: 8px;
@@ -924,24 +914,22 @@ a:focus-visible {
   color: var(--soft);
   font-size: var(--small-font);
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .ops-list span,
 .attention-list strong {
   color: var(--text);
   font-weight: 900;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .ops-list small {
   grid-column: 1 / -1;
   color: var(--quiet);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .attention-list .warn strong { color: var(--champagne); }
 .attention-list .good strong { color: var(--green); }
@@ -956,8 +944,6 @@ a:focus-visible {
   font-weight: 800;
   text-transform: uppercase;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .metric strong {
   display: block;
@@ -965,8 +951,6 @@ a:focus-visible {
   font-size: clamp(calc(28px * var(--font-scale)), 3vw, calc(44px * var(--font-scale)));
   line-height: 1;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .metric small {
   display: block;
@@ -974,9 +958,9 @@ a:focus-visible {
   color: var(--quiet);
   font-size: var(--small-font);
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .shelf-head,
@@ -1069,9 +1053,10 @@ a:focus-visible {
   font-weight: 900;
   line-height: 1.12;
   text-shadow: 0 2px 14px color-mix(in srgb, var(--void) 72%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: balance;
 }
 .poster-action small,
 .poster-action em {
@@ -1081,9 +1066,9 @@ a:focus-visible {
   font-size: var(--small-font);
   font-style: normal;
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .poster-action em { color: var(--champagne); }
 
@@ -1166,9 +1151,9 @@ a:focus-visible {
 .source-strip strong {
   display: block;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .source-strip span {
   color: var(--quiet);
@@ -1212,9 +1197,9 @@ a:focus-visible {
 .version-title strong,
 .version-title span {
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .version-path {
   color: var(--ice);
@@ -1235,9 +1220,9 @@ a:focus-visible {
 .version-details span,
 .version-details div {
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .version .inline-actions { margin-top: calc(14px * var(--density-scale)); }
 .version .button,
@@ -1302,6 +1287,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: calc(12px * var(--density-scale));
   min-height: var(--pill-height);
   padding: 0 var(--pill-pad-x);
@@ -1312,14 +1298,13 @@ a:focus-visible {
   font-size: var(--ui-font);
   font-weight: 800;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
 .download-option span,
 .download-option strong,
 .download-option b {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cast-list {
   display: grid;
@@ -1619,9 +1604,10 @@ a:focus-visible {
 .detail-copy p {
   max-width: 100%;
   margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: balance;
 }
 .ghost {
   min-height: calc(34px * var(--density-scale));
@@ -1636,6 +1622,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: calc(12px * var(--density-scale));
   min-height: var(--pill-height);
   padding: calc(13px * var(--density-scale));
@@ -1643,13 +1630,12 @@ a:focus-visible {
   border-radius: var(--bubble-radius);
   background: rgba(244, 239, 228, 0.055);
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
 .signal-pill small,
 .signal-pill b {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 table {
