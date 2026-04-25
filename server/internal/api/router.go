@@ -872,6 +872,13 @@ func playerHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "media source not found")
 			return
 		}
+		title := item.Name
+		if display, ok, err := deps.Catalog.GetMediaSourceDisplay(r.Context(), id); err != nil {
+			writeError(w, http.StatusInternalServerError, "media source display lookup failed")
+			return
+		} else if ok && display.Title != "" {
+			title = display.Title
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = fmt.Fprintf(w, `<!doctype html>
 <html lang="en">
@@ -955,11 +962,12 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .overlay {
       position:fixed;
       z-index:4;
-      left:clamp(18px, 2vw, 34px);
-      right:clamp(18px, 2vw, 34px);
+      left:50%%;
+      width:min(96vw, 1760px);
       bottom:clamp(18px, 2vw, 34px);
+      transform:translateX(-50%%);
       display:grid;
-      grid-template-columns:minmax(0, 1fr) clamp(360px, 28vw, 560px);
+      grid-template-columns:minmax(0, 1.55fr) minmax(340px, .55fr);
       gap:clamp(14px, 1.2vw, 22px);
       align-items:end;
       pointer-events:none;
@@ -967,9 +975,10 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     body.is-idle .overlay, body.is-idle .topbar {
       opacity:0;
-      transform:translateY(10px);
       pointer-events:none;
     }
+    body.is-idle .overlay { transform:translate(-50%%, 10px); }
+    body.is-idle .topbar { transform:translateY(10px); }
     body.is-idle .hud-toggle {
       opacity:1;
       transform:none;
@@ -986,11 +995,12 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     .title-panel {
       display:grid;
-      grid-template-columns:minmax(0,1fr);
-      gap:18px;
-      align-items:start;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:clamp(16px, 1.6vw, 28px);
+      align-items:end;
       max-width:100%%;
       overflow:visible;
+      min-height:clamp(150px, 13vh, 190px);
     }
     .eyebrow {
       color:var(--champagne);
@@ -1001,12 +1011,12 @@ func playerHandler(deps Deps) http.HandlerFunc {
     h1 {
       margin:5px 0 0;
       max-width:100%%;
-      font-size:clamp(30px, 2.55vw, 54px);
+      font-size:clamp(30px, 2.15vw, 46px);
       line-height:1.02;
       font-weight:900;
-      white-space:nowrap;
+      white-space:normal;
       overflow:visible;
-      text-wrap:nowrap;
+      text-wrap:balance;
     }
     .meta {
       display:flex;
@@ -1037,6 +1047,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       gap:10px;
       flex-wrap:wrap;
       padding-top:2px;
+      min-width:max-content;
     }
     button, a.button {
       pointer-events:auto;
@@ -1057,8 +1068,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .forecast {
       display:grid;
       gap:10px;
-      align-self:stretch;
-      min-height:100%%;
+      align-self:end;
+      min-height:clamp(150px, 13vh, 190px);
       align-content:start;
     }
     .forecast h2 {
@@ -1089,7 +1100,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .kv span:last-child { color:var(--text); font-weight:850; text-align:right; }
     .hint { margin-top:8px; color:var(--muted); font-size:12px; font-weight:750; }
     @media (max-width: 900px) {
-      .overlay { grid-template-columns:1fr; left:12px; right:12px; bottom:12px; }
+      .overlay { grid-template-columns:1fr; left:12px; right:12px; width:auto; bottom:12px; transform:none; }
+      body.is-idle .overlay { transform:translateY(10px); }
       .title-panel { grid-template-columns:1fr; }
       .control-stack { justify-content:flex-start; }
       .forecast { display:none; }
@@ -1324,7 +1336,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     })();
   </script>
 </body>
-</html>`, html.EscapeString(item.Name), html.EscapeString(item.Name), id)
+</html>`, html.EscapeString(title), html.EscapeString(title), id)
 	}
 }
 
