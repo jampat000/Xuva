@@ -35,7 +35,7 @@ body {
 
 .app {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -45,7 +45,7 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 24px 14px;
+  padding: 24px 18px;
   background:
     linear-gradient(180deg, rgba(12, 12, 11, 0.94), rgba(7, 7, 7, 0.82)),
     rgba(7, 7, 7, 0.78);
@@ -57,8 +57,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 52px;
-  margin-bottom: 26px;
+  min-height: 54px;
+  margin-bottom: 28px;
 }
 .mark {
   display: grid;
@@ -89,45 +89,46 @@ body {
   margin-top: 10px;
 }
 .nav-label {
-  margin: 22px 10px 8px;
+  margin: 24px 8px 8px;
   color: var(--quiet);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
+  gap: 12px;
+  min-height: 46px;
   width: 100%;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--soft);
   font: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 760;
   cursor: pointer;
   text-align: left;
 }
 .nav-item::before {
   content: "";
   position: absolute;
-  left: -14px;
+  left: -18px;
   top: 9px;
   width: 3px;
-  height: 26px;
+  height: 28px;
   border-radius: 0 99px 99px 0;
   background: transparent;
 }
 .nav-item.active,
 .nav-item:hover,
 .nav-item:focus-visible {
-  border-color: rgba(244, 239, 228, 0.1);
-  background: rgba(244, 239, 228, 0.055);
+  border-color: rgba(244, 239, 228, 0.095);
+  background: rgba(244, 239, 228, 0.045);
   color: var(--text);
   outline: none;
 }
@@ -138,21 +139,27 @@ body {
 .nav-item.active {
   border-color: rgba(216, 179, 106, 0.34);
   background:
-    linear-gradient(90deg, rgba(216, 179, 106, 0.16), rgba(216, 179, 106, 0.055));
+    linear-gradient(90deg, rgba(216, 179, 106, 0.14), rgba(216, 179, 106, 0.045));
 }
 .nav-icon {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: 1px solid rgba(244, 239, 228, 0.095);
-  border-radius: 7px;
-  background: rgba(244, 239, 228, 0.045);
+  border-radius: 8px;
+  background: rgba(7, 7, 7, 0.28);
   color: var(--quiet);
-  font-size: 11px;
-  font-weight: 850;
-  line-height: 1;
+}
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .nav-item.active .nav-icon {
   border-color: rgba(216, 179, 106, 0.38);
@@ -167,10 +174,11 @@ body {
 }
 .nav-footer {
   margin-top: auto;
-  padding: 14px;
-  border: 1px solid rgba(244, 239, 228, 0.08);
+  padding: 13px;
+  border: 1px solid rgba(244, 239, 228, 0.075);
   border-radius: 10px;
-  background: rgba(244, 239, 228, 0.035);
+  background:
+    linear-gradient(180deg, rgba(244, 239, 228, 0.045), rgba(244, 239, 228, 0.025));
 }
 .nav-footer span,
 .nav-footer strong {
@@ -178,8 +186,9 @@ body {
 }
 .nav-footer span {
   color: var(--quiet);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .nav-footer strong {
@@ -950,7 +959,7 @@ pre {
 .error { color: var(--red); }
 
 @media (max-width: 1180px) {
-  .app { grid-template-columns: 92px minmax(0, 1fr); }
+  .app { grid-template-columns: 88px minmax(0, 1fr); }
   .brand div,
   .nav-label,
   .nav-text,
@@ -958,7 +967,7 @@ pre {
   .nav { align-items: center; padding-inline: 14px; }
   .nav-item {
     justify-content: center;
-    width: 56px;
+    width: 54px;
     padding: 0;
   }
   .nav-item::before {
@@ -997,7 +1006,11 @@ pre {
   .nav-item {
     flex: 0 0 auto;
     width: auto;
-    padding: 0 10px;
+    padding: 0 11px;
+  }
+  .nav-icon {
+    width: 30px;
+    height: 30px;
   }
   .nav-text { display: inline; }
   .nav-footer { display: none; }
