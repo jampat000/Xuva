@@ -21,6 +21,7 @@ applyDensity(savedDensity);
 densityButton?.addEventListener("click", () => {
   const open = densityMenu?.classList.toggle("open");
   densityButton.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) positionDensityMenu();
 });
 densityOptions?.querySelectorAll("[data-density-option]").forEach(button => {
   button.addEventListener("click", () => {
@@ -34,6 +35,8 @@ document.addEventListener("click", event => {
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") closeDensityMenu();
 });
+window.addEventListener("resize", positionDensityMenu);
+window.addEventListener("scroll", positionDensityMenu, true);
 
 document.querySelectorAll(".nav-item").forEach(button => {
   button.addEventListener("click", () => navigate(button.dataset.view));
@@ -76,6 +79,7 @@ function applyTheme(theme) {
 
 function applyDensity(density) {
   const next = densityNames[density] ? density : "comfortable";
+  document.documentElement.dataset.density = next;
   document.body.dataset.density = next;
   localStorage.setItem("vyrden-density", next);
   if (densityLabel) densityLabel.textContent = densityNames[next];
@@ -84,11 +88,25 @@ function applyDensity(density) {
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-checked", selected ? "true" : "false");
   });
+  positionDensityMenu();
 }
 
 function closeDensityMenu() {
   densityMenu?.classList.remove("open");
   densityButton?.setAttribute("aria-expanded", "false");
+}
+
+function positionDensityMenu() {
+  if (!densityMenu?.classList.contains("open") || !densityButton || !densityOptions) return;
+  const rect = densityButton.getBoundingClientRect();
+  const styles = getComputedStyle(document.body);
+  const densityScale = Number.parseFloat(styles.getPropertyValue("--density-scale")) || 1;
+  const gap = Math.max(8, Math.round(8 * densityScale));
+  const minWidth = Math.max(rect.width, Math.round(190 * densityScale));
+  const left = Math.min(Math.max(12, rect.left), window.innerWidth - minWidth - 12);
+  densityOptions.style.minWidth = `${minWidth}px`;
+  densityOptions.style.left = `${left}px`;
+  densityOptions.style.top = `${rect.bottom + gap}px`;
 }
 
 async function refreshShell() {
@@ -274,7 +292,7 @@ async function showMovie(id) {
           <span class="badge">${movie.year || "Unknown year"}</span>
           <span class="badge">${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</span>
           <span class="badge ${movie.needsReview ? "warn" : "good"}">${movie.needsReview ? "Needs Review" : "Matched"}</span>
-          <span class="badge route">${selected ? "Direct Play Candidate" : "No Source"}</span>
+          <span class="badge route">${selected ? "Direct Play" : "No Source"}</span>
           ${metadataBadges(movie.metadata)}
         </div>
         <p class="lead">${movieOverview(movie)}</p>
@@ -365,6 +383,7 @@ function trackRow(label, meta, selected) {
 }
 
 function audioTrackRows(items = []) {
+  items = Array.isArray(items) ? items : [];
   if (!items.length) return trackRow("Probe required", "No audio track data yet", true);
   return items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "audio").toUpperCase()}${item.channels ? ` ${item.channels}ch` : ""}`;
@@ -374,6 +393,7 @@ function audioTrackRows(items = []) {
 }
 
 function subtitleTrackRows(items = []) {
+  items = Array.isArray(items) ? items : [];
   if (!items.length) return trackRow("No embedded subtitles", "Sidecars checked separately", true);
   return items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "subtitle").toUpperCase()}${item.forced ? " forced" : ""}`;
@@ -878,7 +898,7 @@ function movieOverview(movie = {}) {
 
 function metadataBadges(metadata) {
   if (!metadata) return `<span class="badge warn">Metadata pending</span>`;
-  return `<span class="badge route">Metadata: ${escapeHTML(providerLabel(metadata.provider))}</span><span class="badge">${metadataConfidenceLabel(metadata)}</span>`;
+  return `<span class="badge route">${escapeHTML(providerLabel(metadata.provider))}</span><span class="badge">${metadataConfidenceLabel(metadata)}</span>`;
 }
 
 function metadataSummary(metadata) {
