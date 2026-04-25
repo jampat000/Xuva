@@ -276,12 +276,10 @@ function movieCard(item) {
 
 async function showMovie(id) {
   const movie = await api(`/api/movies/${id}`);
-  const rows = await Promise.all(movie.versions.map(async (version, index) => {
-    const state = await api(`/api/playback/state/${version.mediaSourceId}`);
-    return versionCard(version, state, index === 0);
-  }));
-  const selected = movie.versions[0];
-  const tracks = selected ? await api(`/api/media-sources/${selected.mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })) : { audioTracks: [], subtitleTracks: [] };
+  const versionModels = await Promise.all(movie.versions.map(loadVersionModel));
+  const rows = versionModels.map((model, index) => versionCard(model, index === 0));
+  const selected = versionModels[0];
+  const tracks = selected?.tracks || { audioTracks: [], subtitleTracks: [] };
   if (selected) seedPlaybackSelection(selected.mediaSourceId, tracks);
   viewTitle.textContent = movie.title;
   view.innerHTML = `
@@ -300,7 +298,7 @@ async function showMovie(id) {
         </div>
         <p class="lead">${movieOverview(movie)}</p>
         ${ratingsRail(movie.metadata)}
-        ${selected ? `<div class="source-strip"><div><span>Selected source</span><strong>${escapeHTML(selected.qualityLabel || "Original source")}</strong></div><div><span>File size</span><strong>${formatBytes(selected.sizeBytes)}</strong></div><div><span>Container</span><strong>${escapeHTML((selected.relPath || "").split(".").pop() || "media")}</strong></div></div>` : ""}
+        ${selected ? sourceStrip(selected) : ""}
         <div class="actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
           ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play From Start</a>` : ""}
@@ -312,7 +310,7 @@ async function showMovie(id) {
         <section class="section">
           <div class="section-head">
             <div class="section-title">Versions</div>
-            <div class="section-note">Choose source quality before playback</div>
+          <div class="section-note">Choose source quality before playback</div>
           </div>
           <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
         </section>
@@ -330,15 +328,7 @@ async function showMovie(id) {
 
       <aside class="side detail-side">
         <section class="panel pad">
-          <div class="panel-title"><strong>Playback Forecast</strong><span class="badge route" id="forecastLoad">0% load</span></div>
-          <div class="decision"><strong id="forecastMode">${selected ? "Direct Play" : "No Source"}</strong><span id="forecastReason">${selected ? "Client supports the selected source. No server transcode required unless tracks change." : "Scan or attach a source before playback."}</span></div>
-          <div class="kv">
-            <div><span>Reason</span><span id="forecastReasonShort">${selected ? "Source available" : "Missing source"}</span></div>
-            <div><span>Video</span><span id="forecastVideo">${selected ? escapeHTML(selected.qualityLabel || "Source") : "None"}</span></div>
-            <div><span>Audio</span><span id="forecastAudio">Passthrough ready</span></div>
-            <div><span>Subtitles</span><span id="forecastSubtitles">SRT optional</span></div>
-            <div><span>Server</span><span id="forecastServer">Low impact route</span></div>
-          </div>
+          ${playbackForecastMarkup(selected)}
         </section>
         <section class="panel pad">
           <div class="panel-title"><strong>Download</strong></div>
@@ -364,7 +354,7 @@ async function showMovie(id) {
           <div class="cast-list">
             <div><i></i><strong>Container</strong><span>${selected ? escapeHTML((selected.relPath || "").split(".").pop() || "media") : "none"}</span></div>
             <div><i></i><strong>Storage</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
-            <div><i></i><strong>Remote</strong><span>Use alternate encode if needed</span></div>
+            <div><i></i><strong>Route</strong><span>${selected ? escapeHTML(selected.decision?.mode || "Decision pending") : "No route"}</span></div>
           </div>
         </section>
       </aside>
@@ -372,11 +362,30 @@ async function showMovie(id) {
   if (selected) updatePlaybackForecast(selected.mediaSourceId);
 }
 
-function versionCard(version, state, selected) {
-  const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round(state.percent * 100)}%` : "Unplayed";
+async function loadVersionModel(version = {}) {
+  const [state, source, tracks, decision] = await Promise.all([
+    api(`/api/playback/state/${version.mediaSourceId}`).catch(() => ({})),
+    api(`/api/media-sources/${version.mediaSourceId}`).catch(() => ({})),
+    api(`/api/media-sources/${version.mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })),
+    api(`/api/playback/decision?mediaSourceId=${version.mediaSourceId}&clientProfile=web`).catch(() => ({})),
+  ]);
+  return { ...version, state, source, tracks, decision };
+}
+
+function versionCard(model, selected) {
+  const version = model || {};
+  const state = version.state || {};
+  const source = version.source || {};
+  const decision = version.decision || {};
+  const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round((state.percent || 0) * 100)}%` : "Unplayed";
+  const routeTone = decision.mode === "Direct Play" ? "Direct Play" : decision.mode || watched;
   return `<article class="version ${selected ? "is-selected" : ""}">
-    <div class="version-title">${escapeHTML(version.qualityLabel || "Source")}<span class="version-path">${selected ? "Direct Play" : watched}</span></div>
-    <div class="version-details"><span>${escapeHTML(version.relPath)}</span><span>${formatBytes(version.sizeBytes)}</span></div>
+    <div class="version-title"><strong>${escapeHTML(version.qualityLabel || sourceQualityLabel(source) || "Source")}</strong><span class="version-path">${escapeHTML(routeTone)}</span></div>
+    <div class="version-details">
+      <span>${escapeHTML(version.relPath)}</span>
+      <div>${formatBytes(version.sizeBytes)} - ${escapeHTML(sourceCodecLine(source))}</div>
+      <div>${escapeHTML(decision.reason || "Playback decision pending.")}</div>
+    </div>
     <div class="inline-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
       <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
@@ -384,6 +393,58 @@ function versionCard(version, state, selected) {
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
     </div>
   </article>`;
+}
+
+function sourceStrip(model = {}) {
+  const source = model.source || {};
+  return `<div class="source-strip">
+    <div><span>Selected source</span><strong>${escapeHTML(model.qualityLabel || sourceQualityLabel(source) || "Original source")}</strong></div>
+    <div><span>Codec route</span><strong>${escapeHTML(sourceCodecLine(source))}</strong></div>
+    <div><span>Bitrate / size</span><strong>${escapeHTML(source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending")} - ${formatBytes(model.sizeBytes)}</strong></div>
+  </div>`;
+}
+
+function playbackForecastMarkup(model) {
+  if (!model) {
+    return `<div class="panel-title"><strong>Playback Forecast</strong><span class="badge warn">No Source</span></div>
+      <div class="decision"><strong id="forecastMode">No Source</strong><span id="forecastReason">Scan or attach a source before playback.</span></div>`;
+  }
+  const source = model.source || {};
+  const decision = model.decision || {};
+  return `<div class="panel-title"><strong>Playback Forecast</strong><span class="badge route" id="forecastLoad">${escapeHTML(loadLabel(decision))}</span></div>
+    <div class="decision"><strong id="forecastMode">${escapeHTML(decision.mode || "Decision Pending")}</strong><span id="forecastReason">${escapeHTML(decision.reason || "Vyrden is still collecting media facts for this source.")}</span></div>
+    <div class="kv">
+      <div><span>Reason</span><span id="forecastReasonShort">${escapeHTML(decision.containerAction || "pending")}</span></div>
+      <div><span>Video</span><span id="forecastVideo">${escapeHTML(sourceVideoLine(source, decision))}</span></div>
+      <div><span>Audio</span><span id="forecastAudio">${escapeHTML(decision.audioAction || "pending")}</span></div>
+      <div><span>Subtitles</span><span id="forecastSubtitles">${escapeHTML(decision.subtitleAction || "none")}</span></div>
+      <div><span>Network</span><span>${escapeHTML(decision.estimatedNetworkBitrate ? formatBitrate(decision.estimatedNetworkBitrate) : "pending")}</span></div>
+      <div><span>Server</span><span id="forecastServer">${escapeHTML(serverImpact(decision))}</span></div>
+    </div>
+    ${decision.suggestedFixes?.length ? `<div class="mini-list">${decision.suggestedFixes.map(item => `<div><strong>${escapeHTML(item)}</strong><span>Suggested improvement</span></div>`).join("")}</div>` : ""}`;
+}
+
+function sourceQualityLabel(source = {}) {
+  const height = Number(source.height || 0);
+  const resolution = height >= 2000 ? "4K" : height >= 1000 ? "1080p" : height ? `${height}p` : "";
+  return [resolution, source.videoCodec ? String(source.videoCodec).toUpperCase() : "", source.container ? String(source.container).toUpperCase() : ""].filter(Boolean).join(" ");
+}
+
+function sourceCodecLine(source = {}) {
+  if (!source.probed) return "Probe required";
+  return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "video", source.container ? String(source.container).toUpperCase() : "container", source.audioStreams ? `${source.audioStreams} audio` : "", source.subtitleStreams ? `${source.subtitleStreams} subs` : ""].filter(Boolean).join(" - ");
+}
+
+function sourceVideoLine(source = {}, decision = {}) {
+  return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "Video pending", source.width && source.height ? `${source.width}x${source.height}` : "", decision.videoAction || ""].filter(Boolean).join(" - ");
+}
+
+function loadLabel(decision = {}) {
+  if (decision.estimatedCpuCost === "high") return "high load";
+  if (decision.estimatedCpuCost === "medium") return "some load";
+  if (decision.estimatedCpuCost === "low") return "low load";
+  if (decision.estimatedCpuCost === "none") return "0% load";
+  return "pending";
 }
 
 function seedPlaybackSelection(mediaSourceId, tracks = {}) {
@@ -511,7 +572,8 @@ function seriesCard(item) {
 
 async function showSeries(id) {
   const series = await api(`/api/series/${id}`);
-  const seasonSections = await Promise.all(series.seasons.map(async season => `<section class="card"><h2>Season ${season.seasonNumber}</h2>${await episodeList(season.episodes)}</section>`));
+  state.currentSeries = series;
+  const seasonSections = await Promise.all(series.seasons.map(async season => `<section class="card"><h2>Season ${season.seasonNumber}</h2>${await episodeList(series.id, season.episodes)}</section>`));
   viewTitle.textContent = series.title;
   view.innerHTML = `
     <div class="detail-shell">
@@ -540,7 +602,7 @@ async function showSeries(id) {
     </div>`;
 }
 
-async function episodeList(episodes) {
+async function episodeList(seriesId, episodes) {
   if (!episodes.length) return empty("No episodes in this season.");
   const rows = await Promise.all(episodes.map(async episode => {
     const version = episode.versions && episode.versions[0];
@@ -550,13 +612,82 @@ async function episodeList(episodes) {
     const play = version ? `<a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${playLabel}</a><a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a><button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button><button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>` : `<span class="muted">No source</span>`;
     const label = episode.episodeEnd && episode.episodeEnd !== episode.episodeNumber ? `E${episode.episodeNumber}-E${episode.episodeEnd}` : `E${episode.episodeNumber}`;
     return `<div class="episode-row">
-      <strong>${label}</strong>
-      <span>${escapeHTML(episode.title || "Episode")}</span>
+      <button class="episode-jump" onclick="showEpisode('${seriesId}','${episode.id}')">${label}</button>
+      <button class="episode-title-button" onclick="showEpisode('${seriesId}','${episode.id}')">${escapeHTML(episode.title || "Episode")}</button>
       <small>${escapeHTML(watchedLabel)}</small>
       <div class="inline-actions">${play}${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix</button>` : ""}</div>
     </div>`;
   }));
   return rows.join("");
+}
+
+async function showEpisode(seriesId, episodeId) {
+  const series = state.currentSeries?.id === seriesId ? state.currentSeries : await api(`/api/series/${seriesId}`);
+  state.currentSeries = series;
+  const season = (series.seasons || []).find(item => (item.episodes || []).some(episode => episode.id === episodeId));
+  const episode = (season?.episodes || []).find(item => item.id === episodeId);
+  if (!episode) {
+    view.innerHTML = `<div class="card error">Episode not found.</div>`;
+    return;
+  }
+  const versionModels = await Promise.all((episode.versions || []).map(loadVersionModel));
+  const selected = versionModels[0];
+  const tracks = selected?.tracks || { audioTracks: [], subtitleTracks: [] };
+  if (selected) seedPlaybackSelection(selected.mediaSourceId, tracks);
+  const episodeCode = episode.episodeEnd && episode.episodeEnd !== episode.episodeNumber ? `S${season.seasonNumber} E${episode.episodeNumber}-E${episode.episodeEnd}` : `S${season.seasonNumber} E${episode.episodeNumber}`;
+  viewTitle.textContent = `${series.title} - ${episodeCode}`;
+  view.innerHTML = `
+    <div class="detail-command">
+      <div class="detail-backdrop"><img alt="" src="${artworkURL("series", series.id, "backdrop")}"></div>
+      <section class="detail-main">
+        <button class="back-button" onclick="showSeries('${series.id}')">Back to ${escapeHTML(series.title)}</button>
+        <div class="eyebrow">Episode detail</div>
+        <h1>${escapeHTML(episode.title || episodeCode)}</h1>
+        <div class="meta-line">
+          <span class="badge">${escapeHTML(series.title)}</span>
+          <span class="badge">${escapeHTML(episodeCode)}</span>
+          <span class="badge">${episode.versionCount || 0} version${episode.versionCount === 1 ? "" : "s"}</span>
+          <span class="badge ${episode.needsReview ? "warn" : "good"}">${episode.needsReview ? "Needs Review" : "Matched"}</span>
+        </div>
+        <p class="lead">${escapeHTML(series.metadata?.overview || "Inspect episode source quality, playback route, audio, subtitles, and metadata before playing.")}</p>
+        ${ratingsRail(series.metadata)}
+        ${selected ? sourceStrip(selected) : ""}
+        <div class="actions">
+          ${selected ? `<a class="button primary" href="/play/${selected.mediaSourceId}" target="_blank">Play</a><a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Start Over</a>` : ""}
+          ${selected ? `<button onclick="markWatched('${selected.mediaSourceId}', true)">Mark Watched</button><button onclick="markWatched('${selected.mediaSourceId}', false)">Mark Unwatched</button>` : ""}
+          <button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Refresh Series Metadata</button>
+          ${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix Episode</button>` : ""}
+        </div>
+        <section class="section">
+          <div class="section-head"><div class="section-title">Versions</div><div class="section-note">Episode source quality and route</div></div>
+          <div class="version-grid">${versionModels.map((model, index) => versionCard(model, index === 0)).join("") || empty("No playable versions found.")}</div>
+        </section>
+        <section class="section">
+          <div class="section-head"><div class="section-title">Audio & Subtitles</div><div class="section-note">Selected tracks affect compatibility</div></div>
+          <div class="track-grid">
+            <div class="track-panel"><strong>Audio</strong>${audioTrackRows(tracks.audioTracks, selected?.mediaSourceId)}</div>
+            <div class="track-panel"><strong>Subtitles</strong>${subtitleTrackRows(tracks.subtitleTracks, selected?.mediaSourceId)}</div>
+          </div>
+        </section>
+      </section>
+      <aside class="side detail-side">
+        <section class="panel pad">${playbackForecastMarkup(selected)}</section>
+        <section class="panel pad">
+          <div class="panel-title"><strong>Metadata</strong><span class="badge route">${escapeHTML(providerLabel(series.metadata?.provider || "pending"))}</span></div>
+          <div class="decision"><strong>${escapeHTML(series.metadata?.title || series.title)}</strong><span>${metadataSummary(series.metadata)}</span></div>
+          <div class="inline-actions"><button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch metadata</button>${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix match</button>` : ""}</div>
+        </section>
+        <section class="panel pad">
+          <div class="panel-title"><strong>Episode Source</strong></div>
+          <div class="cast-list">
+            <div><i></i><strong>File</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
+            <div><i></i><strong>Route</strong><span>${selected ? escapeHTML(selected.decision?.mode || "Decision pending") : "No route"}</span></div>
+            <div><i></i><strong>Size</strong><span>${selected ? formatBytes(selected.sizeBytes) : "None"}</span></div>
+          </div>
+        </section>
+      </aside>
+    </div>`;
+  if (selected) updatePlaybackForecast(selected.mediaSourceId);
 }
 
 async function renderLibraries() {

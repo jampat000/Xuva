@@ -708,6 +708,7 @@ a:focus-visible {
 .episode-row,
 .library-card,
 .mini-list a,
+.mini-list div,
 .remote-options div,
 .settings-grid div {
   border: 1px solid rgba(244, 239, 228, 0.095);
@@ -1626,6 +1627,7 @@ a:focus-visible {
   background: linear-gradient(90deg, var(--champagne) var(--progress), rgba(244,239,228,0.12) var(--progress));
 }
 .mini-list a,
+.mini-list div,
 .library-card,
 .version-card,
 .episode-row,
@@ -1633,7 +1635,8 @@ a:focus-visible {
 .settings-grid div {
   padding: calc(13px * var(--density-scale));
 }
-.mini-list a {
+.mini-list a,
+.mini-list div {
   display: grid;
   gap: calc(5px * var(--density-scale));
   position: relative;
@@ -1667,6 +1670,25 @@ a:focus-visible {
   grid-template-columns: calc(74px * var(--density-scale)) minmax(0, 1fr) calc(130px * var(--density-scale)) auto;
   gap: calc(12px * var(--density-scale));
   align-items: center;
+}
+.episode-jump,
+.episode-title-button {
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: calc(34px * var(--density-scale));
+  padding: 0 calc(10px * var(--density-scale));
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.episode-jump {
+  color: var(--champagne);
+  font-weight: 900;
+}
+.episode-title-button {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .library-panel {
   display: grid;
@@ -2015,6 +2037,7 @@ body[data-theme="light"] .version-card,
 body[data-theme="light"] .episode-row,
 body[data-theme="light"] .library-card,
 body[data-theme="light"] .mini-list a,
+body[data-theme="light"] .mini-list div,
 body[data-theme="light"] .remote-options div,
 body[data-theme="light"] .settings-grid div,
 body[data-theme="light"] .metric,
