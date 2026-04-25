@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -566,10 +567,11 @@ func performanceSettingsHandler(deps Deps) http.HandlerFunc {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"profile":   profile,
-			"limits":    deps.Resources.Limits(),
-			"queues":    deps.Jobs.Snapshot(),
-			"libraries": libraryList,
+			"profile":              profile,
+			"limits":               deps.Resources.Limits(),
+			"queues":               deps.Jobs.Snapshot(),
+			"libraries":            libraryList,
+			"hardwareAcceleration": hardwareAccelerationStatus(deps.Config),
 			"recommendations": []string{
 				"Keep scan concurrency low for network/removable storage",
 				"Probe jobs are isolated from scan and transcode queues",
@@ -643,6 +645,89 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			"restartRequired": true,
 		})
 	}
+}
+
+func hardwareAccelerationStatus(cfg config.Config) map[string]any {
+	encoders, err := detectHardwareEncoders(cfg.FFmpegPath)
+	available := len(encoders) > 0
+	status := "not_detected"
+	if err != nil {
+		status = "unknown"
+	}
+	if available {
+		status = "available"
+	}
+	result := map[string]any{
+		"status":         status,
+		"available":      available,
+		"unlockState":    "planned",
+		"gpuWorkers":     cfg.GPUWorkers,
+		"encoders":       encoders,
+		"recommendation": hardwareAccelerationRecommendation(available, cfg.GPUWorkers),
+	}
+	if err != nil {
+		result["error"] = err.Error()
+	}
+	return result
+}
+
+func hardwareAccelerationRecommendation(available bool, gpuWorkers int) string {
+	if !available {
+		return "No FFmpeg hardware encoder support was detected. Video conversion will fall back to CPU until a compatible GPU driver and FFmpeg build are available."
+	}
+	if gpuWorkers <= 0 {
+		return "FFmpeg exposes hardware encoder support, but GPU worker slots are disabled. Enable one or more slots to reserve GPU conversion capacity."
+	}
+	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Vyrden can use GPU conversion for heavy video routes and subtitle burn-in."
+}
+
+func detectHardwareEncoders(ffmpegPath string) ([]map[string]string, error) {
+	if strings.TrimSpace(ffmpegPath) == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-encoders").CombinedOutput()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ffmpeg encoder scan failed: %w", err)
+	}
+	text := strings.ToLower(string(output))
+	candidates := []struct {
+		id     string
+		label  string
+		vendor string
+		codec  string
+	}{
+		{"h264_qsv", "H.264 Intel Quick Sync", "Intel Quick Sync", "H.264"},
+		{"hevc_qsv", "HEVC Intel Quick Sync", "Intel Quick Sync", "HEVC"},
+		{"av1_qsv", "AV1 Intel Quick Sync", "Intel Quick Sync", "AV1"},
+		{"h264_nvenc", "H.264 NVIDIA NVENC", "NVIDIA NVENC", "H.264"},
+		{"hevc_nvenc", "HEVC NVIDIA NVENC", "NVIDIA NVENC", "HEVC"},
+		{"av1_nvenc", "AV1 NVIDIA NVENC", "NVIDIA NVENC", "AV1"},
+		{"h264_amf", "H.264 AMD AMF", "AMD AMF", "H.264"},
+		{"hevc_amf", "HEVC AMD AMF", "AMD AMF", "HEVC"},
+		{"av1_amf", "AV1 AMD AMF", "AMD AMF", "AV1"},
+		{"h264_vaapi", "H.264 VAAPI", "VAAPI", "H.264"},
+		{"hevc_vaapi", "HEVC VAAPI", "VAAPI", "HEVC"},
+		{"av1_vaapi", "AV1 VAAPI", "VAAPI", "AV1"},
+		{"h264_videotoolbox", "H.264 VideoToolbox", "Apple VideoToolbox", "H.264"},
+		{"hevc_videotoolbox", "HEVC VideoToolbox", "Apple VideoToolbox", "HEVC"},
+	}
+	encoders := make([]map[string]string, 0)
+	for _, candidate := range candidates {
+		if strings.Contains(text, candidate.id) {
+			encoders = append(encoders, map[string]string{
+				"id":     candidate.id,
+				"label":  candidate.label,
+				"vendor": candidate.vendor,
+				"codec":  candidate.codec,
+			})
+		}
+	}
+	return encoders, nil
 }
 
 func systemStatusHandler(deps Deps) http.HandlerFunc {

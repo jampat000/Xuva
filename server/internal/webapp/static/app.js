@@ -454,11 +454,16 @@ async function performanceSnapshot() {
 }
 
 function hardwareTranscodeProfile(performance = {}) {
-  const gpuWorkers = Number(performance?.limits?.gpuWorkers || 0);
+  const hardware = performance?.hardwareAcceleration || {};
+  const encoders = Array.isArray(hardware.encoders) ? hardware.encoders : [];
+  const gpuWorkers = Number(hardware.gpuWorkers ?? performance?.limits?.gpuWorkers ?? 0);
   return {
     gpuWorkers,
-    configured: gpuWorkers > 0,
-    unlockState: "planned",
+    encoders,
+    available: !!hardware.available,
+    configured: gpuWorkers > 0 && !!hardware.available,
+    unlockState: hardware.unlockState || "planned",
+    status: hardware.status || "unknown",
   };
 }
 
@@ -469,10 +474,10 @@ function needsVideoHardware(decision = {}) {
 
 function hardwareImpactNote(decision = {}, hardware = {}) {
   if (!needsVideoHardware(decision)) return "";
-  const title = hardware.configured ? "Hardware acceleration recommended" : "Hardware acceleration would help";
-  const detail = hardware.configured
-    ? "This is the route where a future premium hardware-transcoding unlock matters: GPU-assisted conversion should reduce CPU load, heat, and stutter risk compared with software-only conversion."
-    : "This is the route where hardware transcoding matters most. Without GPU-assisted conversion, expect higher CPU use, more heat, and less headroom for other streams.";
+  const title = hardware.available ? "GPU conversion available" : "GPU conversion would help";
+  const detail = hardware.available
+    ? "This file can still play. A paid hardware-transcoding unlock should shift heavy video work to the GPU, reducing CPU load, heat, and stutter risk."
+    : "This file can still play, but video conversion would run on the CPU. Expect higher CPU use, more heat, and less headroom for other streams.";
   return `<div class="hardware-impact">
     <strong>${escapeHTML(title)}</strong>
     <span>${escapeHTML(detail)}</span>
@@ -804,7 +809,11 @@ function playbackEffortLabel(decision = {}, hardware = {}) {
   if (mode === "direct play") return "No extra work";
   if (mode === "remux") return "Low PC load";
   if (mode === "audio transcode") return "Light PC load";
-  if (mode === "video transcode" || mode === "subtitle burn") return hardware.configured ? "GPU path preferred" : "High CPU load";
+  if (mode === "video transcode" || mode === "subtitle burn") {
+    if (hardware.unlockState === "unlocked" && hardware.configured) return "GPU conversion";
+    if (hardware.available) return "GPU available";
+    return "High CPU load";
+  }
   if (mode === "decision deferred") return "Waiting for file check";
   return serverImpact(decision);
 }
@@ -820,7 +829,7 @@ function playbackReason(decision = {}, hardware = {}) {
   if (reason.includes("subtitle track is image-based")) return "This file can still play, but image subtitles may need to be burned into the video. That is a heavy path and can use significant CPU/GPU.";
   if (reason.includes("not safely direct-playable")) {
     if (mode === "video transcode") return hardware.configured
-      ? "This file can still play, but this player profile needs video conversion. Hardware acceleration is the right route here because it can move most of that work away from the CPU."
+      ? "This file can still play, but this player profile needs video conversion. GPU acceleration is available and is the right path for keeping CPU load low."
       : "This file can still play, but this player profile needs video conversion. Without hardware acceleration, expect high CPU use, more power draw, and more heat.";
     if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
     if (mode === "audio transcode") return "The video can stay intact, but Vyrden may convert audio for this player. This is usually a light PC load.";
@@ -1169,10 +1178,44 @@ async function renderSettings() {
     </div>
     <div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div>
     <div class="card"><h2>Library Automation</h2>${automationSettingsForm(settings.config)}</div>
+    <div class="card"><h2>Hardware Acceleration</h2>${hardwareAccelerationPanel(performance.hardwareAcceleration || {}, settings.config)}</div>
     <div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>
     <div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>
     <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
     <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
+  </div>`;
+}
+
+function hardwareAccelerationPanel(hardware = {}, config = {}) {
+  const encoders = Array.isArray(hardware.encoders) ? hardware.encoders : [];
+  const available = !!hardware.available;
+  const status = available ? "FFmpeg support found" : hardware.status === "unknown" ? "Check failed" : "Not detected";
+  const unlock = hardware.unlockState === "unlocked" ? "Unlocked" : "Premium unlock planned";
+  const workers = Number(config.gpuWorkers ?? hardware.gpuWorkers ?? 0);
+  const encoderList = encoders.length
+    ? `<div class="encoder-grid">${encoders.map(encoder => `<div class="encoder-card">
+        <span>${escapeHTML(encoder.vendor || "Hardware")}</span>
+        <strong>${escapeHTML(encoder.codec || encoder.label || "Encoder")}</strong>
+        <small>${escapeHTML(encoder.id || "")}</small>
+      </div>`).join("")}</div>`
+    : `<div class="hardware-empty">No hardware encoder support was detected from FFmpeg yet. Direct play still works normally, but heavy video conversion will use the CPU until GPU support is available.</div>`;
+  return `<div class="hardware-accel-panel">
+    <div class="hardware-accel-copy">
+      <div><span>${escapeHTML(status)}</span><strong>GPU-assisted conversion is the premium playback path.</strong></div>
+      <p>When a player needs video conversion or subtitle burn-in, hardware acceleration can move most of the work from CPU to Intel Quick Sync, NVIDIA NVENC, AMD AMF, VAAPI, or VideoToolbox. Vyrden detects FFmpeg support here; actual runtime use will be verified before a paid hardware path starts.</p>
+    </div>
+    <div class="settings-grid hardware-accel-facts">
+      <div><span>Unlock state</span><strong>${escapeHTML(unlock)}</strong></div>
+      <div><span>GPU worker slots</span><strong>${escapeHTML(workers)}</strong></div>
+      <div><span>Supported encoders</span><strong>${escapeHTML(encoders.length)}</strong></div>
+    </div>
+    ${encoderList}
+    <div class="hardware-note">${escapeHTML(hardware.recommendation || "Hardware acceleration will be used only for routes that need video conversion.")}</div>
+    ${hardware.error ? `<div class="hardware-empty warn">${escapeHTML(hardware.error)}</div>` : ""}
+    <form class="path-form hardware-form" onsubmit="saveHardwareSettings(event)">
+      <label><span>GPU worker slots</span><input name="gpuWorkers" value="${escapeAttr(workers)}" inputmode="numeric" autocomplete="off"></label>
+      <div class="inline-actions"><button class="primary" type="submit">Save hardware settings</button><span class="muted">This reserves GPU conversion capacity. Direct play and normal library browsing are unaffected.</span></div>
+    </form>
   </div>`;
 }
 
@@ -1276,6 +1319,15 @@ async function saveAutomationSettings(event) {
     probeBatchLimit: Math.max(1, Math.min(500, probeLimit)),
   }, "PUT");
   alert(result.restartRequired ? "Saved. Restart Vyrden for the scheduler to use the new cadence." : "Saved.");
+  navigate("settings");
+}
+
+async function saveHardwareSettings(event) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const gpuWorkers = Math.max(0, Math.min(8, Number(data.get("gpuWorkers") || 0)));
+  const result = await send("/api/settings", { gpuWorkers }, "PUT");
+  alert(result.restartRequired ? "Saved. Restart Vyrden for hardware worker limits to take effect." : "Saved.");
   navigate("settings");
 }
 

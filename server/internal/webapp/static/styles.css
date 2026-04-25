@@ -1101,6 +1101,90 @@ a:focus-visible {
   font-size: var(--small-font);
   font-weight: 720;
 }
+.hardware-accel-panel {
+  display: grid;
+  gap: calc(16px * var(--density-scale));
+}
+.hardware-accel-copy {
+  display: grid;
+  gap: calc(10px * var(--density-scale));
+  padding: calc(18px * var(--density-scale));
+  border: 1px solid rgba(158, 219, 212, 0.22);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(158, 219, 212, 0.12), transparent 280px),
+    linear-gradient(180deg, rgba(20, 32, 29, 0.68), rgba(16, 16, 15, 0.82));
+}
+.hardware-accel-copy div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(12px * var(--density-scale));
+}
+.hardware-accel-copy span {
+  color: var(--ice);
+  font-size: var(--tiny-font);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.hardware-accel-copy strong {
+  color: var(--text);
+  font-size: calc(22px * var(--font-scale));
+  line-height: 1.12;
+}
+.hardware-accel-copy p,
+.hardware-note,
+.hardware-empty {
+  margin: 0;
+  color: var(--soft);
+  font-size: var(--ui-font);
+  line-height: 1.45;
+}
+.hardware-accel-facts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(220px * var(--density-scale))), 1fr));
+}
+.encoder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(210px * var(--density-scale))), 1fr));
+  gap: calc(12px * var(--density-scale));
+}
+.encoder-card {
+  display: grid;
+  gap: calc(5px * var(--density-scale));
+  padding: calc(14px * var(--density-scale));
+  border: 1px solid rgba(244, 239, 228, 0.1);
+  border-radius: 8px;
+  background: rgba(244, 239, 228, 0.045);
+}
+.encoder-card span {
+  color: var(--quiet);
+  font-size: var(--tiny-font);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.encoder-card strong {
+  color: var(--text);
+  font-size: var(--ui-font);
+  line-height: 1.2;
+}
+.encoder-card small {
+  color: var(--ice);
+  font-size: var(--small-font);
+  font-weight: 760;
+}
+.hardware-empty {
+  padding: calc(14px * var(--density-scale));
+  border: 1px solid rgba(216, 179, 106, 0.22);
+  border-radius: 8px;
+  background: rgba(216, 179, 106, 0.055);
+}
+.hardware-empty.warn {
+  border-color: rgba(255, 117, 108, 0.28);
+  color: #ffb6b0;
+}
+.hardware-form {
+  padding-top: calc(4px * var(--density-scale));
+}
 .quality-tile strong {
   margin-top: 8px;
   color: var(--text);
