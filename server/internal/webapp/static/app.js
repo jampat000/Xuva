@@ -359,19 +359,17 @@ async function showMovie(id) {
         </div>
         <p class="lead">${movieOverview(movie)}</p>
         ${ratingsRail(movie.metadata)}
-        ${selected ? sourceStrip(selected) : ""}
-        <div class="actions">
+        <div class="actions detail-hero-actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
           ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play From Start</a>` : ""}
-          ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', true)">Mark Watched</button>` : ""}
-          ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', false)">Mark Unwatched</button>` : ""}
+          ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', true)">Watched</button>` : ""}
           <button class="button focusable" onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch Ratings</button>
           ${movie.needsReview ? `<button class="button focusable" onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
         </div>
         <section class="section">
           <div class="section-head">
-            <div class="section-title">Versions</div>
-            <div class="section-note">Pick the file version Vyrden should use</div>
+            <div class="section-title">Source</div>
+            <div class="section-note">Current file and playback readiness</div>
           </div>
           <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
         </section>
@@ -409,75 +407,70 @@ function versionCard(model, selected) {
   const state = version.state || {};
   const source = version.source || {};
   const decision = version.decision || {};
-  const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `Resume ${Math.round((state.percent || 0) * 100)}%` : "Unplayed";
+  const watched = state.watched ? "Watched" : state.progressSeconds > 0 ? `${Math.round((state.percent || 0) * 100)}% watched` : "Unplayed";
   const routeTone = decision.mode ? playbackReadinessLabel(decision) : watched;
-  const probeTone = source.probed ? "Media checked" : "Media check needed";
   const sourceFacts = [
-    source.container ? String(source.container).toUpperCase() : "container pending",
-    source.width && source.height ? `${source.width}x${source.height}` : "resolution pending",
-    source.bitrate ? formatBitrate(source.bitrate) : "bitrate pending",
+    source.container ? String(source.container).toUpperCase() : "Container pending",
+    source.width && source.height ? `${source.width}x${source.height}` : "Resolution pending",
+    source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending",
   ].filter(Boolean).join(" - ");
-  return `<article class="version ${selected ? "is-selected" : ""}">
-    <div class="version-title"><strong>${escapeHTML(version.qualityLabel || sourceQualityLabel(source) || "Source")}</strong><span class="version-path">${escapeHTML(routeTone)}</span></div>
-    <div class="source-badges">
-      <span class="badge ${source.probed ? "good" : "warn"}">${escapeHTML(probeTone)}</span>
-      <span class="badge route">${escapeHTML(playbackEffortLabel(decision))}</span>
+  return `<article class="version source-card ${selected ? "is-selected" : ""}">
+    <div class="source-card-head">
+      <div>
+        <strong>${escapeHTML(version.qualityLabel || sourceQualityLabel(source) || "Source")}</strong>
+        <span>${escapeHTML(version.relPath || "Local source")}</span>
+      </div>
+      <em class="${source.probed ? "ready" : "pending"}">${escapeHTML(source.probed ? "Checked" : "Check needed")}</em>
     </div>
-    <div class="version-details">
-      <span>${escapeHTML(version.relPath)}</span>
-      <div>${formatBytes(version.sizeBytes)} - ${escapeHTML(sourceCodecLine(source))}</div>
-      <div>${escapeHTML(sourceFacts)}</div>
-      <div>${escapeHTML(playbackReason(decision))}</div>
+    <div class="source-card-grid">
+      ${sourceCardFact("Playback", routeTone)}
+      ${sourceCardFact("Server", playbackEffortLabel(decision))}
+      ${sourceCardFact("File", formatBytes(version.sizeBytes))}
+      ${sourceCardFact("Media", sourceFacts)}
     </div>
-    <div class="inline-actions">
+    <p>${escapeHTML(playbackReason(decision))}</p>
+    <div class="inline-actions source-card-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
       <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
-      ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Probe</button>`}
-      <button onclick="openSourceInspector('${version.mediaSourceId}')">Inspect Source</button>
+      ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Check Media</button>`}
+      <button onclick="openSourceInspector('${version.mediaSourceId}')">Details</button>
       <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
     </div>
   </article>`;
 }
 
+function sourceCardFact(label, value) {
+  return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
+}
+
 function movieDetailRail(movie = {}, selected = null) {
   return `
-    <section class="panel pad detail-status-panel">
-      ${playbackForecastMarkup(selected)}
-    </section>
-    <section class="panel pad">
-      <div class="panel-title"><strong>Source Actions</strong></div>
-      <div class="source-action-stack">
-        ${selected ? `<button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>` : ""}
-        ${selected ? `<button onclick="openSourceInspector('${selected.mediaSourceId}')">Inspect source</button>` : ""}
-        ${selected ? `<a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play from start</a>` : ""}
+    <section class="panel pad source-control-panel">
+      ${sourceControlHeader(selected)}
+      ${sourceControlActions(selected)}
+      ${sourceControlDownloads(selected)}
+      <div class="source-control-section">
+        <div class="rail-section-title">Match</div>
+        <div class="detail-summary-card">
+          <strong>${escapeHTML(movie.metadata?.title || movie.title)}</strong>
+          <span>${metadataSummary(movie.metadata)}</span>
+        </div>
+        <div class="compact-facts">
+          ${compactFact("Provider", providerLabel(movie.metadata?.provider || "none"))}
+          ${compactFact("Confidence", metadataConfidenceLabel(movie.metadata))}
+          ${compactFact("External ID", metadataExternalID(movie.metadata))}
+        </div>
+        <div class="inline-actions rail-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
       </div>
-      <div class="download-plan">
-        ${selected ? downloadPlan("Original", formatBytes(selected.sizeBytes), "Keep full quality", selected.mediaSourceId, "original") : ""}
-        ${selected ? downloadPlan("Balanced", "1080p", "Smaller prepared copy", selected.mediaSourceId, "balanced") : ""}
-        ${selected ? downloadPlan("Travel", "720p", "Smallest portable copy", selected.mediaSourceId, "travel") : ""}
-      </div>
-    </section>
-    <section class="panel pad">
-      <div class="panel-title"><strong>Match & Ratings</strong><span class="badge route">${escapeHTML(providerLabel(movie.metadata?.provider || "pending"))}</span></div>
-      <div class="detail-summary-card">
-        <strong>${escapeHTML(movie.metadata?.title || movie.title)}</strong>
-        <span>${metadataSummary(movie.metadata)}</span>
-      </div>
-      <div class="fact-list">
-        ${factRow("Provider", providerLabel(movie.metadata?.provider || "none"))}
-        ${factRow("Confidence", metadataConfidenceLabel(movie.metadata))}
-        ${factRow("External ID", metadataExternalID(movie.metadata))}
-      </div>
-      <div class="inline-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
-    </section>
-    <section class="panel pad">
-      <div class="panel-title"><strong>File Facts</strong><span class="badge ${selected?.source?.probed ? "good" : "warn"}">${selected?.source?.probed ? "Ready" : "Check needed"}</span></div>
-      <div class="fact-list">
-        ${factRow("Container", selected ? ((selected.relPath || "").split(".").pop() || "media") : "No source")}
-        ${factRow("Storage path", selected ? selected.relPath : "No linked file")}
-        ${factRow("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
-        ${factRow("Server impact", selected ? playbackEffortLabel(selected.decision) : "None")}
+      <div class="source-control-section">
+        <div class="rail-section-title">File</div>
+        <div class="compact-facts">
+          ${compactFact("Container", selected ? ((selected.relPath || "").split(".").pop() || "media") : "No source")}
+          ${compactFact("Storage", selected ? selected.relPath : "No linked file", true)}
+          ${compactFact("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
+          ${compactFact("Server", selected ? playbackEffortLabel(selected.decision) : "None")}
+        </div>
       </div>
     </section>`;
 }
@@ -492,6 +485,57 @@ function downloadPlan(label, value, note, mediaSourceId, profile) {
 
 function factRow(label, value) {
   return `<div class="fact-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
+}
+
+function sourceControlHeader(selected = null) {
+  if (!selected) {
+    return `<div class="source-control-hero">
+      <span>Playback</span>
+      <strong>No source selected</strong>
+      <p>Scan this library to attach a playable file.</p>
+    </div>`;
+  }
+  const decision = selected.decision || {};
+  const source = selected.source || {};
+  return `<div class="source-control-hero">
+    <span>Playback</span>
+    <strong>${escapeHTML(playbackReadinessLabel(decision))}</strong>
+    <p>${escapeHTML(playbackReason(decision))}</p>
+    <div class="source-control-metrics">
+      ${sourceMetric("Server", playbackEffortLabel(decision))}
+      ${sourceMetric("File check", source.probed ? "Complete" : "Needed")}
+      ${sourceMetric("Size", formatBytes(selected.sizeBytes))}
+    </div>
+  </div>`;
+}
+
+function sourceMetric(label, value) {
+  return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
+}
+
+function sourceControlActions(selected = null) {
+  if (!selected) return "";
+  return `<div class="source-control-actions">
+    <button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>
+    <button onclick="openSourceInspector('${selected.mediaSourceId}')">Source details</button>
+    <a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play from start</a>
+  </div>`;
+}
+
+function sourceControlDownloads(selected = null) {
+  if (!selected) return "";
+  return `<div class="source-control-section">
+    <div class="rail-section-title">Prepare a copy</div>
+    <div class="download-plan">
+      ${downloadPlan("Original", formatBytes(selected.sizeBytes), "Full quality", selected.mediaSourceId, "original")}
+      ${downloadPlan("Balanced", "1080p", "Smaller copy", selected.mediaSourceId, "balanced")}
+      ${downloadPlan("Travel", "720p", "Portable copy", selected.mediaSourceId, "travel")}
+    </div>
+  </div>`;
+}
+
+function compactFact(label, value, long = false) {
+  return `<div class="compact-fact ${long ? "long" : ""}"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
 }
 
 async function openSourceInspector(mediaSourceId) {
@@ -879,17 +923,16 @@ async function showEpisode(seriesId, episodeId) {
           <span class="badge">${episode.versionCount || 0} version${episode.versionCount === 1 ? "" : "s"}</span>
           <span class="badge ${episode.needsReview ? "warn" : "good"}">${episode.needsReview ? "Needs Review" : "Matched"}</span>
         </div>
-        <p class="lead">${escapeHTML(series.metadata?.overview || "Inspect episode source quality, playback route, audio, subtitles, and metadata before playing.")}</p>
+        <p class="lead">${escapeHTML(series.metadata?.overview || "Local episode source with playback readiness, audio, subtitle, and metadata details in one place.")}</p>
         ${ratingsRail(series.metadata)}
-        ${selected ? sourceStrip(selected) : ""}
-        <div class="actions">
+        <div class="actions detail-hero-actions">
           ${selected ? `<a class="button primary" href="/play/${selected.mediaSourceId}" target="_blank">Play</a><a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Start Over</a>` : ""}
-          ${selected ? `<button onclick="markWatched('${selected.mediaSourceId}', true)">Mark Watched</button><button onclick="markWatched('${selected.mediaSourceId}', false)">Mark Unwatched</button>` : ""}
-          <button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Refresh Series Metadata</button>
+          ${selected ? `<button onclick="markWatched('${selected.mediaSourceId}', true)">Watched</button><button onclick="markWatched('${selected.mediaSourceId}', false)">Unwatched</button>` : ""}
+          <button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch Metadata</button>
           ${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix Episode</button>` : ""}
         </div>
         <section class="section">
-          <div class="section-head"><div class="section-title">Versions</div><div class="section-note">Episode source quality and route</div></div>
+          <div class="section-head"><div class="section-title">Source</div><div class="section-note">Current file and playback readiness</div></div>
           <div class="version-grid">${versionModels.map((model, index) => versionCard(model, index === 0)).join("") || empty("No playable versions found.")}</div>
         </section>
         <section class="section">
@@ -909,30 +952,25 @@ async function showEpisode(seriesId, episodeId) {
 
 function episodeDetailRail(series = {}, episode = {}, selected = null) {
   return `
-    <section class="panel pad detail-status-panel">${playbackForecastMarkup(selected)}</section>
-    <section class="panel pad">
-      <div class="panel-title"><strong>Source Actions</strong></div>
-      <div class="source-action-stack">
-        ${selected ? `<button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>` : ""}
-        ${selected ? `<button onclick="openSourceInspector('${selected.mediaSourceId}')">Inspect source</button>` : ""}
-        ${selected ? `<a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play from start</a>` : ""}
+    <section class="panel pad source-control-panel">
+      ${sourceControlHeader(selected)}
+      ${sourceControlActions(selected)}
+      <div class="source-control-section">
+        <div class="rail-section-title">Series Match</div>
+        <div class="detail-summary-card">
+          <strong>${escapeHTML(series.metadata?.title || series.title)}</strong>
+          <span>${metadataSummary(series.metadata)}</span>
+        </div>
+        <div class="inline-actions rail-actions"><button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch metadata</button>${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix match</button>` : ""}</div>
       </div>
-    </section>
-    <section class="panel pad">
-      <div class="panel-title"><strong>Series Match</strong><span class="badge route">${escapeHTML(providerLabel(series.metadata?.provider || "pending"))}</span></div>
-      <div class="detail-summary-card">
-        <strong>${escapeHTML(series.metadata?.title || series.title)}</strong>
-        <span>${metadataSummary(series.metadata)}</span>
-      </div>
-      <div class="inline-actions"><button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch metadata</button>${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix match</button>` : ""}</div>
-    </section>
-    <section class="panel pad">
-      <div class="panel-title"><strong>File Facts</strong><span class="badge ${selected?.source?.probed ? "good" : "warn"}">${selected?.source?.probed ? "Ready" : "Check needed"}</span></div>
-      <div class="fact-list">
-        ${factRow("File", selected ? selected.relPath : "No linked file")}
-        ${factRow("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
-        ${factRow("Server impact", selected ? playbackEffortLabel(selected.decision) : "None")}
-        ${factRow("Size", selected ? formatBytes(selected.sizeBytes) : "None")}
+      <div class="source-control-section">
+        <div class="rail-section-title">File</div>
+        <div class="compact-facts">
+          ${compactFact("File", selected ? selected.relPath : "No linked file", true)}
+          ${compactFact("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
+          ${compactFact("Server", selected ? playbackEffortLabel(selected.decision) : "None")}
+          ${compactFact("Size", selected ? formatBytes(selected.sizeBytes) : "None")}
+        </div>
       </div>
     </section>`;
 }
@@ -1589,7 +1627,7 @@ function folderLabel(value = "") {
 function movieOverview(movie = {}) {
   if (movie.metadata?.overview) return escapeHTML(movie.metadata.overview);
   if (movie.needsReview) return "This item needs metadata review before Vyrden can fully trust its match.";
-  return "Choose a version, confirm the playback route, then play directly from your local library. The selected source stays explicit so users understand quality, route, and server impact before pressing play.";
+  return "Local file ready in your library. Vyrden will show richer cast, artwork, ratings, and playback details as metadata and media checks complete.";
 }
 
 function metadataBadges(metadata) {
