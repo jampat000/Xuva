@@ -1309,8 +1309,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
     window.addEventListener("resize", fitPlayerTitle);
     setInterval(() => {
       refreshProgress();
-      saveProgress();
-    }, 10000);
+      if (!player.paused && !player.ended) saveProgress("playing");
+    }, 2000);
     window.addEventListener("beforeunload", () => { stopSession("stopped"); });
     (async function boot() {
       await loadResumeState();

@@ -162,8 +162,8 @@ async function renderDashboard() {
         <article class="feature">
           <div class="feature-content">
             <p class="eyebrow">Live media command centre</p>
-            <h1>${dashboardCommandTitle(activeSessions, summary)}</h1>
-            <p class="lead">${dashboardCommandCopy(activeSessions, summary, health, quality)}</p>
+            <h1 data-live="dashboard-title">${dashboardCommandTitle(activeSessions, summary)}</h1>
+            <p class="lead" data-live="dashboard-copy">${dashboardCommandCopy(activeSessions, summary, health, quality)}</p>
             <div class="meta-line">
               <span class="badge">${summary.mediaSources || 0} sources</span>
               <span class="badge">${summary.libraries || 0} libraries</span>
@@ -1312,14 +1312,13 @@ let dashboardRefreshTimer = 0;
 let livePatchTimer = 0;
 const livePatchEvents = new Set([
   "scan.progress", "probe.running", "transcode.running", "download.running",
-  "session.updated", "playback.state.updated"
+  "session.started", "session.updated", "session.stopped", "playback.state.updated"
 ]);
 const dashboardStructuralEvents = new Set([
   "scan.queued", "scan.started", "scan.completed", "scan.failed",
   "probe.queued", "probe.started", "probe.completed", "probe.failed",
   "transcode.queued", "transcode.started", "transcode.completed", "transcode.failed",
   "download.queued", "download.started", "download.completed", "download.failed",
-  "session.started", "session.stopped",
   "metadata.updated", "metadata.ratings.updated", "metadata.batch.completed", "metadata.batch.failed",
   "settings.updated", "library.updated", "library.deleted"
 ]);
@@ -1372,6 +1371,8 @@ async function patchDashboardLive(eventName = "") {
   const quality = sourceQuality(mediaSources);
   const activeJobs = [...scanJobs, ...probeJobs, ...workJobs, ...downloadJobs].filter(isActiveJob);
   const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
+  setLiveHTML("dashboard-title", dashboardCommandTitle(activeSessions, summary));
+  setLiveHTML("dashboard-copy", dashboardCommandCopy(activeSessions, summary, health, quality));
   setLiveHTML("playing-now", playingNow(activeSessions));
   setLiveHTML("playing-now-status", activeSessions.length ? "Live" : "Idle");
   setLiveHTML("operations", operationsPanel(scanJobs, probeJobs, workJobs, downloadJobs));
@@ -1433,6 +1434,10 @@ for (const name of liveEventNames) {
     refreshLiveViews(name);
   });
 }
+setInterval(() => {
+  if (state.activeView === "dashboard") patchLiveView("live.tick");
+  if (state.activeView === "activity") patchLiveView("live.tick");
+}, 2500);
 
 refreshShell().catch(() => {});
 navigate("dashboard");
