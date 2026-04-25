@@ -859,6 +859,50 @@ a:focus-visible {
   border-radius: var(--bubble-radius);
   background: linear-gradient(90deg, var(--ice) var(--progress), rgba(244,239,228,0.1) var(--progress));
 }
+.rich-session {
+  grid-template-columns: calc(48px * var(--density-scale)) minmax(0, 1fr) auto;
+  align-items: center;
+}
+.session-art {
+  width: calc(48px * var(--density-scale));
+  aspect-ratio: 2 / 3;
+  border: 1px solid rgba(244, 239, 228, 0.12);
+  border-radius: 6px;
+  background:
+    linear-gradient(145deg, rgba(154, 226, 215, 0.12), rgba(224, 187, 112, 0.08)),
+    rgba(244, 239, 228, 0.04);
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 -30px 42px rgba(0, 0, 0, 0.42);
+}
+.session-art:not([style])::after {
+  content: attr(data-initial);
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: rgba(244, 239, 228, 0.28);
+  font-size: calc(16px * var(--font-scale));
+  font-weight: 900;
+}
+.session-main,
+.session-side {
+  min-width: 0;
+}
+.session-side {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+.session-time {
+  grid-column: 2 / -1;
+}
+.session-summary i {
+  display: block;
+  height: 4px;
+  margin-top: calc(8px * var(--density-scale));
+  border-radius: var(--bubble-radius);
+  background: linear-gradient(90deg, var(--ice) var(--progress), rgba(244,239,228,0.1) var(--progress));
+}
 .quality-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(150px * var(--density-scale))), 1fr));

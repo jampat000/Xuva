@@ -1005,15 +1005,48 @@ function playingNow(items = []) {
       <div><span>Route</span><span>LAN</span></div>
     </div>`;
   }
-  return `<div class="session-list">${items.slice(0, 4).map(session => {
-    const percent = session.durationSeconds ? Math.min(100, Math.round((session.progressSeconds / session.durationSeconds) * 100)) : 0;
-    return `<article class="session-card">
-      <div><strong>${escapeHTML(session.deviceId || "Device")}</strong><span>${escapeHTML(session.mode || "direct")} - ${escapeHTML(session.status || "playing")}</span></div>
+  return `<div class="session-list">${items.slice(0, 4).map(session => sessionMonitorCard(session)).join("")}</div>`;
+}
+
+function sessionMonitorCard(session = {}) {
+  const percent = sessionPercent(session);
+  const title = session.title || session.sourceName || session.mediaSourceId || "Active playback";
+  const sourceLine = sessionSourceLine(session);
+  return `<article class="session-card rich-session">
+    <div class="session-art" ${session.artworkUrl ? `style="background-image:url('${escapeAttr(session.artworkUrl)}')"` : ""} data-initial="${escapeAttr(initials(title))}"></div>
+    <div class="session-main">
+      <strong>${escapeHTML(title)}</strong>
+      <span>${escapeHTML(sourceLine)}</span>
+      <small>${escapeHTML(sessionRouteLine(session))}</small>
+    </div>
+    <div class="session-side">
       <b>${percent}%</b>
-      <i style="--progress:${Math.max(3, percent)}%"></i>
-      <small>${formatDuration(session.progressSeconds)} / ${formatDuration(session.durationSeconds)}</small>
-    </article>`;
-  }).join("")}</div>`;
+      <small>${escapeHTML(session.serverImpact || "Route pending")}</small>
+    </div>
+    <i style="--progress:${Math.max(3, percent)}%"></i>
+    <small class="session-time">${formatDuration(session.progressSeconds)} / ${formatDuration(session.durationSeconds)}</small>
+  </article>`;
+}
+
+function sessionPercent(session = {}) {
+  return session.durationSeconds ? Math.min(100, Math.round((session.progressSeconds / session.durationSeconds) * 100)) : 0;
+}
+
+function sessionSourceLine(session = {}) {
+  const parts = [
+    session.qualityLabel,
+    session.videoCodec ? String(session.videoCodec).toUpperCase() : "",
+    session.container ? String(session.container).toUpperCase() : "",
+    session.bitrate ? formatBitrate(session.bitrate) : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" - ") : session.sourceName || "Source details pending";
+}
+
+function sessionRouteLine(session = {}) {
+  const route = session.route || session.mode || "route pending";
+  const client = session.clientProfile || session.deviceId || "client";
+  const status = session.status || "playing";
+  return `${route} - ${client} - ${status}`;
 }
 
 function fileIntelligence(quality, summary, health) {
@@ -1183,6 +1216,14 @@ function formatBytes(value) {
   return `${amount >= 10 || index === 0 ? Math.round(amount) : Math.round(amount * 10) / 10} ${units[index]}`;
 }
 
+function formatBitrate(value) {
+  const bitrate = Number(value || 0);
+  if (!bitrate) return "";
+  if (bitrate >= 1000000) return `${Math.round(bitrate / 1000000)} Mbps`;
+  if (bitrate >= 1000) return `${Math.round(bitrate / 1000)} Kbps`;
+  return `${Math.round(bitrate)} bps`;
+}
+
 function formatDuration(value) {
   const total = Math.max(0, Math.round(Number(value || 0)));
   if (!total) return "0:00";
@@ -1231,9 +1272,10 @@ function versionGroups(items = [], totalTitles = 0) {
 
 function sessionCards(items = []) {
   if (!items.length) return empty("No active sessions.");
-  return `<div class="version-grid">${items.map(item => `<article class="version-card">
-    <div><strong>${escapeHTML(item.deviceId)}</strong><small>${escapeHTML(item.status)} - ${Math.round(item.progressSeconds || 0)}s</small></div>
-    <small>${escapeHTML(item.mediaSourceId)}</small>
+  return `<div class="version-grid">${items.map(item => `<article class="version-card session-summary">
+    <div><strong>${escapeHTML(item.title || item.sourceName || item.deviceId || "Active playback")}</strong><small>${escapeHTML(sessionRouteLine(item))}</small></div>
+    <small>${escapeHTML(sessionSourceLine(item))}</small>
+    <i style="--progress:${Math.max(3, sessionPercent(item))}%"></i>
   </article>`).join("")}</div>`;
 }
 

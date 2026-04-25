@@ -15,6 +15,16 @@ type Session struct {
 	UserID        string    `json:"userId"`
 	DeviceID      string    `json:"deviceId"`
 	MediaSourceID string    `json:"mediaSourceId"`
+	Title         string    `json:"title,omitempty"`
+	ArtworkURL    string    `json:"artworkUrl,omitempty"`
+	SourceName    string    `json:"sourceName,omitempty"`
+	QualityLabel  string    `json:"qualityLabel,omitempty"`
+	Container     string    `json:"container,omitempty"`
+	VideoCodec    string    `json:"videoCodec,omitempty"`
+	Bitrate       int64     `json:"bitrate,omitempty"`
+	ClientProfile string    `json:"clientProfile,omitempty"`
+	Route         string    `json:"route,omitempty"`
+	ServerImpact  string    `json:"serverImpact,omitempty"`
 	Mode          string    `json:"mode"`
 	Status        string    `json:"status"`
 	Progress      float64   `json:"progressSeconds"`
@@ -27,6 +37,16 @@ type StartRequest struct {
 	UserID          string  `json:"userId"`
 	DeviceID        string  `json:"deviceId"`
 	MediaSourceID   string  `json:"mediaSourceId"`
+	Title           string  `json:"title"`
+	ArtworkURL      string  `json:"artworkUrl"`
+	SourceName      string  `json:"sourceName"`
+	QualityLabel    string  `json:"qualityLabel"`
+	Container       string  `json:"container"`
+	VideoCodec      string  `json:"videoCodec"`
+	Bitrate         int64   `json:"bitrate"`
+	ClientProfile   string  `json:"clientProfile"`
+	Route           string  `json:"route"`
+	ServerImpact    string  `json:"serverImpact"`
 	Mode            string  `json:"mode"`
 	ProgressSeconds float64 `json:"progressSeconds"`
 	DurationSeconds float64 `json:"durationSeconds"`
@@ -68,6 +88,16 @@ func (s *Service) Start(request StartRequest) (Session, error) {
 		UserID:        request.UserID,
 		DeviceID:      request.DeviceID,
 		MediaSourceID: request.MediaSourceID,
+		Title:         request.Title,
+		ArtworkURL:    request.ArtworkURL,
+		SourceName:    request.SourceName,
+		QualityLabel:  request.QualityLabel,
+		Container:     request.Container,
+		VideoCodec:    request.VideoCodec,
+		Bitrate:       request.Bitrate,
+		ClientProfile: request.ClientProfile,
+		Route:         request.Route,
+		ServerImpact:  request.ServerImpact,
 		Mode:          request.Mode,
 		Status:        "playing",
 		Progress:      nonNegative(request.ProgressSeconds),

@@ -1237,7 +1237,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       }, { once: true });
     }
     async function startSession(mode) {
-      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", mode });
+      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", clientProfile: "web", mode, route: mode });
       sessionId = session.id || "";
       sessionState.textContent = sessionId ? "Live session" : "Local playback";
     }
@@ -1496,12 +1496,112 @@ func sessionStartHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
+		if err := enrichSessionStartRequest(deps, r.Context(), &request); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		session, err := deps.Sessions.Start(request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, session)
+	}
+}
+
+func enrichSessionStartRequest(deps Deps, ctx context.Context, request *sessions.StartRequest) error {
+	if request == nil || request.MediaSourceID == "" || deps.Catalog == nil {
+		return nil
+	}
+	source, ok, err := deps.Catalog.GetMediaSource(ctx, request.MediaSourceID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if request.SourceName == "" {
+		request.SourceName = source.Name
+	}
+	if request.Container == "" {
+		request.Container = source.Container
+	}
+	if request.VideoCodec == "" {
+		request.VideoCodec = source.VideoCodec
+	}
+	if request.Bitrate == 0 {
+		request.Bitrate = source.Bitrate
+	}
+	if request.DurationSeconds == 0 {
+		request.DurationSeconds = source.DurationSeconds
+	}
+	display, displayOK, err := deps.Catalog.GetMediaSourceDisplay(ctx, request.MediaSourceID)
+	if err != nil {
+		return err
+	}
+	if displayOK {
+		if request.Title == "" {
+			request.Title = display.Title
+		}
+		if request.QualityLabel == "" {
+			request.QualityLabel = display.QualityLabel
+		}
+		if request.ArtworkURL == "" && display.ArtworkKind != "" && display.ArtworkID != "" {
+			request.ArtworkURL = "/api/artwork/" + display.ArtworkKind + "/" + display.ArtworkID
+		}
+	}
+	if request.Title == "" {
+		request.Title = source.Name
+	}
+	if request.QualityLabel == "" {
+		request.QualityLabel = sessionQualityLabel(source)
+	}
+	if request.ClientProfile == "" {
+		request.ClientProfile = request.DeviceID
+	}
+	if request.ClientProfile == "" {
+		request.ClientProfile = "web"
+	}
+	if request.Route == "" {
+		request.Route = request.Mode
+	}
+	if request.ServerImpact == "" {
+		request.ServerImpact = sessionServerImpact(request.Route, request.Mode)
+	}
+	return nil
+}
+
+func sessionQualityLabel(source catalog.MediaSourceItem) string {
+	parts := []string{}
+	if source.Width >= 3800 || source.Height >= 2000 {
+		parts = append(parts, "4K")
+	} else if source.Width >= 1900 || source.Height >= 1000 {
+		parts = append(parts, "1080p")
+	} else if source.Height > 0 {
+		parts = append(parts, fmt.Sprintf("%dp", source.Height))
+	}
+	if source.VideoCodec != "" {
+		parts = append(parts, strings.ToUpper(source.VideoCodec))
+	}
+	if source.Container != "" {
+		parts = append(parts, strings.ToUpper(source.Container))
+	}
+	return strings.Join(parts, " ")
+}
+
+func sessionServerImpact(route string, mode string) string {
+	value := strings.ToLower(route + " " + mode)
+	switch {
+	case strings.Contains(value, "transcode"):
+		return "Transcode load"
+	case strings.Contains(value, "remux"):
+		return "Container remux"
+	case strings.Contains(value, "preparing"):
+		return "Preparing route"
+	case strings.Contains(value, "direct"):
+		return "Low impact"
+	default:
+		return "Route pending"
 	}
 }
 

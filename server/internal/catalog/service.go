@@ -213,6 +213,15 @@ type MediaSourceItem struct {
 	SubtitleStreams int     `json:"subtitleStreams,omitempty"`
 }
 
+type MediaSourceDisplay struct {
+	Kind         string `json:"kind"`
+	ItemID       string `json:"itemId"`
+	Title        string `json:"title"`
+	ArtworkKind  string `json:"artworkKind"`
+	ArtworkID    string `json:"artworkId"`
+	QualityLabel string `json:"qualityLabel,omitempty"`
+}
+
 type MediaSourceTracks struct {
 	AudioTracks    []probe.Track `json:"audioTracks"`
 	SubtitleTracks []probe.Track `json:"subtitleTracks"`
@@ -999,6 +1008,77 @@ func (s *Service) GetMediaSource(ctx context.Context, id string) (MediaSourceIte
 	return items[0], true, nil
 }
 
+func (s *Service) GetMediaSourceDisplay(ctx context.Context, id string) (MediaSourceDisplay, bool, error) {
+	var movieID string
+	var movieTitle string
+	var movieYear int
+	var movieQuality sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT m.id, m.title, m.year, mv.quality_label
+		FROM movie_versions mv
+		JOIN movies m ON m.id = mv.movie_id
+		WHERE mv.media_source_id = ?
+		LIMIT 1
+	`, id).Scan(&movieID, &movieTitle, &movieYear, &movieQuality)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return MediaSourceDisplay{}, false, err
+	}
+	if err == nil {
+		sortTitle := sortTitle(movieTitle)
+		if record, ok, err := s.GetBestMetadata(ctx, "movie", movieID); err != nil {
+			return MediaSourceDisplay{}, false, err
+		} else if ok {
+			applyMovieMetadata(&movieTitle, &movieYear, &sortTitle, record)
+		}
+		return MediaSourceDisplay{
+			Kind:         "movie",
+			ItemID:       movieID,
+			Title:        titleWithYear(movieTitle, movieYear),
+			ArtworkKind:  "movie",
+			ArtworkID:    movieID,
+			QualityLabel: movieQuality.String,
+		}, true, nil
+	}
+
+	var episodeID string
+	var episodeTitle string
+	var episodeNumber int
+	var episodeEnd int
+	var seriesID string
+	var seriesTitle string
+	var seasonNumber int
+	var episodeQuality sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+		SELECT e.id, e.title, e.episode_number, e.episode_end, s.id, s.title, seasons.season_number, ev.quality_label
+		FROM episode_versions ev
+		JOIN tv_episodes e ON e.id = ev.episode_id
+		JOIN tv_series s ON s.id = e.series_id
+		JOIN tv_seasons seasons ON seasons.id = e.season_id
+		WHERE ev.media_source_id = ?
+		LIMIT 1
+	`, id).Scan(&episodeID, &episodeTitle, &episodeNumber, &episodeEnd, &seriesID, &seriesTitle, &seasonNumber, &episodeQuality)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MediaSourceDisplay{}, false, nil
+	}
+	if err != nil {
+		return MediaSourceDisplay{}, false, err
+	}
+	seriesSortTitle := sortTitle(seriesTitle)
+	if record, ok, err := s.GetBestMetadata(ctx, "series", seriesID); err != nil {
+		return MediaSourceDisplay{}, false, err
+	} else if ok {
+		applyTitleMetadata(&seriesTitle, &seriesSortTitle, record)
+	}
+	return MediaSourceDisplay{
+		Kind:         "episode",
+		ItemID:       episodeID,
+		Title:        episodeDisplayTitle(seriesTitle, seasonNumber, episodeNumber, episodeEnd, episodeTitle),
+		ArtworkKind:  "series",
+		ArtworkID:    seriesID,
+		QualityLabel: episodeQuality.String,
+	}, true, nil
+}
+
 func (s *Service) GetMediaSourceTracks(ctx context.Context, id string) (MediaSourceTracks, bool, error) {
 	var raw string
 	err := s.db.QueryRowContext(ctx, "SELECT raw_json FROM media_probes WHERE media_source_id = ?", id).Scan(&raw)
@@ -1276,6 +1356,26 @@ func applyTitleMetadata(title *string, sort *string, record MetadataRecord) {
 	*sort = sortTitle(record.Title)
 }
 
+func titleWithYear(title string, year int) string {
+	title = strings.TrimSpace(title)
+	if year <= 0 {
+		return title
+	}
+	return title + " (" + intString(year) + ")"
+}
+
+func episodeDisplayTitle(seriesTitle string, seasonNumber int, episodeNumber int, episodeEnd int, episodeTitle string) string {
+	episodeCode := "S" + twoDigit(seasonNumber) + "E" + twoDigit(episodeNumber)
+	if episodeEnd > episodeNumber {
+		episodeCode += "-E" + twoDigit(episodeEnd)
+	}
+	parts := []string{strings.TrimSpace(seriesTitle), episodeCode}
+	if strings.TrimSpace(episodeTitle) != "" {
+		parts = append(parts, strings.TrimSpace(episodeTitle))
+	}
+	return strings.Join(parts, " - ")
+}
+
 func upsertMediaSource(ctx context.Context, tx *sql.Tx, libraryID string, kind media.Kind, id string, file scanner.FileCandidate, now string) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO media_sources(id, library_id, kind, path, rel_path, name, extension, size_bytes, modified_at, discovered_at, updated_at)
@@ -1463,4 +1563,11 @@ func boolInt(value bool) int {
 
 func intString(value int) string {
 	return strconv.Itoa(value)
+}
+
+func twoDigit(value int) string {
+	if value < 10 {
+		return "0" + intString(value)
+	}
+	return intString(value)
 }
