@@ -10,6 +10,11 @@ import (
 type Config struct {
 	HTTPAddr         string `json:"httpAddr"`
 	DataDir          string `json:"dataDir"`
+	TranscodeDir     string `json:"transcodeDir,omitempty"`
+	DownloadsDir     string `json:"downloadsDir,omitempty"`
+	MetadataDir      string `json:"metadataDir,omitempty"`
+	CacheDir         string `json:"cacheDir,omitempty"`
+	TempDir          string `json:"tempDir,omitempty"`
 	MovieLibraryPath string `json:"movieLibraryPath,omitempty"`
 	TVLibraryPath    string `json:"tvLibraryPath,omitempty"`
 	FFprobePath      string `json:"ffprobePath"`
@@ -26,6 +31,11 @@ func FromEnv() Config {
 	cfg := Config{
 		HTTPAddr:         envString("VYRDEN_HTTP_ADDR", "127.0.0.1:8097"),
 		DataDir:          dataDir,
+		TranscodeDir:     envString("VYRDEN_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
+		DownloadsDir:     envString("VYRDEN_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
+		MetadataDir:      envString("VYRDEN_METADATA_DIR", filepath.Join(dataDir, "metadata")),
+		CacheDir:         envString("VYRDEN_CACHE_DIR", filepath.Join(dataDir, "cache")),
+		TempDir:          envString("VYRDEN_TEMP_DIR", filepath.Join(dataDir, "temp")),
 		MovieLibraryPath: envString("VYRDEN_MOVIES_PATH", ""),
 		TVLibraryPath:    envString("VYRDEN_TV_PATH", ""),
 		FFprobePath:      envString("VYRDEN_FFPROBE_PATH", "ffprobe"),
@@ -41,6 +51,11 @@ func FromEnv() Config {
 	}
 	cfg.HTTPAddr = envString("VYRDEN_HTTP_ADDR", cfg.HTTPAddr)
 	cfg.DataDir = envString("VYRDEN_DATA_DIR", cfg.DataDir)
+	cfg.TranscodeDir = envString("VYRDEN_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
+	cfg.DownloadsDir = envString("VYRDEN_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
+	cfg.MetadataDir = envString("VYRDEN_METADATA_DIR", defaultDir(cfg.MetadataDir, cfg.DataDir, "metadata"))
+	cfg.CacheDir = envString("VYRDEN_CACHE_DIR", defaultDir(cfg.CacheDir, cfg.DataDir, "cache"))
+	cfg.TempDir = envString("VYRDEN_TEMP_DIR", defaultDir(cfg.TempDir, cfg.DataDir, "temp"))
 	cfg.MovieLibraryPath = envString("VYRDEN_MOVIES_PATH", cfg.MovieLibraryPath)
 	cfg.TVLibraryPath = envString("VYRDEN_TV_PATH", cfg.TVLibraryPath)
 	cfg.FFprobePath = envString("VYRDEN_FFPROBE_PATH", cfg.FFprobePath)
@@ -83,6 +98,21 @@ func merge(base Config, saved Config) Config {
 	if saved.DataDir != "" {
 		base.DataDir = saved.DataDir
 	}
+	if saved.TranscodeDir != "" {
+		base.TranscodeDir = saved.TranscodeDir
+	}
+	if saved.DownloadsDir != "" {
+		base.DownloadsDir = saved.DownloadsDir
+	}
+	if saved.MetadataDir != "" {
+		base.MetadataDir = saved.MetadataDir
+	}
+	if saved.CacheDir != "" {
+		base.CacheDir = saved.CacheDir
+	}
+	if saved.TempDir != "" {
+		base.TempDir = saved.TempDir
+	}
 	if saved.MovieLibraryPath != "" {
 		base.MovieLibraryPath = saved.MovieLibraryPath
 	}
@@ -111,6 +141,13 @@ func merge(base Config, saved Config) Config {
 		base.GPUWorkers = saved.GPUWorkers
 	}
 	return base
+}
+
+func defaultDir(value string, dataDir string, name string) string {
+	if value != "" {
+		return value
+	}
+	return filepath.Join(dataDir, name)
 }
 
 func envString(key string, fallback string) string {

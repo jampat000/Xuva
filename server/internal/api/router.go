@@ -31,6 +31,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
 	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
+	"github.com/vyrdenhq/vyrden/server/internal/systemstats"
 	"github.com/vyrdenhq/vyrden/server/internal/transcode"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 	"github.com/vyrdenhq/vyrden/server/internal/webapp"
@@ -82,6 +83,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
 	mux.HandleFunc("GET /api/settings", settingsHandler(deps))
+	mux.HandleFunc("PUT /api/settings", settingsUpdateHandler(deps))
+	mux.HandleFunc("GET /api/system/status", systemStatusHandler(deps))
 	mux.HandleFunc("GET /api/remote/access", remoteAccessHandler(deps))
 	mux.HandleFunc("POST /api/remote/wan", wanAddressHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
@@ -432,18 +435,109 @@ func performanceSettingsHandler(deps Deps) http.HandlerFunc {
 func settingsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"config": map[string]any{
-				"httpAddr":         deps.Config.HTTPAddr,
-				"dataDir":          deps.Config.DataDir,
-				"ffmpegPath":       deps.Config.FFmpegPath,
-				"ffprobePath":      deps.Config.FFprobePath,
-				"scanWorkers":      deps.Config.ScanWorkers,
-				"probeWorkers":     deps.Config.ProbeWorkers,
-				"transcodeWorkers": deps.Config.TranscodeWorkers,
-				"gpuWorkers":       deps.Config.GPUWorkers,
-			},
-			"libraries": deps.Libraries.List(),
+			"config":       settingsPayload(deps.Config),
+			"runtimePaths": runtimePaths(deps.Config),
+			"libraries":    deps.Libraries.List(),
 		})
+	}
+}
+
+func settingsUpdateHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request config.Config
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		updated := deps.Config
+		mergeString(&updated.HTTPAddr, request.HTTPAddr)
+		mergeString(&updated.DataDir, request.DataDir)
+		mergeString(&updated.TranscodeDir, request.TranscodeDir)
+		mergeString(&updated.DownloadsDir, request.DownloadsDir)
+		mergeString(&updated.MetadataDir, request.MetadataDir)
+		mergeString(&updated.CacheDir, request.CacheDir)
+		mergeString(&updated.TempDir, request.TempDir)
+		mergeString(&updated.FFmpegPath, request.FFmpegPath)
+		mergeString(&updated.FFprobePath, request.FFprobePath)
+		mergeInt(&updated.ScanWorkers, request.ScanWorkers)
+		mergeInt(&updated.ProbeWorkers, request.ProbeWorkers)
+		mergeInt(&updated.TranscodeWorkers, request.TranscodeWorkers)
+		mergeInt(&updated.GPUWorkers, request.GPUWorkers)
+		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
+			writeError(w, http.StatusInternalServerError, "settings save failed")
+			return
+		}
+		if err := deps.Catalog.SaveSettings(r.Context(), catalog.RuntimeSettings{
+			HTTPAddr:         updated.HTTPAddr,
+			DataDir:          updated.DataDir,
+			TranscodeDir:     updated.TranscodeDir,
+			DownloadsDir:     updated.DownloadsDir,
+			MetadataDir:      updated.MetadataDir,
+			CacheDir:         updated.CacheDir,
+			TempDir:          updated.TempDir,
+			FFmpegPath:       updated.FFmpegPath,
+			FFprobePath:      updated.FFprobePath,
+			ScanWorkers:      updated.ScanWorkers,
+			ProbeWorkers:     updated.ProbeWorkers,
+			TranscodeWorkers: updated.TranscodeWorkers,
+			GPUWorkers:       updated.GPUWorkers,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "settings save failed")
+			return
+		}
+		deps.Events.Publish("settings.updated", settingsPayload(updated))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"config":          settingsPayload(updated),
+			"runtimePaths":    runtimePaths(updated),
+			"restartRequired": true,
+		})
+	}
+}
+
+func systemStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, systemstats.Collect(runtimePaths(deps.Config)))
+	}
+}
+
+func settingsPayload(cfg config.Config) map[string]any {
+	return map[string]any{
+		"httpAddr":         cfg.HTTPAddr,
+		"dataDir":          cfg.DataDir,
+		"transcodeDir":     cfg.TranscodeDir,
+		"downloadsDir":     cfg.DownloadsDir,
+		"metadataDir":      cfg.MetadataDir,
+		"cacheDir":         cfg.CacheDir,
+		"tempDir":          cfg.TempDir,
+		"ffmpegPath":       cfg.FFmpegPath,
+		"ffprobePath":      cfg.FFprobePath,
+		"scanWorkers":      cfg.ScanWorkers,
+		"probeWorkers":     cfg.ProbeWorkers,
+		"transcodeWorkers": cfg.TranscodeWorkers,
+		"gpuWorkers":       cfg.GPUWorkers,
+	}
+}
+
+func runtimePaths(cfg config.Config) map[string]string {
+	return map[string]string{
+		"data":      cfg.DataDir,
+		"transcode": cfg.TranscodeDir,
+		"downloads": cfg.DownloadsDir,
+		"metadata":  cfg.MetadataDir,
+		"cache":     cfg.CacheDir,
+		"temp":      cfg.TempDir,
+	}
+}
+
+func mergeString(target *string, value string) {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		*target = value
+	}
+}
+
+func mergeInt(target *int, value int) {
+	if value > 0 {
+		*target = value
 	}
 }
 

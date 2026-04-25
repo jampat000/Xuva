@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
-	"path/filepath"
+	"os"
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/api"
@@ -103,9 +103,15 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		}
 	}
 	_ = config.SaveFile(cfg.DataDir, cfg)
+	_ = ensureRuntimeDirs(cfg)
 	_ = catalogService.SaveSettings(ctx, catalog.RuntimeSettings{
 		HTTPAddr:         cfg.HTTPAddr,
 		DataDir:          cfg.DataDir,
+		TranscodeDir:     cfg.TranscodeDir,
+		DownloadsDir:     cfg.DownloadsDir,
+		MetadataDir:      cfg.MetadataDir,
+		CacheDir:         cfg.CacheDir,
+		TempDir:          cfg.TempDir,
 		FFmpegPath:       cfg.FFmpegPath,
 		FFprobePath:      cfg.FFprobePath,
 		ScanWorkers:      cfg.ScanWorkers,
@@ -145,12 +151,24 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Playback:  playback.NewService(),
 		PlayState: playStateService,
 		Streaming: streaming.NewService(),
-		Transcode: transcode.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, filepath.Join(cfg.DataDir, "transcode")),
+		Transcode: transcode.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.TranscodeDir),
 		Subtitles: subtitles.NewService(),
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(bus),
-		Downloads: downloads.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, filepath.Join(cfg.DataDir, "downloads")),
+		Downloads: downloads.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.DownloadsDir),
 	}, nil
+}
+
+func ensureRuntimeDirs(cfg config.Config) error {
+	for _, dir := range []string{cfg.DataDir, cfg.TranscodeDir, cfg.DownloadsDir, cfg.MetadataDir, cfg.CacheDir, cfg.TempDir} {
+		if dir == "" {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *Application) Router() http.Handler {

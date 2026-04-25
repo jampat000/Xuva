@@ -35,6 +35,11 @@ type PersistSummary struct {
 type RuntimeSettings struct {
 	HTTPAddr         string `json:"httpAddr"`
 	DataDir          string `json:"dataDir"`
+	TranscodeDir     string `json:"transcodeDir"`
+	DownloadsDir     string `json:"downloadsDir"`
+	MetadataDir      string `json:"metadataDir"`
+	CacheDir         string `json:"cacheDir"`
+	TempDir          string `json:"tempDir"`
 	FFmpegPath       string `json:"ffmpegPath"`
 	FFprobePath      string `json:"ffprobePath"`
 	ScanWorkers      int    `json:"scanWorkers"`
@@ -265,6 +270,11 @@ func (s *Service) SaveSettings(ctx context.Context, settings RuntimeSettings) er
 	values := map[string]string{
 		"httpAddr":         settings.HTTPAddr,
 		"dataDir":          settings.DataDir,
+		"transcodeDir":     settings.TranscodeDir,
+		"downloadsDir":     settings.DownloadsDir,
+		"metadataDir":      settings.MetadataDir,
+		"cacheDir":         settings.CacheDir,
+		"tempDir":          settings.TempDir,
 		"ffmpegPath":       settings.FFmpegPath,
 		"ffprobePath":      settings.FFprobePath,
 		"scanWorkers":      intString(settings.ScanWorkers),

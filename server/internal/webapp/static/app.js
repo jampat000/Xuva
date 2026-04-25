@@ -56,7 +56,7 @@ async function render(name) {
 }
 
 async function renderDashboard() {
-  const [summary, libraries, scans, probes, work, downloads, recent, sessions, health, versions, sources] = await Promise.all([
+  const [summary, libraries, scans, probes, work, downloads, recent, sessions, health, versions, sources, system] = await Promise.all([
     api("/api/catalog/summary"),
     api("/api/libraries"),
     api("/api/scans"),
@@ -68,6 +68,7 @@ async function renderDashboard() {
     api("/api/catalog/health"),
     api("/api/versions"),
     api("/api/media-sources?limit=200"),
+    api("/api/system/status"),
   ]);
   const reviewCount = health.needsReview || 0;
   const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
@@ -134,6 +135,10 @@ async function renderDashboard() {
           <div class="panel-title"><strong>Needs Attention</strong><div class="inline-actions"><button onclick="startProbe()">Probe</button><button onclick="navigate('health')">Review</button></div></div>
           ${attentionPanel(summary, health, versions.versions || [])}
         </div>
+        <div class="panel pad">
+          <div class="panel-title"><strong>Hardware</strong><span class="badge route">${system.cpu.cores} cores</span></div>
+          ${hardwarePanel(system)}
+        </div>
       </section>
 
       <section class="shelf-section">
@@ -157,7 +162,12 @@ async function renderDashboard() {
 
       <section class="dashboard-grid">
         <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions, totalTitles)}</div>
-        <div class="panel pad"><div class="panel-title"><strong>Live Signals</strong><span class="live-stamp">Updated ${new Date().toLocaleTimeString()}</span></div><div class="signal-stack">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Downloads", downloadJobs.length)}${signalPill("Review", reviewCount)}</div></div>
+        <div class="panel pad"><div class="panel-title"><strong>Runtime Folders</strong><button onclick="navigate('settings')">Move</button></div>${runtimeFolders(system.disks || [])}</div>
+      </section>
+
+      <section class="panel pad">
+        <div class="panel-title"><strong>Live Signals</strong><span class="live-stamp">Updated ${new Date().toLocaleTimeString()}</span></div>
+        <div class="signal-stack">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Downloads", downloadJobs.length)}${signalPill("Review", reviewCount)}${signalPill("CPU", `${Math.round(system.cpu.percent || 0)}%`)}</div>
       </section>
     </div>`;
 }
@@ -539,19 +549,52 @@ async function lookupWan() {
 }
 
 async function renderSettings() {
-  const [settings, performance] = await Promise.all([api("/api/settings"), api("/api/settings/performance")]);
+  const [settings, performance, system] = await Promise.all([api("/api/settings"), api("/api/settings/performance"), api("/api/system/status")]);
   view.innerHTML = `<div class="stack">
     <div class="hero-strip">
       <div class="hero-copy"><span>Runtime</span><strong>Local-first settings before tray and installer.</strong><p>These values are persisted locally and give the future tray app a real product runtime to control.</p></div>
       <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
     </div>
+    <div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div>
+    <div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>
     <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
     <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
   </div>`;
 }
 
+function runtimePathForm(paths = {}) {
+  const fields = [
+    ["data", "Database and settings"],
+    ["transcode", "Transcode temp"],
+    ["downloads", "Prepared downloads"],
+    ["metadata", "Metadata and artwork"],
+    ["cache", "Cache"],
+    ["temp", "Scratch temp"],
+  ];
+  return `<form class="path-form" onsubmit="saveRuntimePaths(event)">
+    ${fields.map(([key, label]) => `<label><span>${escapeHTML(label)}</span><input name="${key}" value="${escapeAttr(paths[key] || "")}" autocomplete="off"></label>`).join("")}
+    <div class="inline-actions"><button class="primary" type="submit">Save folders</button><span class="muted">Applies fully after restart so active jobs do not lose files.</span></div>
+  </form>`;
+}
+
 function settingsGrid(config) {
   return `<div class="settings-grid">${Object.entries(config).map(([key, value]) => `<div><span>${escapeHTML(key)}</span><strong>${escapeHTML(value)}</strong></div>`).join("")}</div>`;
+}
+
+async function saveRuntimePaths(event) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const payload = {
+    dataDir: data.get("data"),
+    transcodeDir: data.get("transcode"),
+    downloadsDir: data.get("downloads"),
+    metadataDir: data.get("metadata"),
+    cacheDir: data.get("cache"),
+    tempDir: data.get("temp"),
+  };
+  const result = await send("/api/settings", payload, "PUT");
+  alert(result.restartRequired ? "Saved. Restart Vyrden to move active runtime folders." : "Saved.");
+  navigate("settings");
 }
 
 async function markWatched(mediaSourceId, watched) {
@@ -741,6 +784,38 @@ function attentionPanel(summary, health, versions = []) {
     <span>${escapeHTML(item.label)}</span>
     <strong>${escapeHTML(item.value)}</strong>
   </div>`).join("")}</div>`;
+}
+
+function hardwarePanel(system = {}) {
+  const memory = system.memory || {};
+  const process = system.process || {};
+  return `<div class="hardware-list">
+    ${usageBar("CPU", system.cpu?.percent || 0, `${system.cpu?.cores || 0} logical cores`)}
+    ${usageBar("Memory", memory.usedPercent || 0, `${formatBytes(memory.usedBytes)} / ${formatBytes(memory.totalBytes)}`)}
+    ${usageBar("Vyrden heap", process.goSysBytes && memory.totalBytes ? (process.goSysBytes / memory.totalBytes) * 100 : 0, `${formatBytes(process.goAllocBytes)} allocated, ${process.goroutines || 0} tasks`)}
+  </div>`;
+}
+
+function runtimeFolders(disks = []) {
+  if (!disks.length) return empty("No runtime folders reported.");
+  return `<div class="folder-list">${disks.map(disk => `<div class="folder-row ${disk.error || !disk.writable ? "warn" : ""}">
+    <div><strong>${escapeHTML(folderLabel(disk.name))}</strong><span>${escapeHTML(disk.path)}${disk.sharedWithData ? " - install/data drive" : ""}</span></div>
+    <div>${usageBar("Disk", disk.usedPercent || 0, `${formatBytes(disk.freeBytes)} free`)}</div>
+  </div>`).join("")}</div>`;
+}
+
+function usageBar(label, percent, detail) {
+  const value = Math.max(0, Math.min(100, Number(percent || 0)));
+  const tone = value > 90 ? "bad" : value > 75 ? "warn" : "good";
+  return `<div class="usage ${tone}">
+    <div><span>${escapeHTML(label)}</span><strong>${Math.round(value)}%</strong></div>
+    <i><b style="width:${value}%"></b></i>
+    <small>${escapeHTML(detail || "")}</small>
+  </div>`;
+}
+
+function folderLabel(value = "") {
+  return { data: "Database", transcode: "Transcode temp", downloads: "Prepared downloads", metadata: "Metadata cache", cache: "App cache", temp: "Scratch temp" }[value] || value;
 }
 
 function movieOverview(movie = {}) {

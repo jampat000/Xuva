@@ -82,6 +82,25 @@ func TestArchitectureExposesSeparateQueuesAndWorkloads(t *testing.T) {
 	}
 }
 
+func TestSystemStatusAndRuntimeFolders(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	status := getJSON(t, router, "/api/system/status")
+
+	cpu := status["cpu"].(map[string]any)
+	if cpu["cores"].(float64) < 1 {
+		t.Fatalf("expected at least one cpu core, got %#v", cpu)
+	}
+	disks := status["disks"].([]any)
+	if len(disks) < 5 {
+		t.Fatalf("expected runtime folder disk entries, got %#v", status)
+	}
+	settings := getJSON(t, router, "/api/settings")
+	paths := settings["runtimePaths"].(map[string]any)
+	if paths["transcode"] == "" || paths["metadata"] == "" {
+		t.Fatalf("expected configurable runtime paths, got %#v", paths)
+	}
+}
+
 func TestPlaybackDecisionEndpointIsExplicitlyDeferred(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	payload := getJSON(t, router, "/api/playback/decision?clientProfile=android-tv")
@@ -331,8 +350,15 @@ func TestLibraryManagementRemoteAndArtworkEndpoints(t *testing.T) {
 func testDeps(t *testing.T, startedAt time.Time) Deps {
 	t.Helper()
 
+	dataDir := t.TempDir()
 	cfg := config.Config{
 		HTTPAddr:         "127.0.0.1:8097",
+		DataDir:          dataDir,
+		TranscodeDir:     filepath.Join(dataDir, "transcode"),
+		DownloadsDir:     filepath.Join(dataDir, "downloads"),
+		MetadataDir:      filepath.Join(dataDir, "metadata"),
+		CacheDir:         filepath.Join(dataDir, "cache"),
+		TempDir:          filepath.Join(dataDir, "temp"),
 		EventBuffer:      2,
 		ScanWorkers:      1,
 		ProbeWorkers:     2,
