@@ -131,7 +131,7 @@ async function renderDashboard() {
           ${operationsPanel(scanJobs, probeJobs, workJobs, downloadJobs)}
         </div>
         <div class="panel pad">
-          <div class="panel-title"><strong>Needs Attention</strong><button onclick="navigate('health')">Review</button></div>
+          <div class="panel-title"><strong>Needs Attention</strong><div class="inline-actions"><button onclick="startProbe()">Probe</button><button onclick="navigate('health')">Review</button></div></div>
           ${attentionPanel(summary, health, versions.versions || [])}
         </div>
       </section>
