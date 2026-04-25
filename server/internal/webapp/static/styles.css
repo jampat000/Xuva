@@ -15,7 +15,7 @@
   --red: #bb665d;
   --green: #8abf8f;
   --shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
-  --sidebar-width: 212px;
+  --sidebar-width: 216px;
   --main-x: clamp(28px, 2.4vw, 46px);
   --main-y: clamp(22px, 2vw, 34px);
   --shell-gap: 18px;
@@ -42,8 +42,9 @@
   --lead-font: clamp(calc(18px * var(--font-scale)), calc(1.05vw * var(--font-scale)), calc(22px * var(--font-scale)));
   --brand-mark: calc(44px * var(--density-scale));
   --brand-font: calc(18px * var(--font-scale));
+  --nav-text-min: calc(132px * var(--font-scale));
   --nav-pad-y: calc(26px * var(--density-scale));
-  --nav-pad-x: calc(18px * var(--density-scale));
+  --nav-pad-x: calc(16px * var(--density-scale));
   --nav-icon-col: calc(22px * var(--density-scale));
   --nav-dot: calc(8px * var(--density-scale));
   --nav-item-height: calc(42px * var(--density-scale));
@@ -58,7 +59,7 @@
 body[data-density="compact"] {
   --density-scale: 0.84;
   --font-scale: 0.94;
-  --sidebar-width: 176px;
+  --sidebar-width: clamp(184px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (42px * var(--density-scale))), 204px);
   --main-x: clamp(18px, 1.5vw, 28px);
   --main-y: clamp(14px, 1.2vw, 22px);
   --shell-gap: 12px;
@@ -78,7 +79,7 @@ body[data-density="compact"] {
 body[data-density="balanced"] {
   --density-scale: 1;
   --font-scale: 1.08;
-  --sidebar-width: 196px;
+  --sidebar-width: clamp(218px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (44px * var(--density-scale))), 236px);
   --main-x: clamp(24px, 2vw, 38px);
   --main-y: clamp(22px, 2vw, 34px);
   --shell-gap: 18px;
@@ -98,7 +99,7 @@ body[data-density="balanced"] {
 body[data-density="comfortable"] {
   --density-scale: 1.12;
   --font-scale: 1.2;
-  --sidebar-width: 204px;
+  --sidebar-width: clamp(242px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (46px * var(--density-scale))), 260px);
   --main-x: clamp(28px, 2.2vw, 44px);
   --main-y: clamp(26px, 2.2vw, 42px);
   --shell-gap: 22px;
@@ -118,7 +119,7 @@ body[data-density="comfortable"] {
 body[data-density="cinematic"] {
   --density-scale: 1.22;
   --font-scale: 1.32;
-  --sidebar-width: 212px;
+  --sidebar-width: clamp(268px, calc((var(--nav-pad-x) * 2) + var(--nav-icon-col) + var(--nav-text-min) + (48px * var(--density-scale))), 286px);
   --main-x: clamp(30px, 2.4vw, 48px);
   --main-y: clamp(30px, 2.5vw, 48px);
   --shell-gap: 24px;
@@ -798,9 +799,7 @@ a:focus-visible {
   gap: calc(10px * var(--density-scale));
 }
 .usage span,
-.usage small,
-.folder-row span,
-.path-form span {
+.usage small {
   color: var(--soft);
   font-size: var(--tiny-font);
 }
@@ -845,15 +844,32 @@ a:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.folder-row strong {
+  font-size: var(--ui-font);
+  line-height: 1.2;
+}
+.folder-row span {
+  color: var(--soft);
+  font-size: var(--small-font);
+  line-height: 1.25;
+}
 .path-form {
   display: grid;
   gap: calc(12px * var(--density-scale));
 }
 .path-form label {
   display: grid;
-  grid-template-columns: calc(190px * var(--density-scale)) minmax(0, 1fr);
-  gap: calc(12px * var(--density-scale));
+  grid-template-columns: minmax(calc(190px * var(--density-scale)), calc(245px * var(--density-scale))) minmax(0, 1fr);
+  gap: calc(14px * var(--density-scale));
   align-items: center;
+}
+.path-form span {
+  min-width: 0;
+  color: var(--soft);
+  font-size: var(--small-font);
+  font-weight: 760;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .path-form input {
   width: 100%;
@@ -863,6 +879,10 @@ a:focus-visible {
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.35);
   color: var(--text);
+  font: inherit;
+  font-size: var(--ui-font);
+  font-weight: 700;
+  line-height: 1.15;
 }
 .quality-tile strong {
   margin-top: 8px;
@@ -1500,6 +1520,16 @@ a:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.remote-options strong,
+.settings-grid strong {
+  font-size: var(--ui-font);
+  line-height: 1.2;
+}
+.remote-options span,
+.settings-grid span {
+  font-size: var(--small-font);
+  line-height: 1.2;
+}
 
 .hero-strip,
 .detail-hero {
@@ -1912,7 +1942,7 @@ body[data-theme="light"] .path-form input {
   .nav-label { display: none; }
   .nav-group {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(148px, 100%), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(calc(158px * var(--density-scale)), 100%), 1fr));
     max-width: 100%;
     overflow: visible;
     margin-top: calc(10px * var(--density-scale));
