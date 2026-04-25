@@ -1378,7 +1378,7 @@ a:focus-visible {
 .detail-source-workbench {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(calc(300px * var(--density-scale)), calc(370px * var(--density-scale)));
-  align-items: start;
+  align-items: stretch;
   gap: calc(18px * var(--density-scale));
 }
 
@@ -1458,6 +1458,7 @@ a:focus-visible {
 .detail-main .version-grid {
   grid-template-columns: minmax(0, 1fr);
   justify-content: start;
+  height: 100%;
 }
 .version {
   position: relative;
@@ -1523,7 +1524,9 @@ a:focus-visible {
 }
 .source-card {
   display: grid;
+  align-content: start;
   gap: calc(18px * var(--density-scale));
+  height: 100%;
   min-height: auto;
   padding: calc(24px * var(--density-scale));
   border-color: rgba(244, 239, 228, 0.12);
@@ -1785,7 +1788,7 @@ a:focus-visible {
 }
 .source-control-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: calc(8px * var(--density-scale));
 }
 .source-control-actions .primary {
@@ -1796,7 +1799,10 @@ a:focus-visible {
 .rail-actions button {
   width: 100%;
   justify-content: center;
+  min-width: 0;
   background: rgba(244,239,228,0.065);
+  white-space: normal;
+  text-align: center;
 }
 .source-control-actions .primary {
   border-color: rgba(216,179,106,0.34);

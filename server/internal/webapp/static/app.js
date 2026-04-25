@@ -368,8 +368,7 @@ async function showMovie(id) {
         </div>
         <section class="section">
           <div class="section-head">
-            <div class="section-title">Source</div>
-            <div class="section-note">Current file and playback readiness</div>
+            <div class="section-title">Source file</div>
           </div>
           <div class="detail-source-workbench">
             <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
@@ -379,7 +378,6 @@ async function showMovie(id) {
         <section class="section">
           <div class="section-head">
             <div class="section-title">Audio & Subtitles</div>
-            <div class="section-note">Selected tracks affect compatibility</div>
           </div>
           <div class="track-grid">
             <div class="track-panel"><strong>Audio</strong>${audioTrackRows(tracks.audioTracks, selected?.mediaSourceId)}</div>
@@ -422,17 +420,17 @@ function versionCard(model, selected) {
       <em class="${source.probed ? "ready" : "pending"}">${escapeHTML(source.probed ? "Checked" : "Check needed")}</em>
     </div>
     <div class="source-card-grid">
-      ${sourceCardFact("Playback", routeTone)}
-      ${sourceCardFact("Server", playbackEffortLabel(decision))}
-      ${sourceCardFact("File", formatBytes(version.sizeBytes))}
-      ${sourceCardFact("Media", sourceFacts)}
+      ${sourceCardFact("Can it play?", routeTone)}
+      ${sourceCardFact("PC work needed", playbackEffortLabel(decision))}
+      ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
+      ${sourceCardFact("Video file details", sourceFacts)}
     </div>
     <p>${escapeHTML(playbackReason(decision))}</p>
     <div class="inline-actions source-card-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
       <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
-      ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Check Media</button>`}
-      <button onclick="openSourceInspector('${version.mediaSourceId}')">Details</button>
+      ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Check file</button>`}
+      <button onclick="openSourceInspector('${version.mediaSourceId}')">File details</button>
       <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
     </div>
@@ -467,14 +465,14 @@ function factRow(label, value) {
 function sourceControlHeader(selected = null) {
   if (!selected) {
     return `<div class="source-control-hero">
-      <span>Playback</span>
+      <span>Ready to play?</span>
       <strong>No source selected</strong>
       <p>Scan this library to attach a playable file.</p>
     </div>`;
   }
   const decision = selected.decision || {};
   return `<div class="source-control-hero">
-    <span>Playback</span>
+    <span>Ready to play?</span>
     <strong>${escapeHTML(playbackReadinessLabel(decision))}</strong>
     <p>${escapeHTML(playbackReason(decision))}</p>
   </div>`;
@@ -487,8 +485,8 @@ function sourceMetric(label, value) {
 function sourceControlActions(selected = null) {
   if (!selected) return "";
   return `<div class="source-control-actions">
-    <button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>
-    <button onclick="openSourceInspector('${selected.mediaSourceId}')">Source details</button>
+    <button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck file" : "Check file now"}</button>
+    <button onclick="openSourceInspector('${selected.mediaSourceId}')">File details</button>
   </div>`;
 }
 
@@ -623,7 +621,7 @@ function sourceQualityLabel(source = {}) {
 }
 
 function sourceCodecLine(source = {}) {
-  if (!source.probed) return "Media check needed";
+  if (!source.probed) return "File check needed";
   return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "video", source.container ? String(source.container).toUpperCase() : "container", source.audioStreams ? `${source.audioStreams} audio` : "", source.subtitleStreams ? `${source.subtitleStreams} subs` : ""].filter(Boolean).join(" - ");
 }
 
@@ -659,7 +657,7 @@ function trackRow(label, meta, selected, action = "") {
 
 function audioTrackRows(items = [], mediaSourceId = "") {
   items = Array.isArray(items) ? items : [];
-  if (!items.length) return trackRow("Media check needed", "Audio details not available yet", true);
+  if (!items.length) return trackRow("File check needed", "Audio details not available yet", true);
   const selected = state.playbackSelections[mediaSourceId]?.audio;
   return items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "audio").toUpperCase()}${item.channels ? ` ${item.channels}ch` : ""}`;
@@ -733,32 +731,32 @@ function playbackReadinessLabel(decision = {}) {
   if (mode === "audio transcode") return "Audio conversion";
   if (mode === "video transcode") return "Video conversion";
   if (mode === "subtitle burn") return "Subtitle conversion";
-  if (mode === "decision deferred") return "Needs media check";
+  if (mode === "decision deferred") return "Needs file check";
   if (!mode) return "Checking";
   return decision.mode;
 }
 
 function playbackEffortLabel(decision = {}) {
   const mode = String(decision.mode || "").toLowerCase();
-  if (mode === "direct play") return "No server work";
-  if (mode === "remux") return "Light server work";
-  if (mode === "audio transcode") return "Audio work";
-  if (mode === "video transcode" || mode === "subtitle burn") return "Heavy server work";
-  if (mode === "decision deferred") return "Waiting for check";
+  if (mode === "direct play") return "No extra work";
+  if (mode === "remux") return "Quick container fix";
+  if (mode === "audio transcode") return "Audio conversion";
+  if (mode === "video transcode" || mode === "subtitle burn") return "Heavy conversion";
+  if (mode === "decision deferred") return "Waiting for file check";
   return serverImpact(decision);
 }
 
 function playbackReason(decision = {}) {
   const reason = String(decision.reason || "");
   if (!reason) return "Vyrden is checking this file before choosing the best playback path.";
-  if (reason.includes("has not been probed")) return "Vyrden needs to inspect this file once before it can confirm the best playback path.";
+  if (reason.includes("has not been probed")) return "Vyrden needs to check this file once before it can confirm the best playback path.";
   if (reason.includes("not safely direct-playable")) return "This file may need preparation for the selected device.";
   return reason;
 }
 
 function playbackActionLabel(value = "") {
   const labels = {
-    probe_required: "Needs media check",
+    probe_required: "Needs file check",
     pending: "Checking",
     none: "None",
     direct: "Ready",
@@ -902,14 +900,14 @@ async function showEpisode(seriesId, episodeId) {
           ${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix Episode</button>` : ""}
         </div>
         <section class="section">
-          <div class="section-head"><div class="section-title">Source</div><div class="section-note">Current file and playback readiness</div></div>
+          <div class="section-head"><div class="section-title">Source file</div></div>
           <div class="detail-source-workbench">
             <div class="version-grid">${versionModels.map((model, index) => versionCard(model, index === 0)).join("") || empty("No playable versions found.")}</div>
             ${episodeDetailRail(series, episode, selected)}
           </div>
         </section>
         <section class="section">
-          <div class="section-head"><div class="section-title">Audio & Subtitles</div><div class="section-note">Selected tracks affect compatibility</div></div>
+          <div class="section-head"><div class="section-title">Audio & Subtitles</div></div>
           <div class="track-grid">
             <div class="track-panel"><strong>Audio</strong>${audioTrackRows(tracks.audioTracks, selected?.mediaSourceId)}</div>
             <div class="track-panel"><strong>Subtitles</strong>${subtitleTrackRows(tracks.subtitleTracks, selected?.mediaSourceId)}</div>
@@ -1581,7 +1579,7 @@ function folderLabel(value = "") {
 function movieOverview(movie = {}) {
   if (movie.metadata?.overview) return escapeHTML(movie.metadata.overview);
   if (movie.needsReview) return "This item needs metadata review before Vyrden can fully trust its match.";
-  return "Local file ready in your library. Vyrden will show richer cast, artwork, ratings, and playback details as metadata and media checks complete.";
+  return "Local file ready in your library. Vyrden will show richer cast, artwork, ratings, and playback details as metadata and file checks complete.";
 }
 
 function metadataBadges(metadata) {
