@@ -966,10 +966,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       width:min(96vw, 1760px);
       bottom:clamp(18px, 2vw, 34px);
       transform:translateX(-50%%);
-      display:grid;
-      grid-template-columns:minmax(0, 1.55fr) minmax(340px, .55fr);
-      gap:clamp(14px, 1.2vw, 22px);
-      align-items:end;
+      display:block;
       pointer-events:none;
       transition:opacity .18s ease, transform .18s ease;
     }
@@ -993,14 +990,21 @@ func playerHandler(deps Deps) http.HandlerFunc {
       box-shadow:var(--shadow);
       min-width:0;
     }
-    .title-panel {
+    .player-dock {
       display:grid;
-      grid-template-columns:minmax(0,1fr) auto;
-      gap:clamp(16px, 1.6vw, 28px);
-      align-items:end;
+      grid-template-columns:minmax(0, 1fr) minmax(330px, 420px);
+      gap:clamp(18px, 1.8vw, 30px);
+      align-items:stretch;
       max-width:100%%;
       overflow:visible;
-      min-height:clamp(150px, 13vh, 190px);
+      min-height:clamp(170px, 15vh, 220px);
+      pointer-events:auto;
+    }
+    .player-primary {
+      display:grid;
+      grid-template-rows:auto auto auto;
+      align-content:end;
+      min-width:0;
     }
     .eyebrow {
       color:var(--champagne);
@@ -1046,8 +1050,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       align-items:center;
       gap:10px;
       flex-wrap:wrap;
-      padding-top:2px;
-      min-width:max-content;
+      padding-top:12px;
     }
     button, a.button {
       pointer-events:auto;
@@ -1065,12 +1068,62 @@ func playerHandler(deps Deps) http.HandlerFunc {
       white-space:nowrap;
     }
     button.primary { border-color:transparent; background:var(--champagne); color:#11100d; }
+    .icon-button {
+      width:42px;
+      padding:0;
+      display:inline-grid;
+      place-items:center;
+    }
+    .seek-row {
+      display:grid;
+      grid-template-columns:max-content minmax(0, 1fr) max-content;
+      gap:12px;
+      align-items:center;
+      margin-top:14px;
+    }
+    .seek-row span {
+      color:var(--soft);
+      font-size:13px;
+      font-weight:850;
+      min-width:4.5em;
+      text-align:center;
+    }
+    input[type="range"] {
+      width:100%%;
+      accent-color:var(--champagne);
+      cursor:pointer;
+    }
+    .control-field {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      min-height:42px;
+      padding:0 12px;
+      border:1px solid var(--line);
+      border-radius:8px;
+      background:rgba(245,240,231,.055);
+      color:var(--soft);
+      font-size:13px;
+      font-weight:850;
+    }
+    .control-field select {
+      max-width:180px;
+      border:0;
+      outline:0;
+      color:var(--text);
+      background:transparent;
+      font:inherit;
+    }
+    .control-field option { color:#111; background:#f7f1e7; }
+    .volume {
+      width:110px;
+    }
     .forecast {
       display:grid;
       gap:10px;
-      align-self:end;
-      min-height:clamp(150px, 13vh, 190px);
       align-content:start;
+      padding-left:clamp(14px, 1.2vw, 22px);
+      border-left:1px solid rgba(245,240,231,.1);
     }
     .forecast h2 {
       margin:0;
@@ -1102,7 +1155,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     @media (max-width: 900px) {
       .overlay { grid-template-columns:1fr; left:12px; right:12px; width:auto; bottom:12px; transform:none; }
       body.is-idle .overlay { transform:translateY(10px); }
-      .title-panel { grid-template-columns:1fr; }
+      .player-dock { grid-template-columns:1fr; }
       .control-stack { justify-content:flex-start; }
       .forecast { display:none; }
       h1 { font-size:clamp(24px, 8vw, 38px); white-space:normal; text-wrap:balance; }
@@ -1116,11 +1169,12 @@ func playerHandler(deps Deps) http.HandlerFunc {
       <div class="status-pill" id="sessionState">Starting</div>
     </div>
     <button class="hud-toggle" id="hudToggle" type="button">Controls</button>
-    <video id="player" controls autoplay></video>
+    <video id="player" autoplay></video>
   </div>
   <div class="overlay">
-    <section class="panel title-panel">
-      <div>
+    <section class="panel player-dock">
+      <div class="player-primary">
+        <div>
         <div class="eyebrow">Now playing</div>
         <h1 id="playerTitle">%s</h1>
         <div class="meta">
@@ -1130,42 +1184,66 @@ func playerHandler(deps Deps) http.HandlerFunc {
         </div>
         <div class="hint">Space toggles playback. Arrow keys seek. Progress saves automatically.</div>
       </div>
-      <div class="control-stack">
-        <button class="primary" id="playToggle" type="button">Pause</button>
-        <button id="restartButton" type="button">Restart</button>
-        <button id="markButton" type="button">Mark Watched</button>
-        <a class="button" href="/">Dashboard</a>
+        <div class="seek-row">
+          <span id="currentTime">0:00</span>
+          <input id="seekBar" type="range" min="0" max="1000" value="0" aria-label="Seek">
+          <span id="durationTime">--:--</span>
+        </div>
+        <div class="control-stack">
+          <button class="primary" id="playToggle" type="button">Pause</button>
+          <button class="icon-button" id="backButton" type="button" aria-label="Back 10 seconds">-10</button>
+          <button class="icon-button" id="forwardButton" type="button" aria-label="Forward 10 seconds">+10</button>
+          <button id="restartButton" type="button">Restart</button>
+          <button id="markButton" type="button">Mark Watched</button>
+          <button id="fullscreenButton" type="button">Fullscreen</button>
+          <label class="control-field">Speed <select id="speedSelect"><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option></select></label>
+          <label class="control-field">Subs <select id="subtitleSelect"><option value="-1">Off</option></select></label>
+          <label class="control-field">Volume <input class="volume" id="volumeSlider" type="range" min="0" max="1" step="0.01" value="1"></label>
+          <a class="button" href="/">Dashboard</a>
+        </div>
       </div>
+      <aside class="forecast">
+        <h2>Playback Forecast</h2>
+        <div class="decision"><strong id="forecastMode">Checking</strong><span id="forecastReason">Inspecting selected source and client profile.</span></div>
+        <div class="kv">
+          <div><span>Client</span><span>Web</span></div>
+          <div><span>Route</span><span id="forecastRoute">LAN direct</span></div>
+          <div><span>Server</span><span id="forecastServer">Low impact</span></div>
+        </div>
+      </aside>
     </section>
-    <aside class="panel forecast">
-      <h2>Playback Forecast</h2>
-      <div class="decision"><strong id="forecastMode">Checking</strong><span id="forecastReason">Inspecting selected source and client profile.</span></div>
-      <div class="kv">
-        <div><span>Client</span><span>Web</span></div>
-        <div><span>Route</span><span id="forecastRoute">LAN direct</span></div>
-        <div><span>Server</span><span id="forecastServer">Low impact</span></div>
-      </div>
-    </aside>
   </div>
   <script>
     const mediaSourceId = %q;
     const resumeEnabled = new URLSearchParams(location.search).get("start") !== "0";
     let sessionId = "";
     let saveInFlight = false;
+    let queuedSaveStatus = "";
+    let isSeeking = false;
     let lastMouseMove = Date.now();
     const player = document.getElementById("player");
     const sessionState = document.getElementById("sessionState");
     const playToggle = document.getElementById("playToggle");
+    const backButton = document.getElementById("backButton");
+    const forwardButton = document.getElementById("forwardButton");
     const restartButton = document.getElementById("restartButton");
     const markButton = document.getElementById("markButton");
+    const fullscreenButton = document.getElementById("fullscreenButton");
     const hudToggle = document.getElementById("hudToggle");
     const decisionMode = document.getElementById("decisionMode");
     const progressChip = document.getElementById("progressChip");
     const subtitleChip = document.getElementById("subtitleChip");
+    const seekBar = document.getElementById("seekBar");
+    const currentTimeLabel = document.getElementById("currentTime");
+    const durationTimeLabel = document.getElementById("durationTime");
+    const volumeSlider = document.getElementById("volumeSlider");
+    const speedSelect = document.getElementById("speedSelect");
+    const subtitleSelect = document.getElementById("subtitleSelect");
     const playerTitle = document.getElementById("playerTitle");
     const forecastMode = document.getElementById("forecastMode");
     const forecastReason = document.getElementById("forecastReason");
     const forecastServer = document.getElementById("forecastServer");
+    const forecastRoute = document.getElementById("forecastRoute");
     let idleTimer = 0;
 
     async function send(path, body, method = "POST", keepalive = false) {
@@ -1206,6 +1284,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       forecastMode.textContent = label;
       forecastReason.textContent = decision.reason || "Direct file stream is available for this client.";
       forecastServer.textContent = mode === "direct" ? "Low impact" : "Server work required";
+      forecastRoute.textContent = label;
       return mode;
     }
     async function resolvePlaybackRoute() {
@@ -1230,6 +1309,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       const subtitles = await getJSON("/api/media-sources/" + mediaSourceId + "/subtitles", { sidecars: [] });
       const sidecars = subtitles.sidecars || [];
       subtitleChip.textContent = sidecars.length ? sidecars.length + " subtitle file" + (sidecars.length === 1 ? "" : "s") : "No sidecar subtitles";
+      let subtitleTrackIndex = 0;
       sidecars.forEach((item, index) => {
         if (item.format !== "vtt") return;
         const track = document.createElement("track");
@@ -1238,7 +1318,10 @@ func playerHandler(deps Deps) http.HandlerFunc {
         track.srclang = item.language || "und";
         track.src = "/api/media-sources/" + mediaSourceId + "/subtitles/" + index;
         player.appendChild(track);
+        subtitleSelect.appendChild(new Option(track.label, String(subtitleTrackIndex)));
+        subtitleTrackIndex += 1;
       });
+      setTimeout(() => syncSubtitleSelection(), 100);
     }
     async function loadResumeState() {
       const state = await getJSON("/api/playback/state/" + mediaSourceId);
@@ -1254,7 +1337,10 @@ func playerHandler(deps Deps) http.HandlerFunc {
       sessionState.textContent = sessionId ? "Live session" : "Local playback";
     }
     async function saveProgress(status) {
-      if (saveInFlight) return;
+      if (saveInFlight) {
+        queuedSaveStatus = status || queuedSaveStatus || (player.paused ? "paused" : "playing");
+        return;
+      }
       saveInFlight = true;
       const body = progressBody(status);
       try {
@@ -1262,6 +1348,11 @@ func playerHandler(deps Deps) http.HandlerFunc {
         await send("/api/playback/state/" + mediaSourceId, body, "PUT");
       } finally {
         saveInFlight = false;
+        if (queuedSaveStatus) {
+          const queued = queuedSaveStatus;
+          queuedSaveStatus = "";
+          saveProgress(queued);
+        }
       }
     }
     async function stopSession(status = "stopped") {
@@ -1277,8 +1368,31 @@ func playerHandler(deps Deps) http.HandlerFunc {
       const current = formatTime(player.currentTime || 0);
       const total = Number.isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration) : "--:--";
       progressChip.textContent = current + " / " + total;
+      currentTimeLabel.textContent = current;
+      durationTimeLabel.textContent = total;
+      if (!isSeeking) {
+        seekBar.value = Number.isFinite(player.duration) && player.duration > 0 ? Math.round(((player.currentTime || 0) / player.duration) * 1000) : 0;
+      }
       playToggle.textContent = player.paused ? "Play" : "Pause";
       sessionState.textContent = player.paused ? "Paused" : "Playing";
+    }
+    function seekBy(seconds) {
+      player.currentTime = Math.max(0, Math.min(player.duration || 0, (player.currentTime || 0) + seconds));
+      refreshProgress();
+      saveProgress("playing");
+    }
+    function syncSubtitleSelection() {
+      Array.from(player.textTracks || []).forEach((track, index) => {
+        track.mode = String(index) === subtitleSelect.value ? "showing" : "disabled";
+      });
+    }
+    function toggleFullscreen() {
+      const target = document.querySelector(".player-shell");
+      if (!document.fullscreenElement) {
+        target.requestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
     }
     function showHud(timeout = 2600) {
       lastMouseMove = Date.now();
@@ -1295,10 +1409,28 @@ func playerHandler(deps Deps) http.HandlerFunc {
       idleTimer = setTimeout(() => document.body.classList.add("is-idle"), 900);
     }
     playToggle.addEventListener("click", () => player.paused ? player.play() : player.pause());
+    backButton.addEventListener("click", () => seekBy(-10));
+    forwardButton.addEventListener("click", () => seekBy(10));
     restartButton.addEventListener("click", () => { player.currentTime = 0; player.play(); saveProgress("playing"); });
     markButton.addEventListener("click", async () => {
       await send("/api/playback/state/" + mediaSourceId, { watched: true, progressSeconds: player.duration || player.currentTime || 0, durationSeconds: player.duration || 0 }, "PUT");
       markButton.textContent = "Marked";
+    });
+    fullscreenButton.addEventListener("click", toggleFullscreen);
+    volumeSlider.addEventListener("input", () => { player.volume = Number(volumeSlider.value || 0); player.muted = player.volume <= 0; });
+    speedSelect.addEventListener("change", () => { player.playbackRate = Number(speedSelect.value || 1); });
+    subtitleSelect.addEventListener("change", syncSubtitleSelection);
+    seekBar.addEventListener("input", () => {
+      isSeeking = true;
+      const duration = Number.isFinite(player.duration) ? player.duration : 0;
+      currentTimeLabel.textContent = formatTime((Number(seekBar.value || 0) / 1000) * duration);
+    });
+    seekBar.addEventListener("change", () => {
+      const duration = Number.isFinite(player.duration) ? player.duration : 0;
+      if (duration > 0) player.currentTime = (Number(seekBar.value || 0) / 1000) * duration;
+      isSeeking = false;
+      refreshProgress();
+      saveProgress(player.paused ? "paused" : "playing");
     });
     hudToggle.addEventListener("click", () => showHud(4200));
     player.addEventListener("timeupdate", refreshProgress);
@@ -1309,8 +1441,9 @@ func playerHandler(deps Deps) http.HandlerFunc {
     window.addEventListener("keydown", event => {
       if (event.target && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
       if (event.code === "Space") { event.preventDefault(); player.paused ? player.play() : player.pause(); }
-      if (event.code === "ArrowRight") player.currentTime = Math.min((player.duration || 0), (player.currentTime || 0) + 10);
-      if (event.code === "ArrowLeft") player.currentTime = Math.max(0, (player.currentTime || 0) - 10);
+      if (event.code === "ArrowRight") seekBy(10);
+      if (event.code === "ArrowLeft") seekBy(-10);
+      if (event.key && event.key.toLowerCase() === "f") toggleFullscreen();
     });
     window.addEventListener("mousemove", () => {
       showHud();
