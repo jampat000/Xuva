@@ -1045,16 +1045,19 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .chip.route { color:var(--ice); border-color:rgba(154,219,212,.3); background:rgba(154,219,212,.08); }
     .chip.warn { color:var(--warn); border-color:rgba(224,184,110,.3); background:rgba(224,184,110,.08); }
     .control-stack {
-      display:flex;
-      justify-content:flex-start;
+      display:grid;
+      grid-template-columns:repeat(auto-fit, max-content);
+      justify-content:start;
       align-items:center;
       gap:10px;
-      flex-wrap:wrap;
       padding-top:12px;
     }
     button, a.button {
       pointer-events:auto;
       min-height:42px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
       padding:0 16px;
       border:1px solid var(--line);
       border-radius:8px;
@@ -1066,6 +1069,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       text-decoration:none;
       cursor:pointer;
       white-space:nowrap;
+      vertical-align:middle;
     }
     button.primary { border-color:transparent; background:var(--champagne); color:#11100d; }
     .icon-button {
@@ -1105,6 +1109,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       color:var(--soft);
       font-size:13px;
       font-weight:850;
+      white-space:nowrap;
     }
     .control-field select {
       max-width:180px;
