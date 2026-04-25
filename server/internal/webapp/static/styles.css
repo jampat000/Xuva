@@ -928,6 +928,34 @@ a:focus-visible {
   font-weight: 700;
   line-height: 1.15;
 }
+.provider-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(360px * var(--density-scale))), 1fr));
+}
+.path-form .provider-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: calc(8px * var(--density-scale));
+  align-items: start;
+  padding: calc(14px * var(--density-scale));
+  border: 1px solid rgba(244, 239, 228, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.provider-card span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text);
+}
+.provider-card em {
+  color: var(--ice);
+  font-style: normal;
+}
+.provider-card small {
+  color: var(--quiet);
+  font-size: var(--small-font);
+  font-weight: 720;
+}
 .quality-tile strong {
   margin-top: 8px;
   color: var(--text);

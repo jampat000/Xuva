@@ -488,6 +488,8 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeString(&updated.TempDir, request.TempDir)
 		mergeString(&updated.FFmpegPath, request.FFmpegPath)
 		mergeString(&updated.FFprobePath, request.FFprobePath)
+		mergeString(&updated.OMDbAPIKey, request.OMDbAPIKey)
+		mergeString(&updated.TMDBAPIKey, request.TMDBAPIKey)
 		mergeInt(&updated.ScanWorkers, request.ScanWorkers)
 		mergeInt(&updated.ProbeWorkers, request.ProbeWorkers)
 		mergeInt(&updated.TranscodeWorkers, request.TranscodeWorkers)
@@ -544,6 +546,16 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"probeWorkers":     cfg.ProbeWorkers,
 		"transcodeWorkers": cfg.TranscodeWorkers,
 		"gpuWorkers":       cfg.GPUWorkers,
+		"metadataProviders": map[string]any{
+			"omdb": map[string]any{
+				"configured": cfg.OMDbAPIKey != "",
+				"ratings":    []string{"IMDb", "Rotten Tomatoes", "Metacritic"},
+			},
+			"tmdb": map[string]any{
+				"configured": cfg.TMDBAPIKey != "",
+				"ratings":    []string{"TMDB"},
+			},
+		},
 	}
 }
 

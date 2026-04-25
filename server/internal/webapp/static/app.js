@@ -703,6 +703,7 @@ async function renderSettings() {
       <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
     </div>
     <div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div>
+    <div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>
     <div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>
     <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
     <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
@@ -724,8 +725,39 @@ function runtimePathForm(paths = {}) {
   </form>`;
 }
 
+function providerSettingsForm(providers = {}) {
+  return `<form class="path-form" onsubmit="saveProviderSettings(event)">
+    <div class="settings-grid provider-grid">
+      ${providerCard("OMDb", "omdbApiKey", providers.omdb, "IMDb, Rotten Tomatoes, Metacritic")}
+      ${providerCard("TMDB", "tmdbApiKey", providers.tmdb, "TMDB community ratings and IDs")}
+    </div>
+    <div class="inline-actions"><button class="primary" type="submit">Save providers</button><span class="muted">Keys are stored locally in Vyrden config and used only by your server.</span></div>
+  </form>`;
+}
+
+function providerCard(name, inputName, provider = {}, description = "") {
+  const configured = provider.configured ? "Configured" : "Not configured";
+  return `<label class="provider-card">
+    <span>${escapeHTML(name)} <em>${escapeHTML(configured)}</em></span>
+    <small>${escapeHTML(description)}</small>
+    <input type="password" name="${inputName}" value="" placeholder="${provider.configured ? "Leave blank to keep existing key" : "Paste API key"}" autocomplete="off">
+  </label>`;
+}
+
 function settingsGrid(config) {
-  return `<div class="settings-grid">${Object.entries(config).map(([key, value]) => `<div><span>${escapeHTML(key)}</span><strong>${escapeHTML(value)}</strong></div>`).join("")}</div>`;
+  return `<div class="settings-grid">${Object.entries(config).filter(([key]) => key !== "metadataProviders").map(([key, value]) => `<div><span>${escapeHTML(key)}</span><strong>${escapeHTML(value)}</strong></div>`).join("")}</div>`;
+}
+
+async function saveProviderSettings(event) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const payload = {
+    omdbApiKey: data.get("omdbApiKey"),
+    tmdbApiKey: data.get("tmdbApiKey"),
+  };
+  const result = await send("/api/settings", payload, "PUT");
+  alert(result.restartRequired ? "Saved. Restart Vyrden for provider services to reload the new keys." : "Saved.");
+  navigate("settings");
 }
 
 async function saveRuntimePaths(event) {
