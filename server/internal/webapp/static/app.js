@@ -388,36 +388,7 @@ async function showMovie(id) {
       </section>
 
       <aside class="side detail-side">
-        <section class="panel pad">
-          ${playbackForecastMarkup(selected)}
-        </section>
-        <section class="panel pad">
-          <div class="panel-title"><strong>Download</strong></div>
-          <div class="download">
-            ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','original')"><span>Original</span><span>${formatBytes(selected.sizeBytes)}</span></button>` : ""}
-            ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','balanced')"><span>Balanced</span><span>1080p prepared</span></button>` : ""}
-            ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','travel')"><span>Travel</span><span>720p small</span></button>` : ""}
-            ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
-          </div>
-        </section>
-        <section class="panel pad">
-          <div class="panel-title"><strong>Metadata Source</strong><span class="badge route">${escapeHTML(providerLabel(movie.metadata?.provider || "pending"))}</span></div>
-          <div class="decision"><strong>${escapeHTML(movie.metadata?.title || movie.title)}</strong><span>${metadataSummary(movie.metadata)}</span></div>
-          <div class="kv">
-            <div><span>Provider</span><span>${escapeHTML(providerLabel(movie.metadata?.provider || "none"))}</span></div>
-            <div><span>Confidence</span><span>${metadataConfidenceLabel(movie.metadata)}</span></div>
-            <div><span>External ID</span><span>${escapeHTML(metadataExternalID(movie.metadata))}</span></div>
-          </div>
-          <div class="inline-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
-        </section>
-        <section class="panel pad">
-          <div class="panel-title"><strong>Media Intelligence</strong><span class="badge ${selected?.source?.probed ? "good" : "warn"}">${selected?.source?.probed ? "Ready" : "Check needed"}</span></div>
-          <div class="cast-list">
-            <div><i></i><strong>Container</strong><span>${selected ? escapeHTML((selected.relPath || "").split(".").pop() || "media") : "none"}</span></div>
-            <div><i></i><strong>Storage</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
-            <div><i></i><strong>Playback</strong><span>${selected ? escapeHTML(playbackReadinessLabel(selected.decision)) : "No source"}</span></div>
-          </div>
-        </section>
+        ${movieDetailRail(movie, selected)}
       </aside>
     </div>`;
   if (selected) updatePlaybackForecast(selected.mediaSourceId);
@@ -467,6 +438,60 @@ function versionCard(model, selected) {
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
     </div>
   </article>`;
+}
+
+function movieDetailRail(movie = {}, selected = null) {
+  return `
+    <section class="panel pad detail-status-panel">
+      ${playbackForecastMarkup(selected)}
+    </section>
+    <section class="panel pad">
+      <div class="panel-title"><strong>Source Actions</strong></div>
+      <div class="source-action-stack">
+        ${selected ? `<button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>` : ""}
+        ${selected ? `<button onclick="openSourceInspector('${selected.mediaSourceId}')">Inspect source</button>` : ""}
+        ${selected ? `<a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play from start</a>` : ""}
+      </div>
+      <div class="download-plan">
+        ${selected ? downloadPlan("Original", formatBytes(selected.sizeBytes), "Keep full quality", selected.mediaSourceId, "original") : ""}
+        ${selected ? downloadPlan("Balanced", "1080p", "Smaller prepared copy", selected.mediaSourceId, "balanced") : ""}
+        ${selected ? downloadPlan("Travel", "720p", "Smallest portable copy", selected.mediaSourceId, "travel") : ""}
+      </div>
+    </section>
+    <section class="panel pad">
+      <div class="panel-title"><strong>Match & Ratings</strong><span class="badge route">${escapeHTML(providerLabel(movie.metadata?.provider || "pending"))}</span></div>
+      <div class="detail-summary-card">
+        <strong>${escapeHTML(movie.metadata?.title || movie.title)}</strong>
+        <span>${metadataSummary(movie.metadata)}</span>
+      </div>
+      <div class="fact-list">
+        ${factRow("Provider", providerLabel(movie.metadata?.provider || "none"))}
+        ${factRow("Confidence", metadataConfidenceLabel(movie.metadata))}
+        ${factRow("External ID", metadataExternalID(movie.metadata))}
+      </div>
+      <div class="inline-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
+    </section>
+    <section class="panel pad">
+      <div class="panel-title"><strong>File Facts</strong><span class="badge ${selected?.source?.probed ? "good" : "warn"}">${selected?.source?.probed ? "Ready" : "Check needed"}</span></div>
+      <div class="fact-list">
+        ${factRow("Container", selected ? ((selected.relPath || "").split(".").pop() || "media") : "No source")}
+        ${factRow("Storage path", selected ? selected.relPath : "No linked file")}
+        ${factRow("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
+        ${factRow("Server impact", selected ? playbackEffortLabel(selected.decision) : "None")}
+      </div>
+    </section>`;
+}
+
+function downloadPlan(label, value, note, mediaSourceId, profile) {
+  return `<button class="download-plan-item" onclick="startDownload('${mediaSourceId}','${profile}')">
+    <strong>${escapeHTML(label)}</strong>
+    <span>${escapeHTML(value)}</span>
+    <small>${escapeHTML(note)}</small>
+  </button>`;
+}
+
+function factRow(label, value) {
+  return `<div class="fact-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
 }
 
 async function openSourceInspector(mediaSourceId) {
@@ -562,15 +587,19 @@ function playbackForecastMarkup(model) {
   const decision = model.decision || {};
   return `<div class="panel-title"><strong>Playback Readiness</strong><span class="badge route" id="forecastLoad">${escapeHTML(loadLabel(decision))}</span></div>
     <div class="decision"><strong id="forecastMode">${escapeHTML(playbackReadinessLabel(decision))}</strong><span id="forecastReason">${escapeHTML(playbackReason(decision))}</span></div>
-    <div class="kv">
-      <div><span>Status</span><span id="forecastReasonShort">${escapeHTML(playbackActionLabel(decision.containerAction || "pending"))}</span></div>
-      <div><span>Video</span><span id="forecastVideo">${escapeHTML(sourceVideoLine(source, decision))}</span></div>
-      <div><span>Audio</span><span id="forecastAudio">${escapeHTML(playbackActionLabel(decision.audioAction || "pending"))}</span></div>
-      <div><span>Subtitles</span><span id="forecastSubtitles">${escapeHTML(playbackActionLabel(decision.subtitleAction || "none"))}</span></div>
-      <div><span>Network</span><span>${escapeHTML(decision.estimatedNetworkBitrate ? formatBitrate(decision.estimatedNetworkBitrate) : "pending")}</span></div>
-      <div><span>Server</span><span id="forecastServer">${escapeHTML(playbackEffortLabel(decision))}</span></div>
+    <div class="readiness-list">
+      ${readinessItem("File check", playbackActionLabel(decision.containerAction || "pending"), "forecastReasonShort")}
+      ${readinessItem("Video", sourceVideoLine(source, decision), "forecastVideo")}
+      ${readinessItem("Audio", playbackActionLabel(decision.audioAction || "pending"), "forecastAudio")}
+      ${readinessItem("Subtitles", playbackActionLabel(decision.subtitleAction || "none"), "forecastSubtitles")}
+      ${readinessItem("Network", decision.estimatedNetworkBitrate ? formatBitrate(decision.estimatedNetworkBitrate) : "Not known yet")}
+      ${readinessItem("Server", playbackEffortLabel(decision), "forecastServer")}
     </div>
     ${decision.suggestedFixes?.length ? `<div class="mini-list">${decision.suggestedFixes.map(item => `<div><strong>${escapeHTML(friendlyFix(item))}</strong><span>Recommended next step</span></div>`).join("")}</div>` : ""}`;
+}
+
+function readinessItem(label, value, id = "") {
+  return `<div class="readiness-item"><span>${escapeHTML(label)}</span><strong ${id ? `id="${id}"` : ""}>${escapeHTML(value || "Pending")}</strong></div>`;
 }
 
 function sourceQualityLabel(source = {}) {
@@ -589,11 +618,12 @@ function sourceVideoLine(source = {}, decision = {}) {
 }
 
 function loadLabel(decision = {}) {
-  if (decision.estimatedCpuCost === "high") return "high load";
-  if (decision.estimatedCpuCost === "medium") return "some load";
-  if (decision.estimatedCpuCost === "low") return "low load";
-  if (decision.estimatedCpuCost === "none") return "0% load";
-  return "pending";
+  if (String(decision.mode || "").toLowerCase() === "decision deferred") return "Check needed";
+  if (decision.estimatedCpuCost === "high") return "Heavy server work";
+  if (decision.estimatedCpuCost === "medium") return "Some server work";
+  if (decision.estimatedCpuCost === "low") return "Easy on server";
+  if (decision.estimatedCpuCost === "none") return "No server work";
+  return "Checking";
 }
 
 function seedPlaybackSelection(mediaSourceId, tracks = {}) {
@@ -615,7 +645,7 @@ function trackRow(label, meta, selected, action = "") {
 
 function audioTrackRows(items = [], mediaSourceId = "") {
   items = Array.isArray(items) ? items : [];
-  if (!items.length) return trackRow("Probe required", "No audio track data yet", true);
+  if (!items.length) return trackRow("Media check needed", "Audio details not available yet", true);
   const selected = state.playbackSelections[mediaSourceId]?.audio;
   return items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "audio").toUpperCase()}${item.channels ? ` ${item.channels}ch` : ""}`;
@@ -628,7 +658,7 @@ function audioTrackRows(items = [], mediaSourceId = "") {
 function subtitleTrackRows(items = [], mediaSourceId = "") {
   items = Array.isArray(items) ? items : [];
   const selected = state.playbackSelections[mediaSourceId]?.subtitle;
-  const off = trackRow("Subtitles off", "Best direct-play route", !selected, `onclick="selectPlaybackTrack('subtitle','${mediaSourceId}',null)"`);
+  const off = trackRow("Subtitles off", "Simplest playback path", !selected, `onclick="selectPlaybackTrack('subtitle','${mediaSourceId}',null)"`);
   if (!items.length) return off + trackRow("No embedded subtitles", "Sidecars checked separately", false);
   return off + items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "subtitle").toUpperCase()}${item.forced ? " forced" : ""}`;
@@ -666,7 +696,7 @@ async function updatePlaybackForecast(mediaSourceId) {
   setText("forecastAudio", playbackActionLabel(decision.audioAction || "pending"));
   setText("forecastSubtitles", playbackActionLabel(decision.subtitleAction || "none"));
   setText("forecastServer", playbackEffortLabel(decision));
-  setText("forecastLoad", decision.estimatedCpuCost === "high" ? "high load" : decision.estimatedCpuCost === "medium" ? "some load" : "low load");
+  setText("forecastLoad", loadLabel(decision));
 }
 
 function setText(id, value) {
@@ -871,23 +901,40 @@ async function showEpisode(seriesId, episodeId) {
         </section>
       </section>
       <aside class="side detail-side">
-        <section class="panel pad">${playbackForecastMarkup(selected)}</section>
-        <section class="panel pad">
-          <div class="panel-title"><strong>Metadata</strong><span class="badge route">${escapeHTML(providerLabel(series.metadata?.provider || "pending"))}</span></div>
-          <div class="decision"><strong>${escapeHTML(series.metadata?.title || series.title)}</strong><span>${metadataSummary(series.metadata)}</span></div>
-          <div class="inline-actions"><button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch metadata</button>${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix match</button>` : ""}</div>
-        </section>
-        <section class="panel pad">
-          <div class="panel-title"><strong>Episode Source</strong></div>
-          <div class="cast-list">
-            <div><i></i><strong>File</strong><span>${selected ? escapeHTML(selected.relPath) : "No linked file"}</span></div>
-            <div><i></i><strong>Playback</strong><span>${selected ? escapeHTML(playbackReadinessLabel(selected.decision)) : "No source"}</span></div>
-            <div><i></i><strong>Size</strong><span>${selected ? formatBytes(selected.sizeBytes) : "None"}</span></div>
-          </div>
-        </section>
+        ${episodeDetailRail(series, episode, selected)}
       </aside>
     </div>`;
   if (selected) updatePlaybackForecast(selected.mediaSourceId);
+}
+
+function episodeDetailRail(series = {}, episode = {}, selected = null) {
+  return `
+    <section class="panel pad detail-status-panel">${playbackForecastMarkup(selected)}</section>
+    <section class="panel pad">
+      <div class="panel-title"><strong>Source Actions</strong></div>
+      <div class="source-action-stack">
+        ${selected ? `<button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>` : ""}
+        ${selected ? `<button onclick="openSourceInspector('${selected.mediaSourceId}')">Inspect source</button>` : ""}
+        ${selected ? `<a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play from start</a>` : ""}
+      </div>
+    </section>
+    <section class="panel pad">
+      <div class="panel-title"><strong>Series Match</strong><span class="badge route">${escapeHTML(providerLabel(series.metadata?.provider || "pending"))}</span></div>
+      <div class="detail-summary-card">
+        <strong>${escapeHTML(series.metadata?.title || series.title)}</strong>
+        <span>${metadataSummary(series.metadata)}</span>
+      </div>
+      <div class="inline-actions"><button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch metadata</button>${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix match</button>` : ""}</div>
+    </section>
+    <section class="panel pad">
+      <div class="panel-title"><strong>File Facts</strong><span class="badge ${selected?.source?.probed ? "good" : "warn"}">${selected?.source?.probed ? "Ready" : "Check needed"}</span></div>
+      <div class="fact-list">
+        ${factRow("File", selected ? selected.relPath : "No linked file")}
+        ${factRow("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
+        ${factRow("Server impact", selected ? playbackEffortLabel(selected.decision) : "None")}
+        ${factRow("Size", selected ? formatBytes(selected.sizeBytes) : "None")}
+      </div>
+    </section>`;
 }
 
 async function renderLibraries() {
