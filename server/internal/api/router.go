@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -385,15 +384,16 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 				title = item.Title
 			}
 		}
-		a, b := artworkColors(kind + ":" + id)
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		_, _ = fmt.Fprintf(w, `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
-<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#%s"/><stop offset="1" stop-color="#%s"/></linearGradient></defs>
-<rect width="600" height="900" fill="#090b10"/><rect x="24" y="24" width="552" height="852" rx="28" fill="url(#g)" opacity="0.95"/>
-<circle cx="120" cy="126" r="54" fill="#f5f0e7" opacity="0.16"/><path d="M92 730h416v30H92zM92 784h300v22H92z" fill="#f5f0e7" opacity="0.24"/>
-<text x="92" y="694" fill="#f5f0e7" font-family="Inter,Segoe UI,sans-serif" font-size="44" font-weight="800">%s</text>
-</svg>`, a, b, html.EscapeString(truncate(title, 20)))
+<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#171815"/><stop offset="1" stop-color="#0c0d0c"/></linearGradient></defs>
+<rect width="600" height="900" fill="#070807"/>
+<rect x="24" y="24" width="552" height="852" rx="22" fill="url(#g)" stroke="#2a2925" stroke-width="2"/>
+<rect x="54" y="54" width="492" height="792" rx="12" fill="none" stroke="#f5f0e7" stroke-opacity="0.08"/>
+<path d="M96 702h408v26H96zM96 762h278v18H96z" fill="#f5f0e7" opacity="0.18"/>
+<text x="96" y="660" fill="#f5f0e7" fill-opacity="0.82" font-family="Inter,Segoe UI,sans-serif" font-size="42" font-weight="800">%s</text>
+</svg>`, html.EscapeString(truncate(title, 20)))
 	}
 }
 
@@ -1310,12 +1310,6 @@ func lanAddresses(httpAddr string) []string {
 		}
 	}
 	return output
-}
-
-func artworkColors(seed string) (string, string) {
-	sum := sha1.Sum([]byte(seed))
-	return fmt.Sprintf("%02x%02x%02x", 40+sum[0]%120, 50+sum[1]%120, 70+sum[2]%120),
-		fmt.Sprintf("%02x%02x%02x", 100+sum[3]%120, 120+sum[4]%100, 80+sum[5]%140)
 }
 
 func truncate(value string, limit int) string {
