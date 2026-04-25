@@ -256,6 +256,7 @@ async function renderMovies() {
       </div>
       <div class="toolbar">
         <button class="primary" onclick="startScan('/api/libraries/movies/scan')">Scan Movies</button>
+        <button onclick="refreshMetadataBatch('movie')">Refresh Metadata</button>
         <input class="search" id="movieFilter" placeholder="Filter movies" oninput="filterCards(this.value)">
       </div>
       <div class="poster-grid">${payload.movies.map(movieCard).join("") || empty("No movies yet. Run a scan first.")}</div>
@@ -491,6 +492,7 @@ async function renderTV() {
       </div>
       <div class="toolbar">
         <button class="primary" onclick="startScan('/api/libraries/tv/scan')">Scan TV</button>
+        <button onclick="refreshMetadataBatch('series')">Refresh Metadata</button>
         <input class="search" placeholder="Filter shows" oninput="filterCards(this.value)">
       </div>
       <div class="poster-grid">${payload.series.map(seriesCard).join("") || empty("No TV yet. Run a scan first.")}</div>
@@ -514,12 +516,22 @@ async function showSeries(id) {
   view.innerHTML = `
     <div class="detail-shell">
       <section class="detail-hero">
-        <img alt="" src="${artworkURL("series", series.id)}">
+        <img alt="" src="${artworkURL("series", series.id, "backdrop")}">
         <div class="detail-poster"><img alt="" src="${artworkURL("series", series.id)}"></div>
         <div class="detail-copy">
           <button class="ghost" onclick="navigate('tv')">Back to TV</button>
           <h2>${escapeHTML(series.title)}</h2>
-          <p>${series.seasonCount} seasons - ${series.episodeCount} episodes</p>
+          <p>${series.metadata?.overview ? escapeHTML(series.metadata.overview) : `${series.seasonCount} seasons - ${series.episodeCount} episodes`}</p>
+          <div class="meta-line">
+            <span class="badge">${series.seasonCount} seasons</span>
+            <span class="badge">${series.episodeCount} episodes</span>
+            ${metadataBadges(series.metadata)}
+          </div>
+          ${ratingsRail(series.metadata)}
+          <div class="actions">
+            <button class="primary" onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch Ratings</button>
+            <button onclick="refreshMetadataBatch('series')">Refresh TV Metadata</button>
+          </div>
         </div>
       </section>
       <div class="stack">
@@ -642,6 +654,10 @@ async function renderHealth() {
           ${signalPill("High bitrate", health.highBitrate)}
           ${signalPill("Subtitles", health.withSubtitles)}
         </div>
+      </div>
+      <div class="toolbar">
+        <button onclick="refreshMetadataBatch('movie')">Refresh Movie Metadata</button>
+        <button onclick="refreshMetadataBatch('series')">Refresh TV Metadata</button>
       </div>
       <div class="grid">
         ${metric("Needs Review", health.needsReview)}
@@ -827,6 +843,27 @@ async function refreshMetadata(kind, id, title, year = 0) {
     } else {
       await navigate(state.activeView);
     }
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+}
+
+async function refreshMetadataBatch(kind) {
+  const button = event?.currentTarget;
+  const original = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Refreshing...";
+  }
+  try {
+    const result = await send("/api/metadata/refresh-batch", { kind, limit: 25 });
+    if (result.warnings?.length) alert(result.warnings.slice(0, 5).join("\n"));
+    refreshLiveViews();
   } catch (error) {
     alert(error.message);
   } finally {
