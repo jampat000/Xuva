@@ -1,4 +1,4 @@
-const state = { activeView: "dashboard", activeSession: "", playbackSelections: {} };
+const state = { activeView: "dashboard", activeSession: "", playbackSelections: {}, movieWall: [], movieFilter: "all", movieSort: "title" };
 
 const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
@@ -246,6 +246,7 @@ async function renderDashboard() {
 
 async function renderMovies() {
   const payload = await api("/api/movies?limit=500");
+  state.movieWall = payload.movies || [];
   view.innerHTML = `
     <div class="stack">
       <div class="shelf-head">
@@ -257,14 +258,40 @@ async function renderMovies() {
       <div class="toolbar">
         <button class="primary" onclick="startScan('/api/libraries/movies/scan')">Scan Movies</button>
         <button onclick="refreshMetadataBatch('movie')">Refresh Metadata</button>
-        <input class="search" id="movieFilter" placeholder="Filter movies" oninput="filterCards(this.value)">
+        <input class="search" id="movieSearch" placeholder="Filter movies" oninput="applyMovieWallControls()">
       </div>
-      <div class="poster-grid">${payload.movies.map(movieCard).join("") || empty("No movies yet. Run a scan first.")}</div>
+      <div class="control-panel">
+        <div class="filter-group" aria-label="Movie filters">
+          ${movieFilterButton("all", "All")}
+          ${movieFilterButton("review", "Needs Review")}
+          ${movieFilterButton("metadata", "Metadata Pending")}
+          ${movieFilterButton("versions", "Multiple Versions")}
+        </div>
+        <div class="filter-group" aria-label="Movie sorting">
+          ${movieSortButton("title", "Title")}
+          ${movieSortButton("year", "Year")}
+          ${movieSortButton("versions", "Versions")}
+          ${movieSortButton("review", "Review")}
+        </div>
+      </div>
+      <div class="poster-grid" id="movieWall">${movieWall(state.movieWall)}</div>
     </div>`;
 }
 
+function movieWall(items = []) {
+  return items.length ? items.map(movieCard).join("") : empty("No movies match the current view.");
+}
+
+function movieFilterButton(filter, label) {
+  return `<button class="${state.movieFilter === filter ? "selected" : ""}" data-movie-filter="${filter}" onclick="setMovieFilter('${filter}')">${escapeHTML(label)}</button>`;
+}
+
+function movieSortButton(sort, label) {
+  return `<button class="${state.movieSort === sort ? "selected" : ""}" data-movie-sort="${sort}" onclick="setMovieSort('${sort}')">${escapeHTML(label)}</button>`;
+}
+
 function movieCard(item) {
-  return `<article class="poster-card" data-filter="${escapeAttr(item.title)} ${item.year || ""}" data-initial="${escapeAttr(initials(item.title))}">
+  return `<article class="poster-card" data-filter="${escapeAttr(item.title)} ${item.year || ""}" data-initial="${escapeAttr(initials(item.title))}" data-review="${item.needsReview ? "true" : "false"}" data-metadata="${item.metadata ? "true" : "false"}" data-versions="${item.versionCount || 0}">
     <img alt="" src="${artworkURL("movie", item.id)}" loading="lazy">
     <button class="poster-action" onclick="showMovie('${item.id}')">
       <span class="poster-title">${escapeHTML(item.title)}</span>
@@ -272,6 +299,40 @@ function movieCard(item) {
       ${item.needsReview ? `<em>Review</em>` : ""}
     </button>
   </article>`;
+}
+
+function setMovieFilter(filter) {
+  state.movieFilter = filter;
+  document.querySelectorAll("[data-movie-filter]").forEach(button => button.classList.toggle("selected", button.dataset.movieFilter === filter));
+  applyMovieWallControls();
+}
+
+function setMovieSort(sort) {
+  state.movieSort = sort;
+  document.querySelectorAll("[data-movie-sort]").forEach(button => button.classList.toggle("selected", button.dataset.movieSort === sort));
+  applyMovieWallControls();
+}
+
+function applyMovieWallControls() {
+  const target = document.getElementById("movieWall");
+  if (!target) return;
+  const needle = (document.getElementById("movieSearch")?.value || "").trim().toLowerCase();
+  let items = [...state.movieWall];
+  if (needle) {
+    items = items.filter(item => `${item.title || ""} ${item.year || ""}`.toLowerCase().includes(needle));
+  }
+  if (state.movieFilter === "review") items = items.filter(item => item.needsReview);
+  if (state.movieFilter === "metadata") items = items.filter(item => !item.metadata);
+  if (state.movieFilter === "versions") items = items.filter(item => Number(item.versionCount || 0) > 1);
+  items.sort(movieSorter(state.movieSort));
+  target.innerHTML = movieWall(items);
+}
+
+function movieSorter(sort) {
+  if (sort === "year") return (a, b) => Number(b.year || 0) - Number(a.year || 0) || String(a.title || "").localeCompare(String(b.title || ""));
+  if (sort === "versions") return (a, b) => Number(b.versionCount || 0) - Number(a.versionCount || 0) || String(a.title || "").localeCompare(String(b.title || ""));
+  if (sort === "review") return (a, b) => Number(Boolean(b.needsReview)) - Number(Boolean(a.needsReview)) || String(a.title || "").localeCompare(String(b.title || ""));
+  return (a, b) => String(a.title || "").localeCompare(String(b.title || ""));
 }
 
 async function showMovie(id) {
@@ -772,6 +833,7 @@ async function renderActivity() {
 
 async function renderHealth() {
   const [health, review, versions] = await Promise.all([api("/api/catalog/health"), api("/api/review"), api("/api/versions")]);
+  const workbench = await reviewWorkbench(review.items || []);
   view.innerHTML = `
     <div class="stack">
       <div class="hero-strip">
@@ -799,7 +861,7 @@ async function renderHealth() {
         ${metric("Versions", versions.versions.length)}
       </div>
       <div class="grid two">
-        <div class="card"><h2>Review Queue</h2>${reviewCards(review.items)}</div>
+        <div class="card"><h2>Metadata Workbench</h2>${workbench}</div>
         <div class="card"><h2>Version Groups</h2>${versionGroups(versions.versions)}</div>
       </div>
     </div>`;
@@ -808,6 +870,10 @@ async function renderHealth() {
 async function renderPlaybackLab() {
   const [payload, profiles, downloads] = await Promise.all([api("/api/media-sources?limit=200"), api("/api/devices/profiles"), api("/api/downloads")]);
   view.innerHTML = `<div class="stack">
+    <div class="hero-strip">
+      <div class="hero-copy"><span>Playback Lab</span><strong>Raw file diagnostics before the polished play button.</strong><p>This is Vyrden's workshop for client profiles, direct-play decisions, remux/transcode tests, probes, and offline download preparation. Movie and TV pages are for normal use; Playback Lab is for proving why a file behaves the way it does.</p></div>
+      <div class="signal-stack">${signalPill("Sources", payload.mediaSources.length)}${signalPill("Profiles", profiles.profiles.length)}${signalPill("Downloads", downloads.downloads.length)}</div>
+    </div>
     <div class="card"><h2>Client Profiles</h2>${profileCards(profiles.profiles)}</div>
     <div class="card"><h2>Playback Lab</h2>${playbackCards(payload.mediaSources)}</div>
     <div class="card"><h2>Offline Downloads</h2><div data-live="playback-downloads">${downloadCards(downloads.downloads)}</div></div>
@@ -1392,6 +1458,41 @@ function reviewCards(items = []) {
       <button onclick="refreshMetadata('${item.kind}','${item.id}','${escapeAttr(item.title)}',0)">Fetch Metadata</button>
     </div>
   </article>`).join("")}</div>`;
+}
+
+async function reviewWorkbench(items = []) {
+  if (!items.length) return empty("No review items.");
+  const rows = await Promise.all(items.slice(0, 40).map(async item => {
+    const metadata = await api(`/api/metadata/${item.kind}/${item.id}`).catch(() => ({ best: null, records: [] }));
+    const best = metadata.best || null;
+    return `<article class="review-workbench-row">
+      <div>
+        <strong>${escapeHTML(item.title || "Untitled")}</strong>
+        <span>${escapeHTML(item.kind)} - ${escapeHTML(item.reviewReason || "Needs review")}</span>
+        <small>Current: ${escapeHTML(best?.title || "No selected metadata")} ${best?.year ? `(${best.year})` : ""} - ${escapeHTML(providerLabel(best?.provider || "none"))} - ${metadataConfidenceLabel(best)}</small>
+      </div>
+      <form onsubmit="quickFixMetadata(event,'${item.kind}','${item.id}')">
+        <input name="title" value="${escapeAttr(best?.title || item.title || "")}" placeholder="Correct title" autocomplete="off">
+        ${item.kind === "movie" ? `<input name="year" value="${escapeAttr(best?.year || "")}" placeholder="Year" inputmode="numeric">` : ""}
+        <button class="primary" type="submit">Apply</button>
+      </form>
+      <div class="inline-actions">
+        <button onclick="refreshMetadata('${item.kind}','${item.id}','${escapeAttr(best?.title || item.title || "")}',${Number(best?.year || 0)})">Fetch</button>
+        <button onclick="openMetadataFix('${item.kind}','${item.id}','${escapeAttr(best?.title || item.title || "")}',${Number(best?.year || 0)})">Manual</button>
+      </div>
+    </article>`;
+  }));
+  return `<div class="review-workbench">${rows.join("")}</div>`;
+}
+
+async function quickFixMetadata(event, kind, id) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const title = String(data.get("title") || "").trim();
+  if (!title) return;
+  const year = kind === "movie" ? Number(data.get("year") || 0) || 0 : 0;
+  await send("/api/metadata/match", { kind, id, title, year, review: false }, "PUT");
+  navigate("health");
 }
 
 function versionGroups(items = [], totalTitles = 0) {

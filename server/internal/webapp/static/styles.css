@@ -647,7 +647,8 @@ h2 {
 .actions,
 .detail-actions,
 .toolbar,
-.inline-actions {
+.inline-actions,
+.filter-group {
   display: flex;
   flex-wrap: wrap;
   overflow: visible;
@@ -658,8 +659,31 @@ h2 {
 .actions::-webkit-scrollbar,
 .detail-actions::-webkit-scrollbar,
 .toolbar::-webkit-scrollbar,
-.inline-actions::-webkit-scrollbar { display: none; }
+.inline-actions::-webkit-scrollbar,
+.filter-group::-webkit-scrollbar { display: none; }
 .actions { margin-top: calc(30px * var(--density-scale)); }
+
+.control-panel {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: calc(12px * var(--density-scale));
+  padding: calc(12px * var(--density-scale));
+  border: 1px solid rgba(244, 239, 228, 0.08);
+  border-radius: 10px;
+  background: rgba(244, 239, 228, 0.035);
+}
+.filter-group button {
+  min-height: calc(36px * var(--density-scale));
+  padding-inline: calc(13px * var(--density-scale));
+  color: var(--soft);
+  font-size: var(--small-font);
+}
+.filter-group button.selected {
+  border-color: rgba(216, 179, 106, 0.38);
+  background: rgba(216, 179, 106, 0.13);
+  color: var(--champagne);
+}
 
 button,
 .button {
@@ -709,6 +733,7 @@ a:focus-visible {
 .library-card,
 .mini-list a,
 .mini-list div,
+.review-workbench-row,
 .remote-options div,
 .settings-grid div {
   border: 1px solid rgba(244, 239, 228, 0.095);
@@ -1631,6 +1656,7 @@ a:focus-visible {
 .library-card,
 .version-card,
 .episode-row,
+.review-workbench-row,
 .remote-options div,
 .settings-grid div {
   padding: calc(13px * var(--density-scale));
@@ -1655,6 +1681,44 @@ a:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: calc(14px * var(--density-scale));
   align-items: center;
+}
+.review-workbench {
+  display: grid;
+  gap: calc(12px * var(--density-scale));
+}
+.review-workbench-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(12px * var(--density-scale));
+}
+.review-workbench-row strong,
+.review-workbench-row span,
+.review-workbench-row small {
+  display: block;
+  min-width: 0;
+}
+.review-workbench-row span,
+.review-workbench-row small {
+  color: var(--soft);
+  font-size: var(--small-font);
+  line-height: 1.35;
+}
+.review-workbench-row form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(96px * var(--density-scale)) auto;
+  gap: calc(10px * var(--density-scale));
+}
+.review-workbench-row form input {
+  min-width: 0;
+  min-height: calc(38px * var(--density-scale));
+  padding: 0 calc(11px * var(--density-scale));
+  border: 1px solid rgba(244, 239, 228, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--small-font);
+  font-weight: 750;
 }
 .version-card small,
 .episode-row small,
@@ -2038,6 +2102,7 @@ body[data-theme="light"] .episode-row,
 body[data-theme="light"] .library-card,
 body[data-theme="light"] .mini-list a,
 body[data-theme="light"] .mini-list div,
+body[data-theme="light"] .review-workbench-row,
 body[data-theme="light"] .remote-options div,
 body[data-theme="light"] .settings-grid div,
 body[data-theme="light"] .metric,
