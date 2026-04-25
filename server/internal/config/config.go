@@ -19,6 +19,8 @@ type Config struct {
 	TVLibraryPath    string `json:"tvLibraryPath,omitempty"`
 	FFprobePath      string `json:"ffprobePath"`
 	FFmpegPath       string `json:"ffmpegPath"`
+	OMDbAPIKey       string `json:"omdbApiKey,omitempty"`
+	TMDBAPIKey       string `json:"tmdbApiKey,omitempty"`
 	EventBuffer      int    `json:"eventBuffer"`
 	ScanWorkers      int    `json:"scanWorkers"`
 	ProbeWorkers     int    `json:"probeWorkers"`
@@ -40,6 +42,8 @@ func FromEnv() Config {
 		TVLibraryPath:    envString("VYRDEN_TV_PATH", ""),
 		FFprobePath:      envString("VYRDEN_FFPROBE_PATH", "ffprobe"),
 		FFmpegPath:       envString("VYRDEN_FFMPEG_PATH", "ffmpeg"),
+		OMDbAPIKey:       envString("VYRDEN_OMDB_API_KEY", ""),
+		TMDBAPIKey:       envString("VYRDEN_TMDB_API_KEY", ""),
 		EventBuffer:      envInt("VYRDEN_EVENT_BUFFER", 128),
 		ScanWorkers:      envInt("VYRDEN_SCAN_WORKERS", 1),
 		ProbeWorkers:     envInt("VYRDEN_PROBE_WORKERS", 2),
@@ -60,6 +64,8 @@ func FromEnv() Config {
 	cfg.TVLibraryPath = envString("VYRDEN_TV_PATH", cfg.TVLibraryPath)
 	cfg.FFprobePath = envString("VYRDEN_FFPROBE_PATH", cfg.FFprobePath)
 	cfg.FFmpegPath = envString("VYRDEN_FFMPEG_PATH", cfg.FFmpegPath)
+	cfg.OMDbAPIKey = envString("VYRDEN_OMDB_API_KEY", cfg.OMDbAPIKey)
+	cfg.TMDBAPIKey = envString("VYRDEN_TMDB_API_KEY", cfg.TMDBAPIKey)
 	cfg.EventBuffer = envInt("VYRDEN_EVENT_BUFFER", cfg.EventBuffer)
 	cfg.ScanWorkers = envInt("VYRDEN_SCAN_WORKERS", cfg.ScanWorkers)
 	cfg.ProbeWorkers = envInt("VYRDEN_PROBE_WORKERS", cfg.ProbeWorkers)
@@ -124,6 +130,12 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.FFmpegPath != "" {
 		base.FFmpegPath = saved.FFmpegPath
+	}
+	if saved.OMDbAPIKey != "" {
+		base.OMDbAPIKey = saved.OMDbAPIKey
+	}
+	if saved.TMDBAPIKey != "" {
+		base.TMDBAPIKey = saved.TMDBAPIKey
 	}
 	if saved.EventBuffer > 0 {
 		base.EventBuffer = saved.EventBuffer

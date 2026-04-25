@@ -1,6 +1,10 @@
 package playback
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 type Mode string
 
@@ -14,8 +18,15 @@ const (
 )
 
 type Request struct {
-	MediaSourceID string `json:"mediaSourceId"`
-	ClientProfile string `json:"clientProfile"`
+	MediaSourceID       string `json:"mediaSourceId"`
+	ClientProfile       string `json:"clientProfile"`
+	AudioTrackIndex     int    `json:"audioTrackIndex,omitempty"`
+	AudioCodec          string `json:"audioCodec,omitempty"`
+	AudioChannels       int    `json:"audioChannels,omitempty"`
+	SubtitleTrackIndex  int    `json:"subtitleTrackIndex,omitempty"`
+	SubtitleCodec       string `json:"subtitleCodec,omitempty"`
+	SubtitleMode        string `json:"subtitleMode,omitempty"`
+	SubtitleTrackActive bool   `json:"subtitleTrackActive,omitempty"`
 }
 
 type SourceFacts struct {
@@ -27,6 +38,10 @@ type SourceFacts struct {
 	SidecarSubtitles int
 	Bitrate          int64
 	Probed           bool
+	AudioCodec       string
+	AudioChannels    int
+	SubtitleCodec    string
+	SubtitleActive   bool
 }
 
 type Decision struct {
@@ -94,15 +109,42 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 
 	decision.Selected["container"] = source.Container
 	decision.Selected["videoCodec"] = source.VideoCodec
+	if source.AudioCodec != "" {
+		decision.Selected["audioCodec"] = source.AudioCodec
+		decision.Selected["audioTrack"] = fmt.Sprintf("%d", request.AudioTrackIndex)
+	}
+	if source.SubtitleActive {
+		decision.Selected["subtitleCodec"] = source.SubtitleCodec
+		decision.Selected["subtitleTrack"] = fmt.Sprintf("%d", request.SubtitleTrackIndex)
+	}
+	audioAction := audioAction(request.ClientProfile, source.AudioCodec, source.AudioChannels)
+	subtitles := selectedSubtitleAction(request.ClientProfile, source)
+	if subtitles == "burn_in" {
+		decision.Mode = SubtitleBurn
+		decision.Reason = "The selected subtitle track is image-based for this client profile, so Vyrden must burn it into the video."
+		decision.ContainerAction = "direct_or_remux"
+		decision.VideoAction = "transcode_for_subtitles"
+		decision.AudioAction = audioAction
+		decision.SubtitleAction = subtitles
+		decision.EstimatedCPUCost = "high"
+		decision.EstimatedGPUCost = "optional"
+		decision.SuggestedFixes = []string{"Choose a text subtitle track", "Disable subtitles", "Prepare an SRT sidecar"}
+		return decision
+	}
 	if isDirectPlayable(request.ClientProfile, source.Container, source.VideoCodec) {
 		decision.Mode = DirectPlay
 		decision.Reason = "Container and video codec match the selected client profile, so the server can stream the source directly."
 		decision.ContainerAction = "direct"
 		decision.VideoAction = "direct"
-		decision.AudioAction = "direct"
-		decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
+		decision.AudioAction = audioAction
+		decision.SubtitleAction = subtitles
 		decision.EstimatedCPUCost = "none"
 		decision.EstimatedGPUCost = "none"
+		if audioAction == "transcode" {
+			decision.Mode = AudioTranscode
+			decision.Reason = "Video can direct play, but the selected audio track is not safe for this client profile."
+			decision.EstimatedCPUCost = "medium"
+		}
 		return decision
 	}
 
@@ -111,8 +153,8 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.Reason = "The video codec is compatible, but the container is not ideal for the selected client profile."
 		decision.ContainerAction = "remux"
 		decision.VideoAction = "copy"
-		decision.AudioAction = "copy_or_transcode"
-		decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
+		decision.AudioAction = audioAction
+		decision.SubtitleAction = subtitles
 		decision.EstimatedCPUCost = "low"
 		decision.EstimatedGPUCost = "none"
 		decision.SuggestedFixes = []string{"Run an ffmpeg remux job for streamable output"}
@@ -123,8 +165,8 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	decision.Reason = "The probed container or video codec is not safely direct-playable for the requested client profile."
 	decision.ContainerAction = "transcode_or_remux"
 	decision.VideoAction = "transcode"
-	decision.AudioAction = "copy_or_transcode"
-	decision.SubtitleAction = subtitleAction(source.SubtitleStreams + source.SidecarSubtitles)
+	decision.AudioAction = audioAction
+	decision.SubtitleAction = subtitles
 	decision.EstimatedCPUCost = "high"
 	decision.EstimatedGPUCost = "optional"
 	decision.SuggestedFixes = []string{"Add client capability profiles", "Implement remux/transcode pipeline"}
@@ -132,6 +174,8 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 }
 
 func isDirectPlayable(profile string, container string, videoCodec string) bool {
+	container = strings.ToLower(container)
+	videoCodec = strings.ToLower(videoCodec)
 	switch profile {
 	case "android-tv":
 		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9") && containerIn(container, "mp4", "matroska", "webm", "mpegts")
@@ -143,6 +187,7 @@ func isDirectPlayable(profile string, container string, videoCodec string) bool 
 }
 
 func canRemux(profile string, videoCodec string) bool {
+	videoCodec = strings.ToLower(videoCodec)
 	switch profile {
 	case "android-tv":
 		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9")
@@ -154,6 +199,7 @@ func canRemux(profile string, videoCodec string) bool {
 }
 
 func codecIn(value string, codecs ...string) bool {
+	value = strings.ToLower(value)
 	for _, codec := range codecs {
 		if value == codec {
 			return true
@@ -185,6 +231,49 @@ func subtitleAction(count int) string {
 		return "select_or_convert"
 	}
 	return "none"
+}
+
+func selectedSubtitleAction(profile string, source SourceFacts) string {
+	if source.SubtitleActive {
+		codec := strings.ToLower(source.SubtitleCodec)
+		if codec == "" {
+			return "select_or_convert"
+		}
+		if isImageSubtitle(codec) {
+			if profile == "android-tv" || profile == "apple-tv" {
+				return "direct_or_burn"
+			}
+			return "burn_in"
+		}
+		return "direct_or_convert"
+	}
+	return "none"
+}
+
+func audioAction(profile string, codec string, channels int) string {
+	codec = strings.ToLower(codec)
+	if codec == "" {
+		return "copy_or_transcode"
+	}
+	switch profile {
+	case "android-tv":
+		if codecIn(codec, "aac", "ac3", "eac3", "opus", "flac", "dts", "truehd") {
+			return "direct"
+		}
+	case "apple-tv":
+		if codecIn(codec, "aac", "ac3", "eac3", "alac", "flac") {
+			return "direct"
+		}
+	default:
+		if codecIn(codec, "aac", "mp3", "opus", "vorbis") && channels <= 6 {
+			return "direct"
+		}
+	}
+	return "transcode"
+}
+
+func isImageSubtitle(codec string) bool {
+	return codecIn(codec, "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "pgs")
 }
 
 func contains(value string, needle string) bool {

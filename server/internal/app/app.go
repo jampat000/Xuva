@@ -16,6 +16,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
+	"github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
@@ -47,6 +48,7 @@ type Application struct {
 	Probe     *probe.Service
 	Probes    *probes.Service
 	Media     *media.Service
+	Metadata  *metadata.Service
 	Movies    *movies.Service
 	TV        *tv.Service
 	Playback  *playback.Service
@@ -130,6 +132,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	probesService := probes.NewService(bus, jobRegistry.Probe, catalogService, probeService)
 
 	playStateService := playstate.NewService(databaseService, bus)
+	metadataService := metadata.NewService(cfg, catalogService, bus)
 
 	return &Application{
 		Config:    cfg,
@@ -146,6 +149,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Probe:     probeService,
 		Probes:    probesService,
 		Media:     media.NewService(),
+		Metadata:  metadataService,
 		Movies:    movieService,
 		TV:        tvService,
 		Playback:  playback.NewService(),
@@ -183,6 +187,7 @@ func (a *Application) Router() http.Handler {
 		Scans:     a.Scans,
 		Catalog:   a.Catalog,
 		Media:     a.Media,
+		Metadata:  a.Metadata,
 		Movies:    a.Movies,
 		TV:        a.TV,
 		Probe:     a.Probe,

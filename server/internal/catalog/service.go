@@ -131,19 +131,45 @@ type ReviewItem struct {
 }
 
 type MetadataRecord struct {
-	Kind        string  `json:"kind"`
-	ItemID      string  `json:"itemId"`
-	Provider    string  `json:"provider"`
-	ExternalID  string  `json:"externalId,omitempty"`
-	Title       string  `json:"title"`
-	Year        int     `json:"year,omitempty"`
-	Overview    string  `json:"overview,omitempty"`
-	PosterURL   string  `json:"posterUrl,omitempty"`
-	BackdropURL string  `json:"backdropUrl,omitempty"`
-	Confidence  float64 `json:"confidence"`
-	RawJSON     string  `json:"rawJson,omitempty"`
-	FetchedAt   string  `json:"fetchedAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	Kind        string            `json:"kind"`
+	ItemID      string            `json:"itemId"`
+	Provider    string            `json:"provider"`
+	ExternalID  string            `json:"externalId,omitempty"`
+	Title       string            `json:"title"`
+	Year        int               `json:"year,omitempty"`
+	Overview    string            `json:"overview,omitempty"`
+	PosterURL   string            `json:"posterUrl,omitempty"`
+	BackdropURL string            `json:"backdropUrl,omitempty"`
+	Confidence  float64           `json:"confidence"`
+	RawJSON     string            `json:"rawJson,omitempty"`
+	FetchedAt   string            `json:"fetchedAt"`
+	UpdatedAt   string            `json:"updatedAt"`
+	Ratings     Ratings           `json:"ratings,omitempty"`
+	ExternalIDs map[string]string `json:"externalIds,omitempty"`
+}
+
+type Rating struct {
+	Kind         string  `json:"kind"`
+	ItemID       string  `json:"itemId"`
+	Provider     string  `json:"provider"`
+	RatingType   string  `json:"ratingType"`
+	Value        float64 `json:"value"`
+	DisplayValue string  `json:"displayValue"`
+	Scale        float64 `json:"scale,omitempty"`
+	Votes        int     `json:"votes,omitempty"`
+	SourceURL    string  `json:"sourceUrl,omitempty"`
+	FetchedAt    string  `json:"fetchedAt"`
+	UpdatedAt    string  `json:"updatedAt"`
+}
+
+type Ratings map[string]any
+
+type ExternalID struct {
+	Kind       string `json:"kind"`
+	ItemID     string `json:"itemId"`
+	Provider   string `json:"provider"`
+	ExternalID string `json:"externalId"`
+	UpdatedAt  string `json:"updatedAt"`
 }
 
 type VersionGroup struct {
@@ -687,6 +713,26 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 	return tx.Commit()
 }
 
+func (s *Service) UpsertMetadataRecord(ctx context.Context, record MetadataRecord) error {
+	switch record.Kind {
+	case "movie", "series", "episode":
+	default:
+		return errors.New("metadata kind must be movie, series, or episode")
+	}
+	if strings.TrimSpace(record.ItemID) == "" || strings.TrimSpace(record.Title) == "" {
+		return errors.New("metadata item id and title are required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := upsertMetadataRecord(ctx, tx, record); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID string) (MetadataRecord, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
@@ -706,6 +752,9 @@ func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID strin
 	if len(records) == 0 {
 		return MetadataRecord{}, false, nil
 	}
+	if err := s.AttachMetadataSignals(ctx, &records[0]); err != nil {
+		return MetadataRecord{}, false, err
+	}
 	return records[0], true, nil
 }
 
@@ -720,7 +769,52 @@ func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID s
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMetadataRecords(rows)
+	records, err := scanMetadataRecords(rows)
+	if err != nil {
+		return nil, err
+	}
+	for index := range records {
+		if err := s.AttachMetadataSignals(ctx, &records[index]); err != nil {
+			return nil, err
+		}
+	}
+	return records, nil
+}
+
+func (s *Service) AttachMetadataSignals(ctx context.Context, record *MetadataRecord) error {
+	if record == nil || record.Kind == "" || record.ItemID == "" {
+		return nil
+	}
+	ratings, err := s.ListRatings(ctx, record.Kind, record.ItemID)
+	if err != nil {
+		return err
+	}
+	record.Ratings = RatingMap(ratings)
+	externalIDs, err := s.ListExternalIDs(ctx, record.Kind, record.ItemID)
+	if err != nil {
+		return err
+	}
+	record.ExternalIDs = map[string]string{}
+	for _, item := range externalIDs {
+		record.ExternalIDs[item.Provider] = item.ExternalID
+	}
+	return nil
+}
+
+func RatingMap(ratings []Rating) Ratings {
+	output := Ratings{}
+	for _, rating := range ratings {
+		key := rating.Provider
+		if rating.RatingType != "" && rating.RatingType != rating.Provider {
+			key = rating.RatingType
+		}
+		if rating.DisplayValue != "" {
+			output[key] = rating.DisplayValue
+		} else {
+			output[key] = rating.Value
+		}
+	}
+	return output
 }
 
 func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
@@ -742,6 +836,116 @@ func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
 			&item.FetchedAt,
 			&item.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) UpsertExternalID(ctx context.Context, item ExternalID) error {
+	item.Kind = strings.TrimSpace(item.Kind)
+	item.ItemID = strings.TrimSpace(item.ItemID)
+	item.Provider = strings.TrimSpace(item.Provider)
+	item.ExternalID = strings.TrimSpace(item.ExternalID)
+	if item.Kind == "" || item.ItemID == "" || item.Provider == "" || item.ExternalID == "" {
+		return errors.New("kind, item id, provider, and external id are required")
+	}
+	now := timestamp(time.Now())
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO metadata_external_ids(kind, item_id, provider, external_id, updated_at)
+		VALUES(?, ?, ?, ?, ?)
+		ON CONFLICT(kind, item_id, provider) DO UPDATE SET
+			external_id = excluded.external_id,
+			updated_at = excluded.updated_at
+	`, item.Kind, item.ItemID, item.Provider, item.ExternalID, now)
+	return err
+}
+
+func (s *Service) ListExternalIDs(ctx context.Context, kind string, itemID string) ([]ExternalID, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, external_id, updated_at
+		FROM metadata_external_ids
+		WHERE kind = ? AND item_id = ?
+		ORDER BY provider
+	`, kind, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	output := []ExternalID{}
+	for rows.Next() {
+		var item ExternalID
+		if err := rows.Scan(&item.Kind, &item.ItemID, &item.Provider, &item.ExternalID, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+func (s *Service) UpsertRatings(ctx context.Context, ratings []Rating) error {
+	if len(ratings) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := timestamp(time.Now())
+	for _, rating := range ratings {
+		rating.Kind = strings.TrimSpace(rating.Kind)
+		rating.ItemID = strings.TrimSpace(rating.ItemID)
+		rating.Provider = strings.TrimSpace(rating.Provider)
+		rating.RatingType = strings.TrimSpace(rating.RatingType)
+		if rating.Kind == "" || rating.ItemID == "" || rating.Provider == "" || rating.RatingType == "" {
+			return errors.New("rating kind, item id, provider, and type are required")
+		}
+		fetchedAt := rating.FetchedAt
+		if fetchedAt == "" {
+			fetchedAt = now
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO metadata_ratings(kind, item_id, provider, rating_type, value, display_value, scale, votes, source_url, fetched_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(kind, item_id, provider, rating_type) DO UPDATE SET
+				value = excluded.value,
+				display_value = excluded.display_value,
+				scale = excluded.scale,
+				votes = excluded.votes,
+				source_url = excluded.source_url,
+				fetched_at = excluded.fetched_at,
+				updated_at = excluded.updated_at
+		`, rating.Kind, rating.ItemID, rating.Provider, rating.RatingType, rating.Value, rating.DisplayValue, rating.Scale, rating.Votes, rating.SourceURL, fetchedAt, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Service) ListRatings(ctx context.Context, kind string, itemID string) ([]Rating, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, rating_type, value, display_value, scale, votes, source_url, fetched_at, updated_at
+		FROM metadata_ratings
+		WHERE kind = ? AND item_id = ?
+		ORDER BY CASE rating_type
+			WHEN 'imdb' THEN 0
+			WHEN 'rottenTomatoesCritics' THEN 1
+			WHEN 'rottenTomatoesAudience' THEN 2
+			WHEN 'tmdb' THEN 3
+			WHEN 'metacritic' THEN 4
+			WHEN 'tvdb' THEN 5
+			ELSE 9 END, provider
+	`, kind, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	output := []Rating{}
+	for rows.Next() {
+		var item Rating
+		if err := rows.Scan(&item.Kind, &item.ItemID, &item.Provider, &item.RatingType, &item.Value, &item.DisplayValue, &item.Scale, &item.Votes, &item.SourceURL, &item.FetchedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		output = append(output, item)

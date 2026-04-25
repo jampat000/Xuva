@@ -20,6 +20,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
+	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
@@ -47,6 +48,7 @@ type Deps struct {
 	Scans     *scans.Service
 	Catalog   *catalog.Service
 	Media     *media.Service
+	Metadata  *metaprovider.Service
 	Movies    *movies.Service
 	TV        *tv.Service
 	Probe     *probe.Service
@@ -78,6 +80,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
 	mux.HandleFunc("GET /api/metadata/{kind}/{id}", metadataRecordsHandler(deps))
 	mux.HandleFunc("PUT /api/metadata/match", metadataMatchHandler(deps))
+	mux.HandleFunc("POST /api/metadata/refresh", metadataRefreshHandler(deps))
 	mux.HandleFunc("GET /api/artwork/{kind}/{id}", artworkHandler(deps))
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
@@ -303,7 +306,7 @@ func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"suggestions": items,
-			"providers":   metadataProviders(),
+			"providers":   metadataProviders(deps),
 			"strategy":    "filename and manual records are local-first; online providers layer on top only when configured",
 		})
 	}
@@ -330,7 +333,7 @@ func metadataRecordsHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"best":      selected,
 			"records":   records,
-			"providers": metadataProviders(),
+			"providers": metadataProviders(deps),
 		})
 	}
 }
@@ -358,14 +361,41 @@ func metadataMatchHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
-func metadataProviders() []map[string]any {
+func metadataRefreshHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Metadata == nil {
+			writeError(w, http.StatusServiceUnavailable, "metadata providers are not available")
+			return
+		}
+		var request metaprovider.RefreshRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		result, err := deps.Metadata.Refresh(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func metadataProviders(deps Deps) []map[string]any {
+	tmdbStatus := "needs-api-key"
+	if deps.Config.TMDBAPIKey != "" {
+		tmdbStatus = "configured"
+	}
+	omdbStatus := "needs-api-key"
+	if deps.Config.OMDbAPIKey != "" {
+		omdbStatus = "configured"
+	}
 	return []map[string]any{
 		{"id": "filename", "name": "Filename and folders", "status": "active", "local": true},
 		{"id": "manual", "name": "Manual correction", "status": "active", "local": true},
 		{"id": "nfo", "name": "Local NFO", "status": "planned", "local": true},
-		{"id": "tmdb", "name": "TMDB", "status": "planned-configurable", "local": false},
+		{"id": "tmdb", "name": "TMDB", "status": tmdbStatus, "local": false},
 		{"id": "tvdb", "name": "TVDB", "status": "planned-configurable", "local": false},
-		{"id": "omdb", "name": "OMDb", "status": "planned-configurable", "local": false},
+		{"id": "omdb", "name": "OMDb", "status": omdbStatus, "local": false},
 	}
 }
 
@@ -1445,8 +1475,15 @@ func scanJobHandler(deps Deps) http.HandlerFunc {
 func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := playback.Request{
-			MediaSourceID: r.URL.Query().Get("mediaSourceId"),
-			ClientProfile: r.URL.Query().Get("clientProfile"),
+			MediaSourceID:       r.URL.Query().Get("mediaSourceId"),
+			ClientProfile:       r.URL.Query().Get("clientProfile"),
+			AudioTrackIndex:     queryInt(r, "audioTrackIndex", 0),
+			AudioCodec:          r.URL.Query().Get("audioCodec"),
+			AudioChannels:       queryInt(r, "audioChannels", 0),
+			SubtitleTrackIndex:  queryInt(r, "subtitleTrackIndex", 0),
+			SubtitleCodec:       r.URL.Query().Get("subtitleCodec"),
+			SubtitleMode:        r.URL.Query().Get("subtitleMode"),
+			SubtitleTrackActive: r.URL.Query().Get("subtitleTrackActive") == "true",
 		}
 		decision := deps.Playback.Decide(r.Context(), request)
 		if request.MediaSourceID != "" {
@@ -1459,6 +1496,18 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 				writeError(w, http.StatusNotFound, "media source not found")
 				return
 			}
+			tracks, _, _ := deps.Catalog.GetMediaSourceTracks(r.Context(), request.MediaSourceID)
+			if request.AudioCodec == "" && len(tracks.AudioTracks) > 0 {
+				audio := trackByIndex(tracks.AudioTracks, request.AudioTrackIndex)
+				request.AudioTrackIndex = audio.Index
+				request.AudioCodec = audio.Codec
+				request.AudioChannels = audio.Channels
+			}
+			if request.SubtitleTrackActive && request.SubtitleCodec == "" && len(tracks.SubtitleTracks) > 0 {
+				subtitle := trackByIndex(tracks.SubtitleTracks, request.SubtitleTrackIndex)
+				request.SubtitleTrackIndex = subtitle.Index
+				request.SubtitleCodec = subtitle.Codec
+			}
 			decision = deps.Playback.DecideSource(r.Context(), request, playback.SourceFacts{
 				MediaSourceID:    source.ID,
 				Container:        source.Container,
@@ -1468,10 +1517,23 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 				SidecarSubtitles: len(subtitles.DiscoverSidecars(source.Path)),
 				Bitrate:          source.Bitrate,
 				Probed:           source.Probed,
+				AudioCodec:       request.AudioCodec,
+				AudioChannels:    request.AudioChannels,
+				SubtitleCodec:    request.SubtitleCodec,
+				SubtitleActive:   request.SubtitleTrackActive,
 			})
 		}
 		writeJSON(w, http.StatusOK, decision)
 	}
+}
+
+func trackByIndex(tracks []probe.Track, index int) probe.Track {
+	for _, track := range tracks {
+		if track.Index == index {
+			return track
+		}
+	}
+	return tracks[0]
 }
 
 type libraryScanRequest struct {

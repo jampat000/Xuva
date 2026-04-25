@@ -21,6 +21,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
+	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
@@ -401,6 +402,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Scans:     scans.NewService(cfg, eventBus, registry.Scan, libraryService, scannerService, catalogService, movieService, tvService),
 		Catalog:   catalogService,
 		Media:     media.NewService(),
+		Metadata:  metaprovider.NewService(cfg, catalogService, eventBus),
 		Movies:    movieService,
 		TV:        tvService,
 		Probe:     probe.NewService("ffprobe"),

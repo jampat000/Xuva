@@ -1,4 +1,4 @@
-const state = { activeView: "dashboard", activeSession: "" };
+const state = { activeView: "dashboard", activeSession: "", playbackSelections: {} };
 
 const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
@@ -281,6 +281,7 @@ async function showMovie(id) {
   }));
   const selected = movie.versions[0];
   const tracks = selected ? await api(`/api/media-sources/${selected.mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })) : { audioTracks: [], subtitleTracks: [] };
+  if (selected) seedPlaybackSelection(selected.mediaSourceId, tracks);
   viewTitle.textContent = movie.title;
   view.innerHTML = `
     <div class="detail-command">
@@ -304,6 +305,7 @@ async function showMovie(id) {
           ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play From Start</a>` : ""}
           ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', true)">Mark Watched</button>` : ""}
           ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', false)">Mark Unwatched</button>` : ""}
+          <button class="button focusable" onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch Ratings</button>
           ${movie.needsReview ? `<button class="button focusable" onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
         </div>
         <section class="section">
@@ -319,22 +321,22 @@ async function showMovie(id) {
             <div class="section-note">Selected tracks affect compatibility</div>
           </div>
           <div class="track-grid">
-            <div class="track-panel"><strong>Audio</strong>${audioTrackRows(tracks.audioTracks)}</div>
-            <div class="track-panel"><strong>Subtitles</strong>${subtitleTrackRows(tracks.subtitleTracks)}</div>
+            <div class="track-panel"><strong>Audio</strong>${audioTrackRows(tracks.audioTracks, selected?.mediaSourceId)}</div>
+            <div class="track-panel"><strong>Subtitles</strong>${subtitleTrackRows(tracks.subtitleTracks, selected?.mediaSourceId)}</div>
           </div>
         </section>
       </section>
 
       <aside class="side detail-side">
         <section class="panel pad">
-          <div class="panel-title"><strong>Playback Forecast</strong><span class="badge route">0% load</span></div>
-          <div class="decision"><strong>${selected ? "Direct Play" : "No Source"}</strong><span>${selected ? "Client supports the selected source. No server transcode required unless tracks change." : "Scan or attach a source before playback."}</span></div>
+          <div class="panel-title"><strong>Playback Forecast</strong><span class="badge route" id="forecastLoad">0% load</span></div>
+          <div class="decision"><strong id="forecastMode">${selected ? "Direct Play" : "No Source"}</strong><span id="forecastReason">${selected ? "Client supports the selected source. No server transcode required unless tracks change." : "Scan or attach a source before playback."}</span></div>
           <div class="kv">
-            <div><span>Reason</span><span>${selected ? "Source available" : "Missing source"}</span></div>
-            <div><span>Video</span><span>${selected ? escapeHTML(selected.qualityLabel || "Source") : "None"}</span></div>
-            <div><span>Audio</span><span>Passthrough ready</span></div>
-            <div><span>Subtitles</span><span>SRT optional</span></div>
-            <div><span>Server</span><span>Low impact route</span></div>
+            <div><span>Reason</span><span id="forecastReasonShort">${selected ? "Source available" : "Missing source"}</span></div>
+            <div><span>Video</span><span id="forecastVideo">${selected ? escapeHTML(selected.qualityLabel || "Source") : "None"}</span></div>
+            <div><span>Audio</span><span id="forecastAudio">Passthrough ready</span></div>
+            <div><span>Subtitles</span><span id="forecastSubtitles">SRT optional</span></div>
+            <div><span>Server</span><span id="forecastServer">Low impact route</span></div>
           </div>
         </section>
         <section class="panel pad">
@@ -352,8 +354,9 @@ async function showMovie(id) {
           <div class="kv">
             <div><span>Provider</span><span>${escapeHTML(providerLabel(movie.metadata?.provider || "none"))}</span></div>
             <div><span>Confidence</span><span>${metadataConfidenceLabel(movie.metadata)}</span></div>
-            <div><span>External ID</span><span>${escapeHTML(movie.metadata?.externalId || "Local only")}</span></div>
+            <div><span>External ID</span><span>${escapeHTML(metadataExternalID(movie.metadata))}</span></div>
           </div>
+          <div class="inline-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
         </section>
         <section class="panel pad">
           <div class="panel-title"><strong>Media Intelligence</strong><span class="badge good">Clean</span></div>
@@ -365,6 +368,7 @@ async function showMovie(id) {
         </section>
       </aside>
     </div>`;
+  if (selected) updatePlaybackForecast(selected.mediaSourceId);
 }
 
 function versionCard(version, state, selected) {
@@ -381,28 +385,90 @@ function versionCard(version, state, selected) {
   </article>`;
 }
 
-function trackRow(label, meta, selected) {
-  return `<div class="track-row ${selected ? "selected" : ""}"><span>${escapeHTML(label)}</span><em>${escapeHTML(meta)}</em></div>`;
+function seedPlaybackSelection(mediaSourceId, tracks = {}) {
+  const audioTracks = Array.isArray(tracks.audioTracks) ? tracks.audioTracks : [];
+  const subtitleTracks = Array.isArray(tracks.subtitleTracks) ? tracks.subtitleTracks : [];
+  const current = state.playbackSelections[mediaSourceId] || {};
+  if (!current.audio && audioTracks.length) {
+    current.audio = audioTracks.find(item => item.default) || audioTracks[0];
+  }
+  if (current.subtitle === undefined) {
+    current.subtitle = subtitleTracks.find(item => item.default && item.forced) || null;
+  }
+  state.playbackSelections[mediaSourceId] = current;
 }
 
-function audioTrackRows(items = []) {
+function trackRow(label, meta, selected, action = "") {
+  return `<button class="track-row ${selected ? "selected" : ""}" type="button" ${action}><span>${escapeHTML(label)}</span><em>${escapeHTML(meta)}</em></button>`;
+}
+
+function audioTrackRows(items = [], mediaSourceId = "") {
   items = Array.isArray(items) ? items : [];
   if (!items.length) return trackRow("Probe required", "No audio track data yet", true);
+  const selected = state.playbackSelections[mediaSourceId]?.audio;
   return items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "audio").toUpperCase()}${item.channels ? ` ${item.channels}ch` : ""}`;
     const meta = item.default ? "Default" : index === 0 ? "Primary" : "Selectable";
-    return trackRow(label, meta, index === 0 || item.default);
+    const isSelected = selected ? selected.index === item.index : index === 0 || item.default;
+    return trackRow(label, meta, isSelected, `onclick="selectPlaybackTrack('audio','${mediaSourceId}',${escapeAttr(JSON.stringify(item))})"`);
   }).join("");
 }
 
-function subtitleTrackRows(items = []) {
+function subtitleTrackRows(items = [], mediaSourceId = "") {
   items = Array.isArray(items) ? items : [];
-  if (!items.length) return trackRow("No embedded subtitles", "Sidecars checked separately", true);
-  return items.map((item, index) => {
+  const selected = state.playbackSelections[mediaSourceId]?.subtitle;
+  const off = trackRow("Subtitles off", "Best direct-play route", !selected, `onclick="selectPlaybackTrack('subtitle','${mediaSourceId}',null)"`);
+  if (!items.length) return off + trackRow("No embedded subtitles", "Sidecars checked separately", false);
+  return off + items.map((item, index) => {
     const label = `${trackLanguage(item)} - ${String(item.codec || "subtitle").toUpperCase()}${item.forced ? " forced" : ""}`;
     const meta = imageSubtitle(item.codec) ? "May burn in" : "Direct/convert";
-    return trackRow(label, meta, index === 0 || item.default);
+    return trackRow(label, meta, selected?.index === item.index, `onclick="selectPlaybackTrack('subtitle','${mediaSourceId}',${escapeAttr(JSON.stringify(item))})"`);
   }).join("");
+}
+
+function selectPlaybackTrack(kind, mediaSourceId, track) {
+  const current = state.playbackSelections[mediaSourceId] || {};
+  current[kind] = track;
+  state.playbackSelections[mediaSourceId] = current;
+  event?.currentTarget?.parentElement?.querySelectorAll(".track-row").forEach(row => row.classList.remove("selected"));
+  event?.currentTarget?.classList.add("selected");
+  updatePlaybackForecast(mediaSourceId);
+}
+
+async function updatePlaybackForecast(mediaSourceId) {
+  const selected = state.playbackSelections[mediaSourceId] || {};
+  const params = new URLSearchParams({ mediaSourceId, clientProfile: "web" });
+  if (selected.audio) {
+    params.set("audioTrackIndex", selected.audio.index ?? 0);
+    params.set("audioCodec", selected.audio.codec || "");
+    params.set("audioChannels", selected.audio.channels || 0);
+  }
+  if (selected.subtitle) {
+    params.set("subtitleTrackActive", "true");
+    params.set("subtitleTrackIndex", selected.subtitle.index ?? 0);
+    params.set("subtitleCodec", selected.subtitle.codec || "");
+  }
+  const decision = await api(`/api/playback/decision?${params.toString()}`);
+  setText("forecastMode", decision.mode);
+  setText("forecastReason", decision.reason);
+  setText("forecastReasonShort", decision.containerAction || "selected source");
+  setText("forecastAudio", decision.audioAction || "pending");
+  setText("forecastSubtitles", decision.subtitleAction || "none");
+  setText("forecastServer", serverImpact(decision));
+  setText("forecastLoad", decision.estimatedCpuCost === "high" ? "high load" : decision.estimatedCpuCost === "medium" ? "some load" : "low load");
+}
+
+function setText(id, value) {
+  const target = document.getElementById(id);
+  if (target) target.textContent = value ?? "";
+}
+
+function serverImpact(decision = {}) {
+  if (decision.mode === "Subtitle Burn" || decision.mode === "Video Transcode") return "Transcode required";
+  if (decision.mode === "Audio Transcode") return "Audio transcode";
+  if (decision.mode === "Remux") return "Container remux";
+  if (decision.mode === "Direct Play") return "Low impact route";
+  return "Decision pending";
 }
 
 function trackLanguage(item = {}) {
@@ -710,6 +776,35 @@ function openMetadataFix(kind, id, currentTitle, year) {
   send("/api/metadata/match", { kind, id, title, year: parsedYear, review: false }, "PUT").then(() => navigate(state.activeView));
 }
 
+async function refreshMetadata(kind, id, title, year = 0) {
+  const button = event?.currentTarget;
+  const original = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Fetching...";
+  }
+  try {
+    const result = await send("/api/metadata/refresh", { kind, id, title, year });
+    if (result.warnings?.length) {
+      alert(result.warnings.join("\n"));
+    }
+    if (kind === "movie") {
+      await showMovie(id);
+    } else if (kind === "series") {
+      await showSeries(id);
+    } else {
+      await navigate(state.activeView);
+    }
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+}
+
 function filterCards(value) {
   const needle = value.trim().toLowerCase();
   document.querySelectorAll("[data-filter]").forEach(card => {
@@ -964,6 +1059,10 @@ function ratingItem(label, value, note) {
 }
 
 function formatRating(value) {
+  if (value && typeof value === "object") {
+    if (value.displayValue) return value.displayValue;
+    if (value.value !== undefined) return formatRating(value.value);
+  }
   if (typeof value === "string") return value;
   const number = Number(value);
   if (!Number.isFinite(number)) return String(value);
@@ -977,6 +1076,14 @@ function metadataSummary(metadata) {
   const source = providerLabel(metadata.provider);
   const confidence = metadataConfidenceLabel(metadata);
   return `${source} is currently selected with ${confidence.toLowerCase()}.`;
+}
+
+function metadataExternalID(metadata = {}) {
+  if (metadata.externalId) return metadata.externalId;
+  const ids = metadata.externalIds || {};
+  if (ids.imdb) return ids.imdb;
+  if (ids.tmdb) return `TMDB ${ids.tmdb}`;
+  return "Local only";
 }
 
 function metadataConfidenceLabel(metadata) {
@@ -1039,7 +1146,10 @@ function reviewCards(items = []) {
   if (!items.length) return empty("No review items.");
   return `<div class="version-grid">${items.map(item => `<article class="version-card">
     <div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.kind)} - ${escapeHTML(item.reviewReason)}</small></div>
-    <button onclick="openMetadataFix('${item.kind}','${item.id}','${escapeAttr(item.title)}',0)">Fix Match</button>
+    <div class="inline-actions">
+      <button onclick="openMetadataFix('${item.kind}','${item.id}','${escapeAttr(item.title)}',0)">Fix Match</button>
+      <button onclick="refreshMetadata('${item.kind}','${item.id}','${escapeAttr(item.title)}',0)">Fetch Metadata</button>
+    </div>
   </article>`).join("")}</div>`;
 }
 

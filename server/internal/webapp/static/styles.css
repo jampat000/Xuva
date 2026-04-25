@@ -1341,13 +1341,18 @@ a:focus-visible {
 }
 .track-row {
   display: flex;
+  width: 100%;
   justify-content: space-between;
   gap: calc(16px * var(--density-scale));
   padding: calc(11px * var(--density-scale)) calc(12px * var(--density-scale));
+  border: 1px solid transparent;
   border-radius: 8px;
+  background: transparent;
   color: var(--text);
   font-size: var(--ui-font);
   font-weight: 800;
+  cursor: pointer;
+  text-align: left;
 }
 .track-row span,
 .track-row em,

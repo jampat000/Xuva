@@ -239,6 +239,30 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_records_item ON metadata_records(kind, item_id, updated_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS metadata_external_ids (
+		kind TEXT NOT NULL,
+		item_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		external_id TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(kind, item_id, provider)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_metadata_external_ids_item ON metadata_external_ids(kind, item_id)`,
+	`CREATE TABLE IF NOT EXISTS metadata_ratings (
+		kind TEXT NOT NULL,
+		item_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		rating_type TEXT NOT NULL,
+		value REAL NOT NULL DEFAULT 0,
+		display_value TEXT NOT NULL DEFAULT '',
+		scale REAL NOT NULL DEFAULT 0,
+		votes INTEGER NOT NULL DEFAULT 0,
+		source_url TEXT NOT NULL DEFAULT '',
+		fetched_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(kind, item_id, provider, rating_type)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_metadata_ratings_item ON metadata_ratings(kind, item_id)`,
 	`INSERT OR IGNORE INTO metadata_records(kind, item_id, provider, title, year, confidence, fetched_at, updated_at)
 		SELECT 'movie', id, 'filename', title, year, CASE needs_review WHEN 1 THEN 0.35 ELSE 0.7 END, updated_at, updated_at
 		FROM movies`,
