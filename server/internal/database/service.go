@@ -239,4 +239,13 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_records_item ON metadata_records(kind, item_id, updated_at DESC)`,
+	`INSERT OR IGNORE INTO metadata_records(kind, item_id, provider, title, year, confidence, fetched_at, updated_at)
+		SELECT 'movie', id, 'filename', title, year, CASE needs_review WHEN 1 THEN 0.35 ELSE 0.7 END, updated_at, updated_at
+		FROM movies`,
+	`INSERT OR IGNORE INTO metadata_records(kind, item_id, provider, title, confidence, fetched_at, updated_at)
+		SELECT 'series', id, 'filename', title, 0.7, updated_at, updated_at
+		FROM tv_series`,
+	`INSERT OR IGNORE INTO metadata_records(kind, item_id, provider, title, confidence, fetched_at, updated_at)
+		SELECT 'episode', id, 'filename', title, CASE needs_review WHEN 1 THEN 0.35 ELSE 0.7 END, updated_at, updated_at
+		FROM tv_episodes`,
 }
