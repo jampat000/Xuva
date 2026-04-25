@@ -1115,11 +1115,11 @@ a:focus-visible {
   text-transform: none;
 }
 .ops-clear {
-  min-height: calc(214px * var(--density-scale));
+  min-height: calc(250px * var(--density-scale));
   display: grid;
-  align-content: center;
+  align-content: end;
   gap: calc(8px * var(--density-scale));
-  padding: calc(18px * var(--density-scale));
+  padding: calc(22px * var(--density-scale));
   border: 1px solid rgba(138, 191, 143, 0.2);
   border-radius: 8px;
   background: rgba(138, 191, 143, 0.055);
