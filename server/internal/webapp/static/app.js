@@ -154,8 +154,8 @@ async function renderDashboard() {
               <span class="badge route">Live</span>
             </div>
             <div class="actions">
-              <button class="primary" onclick="navigate('${movieCount ? "movies" : "tv"}')">${movieCount ? "Browse Movies" : "Browse TV"}</button>
-              <button onclick="navigate('playback')">Playback Lab</button>
+              <button class="primary" onclick="navigate('${movieCount ? "movies" : "tv"}')">${movieCount ? "Movies" : "TV"}</button>
+              <button onclick="navigate('playback')">Playback</button>
               <button onclick="navigate('activity')">Activity</button>
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
@@ -691,7 +691,7 @@ function filterCards(value) {
 
 function dashboardCommandTitle(sessions, summary) {
   if (sessions.length) return `${sessions.length} stream${sessions.length === 1 ? "" : "s"} active`;
-  if ((summary.mediaSources || 0) > 0) return "Your library is live";
+  if ((summary.mediaSources || 0) > 0) return "Library live";
   return "Media command centre";
 }
 
