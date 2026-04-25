@@ -1309,8 +1309,18 @@ function escapeHTML(value) {
 }
 
 let dashboardRefreshTimer = 0;
-function refreshLiveViews() {
+const dashboardStructuralEvents = new Set([
+  "scan.queued", "scan.started", "scan.completed", "scan.failed",
+  "probe.queued", "probe.started", "probe.completed", "probe.failed",
+  "transcode.queued", "transcode.started", "transcode.completed", "transcode.failed",
+  "download.queued", "download.started", "download.completed", "download.failed",
+  "session.started", "session.stopped",
+  "metadata.updated", "metadata.ratings.updated", "metadata.batch.completed", "metadata.batch.failed",
+  "settings.updated", "library.updated", "library.deleted"
+]);
+function refreshLiveViews(eventName = "") {
   if (!["dashboard", "activity", "health"].includes(state.activeView)) return;
+  if (state.activeView === "dashboard" && eventName && !dashboardStructuralEvents.has(eventName)) return;
   clearTimeout(dashboardRefreshTimer);
   dashboardRefreshTimer = setTimeout(() => navigate(state.activeView), 180);
 }
@@ -1327,12 +1337,9 @@ const liveEventNames = [
 const events = new EventSource("/api/events");
 for (const name of liveEventNames) {
   events.addEventListener(name, () => {
-    refreshLiveViews();
+    refreshLiveViews(name);
   });
 }
-setInterval(() => {
-  if (state.activeView === "dashboard") refreshLiveViews();
-}, 5000);
 
 refreshShell().catch(() => {});
 navigate("dashboard");
