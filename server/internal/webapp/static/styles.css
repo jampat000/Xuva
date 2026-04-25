@@ -205,25 +205,63 @@ body {
   margin-bottom: calc(36px * var(--density-scale));
 }
 .mark {
+  position: relative;
   display: grid;
   place-items: center;
   width: var(--brand-mark);
   height: var(--brand-mark);
-  border: 1px solid rgba(216, 179, 106, 0.42);
-  background: linear-gradient(180deg, rgba(216,179,106,0.14), rgba(216,179,106,0.04));
-  color: var(--champagne);
-  border-radius: 8px;
-  font-size: calc(23px * var(--font-scale));
-  font-weight: 800;
+  border: 1px solid rgba(207, 174, 115, 0.54);
+  background:
+    radial-gradient(circle at 32% 18%, rgba(244,239,228,0.16), transparent 34%),
+    linear-gradient(145deg, rgba(207,174,115,0.2), rgba(207,174,115,0.035) 48%, rgba(154,204,198,0.055));
+  border-radius: calc(11px * var(--density-scale));
+  box-shadow:
+    inset 0 1px 0 rgba(244,239,228,0.16),
+    0 14px 34px rgba(0,0,0,0.32),
+    0 0 0 1px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+.mark::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1px solid rgba(244,239,228,0.06);
+  border-radius: calc(8px * var(--density-scale));
+  pointer-events: none;
+}
+.mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.mark-frame {
+  fill: transparent;
+}
+.mark-v {
+  fill: var(--champagne);
+  filter: drop-shadow(0 1px 7px rgba(207,174,115,0.24));
+}
+.mark-cut {
+  fill: rgba(244,239,228,0.92);
+  opacity: 0.82;
+  mix-blend-mode: screen;
 }
 .brand strong,
 .brand span { display: block; }
-.brand strong { font-size: var(--brand-font); line-height: 1; }
+.brand strong {
+  font-size: var(--brand-font);
+  line-height: 1;
+  font-weight: 900;
+}
 .brand span {
-  margin-top: 4px;
-  color: var(--quiet);
-  font-size: var(--tiny-font);
-  font-weight: 650;
+  margin-top: calc(5px * var(--density-scale));
+  color: color-mix(in srgb, var(--champagne) 76%, var(--soft));
+  font-family: "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: clamp(calc(11px * var(--font-scale)), calc(0.62vw * var(--font-scale)), calc(14px * var(--font-scale)));
+  font-weight: 700;
+  font-variant-caps: small-caps;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
 }
