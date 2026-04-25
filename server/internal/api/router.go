@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -81,6 +83,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/metadata/{kind}/{id}", metadataRecordsHandler(deps))
 	mux.HandleFunc("PUT /api/metadata/match", metadataMatchHandler(deps))
 	mux.HandleFunc("POST /api/metadata/refresh", metadataRefreshHandler(deps))
+	mux.HandleFunc("POST /api/metadata/refresh-batch", metadataRefreshBatchHandler(deps))
 	mux.HandleFunc("GET /api/artwork/{kind}/{id}", artworkHandler(deps))
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
@@ -380,6 +383,28 @@ func metadataRefreshHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func metadataRefreshBatchHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Metadata == nil {
+			writeError(w, http.StatusServiceUnavailable, "metadata providers are not available")
+			return
+		}
+		var request struct {
+			Kind  string `json:"kind"`
+			Limit int    `json:"limit"`
+		}
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		result, err := deps.Metadata.RefreshBatch(r.Context(), request.Kind, request.Limit)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 func metadataProviders(deps Deps) []map[string]any {
 	tmdbStatus := "needs-api-key"
 	if deps.Config.TMDBAPIKey != "" {
@@ -404,6 +429,25 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 		kind := r.PathValue("kind")
 		id := r.PathValue("id")
 		title := id
+		artType := r.URL.Query().Get("type")
+		if artType == "" {
+			artType = "poster"
+		}
+		if record, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id); err == nil && ok {
+			if artType == "backdrop" && record.BackdropURL != "" {
+				if serveCachedArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, record.BackdropURL) {
+					return
+				}
+			}
+			if artType == "poster" && record.PosterURL != "" {
+				if serveCachedArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, record.PosterURL) {
+					return
+				}
+			}
+			if record.Title != "" {
+				title = record.Title
+			}
+		}
 		switch kind {
 		case "movie":
 			if item, ok, err := deps.Catalog.GetMovie(r.Context(), id); err == nil && ok {
@@ -425,6 +469,77 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 <text x="96" y="660" fill="#f5f0e7" fill-opacity="0.82" font-family="Inter,Segoe UI,sans-serif" font-size="42" font-weight="800">%s</text>
 </svg>`, html.EscapeString(truncate(title, 20)))
 	}
+}
+
+func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir string, kind string, id string, artType string, sourceURL string) bool {
+	if !strings.HasPrefix(strings.ToLower(sourceURL), "https://") && !strings.HasPrefix(strings.ToLower(sourceURL), "http://") {
+		return false
+	}
+	if metadataDir == "" {
+		return false
+	}
+	dir := filepath.Join(metadataDir, "artwork", kind, id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false
+	}
+	for _, ext := range []string{".jpg", ".png", ".webp"} {
+		path := filepath.Join(dir, artType+ext)
+		if _, err := os.Stat(path); err == nil {
+			http.ServeFile(w, r, path)
+			return true
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return false
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return false
+	}
+	ext := artworkExtension(response.Header.Get("Content-Type"), sourceURL)
+	path := filepath.Join(dir, artType+ext)
+	file, err := os.Create(path)
+	if err != nil {
+		return false
+	}
+	if _, err := io.Copy(file, response.Body); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return false
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return false
+	}
+	http.ServeFile(w, r, path)
+	return true
+}
+
+func artworkExtension(contentType string, sourceURL string) string {
+	contentType = strings.ToLower(contentType)
+	switch {
+	case strings.Contains(contentType, "png"):
+		return ".png"
+	case strings.Contains(contentType, "webp"):
+		return ".webp"
+	case strings.Contains(contentType, "jpeg"), strings.Contains(contentType, "jpg"):
+		return ".jpg"
+	}
+	ext := strings.ToLower(filepath.Ext(strings.Split(sourceURL, "?")[0]))
+	if ext == ".png" || ext == ".webp" || ext == ".jpg" || ext == ".jpeg" {
+		if ext == ".jpeg" {
+			return ".jpg"
+		}
+		return ext
+	}
+	return ".jpg"
 }
 
 func versionsHandler(deps Deps) http.HandlerFunc {

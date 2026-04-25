@@ -13,6 +13,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
+	"github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
@@ -68,6 +69,7 @@ type Service struct {
 	libraries *libraries.Service
 	scanner   *scanner.Service
 	catalog   *catalog.Service
+	metadata  *metadata.Service
 	movies    *movies.Service
 	tv        *tv.Service
 
@@ -76,7 +78,7 @@ type Service struct {
 	jobs   map[string]Job
 }
 
-func NewService(cfg config.Config, eventBus *events.Bus, queue *jobs.Queue, librariesService *libraries.Service, scannerService *scanner.Service, catalogService *catalog.Service, movieService *movies.Service, tvService *tv.Service) *Service {
+func NewService(cfg config.Config, eventBus *events.Bus, queue *jobs.Queue, librariesService *libraries.Service, scannerService *scanner.Service, catalogService *catalog.Service, metadataService *metadata.Service, movieService *movies.Service, tvService *tv.Service) *Service {
 	return &Service{
 		cfg:       cfg,
 		events:    eventBus,
@@ -84,6 +86,7 @@ func NewService(cfg config.Config, eventBus *events.Bus, queue *jobs.Queue, libr
 		libraries: librariesService,
 		scanner:   scannerService,
 		catalog:   catalogService,
+		metadata:  metadataService,
 		movies:    movieService,
 		tv:        tvService,
 		jobs:      make(map[string]Job),
@@ -255,6 +258,7 @@ func (s *Service) runMoviesLibrary(ctx context.Context, id string, library libra
 		"persisted":   persisted,
 		"moviesFound": len(candidates),
 	})
+	s.refreshMetadata(ctx, id, "movie", requestMetadataLimit(result.MediaFiles))
 	return true
 }
 
@@ -290,6 +294,7 @@ func (s *Service) runTVLibrary(ctx context.Context, id string, library libraries
 		"persisted":     persisted,
 		"episodesFound": len(candidates),
 	})
+	s.refreshMetadata(ctx, id, "series", requestMetadataLimit(result.MediaFiles))
 	return true
 }
 
@@ -370,6 +375,29 @@ func (s *Service) mergeResult(id string, key string, value any) {
 	job.Result[key] = value
 	s.jobs[id] = job
 	s.mu.Unlock()
+}
+
+func (s *Service) refreshMetadata(ctx context.Context, id string, kind string, limit int) {
+	if s.metadata == nil {
+		return
+	}
+	result, err := s.metadata.RefreshBatch(ctx, kind, limit)
+	if err != nil {
+		s.events.Publish("metadata.batch.failed", map[string]any{"scanId": id, "kind": kind, "error": err.Error()})
+		return
+	}
+	s.mergeResult(id, "metadata_"+kind, result)
+	s.events.Publish("metadata.batch.completed", map[string]any{"scanId": id, "kind": kind, "result": result})
+}
+
+func requestMetadataLimit(mediaFiles int) int {
+	if mediaFiles <= 0 {
+		return 0
+	}
+	if mediaFiles < 25 {
+		return mediaFiles
+	}
+	return 25
 }
 
 func (s *Service) fail(id string, err error) {

@@ -285,7 +285,7 @@ async function showMovie(id) {
   viewTitle.textContent = movie.title;
   view.innerHTML = `
     <div class="detail-command">
-      <div class="detail-backdrop"><img alt="" src="${artworkURL("movie", movie.id)}"></div>
+      <div class="detail-backdrop"><img alt="" src="${artworkURL("movie", movie.id, "backdrop")}"></div>
       <section class="detail-main">
         <button class="back-button" onclick="navigate('movies')">Back to Movies</button>
         <div class="eyebrow">Featured from your library</div>
@@ -1258,8 +1258,8 @@ function escapeAttr(value) {
   return escapeHTML(value).replace(/`/g, "&#096;");
 }
 
-function artworkURL(kind, id) {
-  return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral`;
+function artworkURL(kind, id, type = "poster") {
+  return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral&type=${encodeURIComponent(type)}`;
 }
 
 function initials(value) {

@@ -40,6 +40,16 @@ type RefreshResult struct {
 	Warnings    []string                 `json:"warnings,omitempty"`
 }
 
+type BatchResult struct {
+	Kind      string          `json:"kind"`
+	Limit     int             `json:"limit"`
+	Attempted int             `json:"attempted"`
+	Refreshed int             `json:"refreshed"`
+	Skipped   int             `json:"skipped"`
+	Warnings  []string        `json:"warnings,omitempty"`
+	Items     []RefreshResult `json:"items,omitempty"`
+}
+
 func NewService(cfg config.Config, catalogService *catalog.Service, eventBus *events.Bus) *Service {
 	return &Service{
 		cfg:     cfg,
@@ -102,6 +112,76 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 		s.events.Publish("metadata.ratings.updated", result)
 	}
 	return result, nil
+}
+
+func (s *Service) RefreshBatch(ctx context.Context, kind string, limit int) (BatchResult, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	result := BatchResult{Kind: kind, Limit: limit}
+	if s.cfg.OMDbAPIKey == "" && s.cfg.TMDBAPIKey == "" {
+		result.Warnings = append(result.Warnings, "metadata providers are not configured")
+		return result, nil
+	}
+	switch kind {
+	case "movie", "movies":
+		movies, err := s.catalog.ListMovies(ctx, limit)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		for _, item := range movies {
+			if shouldSkipMetadata(item.Metadata) {
+				result.Skipped++
+				continue
+			}
+			refresh, err := s.Refresh(ctx, RefreshRequest{Kind: "movie", ID: item.ID, Title: item.Title, Year: item.Year})
+			result.Attempted++
+			if err != nil {
+				result.Warnings = append(result.Warnings, item.Title+": "+err.Error())
+				continue
+			}
+			result.Refreshed++
+			result.Items = append(result.Items, refresh)
+		}
+	case "series", "tv":
+		series, err := s.catalog.ListSeries(ctx, limit)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		for _, item := range series {
+			if shouldSkipMetadata(item.Metadata) {
+				result.Skipped++
+				continue
+			}
+			refresh, err := s.Refresh(ctx, RefreshRequest{Kind: "series", ID: item.ID, Title: item.Title})
+			result.Attempted++
+			if err != nil {
+				result.Warnings = append(result.Warnings, item.Title+": "+err.Error())
+				continue
+			}
+			result.Refreshed++
+			result.Items = append(result.Items, refresh)
+		}
+	default:
+		return BatchResult{}, errors.New("metadata batch kind must be movie or series")
+	}
+	if s.events != nil {
+		s.events.Publish("metadata.batch.completed", result)
+	}
+	return result, nil
+}
+
+func shouldSkipMetadata(record *catalog.MetadataRecord) bool {
+	if record == nil {
+		return false
+	}
+	if len(record.Ratings) > 0 && len(record.ExternalIDs) > 0 {
+		return true
+	}
+	return record.Provider == "tmdb" || record.Provider == "omdb"
 }
 
 func (s *Service) refreshOMDb(ctx context.Context, request RefreshRequest, result *RefreshResult) error {
@@ -189,6 +269,24 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, resul
 	}
 	match := search.Results[0]
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	title := firstNonEmpty(match.Title, match.Name, request.Title)
+	if err := s.catalog.UpsertMetadataRecord(ctx, catalog.MetadataRecord{
+		Kind:        request.Kind,
+		ItemID:      request.ID,
+		Provider:    "tmdb",
+		ExternalID:  strconv.Itoa(match.ID),
+		Title:       title,
+		Year:        parseYear(firstNonEmpty(match.ReleaseDate, match.FirstAirDate), request.Year),
+		Overview:    match.Overview,
+		PosterURL:   tmdbImageURL(match.PosterPath, "w500"),
+		BackdropURL: tmdbImageURL(match.BackdropPath, "w1280"),
+		Confidence:  0.84,
+		RawJSON:     mustJSON(match),
+		FetchedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		return err
+	}
 	_ = s.catalog.UpsertExternalID(ctx, catalog.ExternalID{Kind: request.Kind, ItemID: request.ID, Provider: "tmdb", ExternalID: strconv.Itoa(match.ID)})
 	rating := catalog.Rating{
 		Kind:         request.Kind,
@@ -250,9 +348,16 @@ type tmdbSearch struct {
 }
 
 type tmdbResult struct {
-	ID          int     `json:"id"`
-	VoteAverage float64 `json:"vote_average"`
-	VoteCount   int     `json:"vote_count"`
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	Name         string  `json:"name"`
+	ReleaseDate  string  `json:"release_date"`
+	FirstAirDate string  `json:"first_air_date"`
+	Overview     string  `json:"overview"`
+	PosterPath   string  `json:"poster_path"`
+	BackdropPath string  `json:"backdrop_path"`
+	VoteAverage  float64 `json:"vote_average"`
+	VoteCount    int     `json:"vote_count"`
 }
 
 func omdbRatings(request RefreshRequest, payload omdbResponse, now string) []catalog.Rating {
@@ -315,6 +420,16 @@ func imdbURL(id string) string {
 		return ""
 	}
 	return "https://www.imdb.com/title/" + id + "/"
+}
+
+func tmdbImageURL(path string, size string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	if size == "" {
+		size = "w500"
+	}
+	return "https://image.tmdb.org/t/p/" + size + path
 }
 
 func emptyNA(value string) string {

@@ -127,12 +127,12 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	scannerService := scanner.NewService()
 	movieService := movies.NewService()
 	tvService := tv.NewService()
-	scanService := scans.NewService(cfg, bus, jobRegistry.Scan, libraryService, scannerService, catalogService, movieService, tvService)
+	metadataService := metadata.NewService(cfg, catalogService, bus)
+	scanService := scans.NewService(cfg, bus, jobRegistry.Scan, libraryService, scannerService, catalogService, metadataService, movieService, tvService)
 	probeService := probe.NewService(cfg.FFprobePath)
 	probesService := probes.NewService(bus, jobRegistry.Probe, catalogService, probeService)
 
 	playStateService := playstate.NewService(databaseService, bus)
-	metadataService := metadata.NewService(cfg, catalogService, bus)
 
 	return &Application{
 		Config:    cfg,

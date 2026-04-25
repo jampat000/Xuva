@@ -399,7 +399,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Jobs:      registry,
 		Libraries: libraryService,
 		Scanner:   scannerService,
-		Scans:     scans.NewService(cfg, eventBus, registry.Scan, libraryService, scannerService, catalogService, movieService, tvService),
+		Scans:     scans.NewService(cfg, eventBus, registry.Scan, libraryService, scannerService, catalogService, metaprovider.NewService(cfg, catalogService, eventBus), movieService, tvService),
 		Catalog:   catalogService,
 		Media:     media.NewService(),
 		Metadata:  metaprovider.NewService(cfg, catalogService, eventBus),
