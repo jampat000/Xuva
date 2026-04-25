@@ -5,7 +5,11 @@ const viewTitle = document.getElementById("viewTitle");
 const serverStatus = document.getElementById("serverStatus");
 const serverDot = document.getElementById("serverDot");
 const themeToggle = document.getElementById("themeToggle");
-const densitySelect = document.getElementById("densitySelect");
+const densityMenu = document.getElementById("densityMenu");
+const densityButton = document.getElementById("densityButton");
+const densityLabel = document.getElementById("densityLabel");
+const densityOptions = document.getElementById("densityOptions");
+const densityNames = { compact: "Compact", balanced: "Balanced", comfortable: "Comfortable", cinematic: "Cinematic" };
 
 const savedTheme = localStorage.getItem("vyrden-theme") || "dark";
 applyTheme(savedTheme);
@@ -14,8 +18,21 @@ themeToggle?.addEventListener("click", () => {
 });
 const savedDensity = localStorage.getItem("vyrden-density") || "comfortable";
 applyDensity(savedDensity);
-densitySelect?.addEventListener("change", event => {
-  applyDensity(event.target.value);
+densityButton?.addEventListener("click", () => {
+  const open = densityMenu?.classList.toggle("open");
+  densityButton.setAttribute("aria-expanded", open ? "true" : "false");
+});
+densityOptions?.querySelectorAll("[data-density-option]").forEach(button => {
+  button.addEventListener("click", () => {
+    applyDensity(button.dataset.densityOption);
+    closeDensityMenu();
+  });
+});
+document.addEventListener("click", event => {
+  if (!densityMenu?.contains(event.target)) closeDensityMenu();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeDensityMenu();
 });
 
 document.querySelectorAll(".nav-item").forEach(button => {
@@ -58,11 +75,20 @@ function applyTheme(theme) {
 }
 
 function applyDensity(density) {
-  const allowed = new Set(["compact", "balanced", "comfortable", "cinematic"]);
-  const next = allowed.has(density) ? density : "comfortable";
+  const next = densityNames[density] ? density : "comfortable";
   document.body.dataset.density = next;
   localStorage.setItem("vyrden-density", next);
-  if (densitySelect) densitySelect.value = next;
+  if (densityLabel) densityLabel.textContent = densityNames[next];
+  densityOptions?.querySelectorAll("[data-density-option]").forEach(button => {
+    const selected = button.dataset.densityOption === next;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-checked", selected ? "true" : "false");
+  });
+}
+
+function closeDensityMenu() {
+  densityMenu?.classList.remove("open");
+  densityButton?.setAttribute("aria-expanded", "false");
 }
 
 async function refreshShell() {
