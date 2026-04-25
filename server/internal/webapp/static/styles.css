@@ -33,13 +33,13 @@
   --bubble-radius: 999px;
   --density-scale: 1;
   --font-scale: 1;
-  --ui-font: calc(15px * var(--font-scale));
-  --small-font: calc(13px * var(--font-scale));
-  --tiny-font: calc(12px * var(--font-scale));
-  --poster-title-font: clamp(calc(17px * var(--font-scale)), 0.92vw, calc(20px * var(--font-scale)));
-  --h2-font: clamp(calc(21px * var(--font-scale)), 1.3vw, calc(28px * var(--font-scale)));
-  --h1-font: clamp(calc(58px * var(--font-scale)), calc(4.6vw * var(--font-scale)), calc(78px * var(--font-scale)));
-  --lead-font: calc(18px * var(--font-scale));
+  --ui-font: clamp(calc(15px * var(--font-scale)), calc(1vw * var(--font-scale)), calc(18px * var(--font-scale)));
+  --small-font: clamp(calc(13px * var(--font-scale)), calc(0.82vw * var(--font-scale)), calc(16px * var(--font-scale)));
+  --tiny-font: clamp(calc(12px * var(--font-scale)), calc(0.7vw * var(--font-scale)), calc(14px * var(--font-scale)));
+  --poster-title-font: clamp(calc(17px * var(--font-scale)), calc(0.92vw * var(--font-scale)), calc(21px * var(--font-scale)));
+  --h2-font: clamp(calc(21px * var(--font-scale)), calc(1.3vw * var(--font-scale)), calc(30px * var(--font-scale)));
+  --h1-font: clamp(calc(58px * var(--font-scale)), calc(4.6vw * var(--font-scale)), calc(82px * var(--font-scale)));
+  --lead-font: clamp(calc(18px * var(--font-scale)), calc(1.05vw * var(--font-scale)), calc(22px * var(--font-scale)));
   --brand-mark: calc(44px * var(--density-scale));
   --brand-font: calc(18px * var(--font-scale));
   --nav-pad-y: calc(26px * var(--density-scale));
@@ -57,7 +57,7 @@
 
 body[data-density="compact"] {
   --density-scale: 0.84;
-  --font-scale: 0.88;
+  --font-scale: 0.94;
   --sidebar-width: 176px;
   --main-x: clamp(18px, 1.5vw, 28px);
   --main-y: clamp(14px, 1.2vw, 22px);
@@ -77,7 +77,7 @@ body[data-density="compact"] {
 
 body[data-density="balanced"] {
   --density-scale: 1;
-  --font-scale: 1;
+  --font-scale: 1.08;
   --sidebar-width: 196px;
   --main-x: clamp(24px, 2vw, 38px);
   --main-y: clamp(22px, 2vw, 34px);
@@ -97,7 +97,7 @@ body[data-density="balanced"] {
 
 body[data-density="comfortable"] {
   --density-scale: 1.12;
-  --font-scale: 1.12;
+  --font-scale: 1.2;
   --sidebar-width: 204px;
   --main-x: clamp(28px, 2.2vw, 44px);
   --main-y: clamp(26px, 2.2vw, 42px);
@@ -117,7 +117,7 @@ body[data-density="comfortable"] {
 
 body[data-density="cinematic"] {
   --density-scale: 1.22;
-  --font-scale: 1.22;
+  --font-scale: 1.32;
   --sidebar-width: 212px;
   --main-x: clamp(30px, 2.4vw, 48px);
   --main-y: clamp(30px, 2.5vw, 48px);
@@ -161,6 +161,13 @@ body[data-theme="light"] {
 * { box-sizing: border-box; }
 html { min-width: 320px; }
 body {
+  --ui-font: clamp(calc(15px * var(--font-scale)), calc(1vw * var(--font-scale)), calc(18px * var(--font-scale)));
+  --small-font: clamp(calc(13px * var(--font-scale)), calc(0.82vw * var(--font-scale)), calc(16px * var(--font-scale)));
+  --tiny-font: clamp(calc(12px * var(--font-scale)), calc(0.7vw * var(--font-scale)), calc(14px * var(--font-scale)));
+  --poster-title-font: clamp(calc(17px * var(--font-scale)), calc(0.92vw * var(--font-scale)), calc(21px * var(--font-scale)));
+  --h2-font: clamp(calc(21px * var(--font-scale)), calc(1.3vw * var(--font-scale)), calc(30px * var(--font-scale)));
+  --h1-font: clamp(calc(58px * var(--font-scale)), calc(4.6vw * var(--font-scale)), calc(82px * var(--font-scale)));
+  --lead-font: clamp(calc(18px * var(--font-scale)), calc(1.05vw * var(--font-scale)), calc(22px * var(--font-scale)));
   margin: 0;
   min-height: 100vh;
   background:
@@ -1853,7 +1860,7 @@ body[data-theme="light"] .path-form input {
   }
   body[data-density="compact"] {
     --density-scale: 0.84;
-    --font-scale: 0.88;
+    --font-scale: 0.94;
     --poster-min: 122px;
     --poster-height: 194px;
     --control-height: 36px;
@@ -1863,7 +1870,7 @@ body[data-theme="light"] .path-form input {
   }
   body[data-density="balanced"] {
     --density-scale: 1;
-    --font-scale: 1;
+    --font-scale: 1.06;
     --poster-min: 142px;
     --poster-height: 230px;
     --control-height: 42px;
@@ -1873,7 +1880,7 @@ body[data-theme="light"] .path-form input {
   }
   body[data-density="comfortable"] {
     --density-scale: 1.12;
-    --font-scale: 1.12;
+    --font-scale: 1.16;
     --poster-min: 172px;
     --poster-height: 274px;
     --control-height: 48px;
@@ -1883,7 +1890,7 @@ body[data-theme="light"] .path-form input {
   }
   body[data-density="cinematic"] {
     --density-scale: 1.22;
-    --font-scale: 1.22;
+    --font-scale: 1.26;
     --poster-min: 208px;
     --poster-height: 331px;
     --control-height: 54px;
@@ -1975,8 +1982,8 @@ body[data-theme="light"] .path-form input {
   .library-card-head {
     display: grid;
   }
-  .hero-copy strong { font-size: min(calc(34px * var(--font-scale)), 8.8vw); }
-  h1 { font-size: min(calc(44px * var(--font-scale)), 10.2vw); }
+  .hero-copy strong { font-size: min(calc(38px * var(--font-scale)), 10.8vw); }
+  h1 { font-size: min(calc(48px * var(--font-scale)), 12.5vw); }
   .feature { min-height: 0; }
   .hero { min-height: 0; }
   .meta-line,
