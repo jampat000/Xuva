@@ -371,7 +371,10 @@ async function showMovie(id) {
             <div class="section-title">Source</div>
             <div class="section-note">Current file and playback readiness</div>
           </div>
-          <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
+          <div class="detail-source-workbench">
+            <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
+            ${movieDetailRail(movie, selected)}
+          </div>
         </section>
         <section class="section">
           <div class="section-head">
@@ -384,10 +387,6 @@ async function showMovie(id) {
           </div>
         </section>
       </section>
-
-      <aside class="side detail-side">
-        ${movieDetailRail(movie, selected)}
-      </aside>
     </div>`;
   if (selected) updatePlaybackForecast(selected.mediaSourceId);
 }
@@ -446,33 +445,11 @@ function sourceCardFact(label, value) {
 
 function movieDetailRail(movie = {}, selected = null) {
   return `
-    <section class="panel pad source-control-panel">
+    <aside class="panel pad source-control-panel">
       ${sourceControlHeader(selected)}
       ${sourceControlActions(selected)}
       ${sourceControlDownloads(selected)}
-      <div class="source-control-section">
-        <div class="rail-section-title">Match</div>
-        <div class="detail-summary-card">
-          <strong>${escapeHTML(movie.metadata?.title || movie.title)}</strong>
-          <span>${metadataSummary(movie.metadata)}</span>
-        </div>
-        <div class="compact-facts">
-          ${compactFact("Provider", providerLabel(movie.metadata?.provider || "none"))}
-          ${compactFact("Confidence", metadataConfidenceLabel(movie.metadata))}
-          ${compactFact("External ID", metadataExternalID(movie.metadata))}
-        </div>
-        <div class="inline-actions rail-actions"><button onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch metadata</button>${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix match</button>` : ""}</div>
-      </div>
-      <div class="source-control-section">
-        <div class="rail-section-title">File</div>
-        <div class="compact-facts">
-          ${compactFact("Container", selected ? ((selected.relPath || "").split(".").pop() || "media") : "No source")}
-          ${compactFact("Storage", selected ? selected.relPath : "No linked file", true)}
-          ${compactFact("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
-          ${compactFact("Server", selected ? playbackEffortLabel(selected.decision) : "None")}
-        </div>
-      </div>
-    </section>`;
+    </aside>`;
 }
 
 function downloadPlan(label, value, note, mediaSourceId, profile) {
@@ -496,16 +473,10 @@ function sourceControlHeader(selected = null) {
     </div>`;
   }
   const decision = selected.decision || {};
-  const source = selected.source || {};
   return `<div class="source-control-hero">
     <span>Playback</span>
     <strong>${escapeHTML(playbackReadinessLabel(decision))}</strong>
     <p>${escapeHTML(playbackReason(decision))}</p>
-    <div class="source-control-metrics">
-      ${sourceMetric("Server", playbackEffortLabel(decision))}
-      ${sourceMetric("File check", source.probed ? "Complete" : "Needed")}
-      ${sourceMetric("Size", formatBytes(selected.sizeBytes))}
-    </div>
   </div>`;
 }
 
@@ -518,7 +489,6 @@ function sourceControlActions(selected = null) {
   return `<div class="source-control-actions">
     <button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck media" : "Check media now"}</button>
     <button onclick="openSourceInspector('${selected.mediaSourceId}')">Source details</button>
-    <a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play from start</a>
   </div>`;
 }
 
@@ -933,7 +903,10 @@ async function showEpisode(seriesId, episodeId) {
         </div>
         <section class="section">
           <div class="section-head"><div class="section-title">Source</div><div class="section-note">Current file and playback readiness</div></div>
-          <div class="version-grid">${versionModels.map((model, index) => versionCard(model, index === 0)).join("") || empty("No playable versions found.")}</div>
+          <div class="detail-source-workbench">
+            <div class="version-grid">${versionModels.map((model, index) => versionCard(model, index === 0)).join("") || empty("No playable versions found.")}</div>
+            ${episodeDetailRail(series, episode, selected)}
+          </div>
         </section>
         <section class="section">
           <div class="section-head"><div class="section-title">Audio & Subtitles</div><div class="section-note">Selected tracks affect compatibility</div></div>
@@ -943,36 +916,17 @@ async function showEpisode(seriesId, episodeId) {
           </div>
         </section>
       </section>
-      <aside class="side detail-side">
-        ${episodeDetailRail(series, episode, selected)}
-      </aside>
     </div>`;
   if (selected) updatePlaybackForecast(selected.mediaSourceId);
 }
 
 function episodeDetailRail(series = {}, episode = {}, selected = null) {
   return `
-    <section class="panel pad source-control-panel">
+    <aside class="panel pad source-control-panel">
       ${sourceControlHeader(selected)}
       ${sourceControlActions(selected)}
-      <div class="source-control-section">
-        <div class="rail-section-title">Series Match</div>
-        <div class="detail-summary-card">
-          <strong>${escapeHTML(series.metadata?.title || series.title)}</strong>
-          <span>${metadataSummary(series.metadata)}</span>
-        </div>
-        <div class="inline-actions rail-actions"><button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch metadata</button>${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix match</button>` : ""}</div>
-      </div>
-      <div class="source-control-section">
-        <div class="rail-section-title">File</div>
-        <div class="compact-facts">
-          ${compactFact("File", selected ? selected.relPath : "No linked file", true)}
-          ${compactFact("Playback", selected ? playbackReadinessLabel(selected.decision) : "No source")}
-          ${compactFact("Server", selected ? playbackEffortLabel(selected.decision) : "None")}
-          ${compactFact("Size", selected ? formatBytes(selected.sizeBytes) : "None")}
-        </div>
-      </div>
-    </section>`;
+      ${sourceControlDownloads(selected)}
+    </aside>`;
 }
 
 async function renderLibraries() {
