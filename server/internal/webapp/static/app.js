@@ -391,14 +391,15 @@ async function showMovie(id) {
 
 async function loadVersionModel(version = {}) {
   const forecastProfiles = ["web", "android-tv", "apple-tv", "chromecast"];
-  const [state, source, tracks, decision, deviceDecisions] = await Promise.all([
+  const [state, source, tracks, decision, deviceDecisions, performance] = await Promise.all([
     api(`/api/playback/state/${version.mediaSourceId}`).catch(() => ({})),
     api(`/api/media-sources/${version.mediaSourceId}`).catch(() => ({})),
     api(`/api/media-sources/${version.mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })),
     api(`/api/playback/decision?mediaSourceId=${version.mediaSourceId}&clientProfile=web`).catch(() => ({})),
     Promise.all(forecastProfiles.map(profile => api(`/api/playback/decision?mediaSourceId=${version.mediaSourceId}&clientProfile=${profile}`).catch(() => ({ clientProfile: profile })))),
+    performanceSnapshot(),
   ]);
-  return { ...version, state, source, tracks, decision, deviceDecisions };
+  return { ...version, state, source, tracks, decision, deviceDecisions, hardware: hardwareTranscodeProfile(performance) };
 }
 
 function versionCard(model, selected) {
@@ -413,6 +414,7 @@ function versionCard(model, selected) {
     source.width && source.height ? `${source.width}x${source.height}` : "Resolution pending",
     source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending",
   ].filter(Boolean).join(" - ");
+  const hardware = version.hardware || {};
   return `<article class="version source-card ${selected ? "is-selected" : ""}">
     <div class="source-card-head">
       <div>
@@ -423,12 +425,13 @@ function versionCard(model, selected) {
     </div>
     <div class="source-card-grid">
       ${sourceCardFact("Can it play?", routeTone)}
-      ${sourceCardFact("PC work needed", playbackEffortLabel(decision))}
+      ${sourceCardFact("PC work needed", playbackEffortLabel(decision, hardware))}
       ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
       ${sourceCardFact("Video file details", sourceFacts)}
     </div>
-    <p>${escapeHTML(playbackReason(decision))}</p>
-    ${deviceForecast(version.deviceDecisions)}
+    <p>${escapeHTML(playbackReason(decision, hardware))}</p>
+    ${hardwareImpactNote(decision, hardware)}
+    ${deviceForecast(version.deviceDecisions, hardware)}
     <div class="inline-actions source-card-actions">
       <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
       <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
@@ -444,7 +447,39 @@ function sourceCardFact(label, value) {
   return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
 }
 
-function deviceForecast(decisions = []) {
+async function performanceSnapshot() {
+  if (state.performanceSnapshot) return state.performanceSnapshot;
+  state.performanceSnapshot = await api("/api/settings/performance").catch(() => ({}));
+  return state.performanceSnapshot;
+}
+
+function hardwareTranscodeProfile(performance = {}) {
+  const gpuWorkers = Number(performance?.limits?.gpuWorkers || 0);
+  return {
+    gpuWorkers,
+    configured: gpuWorkers > 0,
+    unlockState: "planned",
+  };
+}
+
+function needsVideoHardware(decision = {}) {
+  const mode = String(decision.mode || "").toLowerCase();
+  return mode === "video transcode" || mode === "subtitle burn";
+}
+
+function hardwareImpactNote(decision = {}, hardware = {}) {
+  if (!needsVideoHardware(decision)) return "";
+  const title = hardware.configured ? "Hardware acceleration recommended" : "Hardware acceleration would help";
+  const detail = hardware.configured
+    ? "This is the route where a future premium hardware-transcoding unlock matters: GPU-assisted conversion should reduce CPU load, heat, and stutter risk compared with software-only conversion."
+    : "This is the route where hardware transcoding matters most. Without GPU-assisted conversion, expect higher CPU use, more heat, and less headroom for other streams.";
+  return `<div class="hardware-impact">
+    <strong>${escapeHTML(title)}</strong>
+    <span>${escapeHTML(detail)}</span>
+  </div>`;
+}
+
+function deviceForecast(decisions = [], hardware = {}) {
   if (!Array.isArray(decisions) || !decisions.length) return "";
   return `<div class="device-forecast">
     <div class="device-forecast-title">Player impact</div>
@@ -452,7 +487,7 @@ function deviceForecast(decisions = []) {
       ${decisions.map(decision => `<div>
         <span>${escapeHTML(profileName(decision.clientProfile))}</span>
         <strong>${escapeHTML(playbackReadinessLabel(decision))}</strong>
-        <small>${escapeHTML(playbackEffortLabel(decision))}</small>
+        <small>${escapeHTML(playbackEffortLabel(decision, hardware))}</small>
       </div>`).join("")}
     </div>
   </div>`;
@@ -764,17 +799,17 @@ function playbackReadinessLabel(decision = {}) {
   return decision.mode;
 }
 
-function playbackEffortLabel(decision = {}) {
+function playbackEffortLabel(decision = {}, hardware = {}) {
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "No extra work";
   if (mode === "remux") return "Low PC load";
   if (mode === "audio transcode") return "Light PC load";
-  if (mode === "video transcode" || mode === "subtitle burn") return "High CPU/GPU load";
+  if (mode === "video transcode" || mode === "subtitle burn") return hardware.configured ? "GPU path preferred" : "High CPU load";
   if (mode === "decision deferred") return "Waiting for file check";
   return serverImpact(decision);
 }
 
-function playbackReason(decision = {}) {
+function playbackReason(decision = {}, hardware = {}) {
   const reason = String(decision.reason || "");
   const mode = String(decision.mode || "").toLowerCase();
   if (!reason) return "Vyrden is checking this file before choosing the best playback path.";
@@ -784,7 +819,9 @@ function playbackReason(decision = {}) {
   if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Vyrden may need to repackage the file for this player. This is usually quick and low impact.";
   if (reason.includes("subtitle track is image-based")) return "This file can still play, but image subtitles may need to be burned into the video. That is a heavy path and can use significant CPU/GPU.";
   if (reason.includes("not safely direct-playable")) {
-    if (mode === "video transcode") return "This file can still play, but this player profile would need Vyrden to convert the video while it plays. Expect higher CPU/GPU use, more power draw, and more heat.";
+    if (mode === "video transcode") return hardware.configured
+      ? "This file can still play, but this player profile needs video conversion. Hardware acceleration is the right route here because it can move most of that work away from the CPU."
+      : "This file can still play, but this player profile needs video conversion. Without hardware acceleration, expect high CPU use, more power draw, and more heat.";
     if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
     if (mode === "audio transcode") return "The video can stay intact, but Vyrden may convert audio for this player. This is usually a light PC load.";
     if (mode === "remux") return "The streams can stay intact, but Vyrden may repackage the file for this player. This is usually low impact.";
