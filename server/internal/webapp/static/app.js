@@ -5,11 +5,17 @@ const viewTitle = document.getElementById("viewTitle");
 const serverStatus = document.getElementById("serverStatus");
 const serverDot = document.getElementById("serverDot");
 const themeToggle = document.getElementById("themeToggle");
+const densitySelect = document.getElementById("densitySelect");
 
 const savedTheme = localStorage.getItem("vyrden-theme") || "dark";
 applyTheme(savedTheme);
 themeToggle?.addEventListener("click", () => {
   applyTheme(document.body.dataset.theme === "light" ? "dark" : "light");
+});
+const savedDensity = localStorage.getItem("vyrden-density") || "comfortable";
+applyDensity(savedDensity);
+densitySelect?.addEventListener("change", event => {
+  applyDensity(event.target.value);
 });
 
 document.querySelectorAll(".nav-item").forEach(button => {
@@ -49,6 +55,14 @@ function applyTheme(theme) {
   document.body.dataset.theme = next;
   localStorage.setItem("vyrden-theme", next);
   if (themeToggle) themeToggle.textContent = next === "light" ? "Light" : "Dark";
+}
+
+function applyDensity(density) {
+  const allowed = new Set(["compact", "balanced", "comfortable", "cinematic"]);
+  const next = allowed.has(density) ? density : "comfortable";
+  document.body.dataset.density = next;
+  localStorage.setItem("vyrden-density", next);
+  if (densitySelect) densitySelect.value = next;
 }
 
 async function refreshShell() {
