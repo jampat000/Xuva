@@ -255,9 +255,9 @@ async function showMovie(id) {
         <section class="panel pad">
           <div class="panel-title"><strong>Download</strong></div>
           <div class="download">
-            ${selected ? `<a class="download-option" href="/api/playback/decision?mediaSourceId=${selected.mediaSourceId}&clientProfile=web" target="_blank"><span>Original</span><span>${formatBytes(selected.sizeBytes)}</span></a>` : ""}
-            ${selected ? `<a class="download-option" href="/api/playback/decision?mediaSourceId=${selected.mediaSourceId}&clientProfile=web" target="_blank"><span>Balanced</span><span>Route</span></a>` : ""}
-            ${selected ? `<a class="download-option" href="/api/playback/decision?mediaSourceId=${selected.mediaSourceId}&clientProfile=web" target="_blank"><span>Travel</span><span>Small</span></a>` : ""}
+            ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','original')"><span>Original</span><span>${formatBytes(selected.sizeBytes)}</span></button>` : ""}
+            ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','balanced')"><span>Balanced</span><span>1080p prepared</span></button>` : ""}
+            ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','travel')"><span>Travel</span><span>720p small</span></button>` : ""}
             ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
           </div>
         </section>
@@ -401,7 +401,7 @@ async function deleteLibrary(id) {
 }
 
 async function renderActivity() {
-  const [scans, probes, work, sessions] = await Promise.all([api("/api/scans"), api("/api/probes"), api("/api/work"), api("/api/sessions")]);
+  const [scans, probes, work, downloads, sessions] = await Promise.all([api("/api/scans"), api("/api/probes"), api("/api/work"), api("/api/downloads"), api("/api/sessions")]);
   view.innerHTML = `
     <div class="stack">
       <div class="hero-strip">
@@ -414,6 +414,7 @@ async function renderActivity() {
           ${signalPill("Sessions", sessions.sessions.length)}
           ${signalPill("Scans", scans.scans.length)}
           ${signalPill("Work jobs", work.work.length)}
+          ${signalPill("Downloads", downloads.downloads.length)}
         </div>
       </div>
       <div class="toolbar">
@@ -428,6 +429,7 @@ async function renderActivity() {
         <div class="card"><h2>Scans</h2>${jobCards(scans.scans)}</div>
         <div class="card"><h2>Probes</h2>${jobCards(probes.probes)}</div>
       </div>
+      <div class="card"><h2>Downloads</h2>${downloadCards(downloads.downloads)}</div>
     </div>`;
 }
 
