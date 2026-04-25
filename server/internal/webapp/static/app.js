@@ -178,12 +178,12 @@ async function renderDashboard() {
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
           </div>
-          ${dashboardSnapshot({ activeSessions, activeJobs, summary, health, quality, system })}
+          <div data-live="dashboard-snapshot">${dashboardSnapshot({ activeSessions, activeJobs, summary, health, quality, system })}</div>
         </article>
 
         <aside class="panel pad">
-          <div class="panel-title"><strong>Playing Now</strong><span class="badge route">${activeSessions.length ? "Live" : "Idle"}</span></div>
-          ${playingNow(activeSessions)}
+          <div class="panel-title"><strong>Playing Now</strong><span class="badge route" data-live="playing-now-status">${activeSessions.length ? "Live" : "Idle"}</span></div>
+          <div data-live="playing-now">${playingNow(activeSessions)}</div>
         </aside>
       </section>
 
@@ -200,16 +200,16 @@ async function renderDashboard() {
           ${fileIntelligence(quality, summary, health)}
         </div>
         <div class="panel pad">
-          <div class="panel-title"><strong>Operations</strong><span class="badge ${activeJobs.length ? "warn" : "good"}">${activeJobs.length ? `${activeJobs.length} running` : "Clear"}</span></div>
-          ${operationsPanel(scanJobs, probeJobs, workJobs, downloadJobs)}
+          <div class="panel-title"><strong>Operations</strong><span class="badge ${activeJobs.length ? "warn" : "good"}" data-live="operations-status">${activeJobs.length ? `${activeJobs.length} running` : "Clear"}</span></div>
+          <div data-live="operations">${operationsPanel(scanJobs, probeJobs, workJobs, downloadJobs)}</div>
         </div>
         <div class="panel pad">
           <div class="panel-title"><strong>Needs Attention</strong><div class="inline-actions"><button onclick="startProbe()">Probe</button><button onclick="navigate('health')">Review</button></div></div>
           ${attentionPanel(summary, health, versions.versions || [])}
         </div>
         <div class="panel pad">
-          <div class="panel-title"><strong>Hardware</strong><span class="badge route">${system.cpu.cores} cores</span></div>
-          ${hardwarePanel(system)}
+          <div class="panel-title"><strong>Hardware</strong><span class="badge route" data-live="hardware-cores">${system.cpu.cores} cores</span></div>
+          <div data-live="hardware">${hardwarePanel(system)}</div>
         </div>
       </section>
 
@@ -229,7 +229,7 @@ async function renderDashboard() {
           <div class="panel-title"><strong>Libraries & Storage</strong><button onclick="navigate('libraries')">Manage</button></div>
           ${libraryCards(libraries.libraries)}
         </div>
-        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div>${jobCards(scanJobs)}</div>
+        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div><div data-live="recent-scans">${jobCards(scanJobs)}</div></div>
       </section>
 
       <section class="dashboard-grid">
@@ -238,8 +238,8 @@ async function renderDashboard() {
       </section>
 
       <section class="panel pad">
-        <div class="panel-title"><strong>Live Signals</strong><span class="live-stamp">Updated ${new Date().toLocaleTimeString()}</span></div>
-        <div class="signal-stack">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Downloads", downloadJobs.length)}${signalPill("Review", reviewCount)}${signalPill("CPU", `${Math.round(system.cpu.percent || 0)}%`)}</div>
+        <div class="panel-title"><strong>Live Signals</strong><span class="live-stamp" data-live="updated-at">Updated ${new Date().toLocaleTimeString()}</span></div>
+        <div class="signal-stack" data-live="live-signals">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Downloads", downloadJobs.length)}${signalPill("Review", reviewCount)}${signalPill("CPU", `${Math.round(system.cpu.percent || 0)}%`)}</div>
       </section>
     </div>`;
 }
@@ -616,7 +616,7 @@ async function renderActivity() {
           <strong>Background work stays visible without taking over playback.</strong>
           <p>Scanning, probing, and transcode jobs run in separate queues so library maintenance does not fight active playback.</p>
         </div>
-        <div class="signal-stack">
+        <div class="signal-stack" data-live="activity-signals">
           ${signalPill("Sessions", sessions.sessions.length)}
           ${signalPill("Scans", scans.scans.length)}
           ${signalPill("Work jobs", work.work.length)}
@@ -628,14 +628,14 @@ async function renderActivity() {
         <button onclick="startProbe()">Probe Unprobed</button>
       </div>
       <div class="grid two">
-        <div class="card"><h2>Active Sessions</h2>${sessionCards(sessions.sessions)}</div>
-        <div class="card"><h2>Work</h2>${jobCards(work.work)}</div>
+        <div class="card"><h2>Active Sessions</h2><div data-live="activity-sessions">${sessionCards(sessions.sessions)}</div></div>
+        <div class="card"><h2>Work</h2><div data-live="activity-work">${jobCards(work.work)}</div></div>
       </div>
       <div class="grid two">
-        <div class="card"><h2>Scans</h2>${jobCards(scans.scans)}</div>
-        <div class="card"><h2>Probes</h2>${jobCards(probes.probes)}</div>
+        <div class="card"><h2>Scans</h2><div data-live="activity-scans">${jobCards(scans.scans)}</div></div>
+        <div class="card"><h2>Probes</h2><div data-live="activity-probes">${jobCards(probes.probes)}</div></div>
       </div>
-      <div class="card"><h2>Downloads</h2>${downloadCards(downloads.downloads)}</div>
+      <div class="card"><h2>Downloads</h2><div data-live="activity-downloads">${downloadCards(downloads.downloads)}</div></div>
     </div>`;
 }
 
@@ -679,7 +679,7 @@ async function renderPlaybackLab() {
   view.innerHTML = `<div class="stack">
     <div class="card"><h2>Client Profiles</h2>${profileCards(profiles.profiles)}</div>
     <div class="card"><h2>Playback Lab</h2>${playbackCards(payload.mediaSources)}</div>
-    <div class="card"><h2>Offline Downloads</h2>${downloadCards(downloads.downloads)}</div>
+    <div class="card"><h2>Offline Downloads</h2><div data-live="playback-downloads">${downloadCards(downloads.downloads)}</div></div>
   </div>`;
 }
 
@@ -1309,6 +1309,11 @@ function escapeHTML(value) {
 }
 
 let dashboardRefreshTimer = 0;
+let livePatchTimer = 0;
+const livePatchEvents = new Set([
+  "scan.progress", "probe.running", "transcode.running", "download.running",
+  "session.updated", "playback.state.updated"
+]);
 const dashboardStructuralEvents = new Set([
   "scan.queued", "scan.started", "scan.completed", "scan.failed",
   "probe.queued", "probe.started", "probe.completed", "probe.failed",
@@ -1319,10 +1324,98 @@ const dashboardStructuralEvents = new Set([
   "settings.updated", "library.updated", "library.deleted"
 ]);
 function refreshLiveViews(eventName = "") {
-  if (!["dashboard", "activity", "health"].includes(state.activeView)) return;
+  if (!["dashboard", "activity", "health", "playback"].includes(state.activeView)) return;
+  if (state.activeView === "activity") {
+    patchLiveView(eventName);
+    return;
+  }
+  if (state.activeView === "playback" && eventName.startsWith("download.")) {
+    patchLiveView(eventName);
+    return;
+  }
+  if (livePatchEvents.has(eventName)) {
+    patchLiveView(eventName);
+    return;
+  }
   if (state.activeView === "dashboard" && eventName && !dashboardStructuralEvents.has(eventName)) return;
   clearTimeout(dashboardRefreshTimer);
   dashboardRefreshTimer = setTimeout(() => navigate(state.activeView), 180);
+}
+
+function patchLiveView(eventName = "") {
+  clearTimeout(livePatchTimer);
+  livePatchTimer = setTimeout(async () => {
+    if (state.activeView === "dashboard") await patchDashboardLive(eventName);
+    if (state.activeView === "activity") await patchActivityLive();
+    if (state.activeView === "playback") await patchPlaybackLive();
+  }, 180);
+}
+
+async function patchDashboardLive(eventName = "") {
+  const [sessions, scans, probes, work, downloads, system, summary, health, sources] = await Promise.all([
+    api("/api/sessions"),
+    api("/api/scans"),
+    api("/api/probes"),
+    api("/api/work"),
+    api("/api/downloads"),
+    api("/api/system/status"),
+    api("/api/catalog/summary"),
+    api("/api/catalog/health"),
+    api("/api/media-sources?limit=200"),
+  ]);
+  const activeSessions = sessions.sessions || [];
+  const scanJobs = scans.scans || [];
+  const probeJobs = probes.probes || [];
+  const workJobs = work.work || [];
+  const downloadJobs = downloads.downloads || [];
+  const mediaSources = sources.mediaSources || [];
+  const quality = sourceQuality(mediaSources);
+  const activeJobs = [...scanJobs, ...probeJobs, ...workJobs, ...downloadJobs].filter(isActiveJob);
+  const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
+  setLiveHTML("playing-now", playingNow(activeSessions));
+  setLiveHTML("playing-now-status", activeSessions.length ? "Live" : "Idle");
+  setLiveHTML("operations", operationsPanel(scanJobs, probeJobs, workJobs, downloadJobs));
+  setLiveHTML("operations-status", activeJobs.length ? `${activeJobs.length} running` : "Clear");
+  setLiveTone("operations-status", activeJobs.length ? "warn" : "good");
+  setLiveHTML("hardware", hardwarePanel(system));
+  setLiveHTML("hardware-cores", `${system.cpu?.cores || 0} cores`);
+  setLiveHTML("recent-scans", jobCards(scanJobs));
+  setLiveHTML("dashboard-snapshot", dashboardSnapshot({ activeSessions, activeJobs, summary, health, quality, system }));
+  setLiveHTML("live-signals", `${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Downloads", downloadJobs.length)}${signalPill("Review", health.needsReview || 0)}${signalPill("CPU", `${Math.round(system.cpu?.percent || 0)}%`)}`);
+  setLiveHTML("updated-at", `Updated ${new Date().toLocaleTimeString()}`);
+  const playableBadge = document.querySelector(".feature-content .meta-line .badge:nth-child(4)");
+  if (playableBadge) {
+    playableBadge.textContent = `${directPlayable}% playable`;
+    playableBadge.classList.toggle("good", directPlayable >= 90);
+    playableBadge.classList.toggle("warn", directPlayable < 90);
+  }
+}
+
+async function patchActivityLive() {
+  const [scans, probes, work, downloads, sessions] = await Promise.all([api("/api/scans"), api("/api/probes"), api("/api/work"), api("/api/downloads"), api("/api/sessions")]);
+  setLiveHTML("activity-signals", `${signalPill("Sessions", sessions.sessions.length)}${signalPill("Scans", scans.scans.length)}${signalPill("Work jobs", work.work.length)}${signalPill("Downloads", downloads.downloads.length)}`);
+  setLiveHTML("activity-sessions", sessionCards(sessions.sessions));
+  setLiveHTML("activity-work", jobCards(work.work));
+  setLiveHTML("activity-scans", jobCards(scans.scans));
+  setLiveHTML("activity-probes", jobCards(probes.probes));
+  setLiveHTML("activity-downloads", downloadCards(downloads.downloads));
+}
+
+async function patchPlaybackLive() {
+  const downloads = await api("/api/downloads");
+  setLiveHTML("playback-downloads", downloadCards(downloads.downloads));
+}
+
+function setLiveHTML(name, html) {
+  const target = document.querySelector(`[data-live="${name}"]`);
+  if (target) target.innerHTML = html;
+}
+
+function setLiveTone(name, tone) {
+  const target = document.querySelector(`[data-live="${name}"]`);
+  if (!target) return;
+  target.classList.toggle("warn", tone === "warn");
+  target.classList.toggle("good", tone === "good");
 }
 
 const liveEventNames = [
