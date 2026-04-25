@@ -1648,6 +1648,7 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 			SubtitleMode:        r.URL.Query().Get("subtitleMode"),
 			SubtitleTrackActive: r.URL.Query().Get("subtitleTrackActive") == "true",
 		}
+		request = applyClientProfile(deps, request)
 		decision := deps.Playback.Decide(r.Context(), request)
 		if request.MediaSourceID != "" {
 			source, ok, err := deps.Catalog.GetMediaSource(r.Context(), request.MediaSourceID)
@@ -1765,7 +1766,21 @@ func playbackDecisionForSource(ctx context.Context, deps Deps, r *http.Request, 
 		SubtitleMode:        r.URL.Query().Get("subtitleMode"),
 		SubtitleTrackActive: r.URL.Query().Get("subtitleTrackActive") == "true",
 	}
+	request = applyClientProfile(deps, request)
 	return deps.Playback.DecideSource(ctx, request, playbackSourceFacts(ctx, deps, request, source))
+}
+
+func applyClientProfile(deps Deps, request playback.Request) playback.Request {
+	profile, ok := deps.Devices.GetProfile(request.ClientProfile)
+	if !ok {
+		return request
+	}
+	request.ClientProfile = profile.ID
+	request.Containers = profile.Containers
+	request.VideoCodecs = profile.VideoCodecs
+	request.AudioCodecs = profile.AudioCodecs
+	request.SubtitleCodecs = profile.SubtitleCodecs
+	return request
 }
 
 func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Request, source catalog.MediaSourceItem) playback.SourceFacts {

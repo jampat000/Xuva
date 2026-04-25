@@ -27,6 +27,10 @@ type Request struct {
 	SubtitleCodec       string `json:"subtitleCodec,omitempty"`
 	SubtitleMode        string `json:"subtitleMode,omitempty"`
 	SubtitleTrackActive bool   `json:"subtitleTrackActive,omitempty"`
+	Containers          []string
+	VideoCodecs         []string
+	AudioCodecs         []string
+	SubtitleCodecs      []string
 }
 
 type SourceFacts struct {
@@ -117,8 +121,8 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.Selected["subtitleCodec"] = source.SubtitleCodec
 		decision.Selected["subtitleTrack"] = fmt.Sprintf("%d", request.SubtitleTrackIndex)
 	}
-	audioAction := audioAction(request.ClientProfile, source.AudioCodec, source.AudioChannels)
-	subtitles := selectedSubtitleAction(request.ClientProfile, source)
+	audioAction := audioAction(request, source.AudioCodec, source.AudioChannels)
+	subtitles := selectedSubtitleAction(request, source)
 	if subtitles == "burn_in" {
 		decision.Mode = SubtitleBurn
 		decision.Reason = "The selected subtitle track is image-based for this client profile, so Vyrden must burn it into the video."
@@ -131,7 +135,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.SuggestedFixes = []string{"Choose a text subtitle track", "Disable subtitles", "Prepare an SRT sidecar"}
 		return decision
 	}
-	if isDirectPlayable(request.ClientProfile, source.Container, source.VideoCodec) {
+	if isDirectPlayable(request, source.Container, source.VideoCodec) {
 		decision.Mode = DirectPlay
 		decision.Reason = "Container and video codec match the selected client profile, so the server can stream the source directly."
 		decision.ContainerAction = "direct"
@@ -148,7 +152,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		return decision
 	}
 
-	if canRemux(request.ClientProfile, source.VideoCodec) {
+	if canRemux(request, source.VideoCodec) {
 		decision.Mode = Remux
 		decision.Reason = "The video codec is compatible, but the container is not ideal for the selected client profile."
 		decision.ContainerAction = "remux"
@@ -173,10 +177,13 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	return decision
 }
 
-func isDirectPlayable(profile string, container string, videoCodec string) bool {
+func isDirectPlayable(request Request, container string, videoCodec string) bool {
 	container = strings.ToLower(container)
 	videoCodec = strings.ToLower(videoCodec)
-	switch profile {
+	if len(request.Containers) > 0 || len(request.VideoCodecs) > 0 {
+		return codecIn(videoCodec, request.VideoCodecs...) && containerIn(container, request.Containers...)
+	}
+	switch request.ClientProfile {
 	case "android-tv":
 		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9") && containerIn(container, "mp4", "matroska", "webm", "mpegts")
 	case "apple-tv":
@@ -186,9 +193,12 @@ func isDirectPlayable(profile string, container string, videoCodec string) bool 
 	}
 }
 
-func canRemux(profile string, videoCodec string) bool {
+func canRemux(request Request, videoCodec string) bool {
 	videoCodec = strings.ToLower(videoCodec)
-	switch profile {
+	if len(request.VideoCodecs) > 0 {
+		return codecIn(videoCodec, request.VideoCodecs...)
+	}
+	switch request.ClientProfile {
 	case "android-tv":
 		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9")
 	case "apple-tv":
@@ -233,29 +243,38 @@ func subtitleAction(count int) string {
 	return "none"
 }
 
-func selectedSubtitleAction(profile string, source SourceFacts) string {
+func selectedSubtitleAction(request Request, source SourceFacts) string {
 	if source.SubtitleActive {
 		codec := strings.ToLower(source.SubtitleCodec)
 		if codec == "" {
 			return "select_or_convert"
 		}
 		if isImageSubtitle(codec) {
-			if profile == "android-tv" || profile == "apple-tv" {
+			if codecIn(codec, request.SubtitleCodecs...) || request.ClientProfile == "android-tv" || request.ClientProfile == "apple-tv" {
 				return "direct_or_burn"
 			}
 			return "burn_in"
+		}
+		if len(request.SubtitleCodecs) > 0 && !codecIn(codec, request.SubtitleCodecs...) {
+			return "convert"
 		}
 		return "direct_or_convert"
 	}
 	return "none"
 }
 
-func audioAction(profile string, codec string, channels int) string {
+func audioAction(request Request, codec string, channels int) string {
 	codec = strings.ToLower(codec)
 	if codec == "" {
 		return "copy_or_transcode"
 	}
-	switch profile {
+	if len(request.AudioCodecs) > 0 {
+		if codecIn(codec, request.AudioCodecs...) && channels <= 8 {
+			return "direct"
+		}
+		return "transcode"
+	}
+	switch request.ClientProfile {
 	case "android-tv":
 		if codecIn(codec, "aac", "ac3", "eac3", "opus", "flac", "dts", "truehd") {
 			return "direct"

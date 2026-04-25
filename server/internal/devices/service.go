@@ -47,6 +47,25 @@ func (s *Service) Profiles() []Profile {
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
 		},
+		{
+			ID:                  "ios",
+			Name:                "iPhone / iPad",
+			Containers:          []string{"mp4", "mov", "m4v"},
+			VideoCodecs:         []string{"h264", "hevc"},
+			AudioCodecs:         []string{"aac", "ac3", "eac3", "alac"},
+			SubtitleCodecs:      []string{"webvtt", "srt"},
+			SupportsHDR:         true,
+			SupportsToneMapping: true,
+		},
+		{
+			ID:             "chromecast",
+			Name:           "Chromecast",
+			Containers:     []string{"mp4", "webm"},
+			VideoCodecs:    []string{"h264", "vp9", "av1"},
+			AudioCodecs:    []string{"aac", "ac3", "eac3", "opus"},
+			SubtitleCodecs: []string{"webvtt", "srt"},
+			SupportsHDR:    true,
+		},
 	}
 }
 
