@@ -990,6 +990,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       gap:18px;
       align-items:start;
       max-width:100%%;
+      overflow:visible;
     }
     .eyebrow {
       color:var(--champagne);
@@ -999,11 +1000,13 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     h1 {
       margin:5px 0 0;
-      max-width:min(1180px, 100%%);
+      max-width:100%%;
       font-size:clamp(30px, 2.55vw, 54px);
       line-height:1.02;
       font-weight:900;
-      text-wrap:balance;
+      white-space:nowrap;
+      overflow:visible;
+      text-wrap:nowrap;
     }
     .meta {
       display:flex;
@@ -1090,7 +1093,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       .title-panel { grid-template-columns:1fr; }
       .control-stack { justify-content:flex-start; }
       .forecast { display:none; }
-      h1 { font-size:clamp(24px, 8vw, 38px); }
+      h1 { font-size:clamp(24px, 8vw, 38px); white-space:normal; text-wrap:balance; }
     }
   </style>
 </head>
@@ -1107,7 +1110,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     <section class="panel title-panel">
       <div>
         <div class="eyebrow">Now playing</div>
-        <h1>%s</h1>
+        <h1 id="playerTitle">%s</h1>
         <div class="meta">
           <span class="chip route" id="decisionMode">Preparing</span>
           <span class="chip" id="progressChip">0:00</span>
@@ -1147,6 +1150,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     const decisionMode = document.getElementById("decisionMode");
     const progressChip = document.getElementById("progressChip");
     const subtitleChip = document.getElementById("subtitleChip");
+    const playerTitle = document.getElementById("playerTitle");
     const forecastMode = document.getElementById("forecastMode");
     const forecastReason = document.getElementById("forecastReason");
     const forecastServer = document.getElementById("forecastServer");
@@ -1165,6 +1169,18 @@ func playerHandler(deps Deps) http.HandlerFunc {
       const minutes = Math.floor((value %% 3600) / 60);
       const seconds = value %% 60;
       return hours ? hours + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") : minutes + ":" + String(seconds).padStart(2, "0");
+    }
+    function fitPlayerTitle() {
+      if (!playerTitle || window.innerWidth <= 900) return;
+      playerTitle.style.fontSize = "";
+      const styles = getComputedStyle(playerTitle);
+      const maxSize = parseFloat(styles.fontSize) || 54;
+      const minSize = 24;
+      let size = maxSize;
+      while (playerTitle.scrollWidth > playerTitle.clientWidth && size > minSize) {
+        size -= 1;
+        playerTitle.style.fontSize = size + "px";
+      }
     }
     function progressBody(status) {
       return { progressSeconds: player.currentTime || 0, durationSeconds: Number.isFinite(player.duration) ? player.duration : 0, status: status || (player.paused ? "paused" : "playing") };
@@ -1290,6 +1306,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     window.addEventListener("pointerdown", event => {
       if (event.target === player || event.target === document.body) showHud();
     });
+    window.addEventListener("resize", fitPlayerTitle);
     setInterval(() => {
       refreshProgress();
       saveProgress();
@@ -1301,6 +1318,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       await resolvePlaybackRoute();
       await loadSubtitles();
       await startSession(mode);
+      fitPlayerTitle();
       refreshProgress();
       showHud(2400);
     })();
