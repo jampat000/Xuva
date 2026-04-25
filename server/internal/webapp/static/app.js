@@ -178,6 +178,7 @@ async function renderDashboard() {
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
           </div>
+          ${dashboardSnapshot({ activeSessions, activeJobs, summary, health, quality, system })}
         </article>
 
         <aside class="panel pad">
@@ -752,6 +753,32 @@ function metric(label, value, note = "") {
 
 function signalPill(label, value) {
   return `<div class="signal-pill"><small>${escapeHTML(label)}</small><b>${escapeHTML(value ?? 0)}</b></div>`;
+}
+
+function dashboardSnapshot({ activeSessions = [], activeJobs = [], summary = {}, health = {}, quality = {}, system = {} }) {
+  const memory = system.memory || {};
+  const process = system.process || {};
+  const disk = (system.disks || [])[0] || {};
+  const serverLoad = Math.max(
+    Number(system.cpu?.percent || 0),
+    Number(memory.usedPercent || 0),
+    process.goSysBytes && memory.totalBytes ? (process.goSysBytes / memory.totalBytes) * 100 : 0
+  );
+  const storageDetail = disk.freeBytes ? `${formatBytes(disk.freeBytes)} free` : "Storage pending";
+  return `<div class="feature-snapshot">
+    ${snapshotTile("Playback", activeSessions.length ? `${activeSessions.length} active` : "Idle", activeSessions.length ? "Live sessions are running now" : "Ready for the next stream", activeSessions.length ? "route" : "good")}
+    ${snapshotTile("Probe Health", `${quality.probedPercent || 0}%`, `${summary.unprobed || 0} files still need probing`, summary.unprobed ? "warn" : "good")}
+    ${snapshotTile("Server Load", `${Math.round(serverLoad || 0)}%`, `${activeJobs.length} background job${activeJobs.length === 1 ? "" : "s"}`, serverLoad > 75 || activeJobs.length ? "warn" : "good")}
+    ${snapshotTile("Storage", disk.usedPercent ? `${Math.round(disk.usedPercent)}% used` : "Ready", storageDetail, disk.usedPercent > 85 ? "warn" : "route")}
+  </div>`;
+}
+
+function snapshotTile(label, value, note, tone = "") {
+  return `<div class="snapshot-tile ${tone}">
+    <span>${escapeHTML(label)}</span>
+    <strong>${escapeHTML(value)}</strong>
+    <small>${escapeHTML(note)}</small>
+  </div>`;
 }
 
 function sourceQuality(items = []) {
