@@ -16,6 +16,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/database"
 	"github.com/vyrdenhq/vyrden/server/internal/devices"
+	"github.com/vyrdenhq/vyrden/server/internal/downloads"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
@@ -242,6 +243,15 @@ func TestPlaybackStateAndSessions(t *testing.T) {
 	if len(active["sessions"].([]any)) != 1 {
 		t.Fatalf("expected one active session, got %#v", active)
 	}
+
+	download := postJSON(t, router, "/api/downloads", map[string]any{"mediaSourceId": sourceID, "targetProfile": "original"})
+	if download["status"] != string(downloads.StatusCompleted) {
+		t.Fatalf("expected original download to complete immediately, got %#v", download)
+	}
+	downloadsPayload := getJSON(t, router, "/api/downloads")
+	if len(downloadsPayload["downloads"].([]any)) != 1 {
+		t.Fatalf("expected one download job, got %#v", downloadsPayload)
+	}
 }
 
 func TestMetadataMatchResolvesReview(t *testing.T) {
@@ -356,6 +366,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Playback:  playback.NewService(),
 		PlayState: playstate.NewService(db, eventBus),
 		Transcode: transcode.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "transcode")),
+		Downloads: downloads.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "downloads")),
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(eventBus),
 	}

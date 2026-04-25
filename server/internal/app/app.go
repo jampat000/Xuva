@@ -149,7 +149,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Subtitles: subtitles.NewService(),
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(bus),
-		Downloads: downloads.NewService(),
+		Downloads: downloads.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, filepath.Join(cfg.DataDir, "downloads")),
 	}, nil
 }
 
@@ -172,6 +172,7 @@ func (a *Application) Router() http.Handler {
 		Playback:  a.Playback,
 		PlayState: a.PlayState,
 		Transcode: a.Transcode,
+		Downloads: a.Downloads,
 		Devices:   a.Devices,
 		Sessions:  a.Sessions,
 	})

@@ -56,12 +56,13 @@ async function render(name) {
 }
 
 async function renderDashboard() {
-  const [summary, libraries, scans, probes, work, recent, sessions, health, versions, sources] = await Promise.all([
+  const [summary, libraries, scans, probes, work, downloads, recent, sessions, health, versions, sources] = await Promise.all([
     api("/api/catalog/summary"),
     api("/api/libraries"),
     api("/api/scans"),
     api("/api/probes"),
     api("/api/work"),
+    api("/api/downloads"),
     api("/api/playback/recent"),
     api("/api/sessions"),
     api("/api/catalog/health"),
@@ -79,9 +80,10 @@ async function renderDashboard() {
   const scanJobs = scans.scans || [];
   const probeJobs = probes.probes || [];
   const workJobs = work.work || [];
+  const downloadJobs = downloads.downloads || [];
   const mediaSources = sources.mediaSources || [];
   const quality = sourceQuality(mediaSources);
-  const activeJobs = [...scanJobs, ...probeJobs, ...workJobs].filter(isActiveJob);
+  const activeJobs = [...scanJobs, ...probeJobs, ...workJobs, ...downloadJobs].filter(isActiveJob);
   view.innerHTML = `
     <div class="dashboard stack">
       <section class="hero">
@@ -126,7 +128,7 @@ async function renderDashboard() {
         </div>
         <div class="panel pad">
           <div class="panel-title"><strong>Operations</strong><span class="badge ${activeJobs.length ? "warn" : "good"}">${activeJobs.length ? `${activeJobs.length} running` : "Clear"}</span></div>
-          ${operationsPanel(scanJobs, probeJobs, workJobs)}
+          ${operationsPanel(scanJobs, probeJobs, workJobs, downloadJobs)}
         </div>
         <div class="panel pad">
           <div class="panel-title"><strong>Needs Attention</strong><button onclick="navigate('health')">Review</button></div>
@@ -155,7 +157,7 @@ async function renderDashboard() {
 
       <section class="dashboard-grid">
         <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions, totalTitles)}</div>
-        <div class="panel pad"><div class="panel-title"><strong>Live Signals</strong><span class="live-stamp">Updated ${new Date().toLocaleTimeString()}</span></div><div class="signal-stack">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Review", reviewCount)}</div></div>
+        <div class="panel pad"><div class="panel-title"><strong>Live Signals</strong><span class="live-stamp">Updated ${new Date().toLocaleTimeString()}</span></div><div class="signal-stack">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Downloads", downloadJobs.length)}${signalPill("Review", reviewCount)}</div></div>
       </section>
     </div>`;
 }
@@ -461,10 +463,11 @@ async function renderHealth() {
 }
 
 async function renderPlaybackLab() {
-  const [payload, profiles] = await Promise.all([api("/api/media-sources?limit=200"), api("/api/devices/profiles")]);
+  const [payload, profiles, downloads] = await Promise.all([api("/api/media-sources?limit=200"), api("/api/devices/profiles"), api("/api/downloads")]);
   view.innerHTML = `<div class="stack">
     <div class="card"><h2>Client Profiles</h2>${profileCards(profiles.profiles)}</div>
     <div class="card"><h2>Playback Lab</h2>${playbackCards(payload.mediaSources)}</div>
+    <div class="card"><h2>Offline Downloads</h2>${downloadCards(downloads.downloads)}</div>
   </div>`;
 }
 
@@ -520,6 +523,11 @@ async function markWatched(mediaSourceId, watched) {
 async function startWork(mediaSourceId, mode) {
   await send("/api/work", { mediaSourceId, mode });
   navigate("activity");
+}
+
+async function startDownload(mediaSourceId, targetProfile) {
+  await send("/api/downloads", { mediaSourceId, targetProfile });
+  navigate("playback");
 }
 
 async function startScan(path) {
@@ -671,8 +679,8 @@ function qualityTile(label, value, note) {
   return `<div class="quality-tile"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value ?? 0)}</strong><small>${escapeHTML(note || "")}</small></div>`;
 }
 
-function operationsPanel(scans = [], probes = [], work = []) {
-  const active = [...scans, ...probes, ...work].filter(isActiveJob);
+function operationsPanel(scans = [], probes = [], work = [], downloads = []) {
+  const active = [...scans, ...probes, ...work, ...downloads].filter(isActiveJob);
   if (!active.length) {
     return `<div class="ops-clear"><strong>Background queues clear</strong><span>Scanning, probing, remuxing, and transcoding are not competing with playback.</span></div>`;
   }
@@ -780,7 +788,19 @@ function playbackCards(items = []) {
       <a class="button" href="/api/playback/decision?mediaSourceId=${item.id}&clientProfile=web" target="_blank">Decision</a>
       <button onclick="startWork('${item.id}','remux')">Remux</button>
       <button onclick="startWork('${item.id}','transcode')">Transcode</button>
+      <button onclick="startDownload('${item.id}','balanced')">Download</button>
       <a class="button primary" href="/play/${item.id}" target="_blank">Play</a>
+    </div>
+  </article>`).join("")}</div>`;
+}
+
+function downloadCards(items = []) {
+  if (!items.length) return empty("No prepared downloads yet. Start one from a media source in Playback Lab.");
+  return `<div class="version-grid">${items.map(item => `<article class="version-card">
+    <div><strong>${escapeHTML(item.targetProfile)}</strong><small>${escapeHTML(item.status)} - ${escapeHTML(item.mediaSourceId)}</small></div>
+    <div class="inline-actions">
+      ${item.status === "completed" ? `<a class="button primary" href="/api/downloads/${item.id}/file" target="_blank">Save File</a>` : ""}
+      <a class="button" href="/api/downloads/${item.id}" target="_blank">Details</a>
     </div>
   </article>`).join("")}</div>`;
 }
@@ -819,7 +839,7 @@ function refreshLiveViews() {
 }
 
 const events = new EventSource("/api/events");
-for (const name of ["scan.queued", "scan.running", "scan.completed", "scan.failed", "probe.queued", "probe.running", "probe.completed", "probe.failed", "transcode.queued", "transcode.running", "transcode.completed", "transcode.failed", "session.started", "session.updated", "session.stopped", "playback.state.updated", "metadata.updated"]) {
+for (const name of ["scan.queued", "scan.running", "scan.completed", "scan.failed", "probe.queued", "probe.running", "probe.completed", "probe.failed", "transcode.queued", "transcode.running", "transcode.completed", "transcode.failed", "download.queued", "download.running", "download.completed", "download.failed", "session.started", "session.updated", "session.stopped", "playback.state.updated", "metadata.updated"]) {
   events.addEventListener(name, () => {
     refreshLiveViews();
   });

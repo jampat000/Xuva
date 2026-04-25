@@ -9,12 +9,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/devices"
+	"github.com/vyrdenhq/vyrden/server/internal/downloads"
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
@@ -52,6 +54,7 @@ type Deps struct {
 	Playback  *playback.Service
 	PlayState *playstate.Service
 	Transcode *transcode.Service
+	Downloads *downloads.Service
 	Devices   *devices.Service
 	Sessions  *sessions.Service
 }
@@ -91,6 +94,10 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/probes", probeStartHandler(deps))
 	mux.HandleFunc("GET /api/work", workHandler(deps))
 	mux.HandleFunc("POST /api/work", workStartHandler(deps))
+	mux.HandleFunc("GET /api/downloads", downloadsHandler(deps))
+	mux.HandleFunc("POST /api/downloads", downloadStartHandler(deps))
+	mux.HandleFunc("GET /api/downloads/{id}", downloadJobHandler(deps))
+	mux.HandleFunc("GET /api/downloads/{id}/file", downloadFileHandler(deps))
 	mux.HandleFunc("GET /api/devices/profiles", deviceProfilesHandler(deps))
 	mux.HandleFunc("GET /api/sessions", sessionsHandler(deps))
 	mux.HandleFunc("POST /api/sessions", sessionStartHandler(deps))
@@ -704,6 +711,67 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
+func downloadsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"downloads": deps.Downloads.List()})
+	}
+}
+
+func downloadJobHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Downloads.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "download job not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, job)
+	}
+}
+
+func downloadStartHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request downloads.Request
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		if request.MediaSourceID != "" && request.SourcePath == "" {
+			source, ok, err := deps.Catalog.GetMediaSource(r.Context(), request.MediaSourceID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "media source lookup failed")
+				return
+			}
+			if !ok {
+				writeError(w, http.StatusNotFound, "media source not found")
+				return
+			}
+			request.SourcePath = source.Path
+			request.SourceName = source.Name
+		}
+		job, err := deps.Downloads.Start(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
+func downloadFileHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Downloads.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "download job not found")
+			return
+		}
+		if job.Status != downloads.StatusCompleted {
+			writeError(w, http.StatusConflict, "download is not ready")
+			return
+		}
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(job.OutputPath)))
+		http.ServeFile(w, r, job.OutputPath)
 	}
 }
 
