@@ -1,5 +1,4 @@
-const densityOptions = new Set(["compact", "balanced", "cinematic"]);
-const state = { activeView: "dashboard", activeSession: "", density: readDensity() };
+const state = { activeView: "dashboard", activeSession: "" };
 
 const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
@@ -9,12 +8,6 @@ const serverDot = document.getElementById("serverDot");
 document.querySelectorAll(".nav-item").forEach(button => {
   button.addEventListener("click", () => navigate(button.dataset.view));
 });
-
-document.querySelectorAll(".density-option").forEach(button => {
-  button.addEventListener("click", () => setDensity(button.dataset.density));
-});
-
-setDensity(state.density, false);
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -42,23 +35,6 @@ async function navigate(name) {
 
 function title(name) {
   return { dashboard: "Home", movies: "Movies", tv: "TV", libraries: "Libraries", activity: "Activity", health: "Review", playback: "Playback Lab", remote: "Remote Access", settings: "Settings" }[name] || name;
-}
-
-function readDensity() {
-  const saved = localStorage.getItem("vyrden:density");
-  return densityOptions.has(saved) ? saved : "balanced";
-}
-
-function setDensity(value, persist = true) {
-  const density = densityOptions.has(value) ? value : "balanced";
-  state.density = density;
-  document.body.dataset.density = density;
-  document.querySelectorAll(".density-option").forEach(button => {
-    const active = button.dataset.density === density;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
-  if (persist) localStorage.setItem("vyrden:density", density);
 }
 
 async function refreshShell() {
@@ -142,20 +118,28 @@ async function renderDashboard() {
         ${metric("Need Review", reviewCount, reviewCount ? "Metadata or match work" : "No review blockers")}
       </section>
 
-      <section class="dashboard-grid">
-        <div class="panel pad">
-          <div class="panel-title"><strong>Continue Watching</strong><button onclick="navigate('activity')">All activity</button></div>
-          ${mediaCards(recent.recent)}
+      <section class="shelf-section">
+        <div class="shelf-head">
+          <div>
+            <div class="section-title">Continue Watching</div>
+            <p>Ordered by local activity, not outside recommendations.</p>
+          </div>
+          <button onclick="navigate('activity')">All activity</button>
         </div>
+        ${mediaCards(recent.recent)}
+      </section>
+
+      <section class="dashboard-grid">
         <div class="panel pad">
           <div class="panel-title"><strong>Library Storage</strong><button onclick="navigate('libraries')">Manage</button></div>
           ${libraryCards(libraries.libraries)}
         </div>
+        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div>${jobCards(scans.scans)}</div>
       </section>
 
       <section class="dashboard-grid">
-        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div>${jobCards(scans.scans)}</div>
         <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions, totalTitles)}</div>
+        <div class="panel pad"><div class="panel-title"><strong>Server Signals</strong><button onclick="navigate('playback')">Playback</button></div><div class="signal-stack">${signalPill("Sources", summary.mediaSources || 0)}${signalPill("Libraries", summary.libraries || 0)}${signalPill("Unprobed", summary.unprobed || 0)}</div></div>
       </section>
     </div>`;
 }
@@ -584,8 +568,21 @@ function formatBytes(value) {
 }
 
 function mediaCards(items = []) {
-  if (!items.length) return empty("Nothing to resume yet. Playback history will appear here after the first session.");
-  return `<div class="mini-list">${items.slice(0, 6).map(item => `<a href="/play/${item.mediaSourceId}" target="_blank"><strong>${escapeHTML(item.name)}</strong><span>${Math.round((item.percent || 0) * 100)}% watched - ${escapeHTML(item.kind)}</span><i style="--progress:${Math.max(4, Math.round((item.percent || 0) * 100))}%"></i></a>`).join("")}</div>`;
+  if (!items.length) {
+    return `<div class="poster-shelf">${["Movies", "TV Shows", "4K Sources", "Direct Play", "New Scans", "Review Queue"].map((label, index) => shelfPoster(label, index)).join("")}</div>`;
+  }
+  return `<div class="poster-shelf">${items.slice(0, 6).map((item, index) => `<a class="shelf-poster" href="/play/${item.mediaSourceId}" target="_blank" data-initial="${escapeAttr(initials(item.name))}" style="--tone:${index % 6}">
+    <strong>${escapeHTML(item.name)}</strong>
+    <span>${Math.round((item.percent || 0) * 100)}% watched - ${escapeHTML(item.kind)}</span>
+    <i style="--progress:${Math.max(4, Math.round((item.percent || 0) * 100))}%"></i>
+  </a>`).join("")}</div>`;
+}
+
+function shelfPoster(label, index) {
+  return `<button class="shelf-poster" type="button" onclick="navigate('${index < 1 ? "movies" : index < 2 ? "tv" : "playback"}')" data-initial="${escapeAttr(initials(label))}" style="--tone:${index}">
+    <strong>${escapeHTML(label)}</strong>
+    <span>${index < 2 ? "Browse library" : "Open signal"}</span>
+  </button>`;
 }
 
 function reviewCards(items = []) {

@@ -16,53 +16,19 @@
   --green: #8abf8f;
   --shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
   --sidebar-width: 186px;
-  --main-x: 34px;
-  --main-y: 26px;
+  --main-x: 42px;
+  --main-y: 30px;
   --shell-gap: 18px;
   --panel-pad: 17px;
-  --hero-min: 346px;
-  --hero-pad-x: 36px;
-  --hero-pad-y: 38px;
-  --hero-side: 306px;
+  --hero-min: 430px;
+  --hero-pad-x: 46px;
+  --hero-pad-y: 44px;
+  --hero-side: 380px;
   --poster-min: 184px;
   --poster-height: 292px;
   --control-height: 44px;
   --button-height: 46px;
   --density-scale: 1;
-}
-
-body[data-density="compact"] {
-  --sidebar-width: 186px;
-  --main-x: 24px;
-  --main-y: 20px;
-  --shell-gap: 14px;
-  --panel-pad: 14px;
-  --hero-min: 300px;
-  --hero-pad-x: 30px;
-  --hero-pad-y: 30px;
-  --hero-side: 286px;
-  --poster-min: 154px;
-  --poster-height: 246px;
-  --control-height: 38px;
-  --button-height: 40px;
-  --density-scale: 0.92;
-}
-
-body[data-density="cinematic"] {
-  --sidebar-width: 206px;
-  --main-x: 46px;
-  --main-y: 32px;
-  --shell-gap: 22px;
-  --panel-pad: 20px;
-  --hero-min: 410px;
-  --hero-pad-x: 46px;
-  --hero-pad-y: 46px;
-  --hero-side: 336px;
-  --poster-min: 216px;
-  --poster-height: 340px;
-  --control-height: 48px;
-  --button-height: 50px;
-  --density-scale: 1.08;
 }
 
 * { box-sizing: border-box; }
@@ -91,7 +57,7 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
-  padding: calc(var(--main-y) - 2px) 14px;
+  padding: 26px 14px;
   background: rgba(7, 7, 7, 0.78);
   border-right: 1px solid rgba(244, 239, 228, 0.08);
   backdrop-filter: blur(22px);
@@ -101,7 +67,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 34px;
+  margin-bottom: 36px;
 }
 .mark {
   display: grid;
@@ -128,11 +94,11 @@ body {
 
 .nav-group {
   display: grid;
-  gap: calc(8px * var(--density-scale));
-  margin-top: 18px;
+  gap: 9px;
+  margin-top: 16px;
 }
 .nav-label {
-  margin: 22px 10px 8px;
+  margin: 24px 8px 8px;
   color: var(--quiet);
   font-size: 11px;
   font-weight: 800;
@@ -142,7 +108,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: var(--control-height);
+  min-height: 42px;
   width: 100%;
   padding: 0 12px;
   border: 1px solid transparent;
@@ -163,8 +129,8 @@ body {
 }
 .nav-item::before {
   content: "";
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 99px;
   background: currentColor;
   opacity: 0.55;
@@ -193,7 +159,7 @@ body {
   justify-content: space-between;
   gap: calc(20px * var(--density-scale));
   min-height: var(--button-height);
-  margin-bottom: calc(22px * var(--density-scale));
+  margin-bottom: 28px;
 }
 .search,
 .library-form input,
@@ -215,31 +181,6 @@ body {
   color: var(--soft);
   font-size: 13px;
   font-weight: 720;
-}
-.density-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid rgba(244, 239, 228, 0.1);
-  border-radius: 999px;
-  background: rgba(244, 239, 228, 0.045);
-}
-.density-option {
-  width: 28px;
-  min-width: 28px;
-  min-height: 26px;
-  padding: 0;
-  border-radius: 999px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--quiet);
-  font-size: 11px;
-}
-.density-option.active {
-  border-color: rgba(216, 179, 106, 0.34);
-  background: rgba(216, 179, 106, 0.14);
-  color: var(--text);
 }
 #serverDot {
   display: inline-block;
@@ -300,6 +241,8 @@ body {
 .feature,
 .panel,
 .card,
+.shelf-section,
+.poster-shelf,
 .main {
   min-width: 0;
 }
@@ -336,7 +279,7 @@ body {
 h1 {
   margin: 0;
   max-width: 900px;
-  font-size: clamp(calc(42px * var(--density-scale)), 4.3vw, calc(62px * var(--density-scale)));
+  font-size: clamp(58px, 4.6vw, 78px);
   line-height: 1.01;
   letter-spacing: 0;
   overflow-wrap: anywhere;
@@ -349,10 +292,10 @@ h2 {
   text-transform: uppercase;
 }
 .lead {
-  max-width: 620px;
+  max-width: 780px;
   margin: 18px 0 0;
   color: var(--soft);
-  font-size: calc(17px * var(--density-scale));
+  font-size: 18px;
   line-height: 1.55;
 }
 .meta-line {
@@ -834,6 +777,72 @@ a:focus-visible {
 .remote-options,
 .settings-grid,
 .library-grid { display: grid; gap: 10px; }
+.poster-shelf {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(170px, 1fr));
+  gap: 16px;
+}
+.shelf-poster {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid rgba(244, 239, 228, 0.1);
+  border-radius: 8px;
+  background:
+    linear-gradient(140deg, transparent 0 48%, rgba(216,179,106,0.16) 48% 49%, transparent 49%),
+    radial-gradient(circle at 56% 18%, rgba(143,166,179,0.2), transparent 36%),
+    linear-gradient(180deg, #252b2b 0%, #111312 56%, #211d14 100%);
+  box-shadow: 0 20px 56px rgba(0,0,0,0.36);
+  text-align: left;
+}
+.shelf-poster::before {
+  content: attr(data-initial);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(244, 239, 228, 0.16);
+  font-size: 68px;
+  font-weight: 900;
+}
+.shelf-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(7,7,7,0.02), rgba(7,7,7,0.5) 62%, rgba(7,7,7,0.92));
+}
+.shelf-poster strong,
+.shelf-poster span,
+.shelf-poster i {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+.shelf-poster strong {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.08;
+}
+.shelf-poster span {
+  margin-top: 7px;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+.shelf-poster i {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 12px;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--champagne) var(--progress), rgba(244,239,228,0.12) var(--progress));
+}
 .mini-list a,
 .library-card,
 .version-card,
@@ -1057,7 +1066,9 @@ pre {
   .grid.two,
   .grid.three,
   .track-grid,
-  .version-grid { grid-template-columns: 1fr; }
+  .version-grid,
+  .poster-shelf { grid-template-columns: 1fr; }
+  .shelf-poster { min-height: 300px; }
   .poster-grid { grid-template-columns: repeat(auto-fill, minmax(var(--poster-min), 1fr)); }
   .poster-card,
   .poster-action { min-height: var(--poster-height); }
