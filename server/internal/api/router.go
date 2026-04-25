@@ -759,6 +759,17 @@ func playerHandler(deps Deps) http.HandlerFunc {
       justify-content:space-between;
       gap:16px;
       pointer-events:none;
+      transition:opacity .16s ease, transform .16s ease;
+    }
+    .hud-toggle {
+      position:fixed;
+      z-index:6;
+      right:clamp(18px, 2vw, 34px);
+      bottom:clamp(18px, 2vw, 34px);
+      opacity:0;
+      transform:translateY(8px);
+      transition:opacity .16s ease, transform .16s ease;
+      pointer-events:none;
     }
     .brand, .status-pill {
       display:inline-flex;
@@ -785,35 +796,41 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .overlay {
       position:fixed;
       z-index:4;
-      left:22px;
-      right:22px;
-      bottom:22px;
+      left:clamp(18px, 2vw, 34px);
+      right:clamp(18px, 2vw, 34px);
+      bottom:clamp(18px, 2vw, 34px);
       display:grid;
-      grid-template-columns:minmax(340px, .82fr) minmax(280px, .34fr);
-      gap:16px;
+      grid-template-columns:minmax(0, 1fr) clamp(360px, 28vw, 560px);
+      gap:clamp(14px, 1.2vw, 22px);
       align-items:end;
       pointer-events:none;
       transition:opacity .18s ease, transform .18s ease;
     }
-    body.is-idle .overlay, body.is-idle .topbar { opacity:0; transform:translateY(10px); }
-    body:hover .overlay, body:hover .topbar, body:focus-within .overlay, body:focus-within .topbar {
+    body.is-idle .overlay, body.is-idle .topbar {
+      opacity:0;
+      transform:translateY(10px);
+      pointer-events:none;
+    }
+    body.is-idle .hud-toggle {
       opacity:1;
       transform:none;
+      pointer-events:auto;
     }
     .panel {
       border:1px solid var(--line);
       border-radius:12px;
       background:var(--panel);
       backdrop-filter:blur(22px);
-      padding:18px;
+      padding:clamp(16px, 1.4vw, 24px);
       box-shadow:var(--shadow);
       min-width:0;
     }
     .title-panel {
       display:grid;
-      grid-template-columns:minmax(0,1fr) auto;
-      gap:14px 22px;
-      align-items:end;
+      grid-template-columns:minmax(0,1fr);
+      gap:18px;
+      align-items:start;
+      max-width:100%%;
     }
     .eyebrow {
       color:var(--champagne);
@@ -823,8 +840,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     h1 {
       margin:5px 0 0;
-      max-width:100%%;
-      font-size:clamp(30px, 3vw, 56px);
+      max-width:min(1180px, 100%%);
+      font-size:clamp(30px, 2.55vw, 54px);
       line-height:1.02;
       font-weight:900;
       text-wrap:balance;
@@ -853,10 +870,11 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .chip.warn { color:var(--warn); border-color:rgba(224,184,110,.3); background:rgba(224,184,110,.08); }
     .control-stack {
       display:flex;
-      justify-content:flex-end;
+      justify-content:flex-start;
       align-items:center;
       gap:10px;
       flex-wrap:wrap;
+      padding-top:2px;
     }
     button, a.button {
       pointer-events:auto;
@@ -878,6 +896,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
       display:grid;
       gap:10px;
       align-self:stretch;
+      min-height:100%%;
+      align-content:start;
     }
     .forecast h2 {
       margin:0;
@@ -921,6 +941,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       <div class="brand"><b>V</b> Vyrden Player</div>
       <div class="status-pill" id="sessionState">Starting</div>
     </div>
+    <button class="hud-toggle" id="hudToggle" type="button">Controls</button>
     <video id="player" src="/api/media-sources/%s/stream" controls autoplay></video>
   </div>
   <div class="overlay">
@@ -963,12 +984,14 @@ func playerHandler(deps Deps) http.HandlerFunc {
     const playToggle = document.getElementById("playToggle");
     const restartButton = document.getElementById("restartButton");
     const markButton = document.getElementById("markButton");
+    const hudToggle = document.getElementById("hudToggle");
     const decisionMode = document.getElementById("decisionMode");
     const progressChip = document.getElementById("progressChip");
     const subtitleChip = document.getElementById("subtitleChip");
     const forecastMode = document.getElementById("forecastMode");
     const forecastReason = document.getElementById("forecastReason");
     const forecastServer = document.getElementById("forecastServer");
+    let idleTimer = 0;
 
     async function send(path, body, method = "POST", keepalive = false) {
       const response = await fetch(path, { method, keepalive, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -1052,16 +1075,31 @@ func playerHandler(deps Deps) http.HandlerFunc {
       playToggle.textContent = player.paused ? "Play" : "Pause";
       sessionState.textContent = player.paused ? "Paused" : "Playing";
     }
+    function showHud(timeout = 2600) {
+      lastMouseMove = Date.now();
+      document.body.classList.remove("is-idle");
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!document.activeElement || document.activeElement === document.body || document.activeElement === player) {
+          document.body.classList.add("is-idle");
+        }
+      }, timeout);
+    }
+    function hideHudSoon() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => document.body.classList.add("is-idle"), 900);
+    }
     playToggle.addEventListener("click", () => player.paused ? player.play() : player.pause());
     restartButton.addEventListener("click", () => { player.currentTime = 0; player.play(); saveProgress("playing"); });
     markButton.addEventListener("click", async () => {
       await send("/api/playback/state/" + mediaSourceId, { watched: true, progressSeconds: player.duration || player.currentTime || 0, durationSeconds: player.duration || 0 }, "PUT");
       markButton.textContent = "Marked";
     });
+    hudToggle.addEventListener("click", () => showHud(4200));
     player.addEventListener("timeupdate", refreshProgress);
     player.addEventListener("loadedmetadata", refreshProgress);
-    player.addEventListener("play", () => { refreshProgress(); saveProgress("playing"); });
-    player.addEventListener("pause", () => { refreshProgress(); saveProgress("paused"); });
+    player.addEventListener("play", () => { refreshProgress(); saveProgress("playing"); hideHudSoon(); });
+    player.addEventListener("pause", () => { refreshProgress(); saveProgress("paused"); showHud(4200); });
     player.addEventListener("ended", () => stopSession("completed"));
     window.addEventListener("keydown", event => {
       if (event.target && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
@@ -1070,13 +1108,14 @@ func playerHandler(deps Deps) http.HandlerFunc {
       if (event.code === "ArrowLeft") player.currentTime = Math.max(0, (player.currentTime || 0) - 10);
     });
     window.addEventListener("mousemove", () => {
-      lastMouseMove = Date.now();
-      document.body.classList.remove("is-idle");
+      showHud();
+    });
+    window.addEventListener("pointerdown", event => {
+      if (event.target === player || event.target === document.body) showHud();
     });
     setInterval(() => {
       refreshProgress();
       saveProgress();
-      document.body.classList.toggle("is-idle", Date.now() - lastMouseMove > 3500 && !player.paused);
     }, 10000);
     window.addEventListener("beforeunload", () => { stopSession("stopped"); });
     (async function boot() {
@@ -1085,6 +1124,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       await loadSubtitles();
       await startSession(mode);
       refreshProgress();
+      showHud(2400);
     })();
   </script>
 </body>
