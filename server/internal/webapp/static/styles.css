@@ -85,11 +85,11 @@ body {
 
 .nav-group {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   margin-top: 10px;
 }
 .nav-label {
-  margin: 24px 8px 8px;
+  margin: 24px 12px 8px;
   color: var(--quiet);
   font-size: 10px;
   font-weight: 800;
@@ -98,9 +98,10 @@ body {
 }
 .nav-item {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  column-gap: 12px;
   min-height: 46px;
   width: 100%;
   padding: 0 12px;
@@ -118,9 +119,9 @@ body {
   content: "";
   position: absolute;
   left: -18px;
-  top: 9px;
+  top: 8px;
   width: 3px;
-  height: 28px;
+  height: 30px;
   border-radius: 0 99px 99px 0;
   background: transparent;
 }
@@ -144,7 +145,6 @@ body {
 .nav-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 auto;
   width: 32px;
   height: 32px;
   border: 1px solid rgba(244, 239, 228, 0.095);
@@ -171,6 +171,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  justify-self: start;
 }
 .nav-footer {
   margin-top: auto;
@@ -966,7 +967,9 @@ pre {
   .nav-footer { display: none; }
   .nav { align-items: center; padding-inline: 14px; }
   .nav-item {
-    justify-content: center;
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: center;
     width: 54px;
     padding: 0;
   }
@@ -1006,6 +1009,7 @@ pre {
   .nav-item {
     flex: 0 0 auto;
     width: auto;
+    grid-template-columns: 30px minmax(0, 1fr);
     padding: 0 11px;
   }
   .nav-icon {
