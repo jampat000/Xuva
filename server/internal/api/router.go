@@ -86,6 +86,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/subtitles/{index}", mediaSourceSubtitleStreamHandler(deps))
 	mux.HandleFunc("POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
@@ -460,6 +461,21 @@ func mediaSourceDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, item)
+	}
+}
+
+func mediaSourceTracksHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tracks, ok, err := deps.Catalog.GetMediaSourceTracks(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source tracks failed")
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusOK, catalog.MediaSourceTracks{})
+			return
+		}
+		writeJSON(w, http.StatusOK, tracks)
 	}
 }
 

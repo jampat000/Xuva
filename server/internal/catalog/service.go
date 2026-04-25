@@ -15,6 +15,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
+	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
@@ -156,6 +157,11 @@ type MediaSourceItem struct {
 	Height          int     `json:"height,omitempty"`
 	AudioStreams    int     `json:"audioStreams,omitempty"`
 	SubtitleStreams int     `json:"subtitleStreams,omitempty"`
+}
+
+type MediaSourceTracks struct {
+	AudioTracks    []probe.Track `json:"audioTracks"`
+	SubtitleTracks []probe.Track `json:"subtitleTracks"`
 }
 
 type ProbeResult struct {
@@ -643,6 +649,22 @@ func (s *Service) GetMediaSource(ctx context.Context, id string) (MediaSourceIte
 		return MediaSourceItem{}, false, nil
 	}
 	return items[0], true, nil
+}
+
+func (s *Service) GetMediaSourceTracks(ctx context.Context, id string) (MediaSourceTracks, bool, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, "SELECT raw_json FROM media_probes WHERE media_source_id = ?", id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MediaSourceTracks{}, false, nil
+	}
+	if err != nil {
+		return MediaSourceTracks{}, false, err
+	}
+	result, err := probe.Parse([]byte(raw))
+	if err != nil {
+		return MediaSourceTracks{}, false, err
+	}
+	return MediaSourceTracks{AudioTracks: result.AudioTracks, SubtitleTracks: result.SubtitleTracks}, true, nil
 }
 
 func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result ProbeResult) error {

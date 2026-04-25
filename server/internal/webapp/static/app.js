@@ -198,6 +198,7 @@ async function showMovie(id) {
     return versionCard(version, state, index === 0);
   }));
   const selected = movie.versions[0];
+  const tracks = selected ? await api(`/api/media-sources/${selected.mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })) : { audioTracks: [], subtitleTracks: [] };
   viewTitle.textContent = movie.title;
   view.innerHTML = `
     <div class="detail-command">
@@ -234,8 +235,8 @@ async function showMovie(id) {
             <div class="section-note">Selected tracks affect compatibility</div>
           </div>
           <div class="track-grid">
-            <div class="track-panel"><strong>Audio</strong>${trackRow("English - source audio", "Original", true)}${trackRow("Compatible fallback", "Compatible", false)}${trackRow("Commentary", "Stereo", false)}</div>
-            <div class="track-panel"><strong>Subtitles</strong>${trackRow("English - SRT", "Direct", true)}${trackRow("English forced", "Direct", false)}${trackRow("Image subtitles", "May burn in", false)}</div>
+            <div class="track-panel"><strong>Audio</strong>${audioTrackRows(tracks.audioTracks)}</div>
+            <div class="track-panel"><strong>Subtitles</strong>${subtitleTrackRows(tracks.subtitleTracks)}</div>
           </div>
         </section>
       </section>
@@ -288,6 +289,32 @@ function versionCard(version, state, selected) {
 
 function trackRow(label, meta, selected) {
   return `<div class="track-row ${selected ? "selected" : ""}"><span>${escapeHTML(label)}</span><em>${escapeHTML(meta)}</em></div>`;
+}
+
+function audioTrackRows(items = []) {
+  if (!items.length) return trackRow("Probe required", "No audio track data yet", true);
+  return items.map((item, index) => {
+    const label = `${trackLanguage(item)} - ${String(item.codec || "audio").toUpperCase()}${item.channels ? ` ${item.channels}ch` : ""}`;
+    const meta = item.default ? "Default" : index === 0 ? "Primary" : "Selectable";
+    return trackRow(label, meta, index === 0 || item.default);
+  }).join("");
+}
+
+function subtitleTrackRows(items = []) {
+  if (!items.length) return trackRow("No embedded subtitles", "Sidecars checked separately", true);
+  return items.map((item, index) => {
+    const label = `${trackLanguage(item)} - ${String(item.codec || "subtitle").toUpperCase()}${item.forced ? " forced" : ""}`;
+    const meta = imageSubtitle(item.codec) ? "May burn in" : "Direct/convert";
+    return trackRow(label, meta, index === 0 || item.default);
+  }).join("");
+}
+
+function trackLanguage(item = {}) {
+  return item.language && item.language !== "und" ? item.language.toUpperCase() : "Unknown";
+}
+
+function imageSubtitle(codec = "") {
+  return ["hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "pgs"].includes(String(codec).toLowerCase());
 }
 
 async function renderTV() {
