@@ -212,8 +212,9 @@ async function showMovie(id) {
           <span class="badge">${movie.versionCount} version${movie.versionCount === 1 ? "" : "s"}</span>
           <span class="badge ${movie.needsReview ? "warn" : "good"}">${movie.needsReview ? "Needs Review" : "Matched"}</span>
           <span class="badge route">${selected ? "Direct Play Candidate" : "No Source"}</span>
+          ${metadataBadges(movie.metadata)}
         </div>
-        <p class="lead">${movie.needsReview ? "This item needs metadata review before Vyrden can fully trust its match." : "Choose a version, confirm the playback route, then play directly from your local library. The selected source stays explicit so users understand quality, route, and server impact before pressing play."}</p>
+        <p class="lead">${movieOverview(movie)}</p>
         ${selected ? `<div class="source-strip"><div><span>Selected source</span><strong>${escapeHTML(selected.qualityLabel || "Original source")}</strong></div><div><span>File size</span><strong>${formatBytes(selected.sizeBytes)}</strong></div><div><span>Container</span><strong>${escapeHTML((selected.relPath || "").split(".").pop() || "media")}</strong></div></div>` : ""}
         <div class="actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
@@ -260,6 +261,15 @@ async function showMovie(id) {
             ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','balanced')"><span>Balanced</span><span>1080p prepared</span></button>` : ""}
             ${selected ? `<button class="download-option" onclick="startDownload('${selected.mediaSourceId}','travel')"><span>Travel</span><span>720p small</span></button>` : ""}
             ${movie.needsReview ? `<button onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
+          </div>
+        </section>
+        <section class="panel pad">
+          <div class="panel-title"><strong>Metadata Source</strong><span class="badge route">${escapeHTML(providerLabel(movie.metadata?.provider || "pending"))}</span></div>
+          <div class="decision"><strong>${escapeHTML(movie.metadata?.title || movie.title)}</strong><span>${metadataSummary(movie.metadata)}</span></div>
+          <div class="kv">
+            <div><span>Provider</span><span>${escapeHTML(providerLabel(movie.metadata?.provider || "none"))}</span></div>
+            <div><span>Confidence</span><span>${metadataConfidenceLabel(movie.metadata)}</span></div>
+            <div><span>External ID</span><span>${escapeHTML(movie.metadata?.externalId || "Local only")}</span></div>
           </div>
         </section>
         <section class="panel pad">
@@ -731,6 +741,43 @@ function attentionPanel(summary, health, versions = []) {
     <span>${escapeHTML(item.label)}</span>
     <strong>${escapeHTML(item.value)}</strong>
   </div>`).join("")}</div>`;
+}
+
+function movieOverview(movie = {}) {
+  if (movie.metadata?.overview) return escapeHTML(movie.metadata.overview);
+  if (movie.needsReview) return "This item needs metadata review before Vyrden can fully trust its match.";
+  return "Choose a version, confirm the playback route, then play directly from your local library. The selected source stays explicit so users understand quality, route, and server impact before pressing play.";
+}
+
+function metadataBadges(metadata) {
+  if (!metadata) return `<span class="badge warn">Metadata pending</span>`;
+  return `<span class="badge route">Metadata: ${escapeHTML(providerLabel(metadata.provider))}</span><span class="badge">${metadataConfidenceLabel(metadata)}</span>`;
+}
+
+function metadataSummary(metadata) {
+  if (!metadata) return "No metadata record has been selected yet. Filename matching will populate the first local record after scan.";
+  const source = providerLabel(metadata.provider);
+  const confidence = metadataConfidenceLabel(metadata);
+  return `${source} is currently selected with ${confidence.toLowerCase()}.`;
+}
+
+function metadataConfidenceLabel(metadata) {
+  if (!metadata) return "0% confidence";
+  return `${Math.round(Number(metadata.confidence || 0) * 100)}% confidence`;
+}
+
+function providerLabel(provider = "") {
+  const labels = {
+    filename: "Filename",
+    manual: "Manual",
+    nfo: "Local NFO",
+    tmdb: "TMDB",
+    tvdb: "TVDB",
+    omdb: "OMDb",
+    none: "None",
+    pending: "Pending",
+  };
+  return labels[provider] || provider || "Unknown";
 }
 
 function formatBytes(value) {

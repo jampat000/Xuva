@@ -63,12 +63,13 @@ type Health struct {
 }
 
 type MovieListItem struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Year         int    `json:"year"`
-	SortTitle    string `json:"sortTitle"`
-	NeedsReview  bool   `json:"needsReview"`
-	VersionCount int    `json:"versionCount"`
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Year         int             `json:"year"`
+	SortTitle    string          `json:"sortTitle"`
+	NeedsReview  bool            `json:"needsReview"`
+	VersionCount int             `json:"versionCount"`
+	Metadata     *MetadataRecord `json:"metadata,omitempty"`
 }
 
 type MovieDetail struct {
@@ -87,11 +88,12 @@ type MovieVersion struct {
 }
 
 type SeriesListItem struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	SortTitle    string `json:"sortTitle"`
-	SeasonCount  int    `json:"seasonCount"`
-	EpisodeCount int    `json:"episodeCount"`
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	SortTitle    string          `json:"sortTitle"`
+	SeasonCount  int             `json:"seasonCount"`
+	EpisodeCount int             `json:"episodeCount"`
+	Metadata     *MetadataRecord `json:"metadata,omitempty"`
 }
 
 type SeriesDetail struct {
@@ -123,6 +125,22 @@ type ReviewItem struct {
 	ReviewReason string `json:"reviewReason"`
 }
 
+type MetadataRecord struct {
+	Kind        string  `json:"kind"`
+	ItemID      string  `json:"itemId"`
+	Provider    string  `json:"provider"`
+	ExternalID  string  `json:"externalId,omitempty"`
+	Title       string  `json:"title"`
+	Year        int     `json:"year,omitempty"`
+	Overview    string  `json:"overview,omitempty"`
+	PosterURL   string  `json:"posterUrl,omitempty"`
+	BackdropURL string  `json:"backdropUrl,omitempty"`
+	Confidence  float64 `json:"confidence"`
+	RawJSON     string  `json:"rawJson,omitempty"`
+	FetchedAt   string  `json:"fetchedAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
 type VersionGroup struct {
 	Kind         string `json:"kind"`
 	ID           string `json:"id"`
@@ -131,11 +149,16 @@ type VersionGroup struct {
 }
 
 type MetadataUpdate struct {
-	Kind   string `json:"kind"`
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Year   int    `json:"year,omitempty"`
-	Review bool   `json:"review"`
+	Kind        string `json:"kind"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Year        int    `json:"year,omitempty"`
+	Overview    string `json:"overview,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	ExternalID  string `json:"externalId,omitempty"`
+	PosterURL   string `json:"posterUrl,omitempty"`
+	BackdropURL string `json:"backdropUrl,omitempty"`
+	Review      bool   `json:"review"`
 }
 
 type MediaSourceItem struct {
@@ -339,6 +362,12 @@ func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, e
 			return nil, err
 		}
 		item.NeedsReview = needsReview != 0
+		if record, ok, err := s.GetBestMetadata(ctx, "movie", item.ID); err != nil {
+			return nil, err
+		} else if ok {
+			item.Metadata = &record
+			applyMovieMetadata(&item.Title, &item.Year, &item.SortTitle, record)
+		}
 		output = append(output, item)
 	}
 	return output, rows.Err()
@@ -361,6 +390,12 @@ func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, e
 		return MovieDetail{}, false, err
 	}
 	detail.NeedsReview = needsReview != 0
+	if record, ok, err := s.GetBestMetadata(ctx, "movie", id); err != nil {
+		return MovieDetail{}, false, err
+	} else if ok {
+		detail.Metadata = &record
+		applyMovieMetadata(&detail.Title, &detail.Year, &detail.SortTitle, record)
+	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT ms.id, ms.path, ms.rel_path, mv.edition, mv.quality_label, ms.size_bytes, ms.modified_at
@@ -407,6 +442,12 @@ func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, 
 		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
 			return nil, err
 		}
+		if record, ok, err := s.GetBestMetadata(ctx, "series", item.ID); err != nil {
+			return nil, err
+		} else if ok {
+			item.Metadata = &record
+			applyTitleMetadata(&item.Title, &item.SortTitle, record)
+		}
 		output = append(output, item)
 	}
 	return output, rows.Err()
@@ -427,6 +468,12 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 	}
 	if err != nil {
 		return SeriesDetail{}, false, err
+	}
+	if record, ok, err := s.GetBestMetadata(ctx, "series", id); err != nil {
+		return SeriesDetail{}, false, err
+	} else if ok {
+		detail.Metadata = &record
+		applyTitleMetadata(&detail.Title, &detail.SortTitle, record)
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -578,6 +625,12 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 			SET title = ?, year = ?, sort_title = ?, needs_review = ?, review_reason = '', updated_at = ?
 			WHERE id = ?
 		`, update.Title, update.Year, sortTitle(update.Title), boolInt(update.Review), now, update.ID)
+	case "series":
+		_, err = tx.ExecContext(ctx, `
+			UPDATE tv_series
+			SET title = ?, sort_title = ?, updated_at = ?
+			WHERE id = ?
+		`, update.Title, sortTitle(update.Title), now, update.ID)
 	case "episode":
 		_, err = tx.ExecContext(ctx, `
 			UPDATE tv_episodes
@@ -585,12 +638,12 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 			WHERE id = ?
 		`, update.Title, boolInt(update.Review), now, update.ID)
 	default:
-		return errors.New("metadata kind must be movie or episode")
+		return errors.New("metadata kind must be movie, series, or episode")
 	}
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `
+	if _, err = tx.ExecContext(ctx, `
 		INSERT INTO metadata_overrides(kind, item_id, title, year, review_resolved, updated_at)
 		VALUES(?, ?, ?, ?, ?, ?)
 		ON CONFLICT(kind, item_id) DO UPDATE SET
@@ -598,11 +651,92 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 			year = excluded.year,
 			review_resolved = excluded.review_resolved,
 			updated_at = excluded.updated_at
-	`, update.Kind, update.ID, update.Title, update.Year, boolInt(!update.Review), now)
-	if err != nil {
+	`, update.Kind, update.ID, update.Title, update.Year, boolInt(!update.Review), now); err != nil {
+		return err
+	}
+	provider := update.Provider
+	if provider == "" {
+		provider = "manual"
+	}
+	if err := upsertMetadataRecord(ctx, tx, MetadataRecord{
+		Kind:        update.Kind,
+		ItemID:      update.ID,
+		Provider:    provider,
+		ExternalID:  update.ExternalID,
+		Title:       update.Title,
+		Year:        update.Year,
+		Overview:    update.Overview,
+		PosterURL:   update.PosterURL,
+		BackdropURL: update.BackdropURL,
+		Confidence:  1,
+		FetchedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID string) (MetadataRecord, bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
+		FROM metadata_records
+		WHERE kind = ? AND item_id = ?
+		ORDER BY CASE provider WHEN 'manual' THEN 0 WHEN 'tmdb' THEN 1 WHEN 'tvdb' THEN 2 WHEN 'omdb' THEN 3 ELSE 9 END, confidence DESC, updated_at DESC
+		LIMIT 1
+	`, kind, itemID)
+	if err != nil {
+		return MetadataRecord{}, false, err
+	}
+	defer rows.Close()
+	records, err := scanMetadataRecords(rows)
+	if err != nil {
+		return MetadataRecord{}, false, err
+	}
+	if len(records) == 0 {
+		return MetadataRecord{}, false, nil
+	}
+	return records[0], true, nil
+}
+
+func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID string) ([]MetadataRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
+		FROM metadata_records
+		WHERE kind = ? AND item_id = ?
+		ORDER BY CASE provider WHEN 'manual' THEN 0 WHEN 'tmdb' THEN 1 WHEN 'tvdb' THEN 2 WHEN 'omdb' THEN 3 WHEN 'filename' THEN 8 ELSE 9 END, confidence DESC, updated_at DESC
+	`, kind, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMetadataRecords(rows)
+}
+
+func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
+	output := []MetadataRecord{}
+	for rows.Next() {
+		var item MetadataRecord
+		if err := rows.Scan(
+			&item.Kind,
+			&item.ItemID,
+			&item.Provider,
+			&item.ExternalID,
+			&item.Title,
+			&item.Year,
+			&item.Overview,
+			&item.PosterURL,
+			&item.BackdropURL,
+			&item.Confidence,
+			&item.RawJSON,
+			&item.FetchedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
 }
 
 func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly bool) ([]MediaSourceItem, error) {
@@ -746,6 +880,18 @@ func (s *Service) SaveMovieScan(ctx context.Context, library libraries.Library, 
 		if err := upsertMovie(ctx, tx, movieID, candidate, now); err != nil {
 			return PersistSummary{}, err
 		}
+		if err := upsertMetadataRecord(ctx, tx, MetadataRecord{
+			Kind:       "movie",
+			ItemID:     movieID,
+			Provider:   "filename",
+			Title:      candidate.Title,
+			Year:       candidate.Year,
+			Confidence: metadataConfidence(candidate.NeedsReview),
+			FetchedAt:  now,
+			UpdatedAt:  now,
+		}); err != nil {
+			return PersistSummary{}, err
+		}
 		if err := upsertMovieVersion(ctx, tx, movieID, sourceID, candidate, now); err != nil {
 			return PersistSummary{}, err
 		}
@@ -796,10 +942,32 @@ func (s *Service) SaveTVScan(ctx context.Context, library libraries.Library, res
 		if err := upsertSeries(ctx, tx, seriesID, candidate.SeriesTitle, now); err != nil {
 			return PersistSummary{}, err
 		}
+		if err := upsertMetadataRecord(ctx, tx, MetadataRecord{
+			Kind:       "series",
+			ItemID:     seriesID,
+			Provider:   "filename",
+			Title:      candidate.SeriesTitle,
+			Confidence: metadataConfidence(candidate.SeriesTitle == ""),
+			FetchedAt:  now,
+			UpdatedAt:  now,
+		}); err != nil {
+			return PersistSummary{}, err
+		}
 		if err := upsertSeason(ctx, tx, seasonID, seriesID, candidate.SeasonNumber, now); err != nil {
 			return PersistSummary{}, err
 		}
 		if err := upsertEpisode(ctx, tx, episodeID, seriesID, seasonID, candidate, now); err != nil {
+			return PersistSummary{}, err
+		}
+		if err := upsertMetadataRecord(ctx, tx, MetadataRecord{
+			Kind:       "episode",
+			ItemID:     episodeID,
+			Provider:   "filename",
+			Title:      candidate.EpisodeTitle,
+			Confidence: metadataConfidence(candidate.NeedsReview || candidate.EpisodeTitle == ""),
+			FetchedAt:  now,
+			UpdatedAt:  now,
+		}); err != nil {
 			return PersistSummary{}, err
 		}
 		if err := upsertEpisodeVersion(ctx, tx, episodeID, sourceID, candidate, now); err != nil {
@@ -837,6 +1005,61 @@ func upsertLibrary(ctx context.Context, tx *sql.Tx, library libraries.Library) e
 			updated_at = excluded.updated_at
 	`, library.ID, library.Kind, library.Name, library.Path, library.StorageType, now)
 	return err
+}
+
+func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord) error {
+	record.Kind = strings.TrimSpace(record.Kind)
+	record.ItemID = strings.TrimSpace(record.ItemID)
+	record.Provider = strings.TrimSpace(record.Provider)
+	record.Title = strings.TrimSpace(record.Title)
+	if record.Provider == "" {
+		record.Provider = "filename"
+	}
+	now := timestamp(time.Now())
+	if record.FetchedAt == "" {
+		record.FetchedAt = now
+	}
+	if record.UpdatedAt == "" {
+		record.UpdatedAt = now
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO metadata_records(kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(kind, item_id, provider) DO UPDATE SET
+			external_id = excluded.external_id,
+			title = excluded.title,
+			year = excluded.year,
+			overview = excluded.overview,
+			poster_url = excluded.poster_url,
+			backdrop_url = excluded.backdrop_url,
+			confidence = excluded.confidence,
+			raw_json = excluded.raw_json,
+			fetched_at = excluded.fetched_at,
+			updated_at = excluded.updated_at
+	`, record.Kind, record.ItemID, record.Provider, record.ExternalID, record.Title, record.Year, record.Overview, record.PosterURL, record.BackdropURL, record.Confidence, record.RawJSON, record.FetchedAt, record.UpdatedAt)
+	return err
+}
+
+func metadataConfidence(needsReview bool) float64 {
+	if needsReview {
+		return 0.35
+	}
+	return 0.7
+}
+
+func applyMovieMetadata(title *string, year *int, sort *string, record MetadataRecord) {
+	applyTitleMetadata(title, sort, record)
+	if record.Year != 0 {
+		*year = record.Year
+	}
+}
+
+func applyTitleMetadata(title *string, sort *string, record MetadataRecord) {
+	if record.Title == "" {
+		return
+	}
+	*title = record.Title
+	*sort = sortTitle(record.Title)
 }
 
 func upsertMediaSource(ctx context.Context, tx *sql.Tx, libraryID string, kind media.Kind, id string, file scanner.FileCandidate, now string) error {

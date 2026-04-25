@@ -174,6 +174,22 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	if movieDetail["title"] != "Heat" {
 		t.Fatalf("expected Heat movie detail, got %#v", movieDetail["title"])
 	}
+	metadata := getJSON(t, router, "/api/metadata/movie/"+movieID)
+	records := metadata["records"].([]any)
+	if len(records) != 1 || records[0].(map[string]any)["provider"] != "filename" {
+		t.Fatalf("expected filename metadata record, got %#v", metadata)
+	}
+	match := requestJSON(t, router, http.MethodPut, "/api/metadata/match", map[string]any{
+		"kind":     "movie",
+		"id":       movieID,
+		"title":    "Heat",
+		"year":     1995,
+		"provider": "manual",
+		"overview": "A professional thief weighs one last score.",
+	})
+	if len(match["records"].([]any)) != 2 {
+		t.Fatalf("expected manual and filename metadata records, got %#v", match)
+	}
 
 	series := getJSON(t, router, "/api/series")
 	seriesList := series["series"].([]any)

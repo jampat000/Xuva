@@ -76,6 +76,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/series/{id}", seriesDetailHandler(deps))
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
 	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
+	mux.HandleFunc("GET /api/metadata/{kind}/{id}", metadataRecordsHandler(deps))
 	mux.HandleFunc("PUT /api/metadata/match", metadataMatchHandler(deps))
 	mux.HandleFunc("GET /api/artwork/{kind}/{id}", artworkHandler(deps))
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
@@ -300,7 +301,34 @@ func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"suggestions": items,
-			"strategy":    "filename-and-folder-first matching; provider lookup will layer on top later",
+			"providers":   metadataProviders(),
+			"strategy":    "filename and manual records are local-first; online providers layer on top only when configured",
+		})
+	}
+}
+
+func metadataRecordsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		kind := r.PathValue("kind")
+		id := r.PathValue("id")
+		records, err := deps.Catalog.ListMetadataRecords(r.Context(), kind, id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "metadata records failed")
+			return
+		}
+		best, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "metadata records failed")
+			return
+		}
+		var selected any
+		if ok {
+			selected = best
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"best":      selected,
+			"records":   records,
+			"providers": metadataProviders(),
 		})
 	}
 }
@@ -315,8 +343,27 @@ func metadataMatchHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		records, err := deps.Catalog.ListMetadataRecords(r.Context(), request.Kind, request.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "metadata records failed")
+			return
+		}
 		deps.Events.Publish("metadata.updated", request)
-		writeJSON(w, http.StatusOK, request)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"match":   request,
+			"records": records,
+		})
+	}
+}
+
+func metadataProviders() []map[string]any {
+	return []map[string]any{
+		{"id": "filename", "name": "Filename and folders", "status": "active", "local": true},
+		{"id": "manual", "name": "Manual correction", "status": "active", "local": true},
+		{"id": "nfo", "name": "Local NFO", "status": "planned", "local": true},
+		{"id": "tmdb", "name": "TMDB", "status": "planned-configurable", "local": false},
+		{"id": "tvdb", "name": "TVDB", "status": "planned-configurable", "local": false},
+		{"id": "omdb", "name": "OMDb", "status": "planned-configurable", "local": false},
 	}
 }
 

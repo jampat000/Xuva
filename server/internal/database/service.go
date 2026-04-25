@@ -222,4 +222,21 @@ var migrations = []string{
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY(kind, item_id)
 	)`,
+	`CREATE TABLE IF NOT EXISTS metadata_records (
+		kind TEXT NOT NULL,
+		item_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		external_id TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL,
+		year INTEGER NOT NULL DEFAULT 0,
+		overview TEXT NOT NULL DEFAULT '',
+		poster_url TEXT NOT NULL DEFAULT '',
+		backdrop_url TEXT NOT NULL DEFAULT '',
+		confidence REAL NOT NULL DEFAULT 0,
+		raw_json TEXT NOT NULL DEFAULT '',
+		fetched_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(kind, item_id, provider)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_metadata_records_item ON metadata_records(kind, item_id, updated_at DESC)`,
 }

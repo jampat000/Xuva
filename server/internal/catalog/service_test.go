@@ -63,6 +63,33 @@ func TestSaveMovieScanIsIdempotent(t *testing.T) {
 	if !ok || len(detail.Versions) != 1 {
 		t.Fatalf("unexpected movie detail: %#v", detail)
 	}
+	if detail.Metadata == nil || detail.Metadata.Provider != "filename" || detail.Metadata.Title != "Heat" || detail.Metadata.Year != 1995 {
+		t.Fatalf("expected filename metadata on movie detail, got %#v", detail.Metadata)
+	}
+	records, err := service.ListMetadataRecords(ctx, "movie", movies[0].ID)
+	if err != nil {
+		t.Fatalf("list metadata records: %v", err)
+	}
+	if len(records) != 1 || records[0].Provider != "filename" {
+		t.Fatalf("expected filename metadata record, got %#v", records)
+	}
+	if err := service.ApplyMetadata(ctx, MetadataUpdate{
+		Kind:     "movie",
+		ID:       movies[0].ID,
+		Title:    "Heat",
+		Year:     1995,
+		Provider: "manual",
+		Overview: "A professional thief weighs one last score.",
+	}); err != nil {
+		t.Fatalf("apply metadata: %v", err)
+	}
+	best, ok, err := service.GetBestMetadata(ctx, "movie", movies[0].ID)
+	if err != nil {
+		t.Fatalf("best metadata: %v", err)
+	}
+	if !ok || best.Provider != "manual" || best.Overview == "" {
+		t.Fatalf("expected manual metadata to win, got %#v", best)
+	}
 	sources, err := service.ListMediaSources(ctx, 10, true)
 	if err != nil {
 		t.Fatalf("list media sources: %v", err)
@@ -137,6 +164,9 @@ func TestSaveTVScanStoresSeriesEpisodeAndSource(t *testing.T) {
 	}
 	if !ok || len(detail.Seasons) != 1 || len(detail.Seasons[0].Episodes) != 1 {
 		t.Fatalf("unexpected series detail: %#v", detail)
+	}
+	if detail.Metadata == nil || detail.Metadata.Provider != "filename" || detail.Metadata.Title != "The Bear" {
+		t.Fatalf("expected filename metadata on series detail, got %#v", detail.Metadata)
 	}
 }
 
