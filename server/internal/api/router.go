@@ -1097,7 +1097,9 @@ func playerHandler(deps Deps) http.HandlerFunc {
       accent-color:var(--champagne);
       cursor:pointer;
     }
-    .control-field {
+    .control-field,
+    .menu-control {
+      position:relative;
       display:inline-flex;
       align-items:center;
       gap:8px;
@@ -1111,15 +1113,54 @@ func playerHandler(deps Deps) http.HandlerFunc {
       font-weight:850;
       white-space:nowrap;
     }
-    .control-field select {
-      max-width:180px;
+    .menu-trigger {
+      min-height:auto;
+      padding:0;
       border:0;
-      outline:0;
-      color:var(--text);
       background:transparent;
-      font:inherit;
+      color:var(--text);
+      box-shadow:none;
+      font-size:13px;
     }
-    .control-field option { color:#111; background:#f7f1e7; }
+    .menu-trigger::after {
+      content:"";
+      width:8px;
+      height:8px;
+      margin-left:6px;
+      border-right:2px solid var(--soft);
+      border-bottom:2px solid var(--soft);
+      transform:rotate(45deg) translateY(-2px);
+    }
+    .player-menu {
+      position:absolute;
+      left:0;
+      bottom:calc(100%% + 8px);
+      z-index:8;
+      display:none;
+      min-width:calc(150px * var(--density-scale));
+      padding:6px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:rgba(18,18,17,.96);
+      backdrop-filter:blur(18px);
+      box-shadow:0 20px 70px rgba(0,0,0,.48);
+    }
+    .menu-control.open .player-menu { display:grid; gap:4px; }
+    .player-menu button {
+      justify-content:flex-start;
+      min-height:34px;
+      width:100%%;
+      border-color:transparent;
+      background:transparent;
+      color:var(--soft);
+      font-size:13px;
+    }
+    .player-menu button:hover,
+    .player-menu button.selected {
+      color:var(--text);
+      background:rgba(245,240,231,.08);
+      border-color:rgba(245,240,231,.09);
+    }
     .volume {
       width:110px;
     }
@@ -1201,8 +1242,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
           <button id="restartButton" type="button">Restart</button>
           <button id="markButton" type="button">Mark Watched</button>
           <button id="fullscreenButton" type="button">Fullscreen</button>
-          <label class="control-field">Speed <select id="speedSelect"><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option></select></label>
-          <label class="control-field">Subs <select id="subtitleSelect"><option value="-1">Off</option></select></label>
+          <div class="menu-control" id="speedControl"><span>Speed</span><button class="menu-trigger" id="speedButton" type="button">1x</button><div class="player-menu" id="speedMenu"></div></div>
+          <div class="menu-control" id="subtitleControl"><span>Subs</span><button class="menu-trigger" id="subtitleButton" type="button">Off</button><div class="player-menu" id="subtitleMenu"></div></div>
           <label class="control-field">Volume <input class="volume" id="volumeSlider" type="range" min="0" max="1" step="0.01" value="1"></label>
           <a class="button" href="/">Dashboard</a>
         </div>
@@ -1242,14 +1283,20 @@ func playerHandler(deps Deps) http.HandlerFunc {
     const currentTimeLabel = document.getElementById("currentTime");
     const durationTimeLabel = document.getElementById("durationTime");
     const volumeSlider = document.getElementById("volumeSlider");
-    const speedSelect = document.getElementById("speedSelect");
-    const subtitleSelect = document.getElementById("subtitleSelect");
+    const speedControl = document.getElementById("speedControl");
+    const speedButton = document.getElementById("speedButton");
+    const speedMenu = document.getElementById("speedMenu");
+    const subtitleControl = document.getElementById("subtitleControl");
+    const subtitleButton = document.getElementById("subtitleButton");
+    const subtitleMenu = document.getElementById("subtitleMenu");
     const playerTitle = document.getElementById("playerTitle");
     const forecastMode = document.getElementById("forecastMode");
     const forecastReason = document.getElementById("forecastReason");
     const forecastServer = document.getElementById("forecastServer");
     const forecastRoute = document.getElementById("forecastRoute");
     let idleTimer = 0;
+    const speedOptions = ["0.75", "1", "1.25", "1.5", "2"];
+    let selectedSubtitleTrack = "-1";
 
     async function send(path, body, method = "POST", keepalive = false) {
       const response = await fetch(path, { method, keepalive, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -1323,7 +1370,10 @@ func playerHandler(deps Deps) http.HandlerFunc {
         track.srclang = item.language || "und";
         track.src = "/api/media-sources/" + mediaSourceId + "/subtitles/" + index;
         player.appendChild(track);
-        subtitleSelect.appendChild(new Option(track.label, String(subtitleTrackIndex)));
+        addMenuOption(subtitleMenu, subtitleControl, subtitleButton, track.label, String(subtitleTrackIndex), value => {
+          selectedSubtitleTrack = value;
+          syncSubtitleSelection();
+        });
         subtitleTrackIndex += 1;
       });
       setTimeout(() => syncSubtitleSelection(), 100);
@@ -1388,7 +1438,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     function syncSubtitleSelection() {
       Array.from(player.textTracks || []).forEach((track, index) => {
-        track.mode = String(index) === subtitleSelect.value ? "showing" : "disabled";
+        track.mode = String(index) === selectedSubtitleTrack ? "showing" : "disabled";
       });
     }
     function toggleFullscreen() {
@@ -1398,6 +1448,28 @@ func playerHandler(deps Deps) http.HandlerFunc {
       } else {
         document.exitFullscreen?.();
       }
+    }
+    function addMenuOption(menu, control, labelButton, label, value, onSelect) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.dataset.value = value;
+      item.textContent = label;
+      item.addEventListener("click", () => {
+        labelButton.textContent = label;
+        menu.querySelectorAll("button").forEach(button => button.classList.toggle("selected", button === item));
+        control.classList.remove("open");
+        onSelect(value, label);
+        showHud(4200);
+      });
+      menu.appendChild(item);
+      return item;
+    }
+    function toggleMenu(control) {
+      document.querySelectorAll(".menu-control.open").forEach(item => {
+        if (item !== control) item.classList.remove("open");
+      });
+      control.classList.toggle("open");
+      showHud(4200);
     }
     function showHud(timeout = 2600) {
       lastMouseMove = Date.now();
@@ -1423,8 +1495,22 @@ func playerHandler(deps Deps) http.HandlerFunc {
     });
     fullscreenButton.addEventListener("click", toggleFullscreen);
     volumeSlider.addEventListener("input", () => { player.volume = Number(volumeSlider.value || 0); player.muted = player.volume <= 0; });
-    speedSelect.addEventListener("change", () => { player.playbackRate = Number(speedSelect.value || 1); });
-    subtitleSelect.addEventListener("change", syncSubtitleSelection);
+    speedOptions.forEach(value => {
+      const label = value + "x";
+      const item = addMenuOption(speedMenu, speedControl, speedButton, label, value, next => { player.playbackRate = Number(next || 1); });
+      item.classList.toggle("selected", value === "1");
+    });
+    addMenuOption(subtitleMenu, subtitleControl, subtitleButton, "Off", "-1", value => {
+      selectedSubtitleTrack = value;
+      syncSubtitleSelection();
+    }).classList.add("selected");
+    speedButton.addEventListener("click", () => toggleMenu(speedControl));
+    subtitleButton.addEventListener("click", () => toggleMenu(subtitleControl));
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".menu-control")) {
+        document.querySelectorAll(".menu-control.open").forEach(item => item.classList.remove("open"));
+      }
+    });
     seekBar.addEventListener("input", () => {
       isSeeking = true;
       const duration = Number.isFinite(player.duration) ? player.duration : 0;
