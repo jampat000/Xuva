@@ -104,6 +104,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/probes", probeStartHandler(deps))
 	mux.HandleFunc("GET /api/work", workHandler(deps))
 	mux.HandleFunc("POST /api/work", workStartHandler(deps))
+	mux.HandleFunc("GET /api/work/{id}/file", workFileHandler(deps))
 	mux.HandleFunc("GET /api/downloads", downloadsHandler(deps))
 	mux.HandleFunc("POST /api/downloads", downloadStartHandler(deps))
 	mux.HandleFunc("GET /api/downloads/{id}", downloadJobHandler(deps))
@@ -122,6 +123,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/libraries/tv/scan", tvScanHandler(deps))
 	mux.HandleFunc("POST /api/libraries/scan", allLibrariesScanHandler(deps))
 	mux.HandleFunc("GET /api/playback/decision", playbackDecisionHandler(deps))
+	mux.HandleFunc("GET /api/playback/route", playbackRouteHandler(deps))
 	mux.HandleFunc("GET /play/{id}", playerHandler(deps))
 	mux.Handle("GET /", webapp.Handler())
 	return mux
@@ -1099,7 +1101,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       <div class="status-pill" id="sessionState">Starting</div>
     </div>
     <button class="hud-toggle" id="hudToggle" type="button">Controls</button>
-    <video id="player" src="/api/media-sources/%s/stream" controls autoplay></video>
+    <video id="player" controls autoplay></video>
   </div>
   <div class="overlay">
     <section class="panel title-panel">
@@ -1177,6 +1179,24 @@ func playerHandler(deps Deps) http.HandlerFunc {
       forecastReason.textContent = decision.reason || "Direct file stream is available for this client.";
       forecastServer.textContent = mode === "direct" ? "Low impact" : "Server work required";
       return mode;
+    }
+    async function resolvePlaybackRoute() {
+      sessionState.textContent = "Selecting route";
+      const route = await getJSON("/api/playback/route?mediaSourceId=" + mediaSourceId + "&clientProfile=web", {});
+      if (route.url) {
+        player.src = route.url;
+        sessionState.textContent = route.route === "direct" ? "Direct stream" : "Prepared stream";
+        await player.play().catch(() => {});
+        return route.route || "direct";
+      }
+      if (route.job && route.job.id) {
+        sessionState.textContent = "Preparing " + (route.route || "playback");
+        setTimeout(resolvePlaybackRoute, 1800);
+        return route.route || "preparing";
+      }
+      player.src = "/api/media-sources/" + mediaSourceId + "/stream";
+      sessionState.textContent = "Direct fallback";
+      return "direct";
     }
     async function loadSubtitles() {
       const subtitles = await getJSON("/api/media-sources/" + mediaSourceId + "/subtitles", { sidecars: [] });
@@ -1278,6 +1298,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     (async function boot() {
       await loadResumeState();
       const mode = await loadForecast();
+      await resolvePlaybackRoute();
       await loadSubtitles();
       await startSession(mode);
       refreshProgress();
@@ -1285,7 +1306,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     })();
   </script>
 </body>
-</html>`, html.EscapeString(item.Name), id, html.EscapeString(item.Name), id)
+</html>`, html.EscapeString(item.Name), html.EscapeString(item.Name), id)
 	}
 }
 
@@ -1360,6 +1381,21 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
+func workFileHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Transcode.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "work job not found")
+			return
+		}
+		if job.Status != transcode.StatusCompleted || job.OutputPath == "" {
+			writeError(w, http.StatusConflict, "work job is not ready")
+			return
+		}
+		http.ServeFile(w, r, job.OutputPath)
 	}
 }
 
@@ -1651,6 +1687,113 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 			})
 		}
 		writeJSON(w, http.StatusOK, decision)
+	}
+}
+
+func playbackRouteHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mediaSourceID := r.URL.Query().Get("mediaSourceId")
+		if mediaSourceID == "" {
+			writeError(w, http.StatusBadRequest, "media source id is required")
+			return
+		}
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), mediaSourceID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		decision := playbackDecisionForSource(r.Context(), deps, r, item)
+		if decision.Mode == playback.DirectPlay || decision.Mode == playback.DecisionDeferred {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"route":    "direct",
+				"status":   "ready",
+				"url":      "/api/media-sources/" + mediaSourceID + "/stream",
+				"decision": decision,
+			})
+			return
+		}
+		mode := transcode.ModeTranscode
+		if decision.Mode == playback.Remux {
+			mode = transcode.ModeRemux
+		}
+		if job, ok := deps.Transcode.FindCompleted(mediaSourceID, mode); ok {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"route":    string(mode),
+				"status":   "ready",
+				"url":      "/api/work/" + job.ID + "/file",
+				"job":      job,
+				"decision": decision,
+			})
+			return
+		}
+		if job, ok := deps.Transcode.FindActive(mediaSourceID, mode); ok {
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"route":    string(mode),
+				"status":   string(job.Status),
+				"job":      job,
+				"decision": decision,
+			})
+			return
+		}
+		job, err := deps.Transcode.Start(r.Context(), transcode.Request{MediaSourceID: mediaSourceID, Mode: mode, SourcePath: item.Path})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"route":    string(mode),
+			"status":   string(job.Status),
+			"job":      job,
+			"decision": decision,
+		})
+	}
+}
+
+func playbackDecisionForSource(ctx context.Context, deps Deps, r *http.Request, source catalog.MediaSourceItem) playback.Decision {
+	request := playback.Request{
+		MediaSourceID:       source.ID,
+		ClientProfile:       firstNonEmpty(r.URL.Query().Get("clientProfile"), "web"),
+		AudioTrackIndex:     queryInt(r, "audioTrackIndex", 0),
+		AudioCodec:          r.URL.Query().Get("audioCodec"),
+		AudioChannels:       queryInt(r, "audioChannels", 0),
+		SubtitleTrackIndex:  queryInt(r, "subtitleTrackIndex", 0),
+		SubtitleCodec:       r.URL.Query().Get("subtitleCodec"),
+		SubtitleMode:        r.URL.Query().Get("subtitleMode"),
+		SubtitleTrackActive: r.URL.Query().Get("subtitleTrackActive") == "true",
+	}
+	return deps.Playback.DecideSource(ctx, request, playbackSourceFacts(ctx, deps, request, source))
+}
+
+func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Request, source catalog.MediaSourceItem) playback.SourceFacts {
+	tracks, _, _ := deps.Catalog.GetMediaSourceTracks(ctx, request.MediaSourceID)
+	if request.AudioCodec == "" && len(tracks.AudioTracks) > 0 {
+		audio := trackByIndex(tracks.AudioTracks, request.AudioTrackIndex)
+		request.AudioTrackIndex = audio.Index
+		request.AudioCodec = audio.Codec
+		request.AudioChannels = audio.Channels
+	}
+	if request.SubtitleTrackActive && request.SubtitleCodec == "" && len(tracks.SubtitleTracks) > 0 {
+		subtitle := trackByIndex(tracks.SubtitleTracks, request.SubtitleTrackIndex)
+		request.SubtitleTrackIndex = subtitle.Index
+		request.SubtitleCodec = subtitle.Codec
+	}
+	return playback.SourceFacts{
+		MediaSourceID:    source.ID,
+		Container:        source.Container,
+		VideoCodec:       source.VideoCodec,
+		AudioStreams:     source.AudioStreams,
+		SubtitleStreams:  source.SubtitleStreams,
+		SidecarSubtitles: len(subtitles.DiscoverSidecars(source.Path)),
+		Bitrate:          source.Bitrate,
+		Probed:           source.Probed,
+		AudioCodec:       request.AudioCodec,
+		AudioChannels:    request.AudioChannels,
+		SubtitleCodec:    request.SubtitleCodec,
+		SubtitleActive:   request.SubtitleTrackActive,
 	}
 }
 

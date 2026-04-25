@@ -149,6 +149,30 @@ func (s *Service) List() []Job {
 	return output
 }
 
+func (s *Service) FindCompleted(mediaSourceID string, mode Mode) (Job, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, job := range s.jobs {
+		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.Status == StatusCompleted && job.OutputPath != "" {
+			if _, err := os.Stat(job.OutputPath); err == nil {
+				return job, true
+			}
+		}
+	}
+	return Job{}, false
+}
+
+func (s *Service) FindActive(mediaSourceID string, mode Mode) (Job, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, job := range s.jobs {
+		if job.MediaSourceID == mediaSourceID && job.Mode == mode && (job.Status == StatusQueued || job.Status == StatusRunning) {
+			return job, true
+		}
+	}
+	return Job{}, false
+}
+
 func (s *Service) store(job Job)                     { s.mu.Lock(); defer s.mu.Unlock(); s.jobs[job.ID] = job }
 func (s *Service) publish(eventType string, job Job) { s.events.Publish(eventType, job) }
 func (s *Service) nextJobID() string {
