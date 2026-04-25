@@ -56,15 +56,17 @@ async function render(name) {
 }
 
 async function renderDashboard() {
-  const [summary, libraries, scans, probes, recent, sessions, health, versions] = await Promise.all([
+  const [summary, libraries, scans, probes, work, recent, sessions, health, versions, sources] = await Promise.all([
     api("/api/catalog/summary"),
     api("/api/libraries"),
     api("/api/scans"),
     api("/api/probes"),
+    api("/api/work"),
     api("/api/playback/recent"),
     api("/api/sessions"),
     api("/api/catalog/health"),
     api("/api/versions"),
+    api("/api/media-sources?limit=200"),
   ]);
   const reviewCount = health.needsReview || 0;
   const directPlayable = summary.mediaSources ? Math.max(0, Math.round(((summary.mediaSources - (health.unsupported || 0)) / summary.mediaSources) * 100)) : 0;
@@ -73,49 +75,63 @@ async function renderDashboard() {
   const seriesCount = summary.series || 0;
   const episodeCount = summary.episodes || 0;
   const totalTitles = movieCount + seriesCount;
+  const activeSessions = sessions.sessions || [];
+  const scanJobs = scans.scans || [];
+  const probeJobs = probes.probes || [];
+  const workJobs = work.work || [];
+  const mediaSources = sources.mediaSources || [];
+  const quality = sourceQuality(mediaSources);
+  const activeJobs = [...scanJobs, ...probeJobs, ...workJobs].filter(isActiveJob);
   view.innerHTML = `
     <div class="dashboard stack">
       <section class="hero">
         <article class="feature">
           <div class="feature-content">
-            <p class="eyebrow">Media command dashboard</p>
-            <h1>${dashboardTitle(featured, summary)}</h1>
-            <p class="lead">${dashboardCopy(summary, health, featured)}</p>
+            <p class="eyebrow">Live media command centre</p>
+            <h1>${dashboardCommandTitle(activeSessions, featured, summary)}</h1>
+            <p class="lead">${dashboardCommandCopy(activeSessions, summary, health, quality)}</p>
             <div class="meta-line">
               <span class="badge">${summary.mediaSources || 0} sources</span>
               <span class="badge">${summary.libraries || 0} libraries</span>
               <span class="badge ${summary.unprobed ? "warn" : "good"}">${summary.unprobed || 0} unprobed</span>
               <span class="badge ${directPlayable >= 90 ? "good" : "warn"}">${directPlayable}% playable</span>
+              <span class="badge route">Live</span>
             </div>
             <div class="actions">
               <button class="primary" onclick="navigate('${movieCount ? "movies" : "tv"}')">${movieCount ? "Browse Movies" : "Browse TV"}</button>
               <button onclick="navigate('playback')">Playback Lab</button>
+              <button onclick="navigate('activity')">Activity</button>
               <button onclick="navigate('health')">Review ${reviewCount}</button>
             </div>
           </div>
         </article>
 
         <aside class="panel pad">
-          <div class="panel-title"><strong>Playback Decision</strong><span class="badge route">${sessions.sessions.length ? "Live" : "Ready"}</span></div>
-          <div class="decision">
-            <strong>${sessions.sessions.length ? `${sessions.sessions.length} Active` : directPlayable >= 90 ? "Direct Ready" : "Needs Probe"}</strong>
-            <span>${sessions.sessions.length ? "There are active playback sessions. Monitor route, progress, and server load from Activity." : "No active transcodes. New playback can start with full server headroom."}</span>
-          </div>
-          <div class="kv">
-            <div><span>Active sessions</span><span>${sessions.sessions.length}</span></div>
-            <div><span>Unprobed</span><span>${summary.unprobed || 0}</span></div>
-            <div><span>Unsupported</span><span>${health.unsupported || 0}</span></div>
-            <div><span>High bitrate</span><span>${health.highBitrate || 0}</span></div>
-            <div><span>Review queue</span><span>${reviewCount}</span></div>
-          </div>
+          <div class="panel-title"><strong>Playing Now</strong><span class="badge route">${activeSessions.length ? "Live" : "Idle"}</span></div>
+          ${playingNow(activeSessions)}
         </aside>
       </section>
 
       <section class="insight-grid">
-        ${metric("Movies", movieCount, movieCount ? "Feature films indexed" : "Add or scan a movie library")}
-        ${metric("Series / Episodes", `${seriesCount} / ${episodeCount}`, "TV hierarchy and episode files")}
+        ${metric("Movies", movieCount, "Feature films indexed")}
+        ${metric("TV", `${seriesCount} / ${episodeCount}`, "Series and episodes")}
+        ${metric("Files", summary.mediaSources || 0, `${quality.totalSize ? formatBytes(quality.totalSize) : "Size pending"} sampled/indexed`)}
         ${metric("Direct Playable", `${directPlayable}%`, `${health.unsupported || 0} unsupported sources`)}
-        ${metric("Need Review", reviewCount, reviewCount ? "Metadata or match work" : "No review blockers")}
+      </section>
+
+      <section class="command-grid">
+        <div class="panel pad">
+          <div class="panel-title"><strong>File Intelligence</strong><button onclick="navigate('playback')">Inspect</button></div>
+          ${fileIntelligence(quality, summary, health)}
+        </div>
+        <div class="panel pad">
+          <div class="panel-title"><strong>Operations</strong><span class="badge ${activeJobs.length ? "warn" : "good"}">${activeJobs.length ? `${activeJobs.length} running` : "Clear"}</span></div>
+          ${operationsPanel(scanJobs, probeJobs, workJobs)}
+        </div>
+        <div class="panel pad">
+          <div class="panel-title"><strong>Needs Attention</strong><button onclick="navigate('health')">Review</button></div>
+          ${attentionPanel(summary, health, versions.versions || [])}
+        </div>
       </section>
 
       <section class="shelf-section">
@@ -131,15 +147,15 @@ async function renderDashboard() {
 
       <section class="dashboard-grid">
         <div class="panel pad">
-          <div class="panel-title"><strong>Library Storage</strong><button onclick="navigate('libraries')">Manage</button></div>
+          <div class="panel-title"><strong>Libraries & Storage</strong><button onclick="navigate('libraries')">Manage</button></div>
           ${libraryCards(libraries.libraries)}
         </div>
-        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div>${jobCards(scans.scans)}</div>
+        <div class="panel pad"><div class="panel-title"><strong>Recent Scans</strong><button onclick="startScan('/api/libraries/scan')">Scan all</button></div>${jobCards(scanJobs)}</div>
       </section>
 
       <section class="dashboard-grid">
         <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions, totalTitles)}</div>
-        <div class="panel pad"><div class="panel-title"><strong>Server Signals</strong><button onclick="navigate('playback')">Playback</button></div><div class="signal-stack">${signalPill("Sources", summary.mediaSources || 0)}${signalPill("Libraries", summary.libraries || 0)}${signalPill("Unprobed", summary.unprobed || 0)}</div></div>
+        <div class="panel pad"><div class="panel-title"><strong>Live Signals</strong><span class="live-stamp">Updated ${new Date().toLocaleTimeString()}</span></div><div class="signal-stack">${signalPill("Sessions", activeSessions.length)}${signalPill("Jobs", activeJobs.length)}${signalPill("Review", reviewCount)}</div></div>
       </section>
     </div>`;
 }
@@ -530,6 +546,24 @@ function filterCards(value) {
   });
 }
 
+function dashboardCommandTitle(sessions, featured, summary) {
+  if (sessions.length) return `${sessions.length} stream${sessions.length === 1 ? "" : "s"} active.`;
+  if (featured) return escapeHTML(featured.name);
+  if ((summary.mediaSources || 0) > 0) return "Your library is live.";
+  return "Build your media command centre.";
+}
+
+function dashboardCommandCopy(sessions, summary, health, quality) {
+  if (sessions.length) {
+    const transcoding = sessions.filter(item => item.mode && item.mode !== "direct").length;
+    return `${sessions.length} playback session${sessions.length === 1 ? "" : "s"} running now. ${transcoding ? `${transcoding} may need server work.` : "Everything currently looks direct-play friendly."} Keep route, progress, and background jobs visible from here.`;
+  }
+  if ((summary.mediaSources || 0) === 0) {
+    return "Add Movies and TV libraries to start seeing live playback, file quality, probe health, storage status, review queues, and server work from one place.";
+  }
+  return `${summary.mediaSources || 0} files indexed across ${summary.libraries || 0} libraries. ${quality.probedPercent}% have media intelligence, ${health.needsReview || 0} need review, and ${summary.unprobed || 0} still need probing.`;
+}
+
 function dashboardTitle(featured, summary) {
   if (featured) return escapeHTML(featured.name);
   if ((summary.movies || 0) > 0) return "Movies ready for inspection.";
@@ -558,6 +592,110 @@ function signalPill(label, value) {
   return `<div class="signal-pill"><small>${escapeHTML(label)}</small><b>${escapeHTML(value ?? 0)}</b></div>`;
 }
 
+function sourceQuality(items = []) {
+  const probed = items.filter(item => item.probed);
+  const codecs = countBy(probed, item => item.videoCodec || "unknown");
+  const containers = countBy(probed, item => item.container || item.extension || "unknown");
+  const totalSize = items.reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0);
+  const highBitrate = probed.filter(item => Number(item.bitrate || 0) > 40000000).length;
+  const subtitles = probed.filter(item => Number(item.subtitleStreams || 0) > 0).length;
+  const fourK = probed.filter(item => Number(item.width || 0) >= 3800 || Number(item.height || 0) >= 2000).length;
+  const remuxLikely = probed.filter(item => Number(item.bitrate || 0) > 65000000).length;
+  return {
+    total: items.length,
+    probed: probed.length,
+    probedPercent: items.length ? Math.round((probed.length / items.length) * 100) : 0,
+    totalSize,
+    highBitrate,
+    subtitles,
+    fourK,
+    remuxLikely,
+    topCodec: topCount(codecs),
+    topContainer: topCount(containers),
+  };
+}
+
+function countBy(items, keyFn) {
+  return items.reduce((counts, item) => {
+    const key = keyFn(item);
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function topCount(counts) {
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return entries[0] ? { label: entries[0][0], count: entries[0][1] } : { label: "pending", count: 0 };
+}
+
+function isActiveJob(item = {}) {
+  const status = String(item.status || "").toLowerCase();
+  return status === "queued" || status === "running";
+}
+
+function playingNow(items = []) {
+  if (!items.length) {
+    return `<div class="now-idle">
+      <strong>No playback running</strong>
+      <span>Start a movie or episode and this panel becomes a live session monitor with device, route, progress, and server impact.</span>
+    </div>
+    <div class="kv">
+      <div><span>Status</span><span>Ready</span></div>
+      <div><span>Server impact</span><span>Idle</span></div>
+      <div><span>Route</span><span>LAN Direct</span></div>
+    </div>`;
+  }
+  return `<div class="session-list">${items.slice(0, 4).map(session => {
+    const percent = session.durationSeconds ? Math.min(100, Math.round((session.progressSeconds / session.durationSeconds) * 100)) : 0;
+    return `<article class="session-card">
+      <div><strong>${escapeHTML(session.deviceId || "Device")}</strong><span>${escapeHTML(session.mode || "direct")} - ${escapeHTML(session.status || "playing")}</span></div>
+      <b>${percent}%</b>
+      <i style="--progress:${Math.max(3, percent)}%"></i>
+      <small>${formatDuration(session.progressSeconds)} / ${formatDuration(session.durationSeconds)}</small>
+    </article>`;
+  }).join("")}</div>`;
+}
+
+function fileIntelligence(quality, summary, health) {
+  return `<div class="quality-grid">
+    ${qualityTile("Probed", `${quality.probedPercent}%`, `${quality.probed} of ${quality.total || summary.mediaSources || 0} sampled`)}
+    ${qualityTile("4K / UHD", quality.fourK, "High resolution sources")}
+    ${qualityTile("High Bitrate", health.highBitrate || quality.highBitrate, "Likely heavy streams")}
+    ${qualityTile("Subtitles", health.withSubtitles || quality.subtitles, "Files with subtitle tracks")}
+    ${qualityTile("Top Codec", quality.topCodec.label, `${quality.topCodec.count} sampled`)}
+    ${qualityTile("Container", quality.topContainer.label, `${quality.topContainer.count} sampled`)}
+  </div>`;
+}
+
+function qualityTile(label, value, note) {
+  return `<div class="quality-tile"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value ?? 0)}</strong><small>${escapeHTML(note || "")}</small></div>`;
+}
+
+function operationsPanel(scans = [], probes = [], work = []) {
+  const active = [...scans, ...probes, ...work].filter(isActiveJob);
+  if (!active.length) {
+    return `<div class="ops-clear"><strong>Background queues clear</strong><span>Scanning, probing, remuxing, and transcoding are not competing with playback.</span></div>`;
+  }
+  return `<div class="ops-list">${active.slice(0, 5).map(job => `<article>
+    <strong>${escapeHTML(job.kind || job.mode || "work")}</strong>
+    <span>${escapeHTML(job.status || "running")}</span>
+    <small>${escapeHTML(job.lastPath || job.outputPath || job.id || "")}</small>
+  </article>`).join("")}</div>`;
+}
+
+function attentionPanel(summary, health, versions = []) {
+  const items = [
+    { label: "Needs metadata review", value: health.needsReview || 0, tone: health.needsReview ? "warn" : "good" },
+    { label: "Unprobed files", value: summary.unprobed || 0, tone: summary.unprobed ? "warn" : "good" },
+    { label: "Unsupported sources", value: health.unsupported || 0, tone: health.unsupported ? "warn" : "good" },
+    { label: "Duplicate versions", value: versions.length || 0, tone: versions.length ? "warn" : "good" },
+  ];
+  return `<div class="attention-list">${items.map(item => `<div class="${item.tone}">
+    <span>${escapeHTML(item.label)}</span>
+    <strong>${escapeHTML(item.value)}</strong>
+  </div>`).join("")}</div>`;
+}
+
 function formatBytes(value) {
   const bytes = Number(value || 0);
   if (!bytes) return "0 B";
@@ -565,6 +703,16 @@ function formatBytes(value) {
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const amount = bytes / Math.pow(1024, index);
   return `${amount >= 10 || index === 0 ? Math.round(amount) : Math.round(amount * 10) / 10} ${units[index]}`;
+}
+
+function formatDuration(value) {
+  const total = Math.max(0, Math.round(Number(value || 0)));
+  if (!total) return "0:00";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function mediaCards(items = []) {
@@ -663,10 +811,17 @@ function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char]));
 }
 
+let dashboardRefreshTimer = 0;
+function refreshLiveViews() {
+  if (!["dashboard", "activity", "health"].includes(state.activeView)) return;
+  clearTimeout(dashboardRefreshTimer);
+  dashboardRefreshTimer = setTimeout(() => navigate(state.activeView), 180);
+}
+
 const events = new EventSource("/api/events");
-for (const name of ["scan.completed", "probe.completed", "transcode.completed", "session.started", "session.updated", "session.stopped", "playback.state.updated", "metadata.updated"]) {
+for (const name of ["scan.queued", "scan.running", "scan.completed", "scan.failed", "probe.queued", "probe.running", "probe.completed", "probe.failed", "transcode.queued", "transcode.running", "transcode.completed", "transcode.failed", "session.started", "session.updated", "session.stopped", "playback.state.updated", "metadata.updated"]) {
   events.addEventListener(name, () => {
-    if (["dashboard", "activity", "health"].includes(state.activeView)) navigate(state.activeView);
+    refreshLiveViews();
   });
 }
 
