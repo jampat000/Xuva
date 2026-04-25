@@ -1278,12 +1278,24 @@ function refreshLiveViews() {
   dashboardRefreshTimer = setTimeout(() => navigate(state.activeView), 180);
 }
 
+const liveEventNames = [
+  "scan.queued", "scan.started", "scan.progress", "scan.completed", "scan.failed",
+  "probe.queued", "probe.started", "probe.running", "probe.completed", "probe.failed",
+  "transcode.queued", "transcode.started", "transcode.running", "transcode.completed", "transcode.failed",
+  "download.queued", "download.started", "download.running", "download.completed", "download.failed",
+  "session.started", "session.updated", "session.stopped",
+  "playback.state.updated", "metadata.updated", "metadata.ratings.updated", "metadata.batch.completed", "metadata.batch.failed",
+  "settings.updated", "library.updated", "library.deleted"
+];
 const events = new EventSource("/api/events");
-for (const name of ["scan.queued", "scan.running", "scan.completed", "scan.failed", "probe.queued", "probe.running", "probe.completed", "probe.failed", "transcode.queued", "transcode.running", "transcode.completed", "transcode.failed", "download.queued", "download.running", "download.completed", "download.failed", "session.started", "session.updated", "session.stopped", "playback.state.updated", "metadata.updated"]) {
+for (const name of liveEventNames) {
   events.addEventListener(name, () => {
     refreshLiveViews();
   });
 }
+setInterval(() => {
+  if (state.activeView === "dashboard") refreshLiveViews();
+}, 5000);
 
 refreshShell().catch(() => {});
 navigate("dashboard");
