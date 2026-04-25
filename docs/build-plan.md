@@ -84,3 +84,15 @@ Do not move to public beta until:
 - Downloads resume safely.
 - Install and update paths are boring.
 - Paid feature boundaries are clear.
+
+## Current Functional Priority
+
+The design shell is now good enough to shift attention from polish to product behavior. Build the next slice in this order:
+
+1. Replace `/play/{id}` with a real Vyrden player surface.
+2. Add play/resume/mark-watched controls to movie and episode details.
+3. Wire player sessions into the dashboard through SSE.
+4. Extend playback decisions to include selected audio and subtitle tracks.
+5. Add source/audio/subtitle selectors that update the forecast before playback.
+6. Persist resume progress and watched/unwatched state.
+7. Make the metadata review queue useful enough to fix bad matches in-app.

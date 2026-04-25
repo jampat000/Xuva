@@ -25,6 +25,11 @@
 
 ## Phase 2: Server MVP
 
+- Real Vyrden player shell.
+- Live dashboard updates through SSE.
+- Playback session heartbeat and cleanup.
+- Playback forecast with selected source, audio, and subtitle tracks.
+- Resume progress and watched/unwatched state from item detail.
 - Library scanning.
 - Movie and TV grouping.
 - Metadata matching.
