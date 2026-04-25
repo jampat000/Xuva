@@ -300,7 +300,7 @@ async function showMovie(id) {
         ${selected ? `<div class="source-strip"><div><span>Selected source</span><strong>${escapeHTML(selected.qualityLabel || "Original source")}</strong></div><div><span>File size</span><strong>${formatBytes(selected.sizeBytes)}</strong></div><div><span>Container</span><strong>${escapeHTML((selected.relPath || "").split(".").pop() || "media")}</strong></div></div>` : ""}
         <div class="actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
-          ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}" target="_blank">Play From Start</a>` : ""}
+          ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play From Start</a>` : ""}
           ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', true)">Mark Watched</button>` : ""}
           ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', false)">Mark Unwatched</button>` : ""}
           ${movie.needsReview ? `<button class="button focusable" onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
@@ -372,7 +372,8 @@ function versionCard(version, state, selected) {
     <div class="version-title">${escapeHTML(version.qualityLabel || "Source")}<span class="version-path">${selected ? "Direct Play" : watched}</span></div>
     <div class="version-details"><span>${escapeHTML(version.relPath)}</span><span>${formatBytes(version.sizeBytes)}</span></div>
     <div class="inline-actions">
-      <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">Play</a>
+      <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
+      <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
       <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
       <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
     </div>
@@ -441,6 +442,7 @@ function seriesCard(item) {
 
 async function showSeries(id) {
   const series = await api(`/api/series/${id}`);
+  const seasonSections = await Promise.all(series.seasons.map(async season => `<section class="card"><h2>Season ${season.seasonNumber}</h2>${await episodeList(season.episodes)}</section>`));
   viewTitle.textContent = series.title;
   view.innerHTML = `
     <div class="detail-shell">
@@ -454,24 +456,28 @@ async function showSeries(id) {
         </div>
       </section>
       <div class="stack">
-        ${series.seasons.map(season => `<section class="card"><h2>Season ${season.seasonNumber}</h2>${episodeList(season.episodes)}</section>`).join("")}
+        ${seasonSections.join("")}
       </div>
     </div>`;
 }
 
-function episodeList(episodes) {
+async function episodeList(episodes) {
   if (!episodes.length) return empty("No episodes in this season.");
-  return episodes.map(episode => {
+  const rows = await Promise.all(episodes.map(async episode => {
     const version = episode.versions && episode.versions[0];
-    const play = version ? `<a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">Play</a><button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>` : `<span class="muted">No source</span>`;
+    const state = version ? await api(`/api/playback/state/${version.mediaSourceId}`).catch(() => ({})) : {};
+    const playLabel = state.progressSeconds > 5 && !state.watched ? "Resume" : "Play";
+    const watchedLabel = state.watched ? "Watched" : state.progressSeconds > 5 ? `${Math.round((state.percent || 0) * 100)}%` : `${episode.versionCount || 0} version${episode.versionCount === 1 ? "" : "s"}`;
+    const play = version ? `<a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${playLabel}</a><a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a><button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button><button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>` : `<span class="muted">No source</span>`;
     const label = episode.episodeEnd && episode.episodeEnd !== episode.episodeNumber ? `E${episode.episodeNumber}-E${episode.episodeEnd}` : `E${episode.episodeNumber}`;
     return `<div class="episode-row">
       <strong>${label}</strong>
       <span>${escapeHTML(episode.title || "Episode")}</span>
-      <small>${episode.versionCount || 0} version${episode.versionCount === 1 ? "" : "s"}</small>
+      <small>${escapeHTML(watchedLabel)}</small>
       <div class="inline-actions">${play}${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix</button>` : ""}</div>
     </div>`;
-  }).join("");
+  }));
+  return rows.join("");
 }
 
 async function renderLibraries() {

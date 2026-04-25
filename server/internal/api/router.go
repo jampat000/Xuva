@@ -721,43 +721,288 @@ func playerHandler(deps Deps) http.HandlerFunc {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>%s - Vyrden</title>
   <style>
-    :root { color-scheme: dark; --text:#f7f1e7; --muted:#aaa198; --signal:#d8f36a; --line:rgba(245,240,231,.14); }
+    :root {
+      color-scheme: dark;
+      --void:#050505;
+      --panel:rgba(14,14,13,.78);
+      --panel-strong:rgba(24,24,22,.9);
+      --text:#f7f1e7;
+      --soft:#d6cec0;
+      --muted:#9d9487;
+      --champagne:#d4b06f;
+      --ice:#9adbd4;
+      --green:#98d99e;
+      --warn:#e0b86e;
+      --line:rgba(245,240,231,.14);
+      --shadow:0 28px 90px rgba(0,0,0,.56);
+    }
     * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; background:radial-gradient(circle at 20%% 0%%, rgba(216,243,106,.12), transparent 28rem), #050609; color:var(--text); font-family:Inter, system-ui, Segoe UI, sans-serif; }
-    .stage { min-height:100vh; display:grid; grid-template-rows:1fr auto; }
-    video { width:100vw; height:100vh; object-fit:contain; background:#020304; }
-    .overlay { position:fixed; left:18px; right:18px; bottom:18px; display:flex; justify-content:space-between; gap:14px; align-items:end; pointer-events:none; }
-    .panel { max-width:min(720px, calc(100vw - 36px)); border:1px solid var(--line); border-radius:8px; background:rgba(5,6,9,.72); backdrop-filter:blur(18px); padding:14px; box-shadow:0 24px 70px rgba(0,0,0,.46); }
-    strong { display:block; font-size:18px; }
-    #decision { color:var(--signal); font-size:13px; margin-top:6px; }
-    .brand { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; }
+    body {
+      margin:0;
+      min-height:100vh;
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 16%% -10%%, rgba(212,176,111,.15), transparent 30rem),
+        radial-gradient(circle at 86%% 4%%, rgba(154,219,212,.13), transparent 34rem),
+        var(--void);
+      color:var(--text);
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing:0;
+    }
+    .player-shell { min-height:100vh; display:grid; grid-template-rows:auto 1fr; background:#030303; }
+    .topbar {
+      position:fixed;
+      z-index:5;
+      inset:18px 18px auto;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      pointer-events:none;
+    }
+    .brand, .status-pill {
+      display:inline-flex;
+      align-items:center;
+      min-height:38px;
+      padding:0 14px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:var(--panel);
+      backdrop-filter:blur(20px);
+      box-shadow:0 14px 48px rgba(0,0,0,.34);
+      font-size:13px;
+      font-weight:850;
+      white-space:nowrap;
+    }
+    .brand b { color:var(--champagne); margin-right:8px; }
+    .status-pill { color:var(--ice); }
+    video {
+      width:100vw;
+      height:100vh;
+      object-fit:contain;
+      background:linear-gradient(180deg,#020202,#050505);
+    }
+    .overlay {
+      position:fixed;
+      z-index:4;
+      left:22px;
+      right:22px;
+      bottom:22px;
+      display:grid;
+      grid-template-columns:minmax(340px, .82fr) minmax(280px, .34fr);
+      gap:16px;
+      align-items:end;
+      pointer-events:none;
+      transition:opacity .18s ease, transform .18s ease;
+    }
+    body.is-idle .overlay, body.is-idle .topbar { opacity:0; transform:translateY(10px); }
+    body:hover .overlay, body:hover .topbar, body:focus-within .overlay, body:focus-within .topbar {
+      opacity:1;
+      transform:none;
+    }
+    .panel {
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:var(--panel);
+      backdrop-filter:blur(22px);
+      padding:18px;
+      box-shadow:var(--shadow);
+      min-width:0;
+    }
+    .title-panel {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:14px 22px;
+      align-items:end;
+    }
+    .eyebrow {
+      color:var(--champagne);
+      font-size:12px;
+      font-weight:900;
+      text-transform:uppercase;
+    }
+    h1 {
+      margin:5px 0 0;
+      max-width:100%%;
+      font-size:clamp(30px, 3vw, 56px);
+      line-height:1.02;
+      font-weight:900;
+      text-wrap:balance;
+    }
+    .meta {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:12px;
+    }
+    .chip {
+      display:inline-flex;
+      align-items:center;
+      min-height:30px;
+      padding:0 11px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:rgba(245,240,231,.055);
+      color:var(--soft);
+      font-size:13px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+    .chip.good { color:var(--green); border-color:rgba(152,217,158,.28); background:rgba(152,217,158,.08); }
+    .chip.route { color:var(--ice); border-color:rgba(154,219,212,.3); background:rgba(154,219,212,.08); }
+    .chip.warn { color:var(--warn); border-color:rgba(224,184,110,.3); background:rgba(224,184,110,.08); }
+    .control-stack {
+      display:flex;
+      justify-content:flex-end;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    button, a.button {
+      pointer-events:auto;
+      min-height:42px;
+      padding:0 16px;
+      border:1px solid var(--line);
+      border-radius:8px;
+      background:rgba(245,240,231,.07);
+      color:var(--text);
+      font:inherit;
+      font-size:14px;
+      font-weight:850;
+      text-decoration:none;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    button.primary { border-color:transparent; background:var(--champagne); color:#11100d; }
+    .forecast {
+      display:grid;
+      gap:10px;
+      align-self:stretch;
+    }
+    .forecast h2 {
+      margin:0;
+      font-size:14px;
+      text-transform:uppercase;
+    }
+    .decision {
+      display:grid;
+      gap:6px;
+      padding:13px;
+      border:1px solid rgba(154,219,212,.32);
+      border-radius:9px;
+      background:rgba(154,219,212,.075);
+    }
+    .decision strong { color:var(--ice); font-size:22px; line-height:1.05; }
+    .decision span { color:var(--soft); font-size:13px; line-height:1.35; }
+    .kv { display:grid; gap:0; }
+    .kv div {
+      display:grid;
+      grid-template-columns:max-content minmax(0,1fr);
+      gap:16px;
+      padding:10px 0;
+      border-top:1px solid rgba(245,240,231,.09);
+      font-size:13px;
+    }
+    .kv span:first-child { color:var(--muted); font-weight:800; }
+    .kv span:last-child { color:var(--text); font-weight:850; text-align:right; }
+    .hint { margin-top:8px; color:var(--muted); font-size:12px; font-weight:750; }
+    @media (max-width: 900px) {
+      .overlay { grid-template-columns:1fr; left:12px; right:12px; bottom:12px; }
+      .title-panel { grid-template-columns:1fr; }
+      .control-stack { justify-content:flex-start; }
+      .forecast { display:none; }
+      h1 { font-size:clamp(24px, 8vw, 38px); }
+    }
   </style>
 </head>
 <body>
-  <div class="stage">
+  <div class="player-shell">
+    <div class="topbar">
+      <div class="brand"><b>V</b> Vyrden Player</div>
+      <div class="status-pill" id="sessionState">Starting</div>
+    </div>
     <video id="player" src="/api/media-sources/%s/stream" controls autoplay></video>
   </div>
   <div class="overlay">
-    <div class="panel">
-      <span class="brand">Vyrden Player</span>
-      <strong>%s</strong>
-      <div id="decision">Preparing playback</div>
-    </div>
+    <section class="panel title-panel">
+      <div>
+        <div class="eyebrow">Now playing</div>
+        <h1>%s</h1>
+        <div class="meta">
+          <span class="chip route" id="decisionMode">Preparing</span>
+          <span class="chip" id="progressChip">0:00</span>
+          <span class="chip" id="subtitleChip">Subtitles checking</span>
+        </div>
+        <div class="hint">Space toggles playback. Arrow keys seek. Progress saves automatically.</div>
+      </div>
+      <div class="control-stack">
+        <button class="primary" id="playToggle" type="button">Pause</button>
+        <button id="restartButton" type="button">Restart</button>
+        <button id="markButton" type="button">Mark Watched</button>
+        <a class="button" href="/">Dashboard</a>
+      </div>
+    </section>
+    <aside class="panel forecast">
+      <h2>Playback Forecast</h2>
+      <div class="decision"><strong id="forecastMode">Checking</strong><span id="forecastReason">Inspecting selected source and client profile.</span></div>
+      <div class="kv">
+        <div><span>Client</span><span>Web</span></div>
+        <div><span>Route</span><span id="forecastRoute">LAN direct</span></div>
+        <div><span>Server</span><span id="forecastServer">Low impact</span></div>
+      </div>
+    </aside>
   </div>
   <script>
     const mediaSourceId = %q;
+    const resumeEnabled = new URLSearchParams(location.search).get("start") !== "0";
     let sessionId = "";
+    let saveInFlight = false;
+    let lastMouseMove = Date.now();
     const player = document.getElementById("player");
-    async function send(path, body, method = "POST") {
-      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const sessionState = document.getElementById("sessionState");
+    const playToggle = document.getElementById("playToggle");
+    const restartButton = document.getElementById("restartButton");
+    const markButton = document.getElementById("markButton");
+    const decisionMode = document.getElementById("decisionMode");
+    const progressChip = document.getElementById("progressChip");
+    const subtitleChip = document.getElementById("subtitleChip");
+    const forecastMode = document.getElementById("forecastMode");
+    const forecastReason = document.getElementById("forecastReason");
+    const forecastServer = document.getElementById("forecastServer");
+
+    async function send(path, body, method = "POST", keepalive = false) {
+      const response = await fetch(path, { method, keepalive, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
       return response.ok ? response.json() : {};
     }
-    async function loadExtras() {
-      const state = await fetch("/api/playback/state/" + mediaSourceId).then(r => r.json()).catch(() => ({}));
-      const decision = await fetch("/api/playback/decision?mediaSourceId=" + mediaSourceId + "&clientProfile=web").then(r => r.json()).catch(() => ({}));
-      document.getElementById("decision").textContent = decision.mode ? decision.mode + " - " + (decision.reason || "") : "Direct stream";
-      const subtitles = await fetch("/api/media-sources/" + mediaSourceId + "/subtitles").then(r => r.json()).catch(() => ({ sidecars: [] }));
-      (subtitles.sidecars || []).forEach((item, index) => {
+    async function getJSON(path, fallback = {}) {
+      return fetch(path).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
+    }
+    function formatTime(value) {
+      value = Math.max(0, Math.floor(Number(value || 0)));
+      const hours = Math.floor(value / 3600);
+      const minutes = Math.floor((value %% 3600) / 60);
+      const seconds = value %% 60;
+      return hours ? hours + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") : minutes + ":" + String(seconds).padStart(2, "0");
+    }
+    function progressBody(status) {
+      return { progressSeconds: player.currentTime || 0, durationSeconds: Number.isFinite(player.duration) ? player.duration : 0, status: status || (player.paused ? "paused" : "playing") };
+    }
+    async function loadForecast() {
+      const decision = await getJSON("/api/playback/decision?mediaSourceId=" + mediaSourceId + "&clientProfile=web");
+      const mode = decision.mode || "direct";
+      const label = mode.replaceAll("_", " ");
+      decisionMode.textContent = label;
+      decisionMode.className = "chip " + (mode === "direct" ? "good" : mode === "remux" ? "route" : "warn");
+      forecastMode.textContent = label;
+      forecastReason.textContent = decision.reason || "Direct file stream is available for this client.";
+      forecastServer.textContent = mode === "direct" ? "Low impact" : "Server work required";
+      return mode;
+    }
+    async function loadSubtitles() {
+      const subtitles = await getJSON("/api/media-sources/" + mediaSourceId + "/subtitles", { sidecars: [] });
+      const sidecars = subtitles.sidecars || [];
+      subtitleChip.textContent = sidecars.length ? sidecars.length + " subtitle file" + (sidecars.length === 1 ? "" : "s") : "No sidecar subtitles";
+      sidecars.forEach((item, index) => {
         if (item.format !== "vtt") return;
         const track = document.createElement("track");
         track.kind = "subtitles";
@@ -766,31 +1011,81 @@ func playerHandler(deps Deps) http.HandlerFunc {
         track.src = "/api/media-sources/" + mediaSourceId + "/subtitles/" + index;
         player.appendChild(track);
       });
+    }
+    async function loadResumeState() {
+      const state = await getJSON("/api/playback/state/" + mediaSourceId);
       player.addEventListener("loadedmetadata", () => {
-        if (state.progressSeconds > 5 && state.progressSeconds < player.duration - 10) {
+        if (resumeEnabled && state.progressSeconds > 5 && state.progressSeconds < player.duration - 10) {
           player.currentTime = state.progressSeconds;
         }
       }, { once: true });
     }
-    async function start() {
-      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", mode: "direct" });
+    async function startSession(mode) {
+      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", mode });
       sessionId = session.id || "";
+      sessionState.textContent = sessionId ? "Live session" : "Local playback";
     }
-    async function tick(status) {
-      if (!sessionId) return;
-      const body = { progressSeconds: player.currentTime || 0, durationSeconds: player.duration || 0, status: status || (player.paused ? "paused" : "playing") };
-      await send("/api/sessions/" + sessionId, body, "PATCH");
-      await send("/api/playback/state/" + mediaSourceId, body, "PUT");
+    async function saveProgress(status) {
+      if (saveInFlight) return;
+      saveInFlight = true;
+      const body = progressBody(status);
+      try {
+        if (sessionId) await send("/api/sessions/" + sessionId, body, "PATCH");
+        await send("/api/playback/state/" + mediaSourceId, body, "PUT");
+      } finally {
+        saveInFlight = false;
+      }
     }
-    player.addEventListener("play", () => tick("playing"));
-    player.addEventListener("pause", () => tick("paused"));
-    player.addEventListener("ended", () => tick("completed"));
-    setInterval(() => tick(), 10000);
-    window.addEventListener("beforeunload", () => {
-      if (sessionId) navigator.sendBeacon("/api/sessions/" + sessionId, new Blob([JSON.stringify({ status: "stopped", progressSeconds: player.currentTime || 0, durationSeconds: player.duration || 0 })], { type: "application/json" }));
+    async function stopSession(status = "stopped") {
+      const body = progressBody(status);
+      if (sessionId) {
+        await send("/api/sessions/" + sessionId, body, "PATCH").catch(() => {});
+        await fetch("/api/sessions/" + sessionId, { method: "DELETE", keepalive: true }).catch(() => {});
+        sessionId = "";
+      }
+      await send("/api/playback/state/" + mediaSourceId, body, "PUT", true).catch(() => {});
+    }
+    function refreshProgress() {
+      const current = formatTime(player.currentTime || 0);
+      const total = Number.isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration) : "--:--";
+      progressChip.textContent = current + " / " + total;
+      playToggle.textContent = player.paused ? "Play" : "Pause";
+      sessionState.textContent = player.paused ? "Paused" : "Playing";
+    }
+    playToggle.addEventListener("click", () => player.paused ? player.play() : player.pause());
+    restartButton.addEventListener("click", () => { player.currentTime = 0; player.play(); saveProgress("playing"); });
+    markButton.addEventListener("click", async () => {
+      await send("/api/playback/state/" + mediaSourceId, { watched: true, progressSeconds: player.duration || player.currentTime || 0, durationSeconds: player.duration || 0 }, "PUT");
+      markButton.textContent = "Marked";
     });
-    loadExtras();
-    start();
+    player.addEventListener("timeupdate", refreshProgress);
+    player.addEventListener("loadedmetadata", refreshProgress);
+    player.addEventListener("play", () => { refreshProgress(); saveProgress("playing"); });
+    player.addEventListener("pause", () => { refreshProgress(); saveProgress("paused"); });
+    player.addEventListener("ended", () => stopSession("completed"));
+    window.addEventListener("keydown", event => {
+      if (event.target && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+      if (event.code === "Space") { event.preventDefault(); player.paused ? player.play() : player.pause(); }
+      if (event.code === "ArrowRight") player.currentTime = Math.min((player.duration || 0), (player.currentTime || 0) + 10);
+      if (event.code === "ArrowLeft") player.currentTime = Math.max(0, (player.currentTime || 0) - 10);
+    });
+    window.addEventListener("mousemove", () => {
+      lastMouseMove = Date.now();
+      document.body.classList.remove("is-idle");
+    });
+    setInterval(() => {
+      refreshProgress();
+      saveProgress();
+      document.body.classList.toggle("is-idle", Date.now() - lastMouseMove > 3500 && !player.paused);
+    }, 10000);
+    window.addEventListener("beforeunload", () => { stopSession("stopped"); });
+    (async function boot() {
+      await loadResumeState();
+      const mode = await loadForecast();
+      await loadSubtitles();
+      await startSession(mode);
+      refreshProgress();
+    })();
   </script>
 </body>
 </html>`, html.EscapeString(item.Name), id, html.EscapeString(item.Name), id)
