@@ -739,18 +739,25 @@ function playbackReadinessLabel(decision = {}) {
 function playbackEffortLabel(decision = {}) {
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "No extra work";
-  if (mode === "remux") return "Quick container fix";
-  if (mode === "audio transcode") return "Audio conversion";
-  if (mode === "video transcode" || mode === "subtitle burn") return "Heavy conversion";
+  if (mode === "remux") return "Low PC load";
+  if (mode === "audio transcode") return "Light PC load";
+  if (mode === "video transcode" || mode === "subtitle burn") return "High CPU/GPU load";
   if (mode === "decision deferred") return "Waiting for file check";
   return serverImpact(decision);
 }
 
 function playbackReason(decision = {}) {
   const reason = String(decision.reason || "");
+  const mode = String(decision.mode || "").toLowerCase();
   if (!reason) return "Vyrden is checking this file before choosing the best playback path.";
   if (reason.includes("has not been probed")) return "Vyrden needs to check this file once before it can confirm the best playback path.";
-  if (reason.includes("not safely direct-playable")) return "This file may need preparation for the selected device.";
+  if (reason.includes("not safely direct-playable")) {
+    if (mode === "video transcode") return "The current player cannot use this file as-is, so Vyrden may need to convert the video while it plays. Expect higher CPU/GPU use and more power draw.";
+    if (mode === "subtitle burn") return "The current player cannot overlay these subtitles directly, so Vyrden may need to burn them into the video. This is one of the heaviest playback paths.";
+    if (mode === "audio transcode") return "The video can stay intact, but the audio may need conversion for the current player. This is usually a light PC load.";
+    if (mode === "remux") return "The video and audio are usable, but the container may need a quick repack for the current player. This is usually low impact.";
+    return "The current player may not support this file directly, so Vyrden may need to prepare it before or during playback.";
+  }
   return reason;
 }
 
@@ -771,7 +778,7 @@ function playbackActionLabel(value = "") {
 }
 
 function friendlyFix(value = "") {
-  if (String(value).toLowerCase().includes("ffprobe")) return "Run media check for this file";
+  if (String(value).toLowerCase().includes("ffprobe")) return "Run file check for this file";
   return value;
 }
 
