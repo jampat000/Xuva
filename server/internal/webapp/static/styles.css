@@ -262,21 +262,20 @@ body {
 .brand strong,
 .brand span { display: block; }
 .brand strong {
-  font-family: "Cormorant Garamond", "Palatino Linotype", Palatino, Georgia, serif;
-  font-size: calc(var(--brand-font) * 1.08);
-  line-height: 0.92;
-  font-weight: 760;
-  letter-spacing: 0.015em;
+  font-family: Constantia, Cambria, Georgia, "Times New Roman", serif;
+  font-size: calc(var(--brand-font) * 1.1);
+  line-height: 0.94;
+  font-weight: 700;
+  letter-spacing: 0.018em;
 }
 .brand span {
   margin-top: calc(7px * var(--density-scale));
-  color: color-mix(in srgb, var(--champagne) 70%, var(--soft));
-  font-family: "Cormorant Garamond", "Palatino Linotype", Palatino, Georgia, serif;
-  font-size: clamp(calc(10px * var(--font-scale)), calc(0.58vw * var(--font-scale)), calc(13px * var(--font-scale)));
+  color: color-mix(in srgb, var(--champagne) 58%, var(--quiet));
+  font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(calc(8.5px * var(--font-scale)), calc(0.48vw * var(--font-scale)), calc(11px * var(--font-scale)));
   font-weight: 720;
-  font-variant-caps: small-caps;
   line-height: 1;
-  letter-spacing: 0.145em;
+  letter-spacing: 0.215em;
   text-transform: uppercase;
   white-space: nowrap;
 }
