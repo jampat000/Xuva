@@ -1564,9 +1564,16 @@ a:focus-visible {
 }
 .detail-source-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(calc(300px * var(--density-scale)), calc(370px * var(--density-scale)));
+  grid-template-columns: minmax(0, 1fr) minmax(calc(320px * var(--density-scale)), calc(410px * var(--density-scale)));
   align-items: stretch;
-  gap: calc(18px * var(--density-scale));
+  gap: calc(16px * var(--density-scale));
+  padding: calc(16px * var(--density-scale));
+  border: 1px solid rgba(158, 219, 212, 0.34);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 100% 22%, rgba(158,219,212,0.08), transparent 34%),
+    linear-gradient(135deg, rgba(18, 35, 31, 0.58), rgba(14, 14, 13, 0.78));
+  overflow: hidden;
 }
 
 .source-strip {
@@ -1646,6 +1653,13 @@ a:focus-visible {
   grid-template-columns: minmax(0, 1fr);
   justify-content: start;
   height: 100%;
+}
+.detail-source-workbench > .version-grid > .source-card {
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .version {
   position: relative;
@@ -1971,7 +1985,9 @@ a:focus-visible {
   display: grid;
   align-self: start;
   gap: calc(14px * var(--density-scale));
-  padding: calc(16px * var(--density-scale));
+  min-width: 0;
+  height: 100%;
+  padding: calc(14px * var(--density-scale));
   border-color: rgba(244,239,228,0.11);
   background:
     radial-gradient(circle at 100% 0%, rgba(158,219,212,0.08), transparent 36%),
@@ -2069,7 +2085,7 @@ a:focus-visible {
 }
 .download-plan-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: calc(3px * var(--density-scale)) calc(10px * var(--density-scale));
   align-items: center;
   width: 100%;
@@ -2090,15 +2106,16 @@ a:focus-visible {
 }
 .download-plan-item strong {
   color: var(--text);
-  font-size: var(--small-font);
+  font-size: clamp(11px, calc(12px * var(--font-scale)), 15px);
   line-height: 1.15;
-  white-space: nowrap;
+  white-space: normal;
+  text-wrap: balance;
 }
 .download-plan-item span {
   justify-self: end;
   min-width: max-content;
   color: var(--text);
-  font-size: var(--small-font);
+  font-size: clamp(11px, calc(12px * var(--font-scale)), 15px);
   font-weight: 950;
   white-space: nowrap;
   grid-column: 2;
@@ -2107,9 +2124,10 @@ a:focus-visible {
 .download-plan-item small {
   grid-column: 1 / -1;
   color: var(--quiet);
-  font-size: var(--tiny-font);
+  font-size: clamp(10px, calc(10px * var(--font-scale)), 12px);
   font-weight: 750;
   line-height: 1.28;
+  overflow-wrap: anywhere;
 }
 .detail-summary-card {
   display: grid;
