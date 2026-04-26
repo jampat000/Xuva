@@ -440,7 +440,7 @@ function versionCard(model, selected) {
           <div>
             <span>Ready to play?</span>
             <strong>${escapeHTML(routeTone)}</strong>
-            <p>${escapeHTML(playbackReason(decision, hardware))}</p>
+            <p>${escapeHTML(playbackSummary(decision, hardware, policy))}</p>
           </div>
           <div class="source-play-facts">
             ${sourceCardFact("Computer impact", playbackEffortLabel(decision, hardware))}
@@ -448,8 +448,6 @@ function versionCard(model, selected) {
             ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
           </div>
         </div>
-        ${policyImpactNote(policy, decision)}
-        ${hardwareImpactNote(decision, hardware)}
         <div class="inline-actions source-card-actions">
           <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
           <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
@@ -464,6 +462,10 @@ function versionCard(model, selected) {
           ${sourceCardFact("Video file details", sourceFacts)}
           ${sourceCardFact("Probe status", source.probed ? "Checked" : "Check needed")}
           ${sourceCardFact("Storage path", version.relPath || source.relPath || "Local source")}
+        </div>
+        <div class="source-detail-notes">
+          ${policyImpactNote(policy, decision)}
+          ${hardwareImpactNote(decision, hardware)}
         </div>
       </section>
       <section class="source-tab-panel source-tab-panel-devices">
@@ -552,6 +554,23 @@ function policyAllowsDecision(policy = {}, decision = {}) {
 function policyDecisionLabel(policy = {}, decision = {}) {
   if (policyAllowsDecision(policy, decision)) return "Allowed";
   return "Fallback needed";
+}
+
+function playbackSummary(decision = {}, hardware = {}, policy = {}) {
+  const mode = String(decision.mode || "").toLowerCase();
+  if (!mode || mode === "decision deferred") return playbackReason(decision, hardware);
+  if (mode === "direct play") return "This source should play as-is with no conversion work.";
+  if (!policyAllowsDecision(policy, decision)) {
+    return "This source can play, but this player may need a fallback if the original stream is not accepted.";
+  }
+  if (needsVideoHardware(decision)) {
+    return hardware.available
+      ? "This source can play with video conversion; GPU support can reduce CPU load when enabled."
+      : "This source can play with video conversion, but it will use more CPU.";
+  }
+  if (mode === "remux") return "This source can play after a live container repack with no quality loss.";
+  if (mode === "audio transcode") return "This source can play with lightweight audio conversion.";
+  return playbackReason(decision, hardware);
 }
 
 function policyImpactNote(policy = {}, decision = {}) {

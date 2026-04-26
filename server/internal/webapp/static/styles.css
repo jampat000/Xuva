@@ -1981,6 +1981,11 @@ a:focus-visible {
   font-weight: 700;
   line-height: 1.45;
 }
+.source-detail-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(420px * var(--density-scale))), 1fr));
+  gap: calc(12px * var(--density-scale));
+}
 .hardware-impact {
   display: grid;
   gap: calc(5px * var(--density-scale));
