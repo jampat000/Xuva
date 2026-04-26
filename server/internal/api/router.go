@@ -569,6 +569,7 @@ func performanceSettingsHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"profile":              profile,
+			"playbackPolicy":       playbackPolicyStatus(deps.Config.PlaybackPolicy),
 			"limits":               deps.Resources.Limits(),
 			"queues":               deps.Jobs.Snapshot(),
 			"libraries":            libraryList,
@@ -615,6 +616,8 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeInt(&updated.TranscodeWorkers, request.TranscodeWorkers)
 		mergeInt(&updated.GPUWorkers, request.GPUWorkers)
 		mergeString(&updated.LibrarySyncMode, request.LibrarySyncMode)
+		mergeString(&updated.PlaybackPolicy, request.PlaybackPolicy)
+		updated.PlaybackPolicy = normalizedPlaybackPolicy(updated.PlaybackPolicy)
 		mergeInt(&updated.SyncIntervalMins, request.SyncIntervalMins)
 		mergeInt(&updated.ProbeBatchLimit, request.ProbeBatchLimit)
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
@@ -684,6 +687,70 @@ func hardwareAccelerationRecommendation(available bool, gpuWorkers int) string {
 		return "FFmpeg exposes hardware encoder support, but GPU worker slots are disabled. Enable one or more slots to reserve GPU conversion capacity."
 	}
 	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Vyrden can use GPU conversion for heavy video routes and subtitle burn-in."
+}
+
+func playbackPolicyStatus(policy string) map[string]any {
+	policy = normalizedPlaybackPolicy(policy)
+	labels := map[string]string{
+		"original_only": "Original Only",
+		"light":         "Light Compatibility",
+		"full":          "Full Compatibility",
+		"cinema":        "Cinema Server",
+	}
+	descriptions := map[string]string{
+		"original_only": "Vyrden plays the original file only. If this device cannot play it as-is, Vyrden shows fallback options instead of converting automatically.",
+		"light":         "Vyrden may repackage while playing or convert audio. Video stays untouched, so quality is preserved.",
+		"full":          "Vyrden may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.",
+		"cinema":        "Vyrden allows heavier live conversion and future automated optimization controls for power users.",
+	}
+	return map[string]any{
+		"id":          policy,
+		"label":       labels[policy],
+		"description": descriptions[policy],
+	}
+}
+
+func normalizedPlaybackPolicy(policy string) string {
+	switch policy {
+	case "light", "full", "cinema":
+		return policy
+	default:
+		return "original_only"
+	}
+}
+
+func playbackPolicyAllows(policy string, decision playback.Decision) bool {
+	switch decision.Mode {
+	case playback.DirectPlay, playback.DecisionDeferred:
+		return true
+	}
+	switch normalizedPlaybackPolicy(policy) {
+	case "light":
+		return decision.Mode == playback.Remux || decision.Mode == playback.AudioTranscode
+	case "full", "cinema":
+		return decision.Mode == playback.Remux || decision.Mode == playback.AudioTranscode || decision.Mode == playback.VideoTranscode || decision.Mode == playback.SubtitleBurn
+	default:
+		return false
+	}
+}
+
+func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[string]string {
+	mode := string(decision.Mode)
+	fallbacks := []map[string]string{
+		{"label": "Play on a compatible device", "detail": "Use a player that supports this file as-is so Vyrden does not need to convert anything."},
+		{"label": "Allow this session to adapt", "detail": "Switch to a compatibility policy that permits the required playback work: " + mode + "."},
+	}
+	if decision.Mode == playback.Remux {
+		fallbacks = append(fallbacks, map[string]string{"label": "Allow live repackage", "detail": "Repackage while playing. No video quality loss and no permanent copy."})
+	}
+	if decision.Mode == playback.AudioTranscode {
+		fallbacks = append(fallbacks, map[string]string{"label": "Allow audio conversion", "detail": "Convert audio while playing. Video remains untouched and temporary work is discarded."})
+	}
+	if decision.Mode == playback.VideoTranscode || decision.Mode == playback.SubtitleBurn {
+		fallbacks = append(fallbacks, map[string]string{"label": "Allow live video conversion", "detail": "Convert video only while playing. This may use high CPU or GPU if hardware acceleration is unlocked and working."})
+	}
+	fallbacks = append(fallbacks, map[string]string{"label": "Create optimized version", "detail": "Optional stored version for easier future playback. Vyrden should show size, quality, and storage impact first."})
+	return fallbacks
 }
 
 func hardwareTestHandler(deps Deps) http.HandlerFunc {
@@ -850,6 +917,7 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"transcodeWorkers": cfg.TranscodeWorkers,
 		"gpuWorkers":       cfg.GPUWorkers,
 		"hardwareUnlocked": cfg.HardwareUnlocked,
+		"playbackPolicy":   cfg.PlaybackPolicy,
 		"librarySyncMode":  cfg.LibrarySyncMode,
 		"syncIntervalMins": cfg.SyncIntervalMins,
 		"probeBatchLimit":  cfg.ProbeBatchLimit,
@@ -1532,6 +1600,21 @@ func playerHandler(deps Deps) http.HandlerFunc {
     async function resolvePlaybackRoute() {
       sessionState.textContent = "Selecting route";
       const route = await getJSON("/api/playback/route?mediaSourceId=" + mediaSourceId + "&clientProfile=web", {});
+      if (route.status === "blocked_by_policy") {
+        const policy = route.policy || {};
+        const decision = route.decision || {};
+        const fallbacks = route.fallbackOptions || [];
+        player.removeAttribute("src");
+        sessionState.textContent = "Playback blocked by policy";
+        forecastMode.textContent = "Fallback needed";
+        forecastReason.textContent = (policy.label || "Current policy") + " will not automatically " + (decision.mode || "adapt this file") + ". Choose a fallback from the dashboard or change Playback Policy in Settings.";
+        forecastServer.textContent = "No work started";
+        forecastRoute.textContent = policy.label || "Blocked";
+        if (fallbacks.length) {
+          forecastReason.textContent += " Options: " + fallbacks.map(item => item.label).join(", ") + ".";
+        }
+        return "blocked";
+      }
       if (route.url) {
         player.src = route.url;
         sessionState.textContent = route.route === "direct" ? "Direct stream" : "Prepared stream";
@@ -2031,11 +2114,11 @@ func sessionServerImpact(route string, mode string) string {
 	value := strings.ToLower(route + " " + mode)
 	switch {
 	case strings.Contains(value, "transcode"):
-		return "Transcode load"
+		return "Converting while playing"
 	case strings.Contains(value, "remux"):
-		return "Container remux"
+		return "Repackaging while playing"
 	case strings.Contains(value, "preparing"):
-		return "Preparing route"
+		return "Selecting playback route"
 	case strings.Contains(value, "direct"):
 		return "Low impact"
 	default:
@@ -2273,6 +2356,16 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
+		if !playbackPolicyAllows(deps.Config.PlaybackPolicy, decision) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"route":           "blocked",
+				"status":          "blocked_by_policy",
+				"policy":          playbackPolicyStatus(deps.Config.PlaybackPolicy),
+				"decision":        decision,
+				"fallbackOptions": playbackPolicyFallbacks(deps.Config.PlaybackPolicy, decision),
+			})
+			return
+		}
 		mode := transcode.ModeTranscode
 		if decision.Mode == playback.Remux {
 			mode = transcode.ModeRemux
@@ -2296,7 +2389,14 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
-		job, err := deps.Transcode.Start(r.Context(), transcode.Request{MediaSourceID: mediaSourceID, Mode: mode, SourcePath: item.Path})
+		request := transcode.Request{MediaSourceID: mediaSourceID, Mode: mode, SourcePath: item.Path}
+		if mode == transcode.ModeTranscode {
+			if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
+				request.Acceleration = "hardware"
+				request.VideoEncoder = encoder
+			}
+		}
+		job, err := deps.Transcode.Start(r.Context(), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

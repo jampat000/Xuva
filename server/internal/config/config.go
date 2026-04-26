@@ -27,6 +27,7 @@ type Config struct {
 	TranscodeWorkers int    `json:"transcodeWorkers"`
 	GPUWorkers       int    `json:"gpuWorkers"`
 	HardwareUnlocked bool   `json:"hardwareUnlocked,omitempty"`
+	PlaybackPolicy   string `json:"playbackPolicy,omitempty"`
 	LibrarySyncMode  string `json:"librarySyncMode,omitempty"`
 	SyncIntervalMins int    `json:"syncIntervalMins,omitempty"`
 	ProbeBatchLimit  int    `json:"probeBatchLimit,omitempty"`
@@ -54,6 +55,7 @@ func FromEnv() Config {
 		TranscodeWorkers: envInt("VYRDEN_TRANSCODE_WORKERS", 1),
 		GPUWorkers:       envInt("VYRDEN_GPU_WORKERS", 1),
 		HardwareUnlocked: envBool("VYRDEN_HARDWARE_UNLOCKED", false),
+		PlaybackPolicy:   envString("VYRDEN_PLAYBACK_POLICY", "original_only"),
 		LibrarySyncMode:  envString("VYRDEN_LIBRARY_SYNC_MODE", "daily"),
 		SyncIntervalMins: envInt("VYRDEN_SYNC_INTERVAL_MINS", 1440),
 		ProbeBatchLimit:  envInt("VYRDEN_PROBE_BATCH_LIMIT", 50),
@@ -80,6 +82,7 @@ func FromEnv() Config {
 	cfg.TranscodeWorkers = envInt("VYRDEN_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
 	cfg.GPUWorkers = envInt("VYRDEN_GPU_WORKERS", cfg.GPUWorkers)
 	cfg.HardwareUnlocked = envBool("VYRDEN_HARDWARE_UNLOCKED", cfg.HardwareUnlocked)
+	cfg.PlaybackPolicy = envString("VYRDEN_PLAYBACK_POLICY", defaultPlaybackPolicy(cfg.PlaybackPolicy))
 	cfg.LibrarySyncMode = envString("VYRDEN_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
 	cfg.SyncIntervalMins = envInt("VYRDEN_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
 	cfg.ProbeBatchLimit = envInt("VYRDEN_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
@@ -167,6 +170,9 @@ func merge(base Config, saved Config) Config {
 	if saved.HardwareUnlocked {
 		base.HardwareUnlocked = saved.HardwareUnlocked
 	}
+	if saved.PlaybackPolicy != "" {
+		base.PlaybackPolicy = saved.PlaybackPolicy
+	}
 	if saved.LibrarySyncMode != "" {
 		base.LibrarySyncMode = saved.LibrarySyncMode
 	}
@@ -184,6 +190,15 @@ func defaultSyncMode(value string) string {
 		return "daily"
 	}
 	return value
+}
+
+func defaultPlaybackPolicy(value string) string {
+	switch value {
+	case "original_only", "light", "full", "cinema":
+		return value
+	default:
+		return "original_only"
+	}
 }
 
 func defaultInt(value int, fallback int) int {

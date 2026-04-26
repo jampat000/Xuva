@@ -399,7 +399,7 @@ async function loadVersionModel(version = {}) {
     Promise.all(forecastProfiles.map(profile => api(`/api/playback/decision?mediaSourceId=${version.mediaSourceId}&clientProfile=${profile}`).catch(() => ({ clientProfile: profile })))),
     performanceSnapshot(),
   ]);
-  return { ...version, state, source, tracks, decision, deviceDecisions, hardware: hardwareTranscodeProfile(performance) };
+  return { ...version, state, source, tracks, decision, deviceDecisions, hardware: hardwareTranscodeProfile(performance), policy: playbackPolicyProfile(performance.playbackPolicy) };
 }
 
 function versionCard(model, selected) {
@@ -415,6 +415,7 @@ function versionCard(model, selected) {
     source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending",
   ].filter(Boolean).join(" - ");
   const hardware = version.hardware || {};
+  const policy = version.policy || playbackPolicyProfile();
   return `<article class="version source-card ${selected ? "is-selected" : ""}">
     <div class="source-card-head">
       <div>
@@ -426,10 +427,12 @@ function versionCard(model, selected) {
     <div class="source-card-grid">
       ${sourceCardFact("Can it play?", routeTone)}
       ${sourceCardFact("PC work needed", playbackEffortLabel(decision, hardware))}
+      ${sourceCardFact("Current policy", policyDecisionLabel(policy, decision))}
       ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
       ${sourceCardFact("Video file details", sourceFacts)}
     </div>
     <p>${escapeHTML(playbackReason(decision, hardware))}</p>
+    ${policyImpactNote(policy, decision)}
     ${hardwareImpactNote(decision, hardware)}
     ${deviceForecast(version.deviceDecisions, hardware)}
     <div class="inline-actions source-card-actions">
@@ -465,6 +468,55 @@ function hardwareTranscodeProfile(performance = {}) {
     unlockState: hardware.unlockState || "planned",
     status: hardware.status || "unknown",
   };
+}
+
+function playbackPolicyProfile(policy = {}) {
+  const id = policy.id || "original_only";
+  const label = policy.label || playbackPolicyName(id);
+  return { id, label, description: policy.description || "" };
+}
+
+function playbackPolicyName(value = "original_only") {
+  return {
+    original_only: "Original Only",
+    light: "Light Compatibility",
+    full: "Full Compatibility",
+    cinema: "Cinema Server",
+  }[String(value)] || "Original Only";
+}
+
+function policyAllowsDecision(policy = {}, decision = {}) {
+  const mode = String(decision.mode || "").toLowerCase();
+  if (!mode || mode === "direct play" || mode === "decision deferred") return true;
+  const id = policy.id || "original_only";
+  if (id === "light") return mode === "remux" || mode === "audio transcode";
+  if (id === "full" || id === "cinema") return ["remux", "audio transcode", "video transcode", "subtitle burn"].includes(mode);
+  return false;
+}
+
+function policyDecisionLabel(policy = {}, decision = {}) {
+  if (policyAllowsDecision(policy, decision)) return "Allowed";
+  return "Fallback needed";
+}
+
+function policyImpactNote(policy = {}, decision = {}) {
+  if (policyAllowsDecision(policy, decision)) return "";
+  const mode = playbackReadinessLabel(decision);
+  return `<div class="policy-impact">
+    <strong>${escapeHTML(policy.label || "Original Only")} blocks automatic changes</strong>
+    <span>${escapeHTML(`This file may still play on another device, but this player needs ${mode.toLowerCase()}. Vyrden will not convert or repackage it unless you choose a fallback.`)}</span>
+    <div>${fallbackOptions(decision).map(item => `<small>${escapeHTML(item)}</small>`).join("")}</div>
+  </div>`;
+}
+
+function fallbackOptions(decision = {}) {
+  const mode = String(decision.mode || "").toLowerCase();
+  const options = ["Try a device that supports the original file"];
+  if (mode === "remux") options.push("Allow live repackage with no quality loss");
+  if (mode === "audio transcode") options.push("Allow temporary audio conversion");
+  if (mode === "video transcode" || mode === "subtitle burn") options.push("Allow temporary video conversion");
+  options.push("Create optimized version only if you explicitly want a stored file");
+  return options;
 }
 
 function needsVideoHardware(decision = {}) {
@@ -564,11 +616,11 @@ function sourceControlActions(selected = null) {
 function sourceControlDownloads(selected = null) {
   if (!selected) return "";
   return `<div class="source-control-section">
-    <div class="rail-section-title">Prepare a copy</div>
+    <div class="rail-section-title">Create optimized version</div>
     <div class="download-plan">
-      ${downloadPlan("Original", formatBytes(selected.sizeBytes), "Full quality", selected.mediaSourceId, "original")}
-      ${downloadPlan("Balanced", "1080p", "Smaller copy", selected.mediaSourceId, "balanced")}
-      ${downloadPlan("Travel", "720p", "Portable copy", selected.mediaSourceId, "travel")}
+      ${downloadPlan("Original", formatBytes(selected.sizeBytes), "No new file. Use the existing source.", selected.mediaSourceId, "original")}
+      ${downloadPlan("Remote Optimized", "1080p", "Creates a smaller stored version for remote playback.", selected.mediaSourceId, "balanced")}
+      ${downloadPlan("Travel Optimized", "720p", "Creates the smallest portable stored version.", selected.mediaSourceId, "travel")}
     </div>
   </div>`;
 }
@@ -617,9 +669,9 @@ async function openSourceInspector(mediaSourceId) {
       <div class="panel-title"><strong>Actions</strong></div>
       <div class="inline-actions">
         <button class="primary" onclick="probeSource('${mediaSourceId}')">${source.probed ? "Re-probe" : "Probe Now"}</button>
-        <button onclick="startWork('${mediaSourceId}','remux')">Prepare Remux</button>
-        <button onclick="startWork('${mediaSourceId}','transcode')">Prepare Transcode</button>
-        <button onclick="startDownload('${mediaSourceId}','balanced')">Prepare Download</button>
+        <button onclick="startWork('${mediaSourceId}','remux')">Repackage while playing</button>
+        <button onclick="startWork('${mediaSourceId}','transcode')">Convert while playing</button>
+        <button onclick="startDownload('${mediaSourceId}','balanced')">Create remote optimized version</button>
         <a class="button" href="/api/playback/decision?mediaSourceId=${mediaSourceId}&clientProfile=web" target="_blank">Raw Decision</a>
       </div>
     </div>
@@ -788,9 +840,9 @@ function setText(id, value) {
 }
 
 function serverImpact(decision = {}) {
-  if (decision.mode === "Subtitle Burn" || decision.mode === "Video Transcode") return "Transcode required";
-  if (decision.mode === "Audio Transcode") return "Audio transcode";
-  if (decision.mode === "Remux") return "Container remux";
+  if (decision.mode === "Subtitle Burn" || decision.mode === "Video Transcode") return "Video conversion needed";
+  if (decision.mode === "Audio Transcode") return "Audio conversion needed";
+  if (decision.mode === "Remux") return "Live repackage";
   if (decision.mode === "Direct Play") return "Low impact route";
   return "Decision pending";
 }
@@ -798,7 +850,7 @@ function serverImpact(decision = {}) {
 function playbackReadinessLabel(decision = {}) {
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "Ready to play";
-  if (mode === "remux") return "Quick prepare";
+  if (mode === "remux") return "Repackage while playing";
   if (mode === "audio transcode") return "Audio conversion";
   if (mode === "video transcode") return "Video conversion";
   if (mode === "subtitle burn") return "Subtitle conversion";
@@ -828,7 +880,7 @@ function playbackReason(decision = {}, hardware = {}) {
   if (reason.includes("has not been probed")) return "Vyrden needs to check this file once before it can confirm the best playback path.";
   if (reason.includes("Container and video codec match")) return "This player can stream the file directly. Vyrden should not need extra CPU, GPU, or temporary disk work.";
   if (reason.includes("Video can direct play")) return "The video can play as-is, but Vyrden may convert the audio track for this player. Expect a light CPU load.";
-  if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Vyrden may need to repackage the file for this player. This is usually quick and low impact.";
+  if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Vyrden may need to repackage the file while playing for this device. No permanent file is created.";
   if (reason.includes("subtitle track is image-based")) return "This file can still play, but image subtitles may need to be burned into the video. That is a heavy path and can use significant CPU/GPU.";
   if (reason.includes("not safely direct-playable")) {
     if (mode === "video transcode") return hardware.configured && hardware.unlockState === "unlocked"
@@ -836,7 +888,7 @@ function playbackReason(decision = {}, hardware = {}) {
       : "This file can still play, but this player profile needs video conversion. Without hardware acceleration, expect high CPU use, more power draw, and more heat.";
     if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
     if (mode === "audio transcode") return "The video can stay intact, but Vyrden may convert audio for this player. This is usually a light PC load.";
-    if (mode === "remux") return "The streams can stay intact, but Vyrden may repackage the file for this player. This is usually low impact.";
+    if (mode === "remux") return "The streams can stay intact, but Vyrden may repackage the file while playing for this device. This is temporary and usually low impact.";
     return "This file can still play, but Vyrden may need to prepare it before or during playback for this player profile.";
   }
   return reason;
@@ -850,7 +902,7 @@ function playbackActionLabel(value = "") {
     direct: "Ready",
     direct_play: "Ready",
     copy: "No conversion",
-    remux: "Quick prepare",
+    remux: "Live repackage",
     transcode: "Convert",
     burn_in: "Burn subtitles",
     selected_source: "Selected source",
@@ -1180,6 +1232,7 @@ async function renderSettings() {
       <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
     </div>
     <div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div>
+    <div class="card"><h2>Playback Policy</h2>${playbackPolicyForm(settings.config.playbackPolicy || "original_only")}</div>
     <div class="card"><h2>Library Automation</h2>${automationSettingsForm(settings.config)}</div>
     <div class="card"><h2>Hardware Acceleration</h2>${hardwareAccelerationPanel(performance.hardwareAcceleration || {}, settings.config)}</div>
     <div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>
@@ -1187,6 +1240,25 @@ async function renderSettings() {
     <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
     <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
   </div>`;
+}
+
+function playbackPolicyForm(current = "original_only") {
+  const policies = [
+    ["original_only", "Original Only", "Plays the original file only. If this device needs help, Vyrden shows fallback options instead of changing anything automatically."],
+    ["light", "Light Compatibility", "Allows live repackage and audio conversion. Video stays untouched, so there is no video quality loss."],
+    ["full", "Full Compatibility", "Allows temporary video conversion when a player needs it. No permanent optimized version is created."],
+    ["cinema", "Cinema Server", "Allows heavier compatibility work and future scheduled optimization controls for power users."],
+  ];
+  return `<form class="policy-form" onsubmit="savePlaybackPolicy(event)">
+    <div class="policy-grid">
+      ${policies.map(([value, label, detail]) => `<label class="policy-option ${current === value ? "selected" : ""}">
+        <input type="radio" name="playbackPolicy" value="${escapeAttr(value)}" ${current === value ? "checked" : ""}>
+        <strong>${escapeHTML(label)}</strong>
+        <span>${escapeHTML(detail)}</span>
+      </label>`).join("")}
+    </div>
+    <div class="inline-actions"><button class="primary" type="submit">Save playback policy</button><span class="muted">This controls automatic live playback work only. Stored optimized versions remain explicit user actions.</span></div>
+  </form>`;
 }
 
 function hardwareAccelerationPanel(hardware = {}, config = {}) {
@@ -1252,7 +1324,7 @@ function runtimePathForm(paths = {}) {
   const fields = [
     ["data", "Database and settings"],
     ["transcode", "Transcode temp"],
-    ["downloads", "Prepared downloads"],
+    ["downloads", "Optimized versions"],
     ["metadata", "Metadata and artwork"],
     ["cache", "Cache"],
     ["temp", "Scratch temp"],
@@ -1327,6 +1399,15 @@ async function saveAutomationSettings(event) {
     probeBatchLimit: Math.max(1, Math.min(500, probeLimit)),
   }, "PUT");
   alert(result.restartRequired ? "Saved. Restart Vyrden for the scheduler to use the new cadence." : "Saved.");
+  navigate("settings");
+}
+
+async function savePlaybackPolicy(event) {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const result = await send("/api/settings", { playbackPolicy: data.get("playbackPolicy") || "original_only" }, "PUT");
+  state.performanceSnapshot = null;
+  alert(result.restartRequired ? "Saved. Restart Vyrden if an active player is already running." : "Saved.");
   navigate("settings");
 }
 
@@ -1742,7 +1823,7 @@ function usageBar(label, percent, detail) {
 }
 
 function folderLabel(value = "") {
-  return { data: "Database", transcode: "Transcode temp", downloads: "Prepared downloads", metadata: "Metadata cache", cache: "App cache", temp: "Scratch temp" }[value] || value;
+  return { data: "Database", transcode: "Transcode temp", downloads: "Optimized versions", metadata: "Metadata cache", cache: "App cache", temp: "Scratch temp" }[value] || value;
 }
 
 function movieOverview(movie = {}) {
@@ -1961,9 +2042,9 @@ function playbackCards(items = []) {
     <div class="inline-actions">
       <button onclick="openSourceInspector('${item.id}')">Inspect</button>
       ${item.probed ? "" : `<button onclick="probeSource('${item.id}')">Probe</button>`}
-      <button onclick="startWork('${item.id}','remux')">Remux</button>
-      <button onclick="startWork('${item.id}','transcode')">Transcode</button>
-      <button onclick="startDownload('${item.id}','balanced')">Download</button>
+      <button onclick="startWork('${item.id}','remux')">Repackage while playing</button>
+      <button onclick="startWork('${item.id}','transcode')">Convert while playing</button>
+      <button onclick="startDownload('${item.id}','balanced')">Create remote optimized version</button>
       <a class="button primary" href="/play/${item.id}" target="_blank">Play</a>
     </div>
   </article>`).join("")}</div>`;
