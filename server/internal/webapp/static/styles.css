@@ -1564,10 +1564,10 @@ a:focus-visible {
 }
 .detail-source-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(calc(320px * var(--density-scale)), calc(410px * var(--density-scale)));
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
   gap: calc(16px * var(--density-scale));
-  padding: calc(16px * var(--density-scale));
+  padding: calc(10px * var(--density-scale));
   border: 1px solid rgba(158, 219, 212, 0.34);
   border-radius: 10px;
   background:
@@ -1856,6 +1856,62 @@ a:focus-visible {
 }
 .source-card-grid.primary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.source-play-brief {
+  display: grid;
+  grid-template-columns: minmax(calc(280px * var(--density-scale)), 0.62fr) minmax(0, 1fr);
+  gap: calc(14px * var(--density-scale));
+  align-items: stretch;
+}
+.source-play-brief > div:first-child {
+  display: grid;
+  align-content: center;
+  gap: calc(7px * var(--density-scale));
+  min-width: 0;
+  padding: calc(18px * var(--density-scale));
+  border: 1px solid rgba(158, 219, 212, 0.22);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(158,219,212,0.12), transparent 40%),
+    rgba(158,219,212,0.055);
+}
+.source-play-brief span {
+  color: var(--champagne);
+  font-size: var(--tiny-font);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+.source-play-brief strong {
+  color: var(--ice);
+  font-size: calc(28px * var(--font-scale));
+  line-height: 1.05;
+}
+.source-play-brief p {
+  max-width: none;
+  margin: 0;
+}
+.source-play-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(10px * var(--density-scale));
+}
+.source-play-facts div {
+  display: grid;
+  gap: calc(5px * var(--density-scale));
+  min-height: calc(92px * var(--density-scale));
+  padding: calc(14px * var(--density-scale));
+  border: 1px solid rgba(244,239,228,0.095);
+  border-radius: 8px;
+  background: rgba(244,239,228,0.045);
+}
+.source-play-facts span {
+  color: var(--quiet);
+}
+.source-play-facts strong {
+  color: var(--text);
+  font-size: var(--ui-font);
+  line-height: 1.18;
+  overflow-wrap: anywhere;
 }
 .source-card-grid div {
   display: grid;
@@ -3003,6 +3059,7 @@ body[data-theme="light"] .path-form input {
   .hero-strip,
   .detail-hero,
   .detail-source-workbench,
+  .source-play-brief,
   .command-grid,
   .dashboard-grid,
   .library-panel,
@@ -3131,6 +3188,8 @@ body[data-theme="light"] .path-form input {
   .grid.three,
   .track-grid,
   .version-grid,
+  .source-play-brief,
+  .source-play-facts,
   .command-grid,
   .quality-grid,
   .poster-shelf { grid-template-columns: 1fr; }

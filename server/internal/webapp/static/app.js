@@ -372,7 +372,6 @@ async function showMovie(id) {
           </div>
           <div class="detail-source-workbench">
             <div class="version-grid">${rows.join("") || empty("No playable versions found.")}</div>
-            ${movieDetailRail(movie, selected)}
           </div>
         </section>
         <section class="section">
@@ -437,12 +436,18 @@ function versionCard(model, selected) {
         ${sourceTabLabel(tabName, "optimize", "Optimize")}
       </div>
       <section class="source-tab-panel source-tab-panel-play">
-        <div class="source-card-grid primary">
-          ${sourceCardFact("Can it play?", routeTone)}
-          ${sourceCardFact("PC work needed", playbackEffortLabel(decision, hardware))}
-          ${sourceCardFact("Current policy", policyDecisionLabel(policy, decision))}
+        <div class="source-play-brief">
+          <div>
+            <span>Ready to play?</span>
+            <strong>${escapeHTML(routeTone)}</strong>
+            <p>${escapeHTML(playbackReason(decision, hardware))}</p>
+          </div>
+          <div class="source-play-facts">
+            ${sourceCardFact("Computer impact", playbackEffortLabel(decision, hardware))}
+            ${sourceCardFact("Playback policy", policyDecisionLabel(policy, decision))}
+            ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
+          </div>
         </div>
-        <p>${escapeHTML(playbackReason(decision, hardware))}</p>
         ${policyImpactNote(policy, decision)}
         ${hardwareImpactNote(decision, hardware)}
         <div class="inline-actions source-card-actions">
@@ -606,14 +611,6 @@ function profileName(value = "") {
   return labels[String(value || "").toLowerCase()] || value || "Player";
 }
 
-function movieDetailRail(movie = {}, selected = null) {
-  return `
-    <aside class="panel pad source-control-panel">
-      ${sourceControlHeader(selected)}
-      ${sourceControlActions(selected)}
-    </aside>`;
-}
-
 function downloadPlan(label, value, note, mediaSourceId, profile) {
   return `<button class="download-plan-item" onclick="startDownload('${mediaSourceId}','${profile}')">
     <strong>${escapeHTML(label)}</strong>
@@ -626,32 +623,8 @@ function factRow(label, value) {
   return `<div class="fact-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
 }
 
-function sourceControlHeader(selected = null) {
-  if (!selected) {
-    return `<div class="source-control-hero">
-      <span>Ready to play?</span>
-      <strong>No source selected</strong>
-      <p>Scan this library to attach a playable file.</p>
-    </div>`;
-  }
-  const decision = selected.decision || {};
-  return `<div class="source-control-hero">
-    <span>Ready to play?</span>
-    <strong>${escapeHTML(playbackReadinessLabel(decision))}</strong>
-    <p>${escapeHTML(playbackReason(decision))}</p>
-  </div>`;
-}
-
 function sourceMetric(label, value) {
   return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
-}
-
-function sourceControlActions(selected = null) {
-  if (!selected) return "";
-  return `<div class="source-control-actions">
-    <button class="primary" onclick="probeSource('${selected.mediaSourceId}')">${selected.source?.probed ? "Recheck file" : "Check file now"}</button>
-    <button onclick="openSourceInspector('${selected.mediaSourceId}')">File details</button>
-  </div>`;
 }
 
 function compactFact(label, value, long = false) {
@@ -1072,7 +1045,6 @@ async function showEpisode(seriesId, episodeId) {
           <div class="section-head"><div class="section-title">Source file</div></div>
           <div class="detail-source-workbench">
             <div class="version-grid">${versionModels.map((model, index) => versionCard(model, index === 0)).join("") || empty("No playable versions found.")}</div>
-            ${episodeDetailRail(series, episode, selected)}
           </div>
         </section>
         <section class="section">
@@ -1085,14 +1057,6 @@ async function showEpisode(seriesId, episodeId) {
       </section>
     </div>`;
   if (selected) updatePlaybackForecast(selected.mediaSourceId);
-}
-
-function episodeDetailRail(series = {}, episode = {}, selected = null) {
-  return `
-    <aside class="panel pad source-control-panel">
-      ${sourceControlHeader(selected)}
-      ${sourceControlActions(selected)}
-    </aside>`;
 }
 
 async function renderLibraries() {
