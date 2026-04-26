@@ -362,7 +362,7 @@ async function showMovie(id) {
         <div class="actions detail-hero-actions">
           ${selected ? `<a class="button primary focusable" href="/play/${selected.mediaSourceId}" target="_blank">Resume</a>` : ""}
           ${selected ? `<a class="button focusable" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Play From Start</a>` : ""}
-          ${selected ? `<button class="button focusable" onclick="markWatched('${selected.mediaSourceId}', true)">Watched</button>` : ""}
+          ${selected ? watchedToggle(selected.mediaSourceId, selected.state, "focusable") : ""}
           <button class="button focusable" onclick="refreshMetadata('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fetch Ratings</button>
           ${movie.needsReview ? `<button class="button focusable" onclick="openMetadataFix('movie','${movie.id}','${escapeAttr(movie.title)}',${movie.year || 0})">Fix Match</button>` : ""}
         </div>
@@ -455,8 +455,7 @@ function versionCard(model, selected) {
           <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
           ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Check file</button>`}
           <button onclick="openSourceInspector('${version.mediaSourceId}')">File details</button>
-          <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
-          <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
+          ${watchedToggle(version.mediaSourceId, state)}
         </div>
       </section>
       <section class="source-tab-panel source-tab-panel-details">
@@ -487,6 +486,15 @@ function versionCard(model, selected) {
 
 function sourceCardFact(label, value) {
   return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
+}
+
+function watchedToggle(mediaSourceId, playbackState = {}, extraClass = "") {
+  const watched = !!playbackState.watched;
+  const suffix = extraClass ? ` ${escapeAttr(extraClass)}` : "";
+  return `<span class="watched-toggle" role="group" aria-label="Watched state">
+    <button class="watch-state ${watched ? "is-selected" : ""}${suffix}" type="button" aria-pressed="${watched ? "true" : "false"}" onclick="markWatched('${mediaSourceId}', true)">Watched</button>
+    <button class="watch-state ${watched ? "" : "is-selected"}${suffix}" type="button" aria-pressed="${watched ? "false" : "true"}" onclick="markWatched('${mediaSourceId}', false)">Unwatched</button>
+  </span>`;
 }
 
 function sourceTabInput(group, id, label, checked = false) {
@@ -993,7 +1001,7 @@ async function episodeList(seriesId, episodes) {
     const state = version ? await api(`/api/playback/state/${version.mediaSourceId}`).catch(() => ({})) : {};
     const playLabel = state.progressSeconds > 5 && !state.watched ? "Resume" : "Play";
     const watchedLabel = state.watched ? "Watched" : state.progressSeconds > 5 ? `${Math.round((state.percent || 0) * 100)}%` : `${episode.versionCount || 0} version${episode.versionCount === 1 ? "" : "s"}`;
-    const play = version ? `<a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${playLabel}</a><a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a><button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button><button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>` : `<span class="muted">No source</span>`;
+    const play = version ? `<a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${playLabel}</a><a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>${watchedToggle(version.mediaSourceId, state)}` : `<span class="muted">No source</span>`;
     const label = episode.episodeEnd && episode.episodeEnd !== episode.episodeNumber ? `E${episode.episodeNumber}-E${episode.episodeEnd}` : `E${episode.episodeNumber}`;
     return `<div class="episode-row">
       <button class="episode-jump" onclick="showEpisode('${seriesId}','${episode.id}')">${label}</button>
@@ -1037,7 +1045,7 @@ async function showEpisode(seriesId, episodeId) {
         ${ratingsRail(series.metadata)}
         <div class="actions detail-hero-actions">
           ${selected ? `<a class="button primary" href="/play/${selected.mediaSourceId}" target="_blank">Play</a><a class="button" href="/play/${selected.mediaSourceId}?start=0" target="_blank">Start Over</a>` : ""}
-          ${selected ? `<button onclick="markWatched('${selected.mediaSourceId}', true)">Watched</button><button onclick="markWatched('${selected.mediaSourceId}', false)">Unwatched</button>` : ""}
+          ${selected ? watchedToggle(selected.mediaSourceId, selected.state) : ""}
           <button onclick="refreshMetadata('series','${series.id}','${escapeAttr(series.title)}',0)">Fetch Metadata</button>
           ${episode.needsReview ? `<button onclick="openMetadataFix('episode','${episode.id}','${escapeAttr(episode.title || "Episode")}',0)">Fix Episode</button>` : ""}
         </div>
