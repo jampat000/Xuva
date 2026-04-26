@@ -1726,7 +1726,7 @@ a:focus-visible {
 .source-card {
   display: grid;
   align-content: start;
-  gap: calc(18px * var(--density-scale));
+  gap: calc(14px * var(--density-scale));
   height: 100%;
   min-height: auto;
   padding: calc(24px * var(--density-scale));
@@ -1742,6 +1742,66 @@ a:focus-visible {
     radial-gradient(circle at 92% 0%, rgba(158,219,212,0.14), transparent 34%),
     linear-gradient(145deg, rgba(158,219,212,0.09), rgba(244,239,228,0.028)),
     rgba(17, 18, 16, 0.82);
+}
+.source-tabset {
+  display: grid;
+  gap: calc(14px * var(--density-scale));
+}
+.source-tab-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.source-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(8px * var(--density-scale));
+  padding: calc(5px * var(--density-scale));
+  border: 1px solid rgba(244,239,228,0.08);
+  border-radius: 10px;
+  background: rgba(0,0,0,0.16);
+}
+.source-tabs label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(34px * var(--density-scale));
+  padding: 0 calc(13px * var(--density-scale));
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--soft);
+  font-size: var(--small-font);
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.source-tabs label:hover {
+  border-color: rgba(244,239,228,0.12);
+  color: var(--text);
+}
+.source-tab-panel {
+  display: none;
+  min-width: 0;
+}
+.source-tab-panel-play,
+.source-tab-panel-details,
+.source-tab-panel-devices,
+.source-tab-panel-optimize {
+  gap: calc(14px * var(--density-scale));
+}
+.source-tab-input:nth-of-type(1):checked ~ .source-tabs label:nth-of-type(1),
+.source-tab-input:nth-of-type(2):checked ~ .source-tabs label:nth-of-type(2),
+.source-tab-input:nth-of-type(3):checked ~ .source-tabs label:nth-of-type(3),
+.source-tab-input:nth-of-type(4):checked ~ .source-tabs label:nth-of-type(4) {
+  border-color: rgba(216,179,106,0.34);
+  background: rgba(216,179,106,0.16);
+  color: var(--text);
+}
+.source-tab-input:nth-of-type(1):checked ~ .source-tab-panel-play,
+.source-tab-input:nth-of-type(2):checked ~ .source-tab-panel-details,
+.source-tab-input:nth-of-type(3):checked ~ .source-tab-panel-devices,
+.source-tab-input:nth-of-type(4):checked ~ .source-tab-panel-optimize {
+  display: grid;
 }
 .source-card-head {
   display: flex;
@@ -1793,6 +1853,9 @@ a:focus-visible {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: calc(10px * var(--density-scale));
+}
+.source-card-grid.primary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .source-card-grid div {
   display: grid;
@@ -1894,6 +1957,23 @@ a:focus-visible {
 .source-card-actions button {
   width: 100%;
   justify-content: center;
+}
+.source-optimize-copy {
+  display: grid;
+  gap: calc(5px * var(--density-scale));
+  padding: calc(12px * var(--density-scale));
+  border: 1px solid rgba(216,179,106,0.18);
+  border-radius: 8px;
+  background: rgba(216,179,106,0.055);
+}
+.source-optimize-copy strong {
+  color: var(--champagne);
+  font-size: var(--ui-font);
+}
+.source-optimize-copy span {
+  color: var(--soft);
+  font-size: var(--small-font);
+  line-height: 1.35;
 }
 .source-badges {
   display: flex;

@@ -416,6 +416,7 @@ function versionCard(model, selected) {
   ].filter(Boolean).join(" - ");
   const hardware = version.hardware || {};
   const policy = version.policy || playbackPolicyProfile();
+  const tabName = `source-tabs-${String(version.mediaSourceId || "source").replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return `<article class="version source-card ${selected ? "is-selected" : ""}">
     <div class="source-card-head">
       <div>
@@ -424,30 +425,71 @@ function versionCard(model, selected) {
       </div>
       <em class="${source.probed ? "ready" : "pending"}">${escapeHTML(source.probed ? "Checked" : "Check needed")}</em>
     </div>
-    <div class="source-card-grid">
-      ${sourceCardFact("Can it play?", routeTone)}
-      ${sourceCardFact("PC work needed", playbackEffortLabel(decision, hardware))}
-      ${sourceCardFact("Current policy", policyDecisionLabel(policy, decision))}
-      ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
-      ${sourceCardFact("Video file details", sourceFacts)}
-    </div>
-    <p>${escapeHTML(playbackReason(decision, hardware))}</p>
-    ${policyImpactNote(policy, decision)}
-    ${hardwareImpactNote(decision, hardware)}
-    ${deviceForecast(version.deviceDecisions, hardware)}
-    <div class="inline-actions source-card-actions">
-      <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
-      <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
-      ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Check file</button>`}
-      <button onclick="openSourceInspector('${version.mediaSourceId}')">File details</button>
-      <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
-      <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
+    <div class="source-tabset">
+      ${sourceTabInput(tabName, "play", "Play", true)}
+      ${sourceTabInput(tabName, "details", "Details")}
+      ${sourceTabInput(tabName, "devices", "Devices")}
+      ${sourceTabInput(tabName, "optimize", "Optimize")}
+      <div class="source-tabs">
+        ${sourceTabLabel(tabName, "play", "Play")}
+        ${sourceTabLabel(tabName, "details", "Details")}
+        ${sourceTabLabel(tabName, "devices", "Devices")}
+        ${sourceTabLabel(tabName, "optimize", "Optimize")}
+      </div>
+      <section class="source-tab-panel source-tab-panel-play">
+        <div class="source-card-grid primary">
+          ${sourceCardFact("Can it play?", routeTone)}
+          ${sourceCardFact("PC work needed", playbackEffortLabel(decision, hardware))}
+          ${sourceCardFact("Current policy", policyDecisionLabel(policy, decision))}
+        </div>
+        <p>${escapeHTML(playbackReason(decision, hardware))}</p>
+        ${policyImpactNote(policy, decision)}
+        ${hardwareImpactNote(decision, hardware)}
+        <div class="inline-actions source-card-actions">
+          <a class="button primary" href="/play/${version.mediaSourceId}" target="_blank">${state.progressSeconds > 5 && !state.watched ? "Resume" : "Play"}</a>
+          <a class="button" href="/play/${version.mediaSourceId}?start=0" target="_blank">Start Over</a>
+          ${source.probed ? "" : `<button onclick="probeSource('${version.mediaSourceId}')">Check file</button>`}
+          <button onclick="openSourceInspector('${version.mediaSourceId}')">File details</button>
+          <button onclick="markWatched('${version.mediaSourceId}', true)">Watched</button>
+          <button onclick="markWatched('${version.mediaSourceId}', false)">Unwatched</button>
+        </div>
+      </section>
+      <section class="source-tab-panel source-tab-panel-details">
+        <div class="source-card-grid">
+          ${sourceCardFact("File size", formatBytes(version.sizeBytes))}
+          ${sourceCardFact("Video file details", sourceFacts)}
+          ${sourceCardFact("Probe status", source.probed ? "Checked" : "Check needed")}
+          ${sourceCardFact("Storage path", version.relPath || source.relPath || "Local source")}
+        </div>
+      </section>
+      <section class="source-tab-panel source-tab-panel-devices">
+        ${deviceForecast(version.deviceDecisions, hardware) || empty("No player compatibility forecast yet.")}
+      </section>
+      <section class="source-tab-panel source-tab-panel-optimize">
+        <div class="source-optimize-copy">
+          <strong>Create optimized version</strong>
+          <span>Optional stored versions are only created when you choose them. Originals are not modified.</span>
+        </div>
+        <div class="download-plan">
+          ${downloadPlan("Original", formatBytes(version.sizeBytes), "No new file. Use the existing source.", version.mediaSourceId, "original")}
+          ${downloadPlan("Remote Optimized", "1080p", "Creates a smaller stored version for remote playback.", version.mediaSourceId, "balanced")}
+          ${downloadPlan("Travel Optimized", "720p", "Creates the smallest portable stored version.", version.mediaSourceId, "travel")}
+        </div>
+      </section>
     </div>
   </article>`;
 }
 
 function sourceCardFact(label, value) {
   return `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
+}
+
+function sourceTabInput(group, id, label, checked = false) {
+  return `<input class="source-tab-input" type="radio" name="${escapeAttr(group)}" id="${escapeAttr(group)}-${escapeAttr(id)}" ${checked ? "checked" : ""} aria-label="${escapeAttr(label)}">`;
+}
+
+function sourceTabLabel(group, id, label) {
+  return `<label for="${escapeAttr(group)}-${escapeAttr(id)}">${escapeHTML(label)}</label>`;
 }
 
 async function performanceSnapshot() {
@@ -569,7 +611,6 @@ function movieDetailRail(movie = {}, selected = null) {
     <aside class="panel pad source-control-panel">
       ${sourceControlHeader(selected)}
       ${sourceControlActions(selected)}
-      ${sourceControlDownloads(selected)}
     </aside>`;
 }
 
@@ -1063,7 +1104,6 @@ function episodeDetailRail(series = {}, episode = {}, selected = null) {
     <aside class="panel pad source-control-panel">
       ${sourceControlHeader(selected)}
       ${sourceControlActions(selected)}
-      ${sourceControlDownloads(selected)}
     </aside>`;
 }
 
