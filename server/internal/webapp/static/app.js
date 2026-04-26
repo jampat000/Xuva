@@ -654,18 +654,6 @@ function sourceControlActions(selected = null) {
   </div>`;
 }
 
-function sourceControlDownloads(selected = null) {
-  if (!selected) return "";
-  return `<div class="source-control-section">
-    <div class="rail-section-title">Create optimized version</div>
-    <div class="download-plan">
-      ${downloadPlan("Original", formatBytes(selected.sizeBytes), "No new file. Use the existing source.", selected.mediaSourceId, "original")}
-      ${downloadPlan("Remote Optimized", "1080p", "Creates a smaller stored version for remote playback.", selected.mediaSourceId, "balanced")}
-      ${downloadPlan("Travel Optimized", "720p", "Creates the smallest portable stored version.", selected.mediaSourceId, "travel")}
-    </div>
-  </div>`;
-}
-
 function compactFact(label, value, long = false) {
   return `<div class="compact-fact ${long ? "long" : ""}"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong></div>`;
 }
