@@ -659,12 +659,15 @@ function compactFact(label, value, long = false) {
 }
 
 async function openSourceInspector(mediaSourceId) {
-  const [source, tracks, decision, playbackState] = await Promise.all([
+  const [source, tracks, decision, playbackState, performance] = await Promise.all([
     api(`/api/media-sources/${mediaSourceId}`).catch(() => ({})),
     api(`/api/media-sources/${mediaSourceId}/tracks`).catch(() => ({ audioTracks: [], subtitleTracks: [] })),
     api(`/api/playback/decision?mediaSourceId=${mediaSourceId}&clientProfile=web`).catch(() => ({})),
     api(`/api/playback/state/${mediaSourceId}`).catch(() => ({})),
+    performanceSnapshot(),
   ]);
+  const hardware = hardwareTranscodeProfile(performance);
+  const policy = playbackPolicyProfile(performance.playbackPolicy);
   closeSourceInspector();
   const overlay = document.createElement("div");
   overlay.className = "source-drawer-backdrop";
@@ -677,7 +680,7 @@ async function openSourceInspector(mediaSourceId) {
       </div>
       <button type="button" onclick="closeSourceInspector()">Close</button>
     </div>
-    <div class="decision"><strong>${escapeHTML(playbackReadinessLabel(decision))}</strong><span>${escapeHTML(playbackReason(decision))}</span></div>
+    <div class="decision"><strong>${escapeHTML(playbackReadinessLabel(decision))}</strong><span>${escapeHTML(playbackSummary(decision, hardware, policy))}</span></div>
     <div class="source-inspector-grid">
       ${inspectorFact("Probe", source.probed ? "Complete" : "Needed", source.probed ? "Media facts are cached locally." : "Run ffprobe for this one source now.")}
       ${inspectorFact("Container", source.container || "Pending", sourceCodecLine(source))}
@@ -749,8 +752,10 @@ function playbackForecastMarkup(model) {
   }
   const source = model.source || {};
   const decision = model.decision || {};
+  const hardware = model.hardware || {};
+  const policy = model.policy || playbackPolicyProfile();
   return `<div class="panel-title"><strong>Playback Readiness</strong><span class="badge route" id="forecastLoad">${escapeHTML(loadLabel(decision))}</span></div>
-    <div class="decision"><strong id="forecastMode">${escapeHTML(playbackReadinessLabel(decision))}</strong><span id="forecastReason">${escapeHTML(playbackReason(decision))}</span></div>
+    <div class="decision"><strong id="forecastMode">${escapeHTML(playbackReadinessLabel(decision))}</strong><span id="forecastReason">${escapeHTML(playbackSummary(decision, hardware, policy))}</span></div>
     <div class="readiness-list">
       ${readinessItem("File check", playbackActionLabel(decision.containerAction || "pending"), "forecastReasonShort")}
       ${readinessItem("Video", sourceVideoLine(source, decision), "forecastVideo")}
