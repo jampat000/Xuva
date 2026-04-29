@@ -467,6 +467,101 @@ func TestAuthMutationRejectsMissingCSRF(t *testing.T) {
 	}
 }
 
+func TestAuthzStandardCannotCallAdminSettingsRoutes(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {
+		t.Fatalf("create standard user: %v", err)
+	}
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "viewer", "viewer-password-123!")
+
+	response := client.requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"httpAddr": "127.0.0.1:8097",
+	})
+
+	if response.status != http.StatusForbidden {
+		t.Fatalf("expected standard user to get 403 on settings, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestAuthzAdminCanCallAdminSettingsRoutes(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	response := client.requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"httpAddr": "127.0.0.1:8097",
+	})
+
+	if response.status != http.StatusOK {
+		t.Fatalf("expected admin settings update 200, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestAuthzProtectedMediaAndDownloadRoutes(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {
+		t.Fatalf("create standard user: %v", err)
+	}
+	router := NewRouter(deps)
+
+	unauth := httptest.NewRequest(http.MethodGet, "/api/media-sources/missing/stream", nil)
+	unauthResponse := httptest.NewRecorder()
+	router.ServeHTTP(unauthResponse, unauth)
+	if unauthResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated stream 401, got %d: %s", unauthResponse.Code, unauthResponse.Body.String())
+	}
+
+	viewer := newAuthTestClient(t)
+	loginAs(t, viewer, router, "viewer", "viewer-password-123!")
+	stream := viewer.requestJSON(t, router, http.MethodGet, "/api/media-sources/missing/stream", nil)
+	if stream.status != http.StatusNotFound {
+		t.Fatalf("expected standard stream request to reach handler and return 404, got %d: %s", stream.status, stream.body)
+	}
+	download := viewer.requestJSON(t, router, http.MethodPost, "/api/downloads", map[string]any{"mediaSourceId": "missing", "targetProfile": "original"})
+	if download.status != http.StatusForbidden {
+		t.Fatalf("expected standard download creation 403, got %d: %s", download.status, download.body)
+	}
+}
+
+func TestAuthzAuditEventsIncludeActorAndAction(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	ctx, cancel := context.WithCancel(context.Background())
+	eventsCh, stop := deps.Events.Subscribe(ctx)
+	t.Cleanup(func() {
+		stop()
+		cancel()
+	})
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	response := client.requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"httpAddr": "127.0.0.1:8097",
+	})
+	if response.status != http.StatusOK {
+		t.Fatalf("expected settings update 200, got %d: %s", response.status, response.body)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case event := <-eventsCh:
+			if event.Type != "audit.route" {
+				continue
+			}
+			data := event.Data.(map[string]any)
+			if data["userId"] == "" || data["action"] != "settings.update" || data["result"] != "allowed" {
+				t.Fatalf("unexpected audit data: %#v", data)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("timed out waiting for audit route event")
+		}
+	}
+}
+
 func testDeps(t *testing.T, startedAt time.Time) Deps {
 	t.Helper()
 
@@ -623,6 +718,17 @@ func (c *authTestClient) store(request *http.Request, response *httptest.Respons
 		if cookie.Name == auth.CSRFCookieName {
 			c.csrfToken = cookie.Value
 		}
+	}
+}
+
+func loginAs(t *testing.T, client *authTestClient, router http.Handler, username string, password string) {
+	t.Helper()
+	response := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": username,
+		"password": password,
+	})
+	if response.status != http.StatusOK {
+		t.Fatalf("login %s failed with %d: %s", username, response.status, response.body)
 	}
 }
 
