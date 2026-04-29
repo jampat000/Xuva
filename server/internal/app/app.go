@@ -273,6 +273,7 @@ func (a *Application) Router() http.Handler {
 		Downloads: a.Downloads,
 		Devices:   a.Devices,
 		Sessions:  a.Sessions,
+		Subtitles: a.Subtitles,
 	})
 }
 

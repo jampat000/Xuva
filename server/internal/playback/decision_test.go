@@ -90,6 +90,105 @@ func TestDecideSourceBurnsImageSubtitleForBrowser(t *testing.T) {
 	}
 }
 
+func TestDecideSourceKeepsDirectPathForCompatibleTextSubtitle(t *testing.T) {
+	decision := NewService().DecideSource(context.Background(), Request{
+		MediaSourceID:       "source-1",
+		ClientProfile:       "web",
+		SubtitleTrackIndex:  2,
+		SubtitleCodec:       "webvtt",
+		SubtitleTrackActive: true,
+		SubtitleCodecs:      []string{"webvtt", "srt"},
+	}, SourceFacts{
+		MediaSourceID:   "source-1",
+		Container:       "mov,mp4,m4a,3gp,3g2,mj2",
+		VideoCodec:      "h264",
+		AudioCodec:      "aac",
+		AudioChannels:   2,
+		SubtitleCodec:   "webvtt",
+		SubtitleActive:  true,
+		SubtitleStreams: 1,
+		Probed:          true,
+	})
+
+	if decision.Mode != DirectPlay {
+		t.Fatalf("expected direct play with compatible text subtitle, got %q", decision.Mode)
+	}
+	if decision.SubtitleAction != "direct" || decision.SubtitleClass != "text" {
+		t.Fatalf("expected direct text subtitle impact, got %#v", decision)
+	}
+	if decision.SubtitleImpact["serverLoad"] != "none" {
+		t.Fatalf("expected no subtitle server load, got %#v", decision.SubtitleImpact)
+	}
+}
+
+func TestDecideSourceReportsTextSubtitleConversionPath(t *testing.T) {
+	decision := NewService().DecideSource(context.Background(), Request{
+		MediaSourceID:       "source-1",
+		ClientProfile:       "web",
+		SubtitleTrackIndex:  2,
+		SubtitleCodec:       "ass",
+		SubtitleTrackActive: true,
+		SubtitleCodecs:      []string{"webvtt", "srt"},
+	}, SourceFacts{
+		MediaSourceID:   "source-1",
+		Container:       "mov,mp4,m4a,3gp,3g2,mj2",
+		VideoCodec:      "h264",
+		AudioCodec:      "aac",
+		AudioChannels:   2,
+		SubtitleCodec:   "ass",
+		SubtitleActive:  true,
+		SubtitleStreams: 1,
+		Probed:          true,
+	})
+
+	if decision.Mode != DirectPlay {
+		t.Fatalf("expected direct video path with text subtitle conversion, got %q", decision.Mode)
+	}
+	if decision.ReasonCode != "subtitle_conversion_available" || decision.SubtitleAction != "convert" {
+		t.Fatalf("expected conversion reason/action, got %#v", decision)
+	}
+	if decision.SubtitleImpact["output"] != "webvtt sidecar" || decision.SubtitleImpact["serverLoad"] != "low" {
+		t.Fatalf("expected conversion output behavior, got %#v", decision.SubtitleImpact)
+	}
+}
+
+func TestDecideSourceSubtitleOffRemovesSubtitleImpact(t *testing.T) {
+	off := NewService().DecideSource(context.Background(), Request{
+		MediaSourceID: "source-1",
+		ClientProfile: "web",
+	}, SourceFacts{
+		MediaSourceID: "source-1",
+		Container:     "mov,mp4,m4a,3gp,3g2,mj2",
+		VideoCodec:    "h264",
+		AudioCodec:    "aac",
+		AudioChannels: 2,
+		Probed:        true,
+	})
+	on := NewService().DecideSource(context.Background(), Request{
+		MediaSourceID:       "source-1",
+		ClientProfile:       "web",
+		SubtitleTrackActive: true,
+		SubtitleCodec:       "hdmv_pgs_subtitle",
+	}, SourceFacts{
+		MediaSourceID:   "source-1",
+		Container:       "mov,mp4,m4a,3gp,3g2,mj2",
+		VideoCodec:      "h264",
+		AudioCodec:      "aac",
+		AudioChannels:   2,
+		SubtitleCodec:   "hdmv_pgs_subtitle",
+		SubtitleActive:  true,
+		SubtitleStreams: 1,
+		Probed:          true,
+	})
+
+	if off.Mode != DirectPlay || off.SubtitleAction != "none" {
+		t.Fatalf("expected subtitles off to direct play, got %#v", off)
+	}
+	if on.Mode != SubtitleBurn || on.ReasonCode != "subtitle_burn_required" {
+		t.Fatalf("expected subtitles on to change forecast to burn-in, got %#v", on)
+	}
+}
+
 func TestDecideSourceAudioTranscodeForBrowserIncompatibleAudio(t *testing.T) {
 	decision := NewService().DecideSource(context.Background(), Request{
 		MediaSourceID:   "source-1",

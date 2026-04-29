@@ -271,11 +271,11 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: eliminate subtitle-driven playback confusion and performance surprises.
 
 **Tasks**
-- [ ] Classify subtitle types (text/image) with capability matching.
-- [ ] Add conversion workflow where feasible.
-- [ ] Burn-in only as last resort with explicit warning.
-- [ ] Add pre-play forecast updates for subtitle selections.
-- [ ] Expose subtitle impact in inspector and decision payload.
+- [x] Classify subtitle types (text/image) with capability matching.
+- [x] Add conversion workflow where feasible.
+- [x] Burn-in only as last resort with explicit warning.
+- [x] Add pre-play forecast updates for subtitle selections.
+- [x] Expose subtitle impact in inspector and decision payload.
 
 **Deliverables**
 - Subtitle compatibility matrix by client profile.
@@ -291,10 +291,16 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P1.1
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-7-subtitle-pipeline` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/playback ./internal/subtitles ./internal/api`
+  - `go test ./...`
+  - Subtitle scenarios cover off, compatible text direct, text conversion to WebVTT, image burn-in, and conversion-plan API behavior.
 - Metrics/log evidence:
+  - Playback decisions include `subtitleAction`, `subtitleClass`, and `subtitleImpact` with server load, output behavior, and user-facing message.
 - Risks/rollback:
+  - Text conversion is currently exposed as a plan/entry point; actual materialized conversion jobs can be expanded without changing the public contract.
+  - Rollback is to ignore `subtitleImpact`/conversion endpoint and fall back to the #6 decision contract.
 
 ---
 

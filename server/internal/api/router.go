@@ -67,6 +67,7 @@ type Deps struct {
 	Downloads *downloads.Service
 	Devices   *devices.Service
 	Sessions  *sessions.Service
+	Subtitles *subtitles.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -109,6 +110,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/subtitles/{index}", mediaSourceSubtitleStreamHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/subtitles/{index}/convert", mediaSourceSubtitleConvertHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
 	mux.HandleFunc("GET /api/probes", probesHandler(deps))
 	mux.HandleFunc("GET /api/probes/{id}", probeJobHandler(deps))
@@ -2243,6 +2245,37 @@ func mediaSourceSubtitleStreamHandler(deps Deps) http.HandlerFunc {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		}
 		http.ServeFile(w, r, sidecars[index].Path)
+	}
+}
+
+func mediaSourceSubtitleConvertHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		index := parsePathInt(r.PathValue("index"), -1)
+		sidecars := subtitles.DiscoverSidecars(item.Path)
+		if index < 0 || index >= len(sidecars) {
+			writeError(w, http.StatusNotFound, "subtitle not found")
+			return
+		}
+		service := deps.Subtitles
+		if service == nil {
+			service = subtitles.NewService()
+		}
+		plan := service.PlanConversion(sidecars[index], firstNonEmpty(r.URL.Query().Get("clientProfile"), "web"))
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"mediaSourceId": item.ID,
+			"subtitleIndex": index,
+			"sidecar":       sidecars[index],
+			"conversion":    plan,
+		})
 	}
 }
 
