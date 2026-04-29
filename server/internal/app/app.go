@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/api"
+	"github.com/vyrdenhq/vyrden/server/internal/auth"
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/database"
@@ -39,6 +40,7 @@ type Application struct {
 	cancel    context.CancelFunc
 	Database  *database.Service
 	Catalog   *catalog.Service
+	Auth      *auth.Service
 	Events    *events.Bus
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
@@ -74,6 +76,13 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	bus := events.NewBus(cfg.EventBuffer)
 	databaseService, err := database.Open(ctx, cfg.DataDir)
 	if err != nil {
+		return nil, err
+	}
+	authService := auth.NewService(databaseService, cfg.AuthDisabled)
+	if err := authService.Bootstrap(ctx, auth.BootstrapOptions{
+		Username: cfg.AdminUsername,
+		Password: cfg.AdminPassword,
+	}); err != nil {
 		return nil, err
 	}
 	catalogService := catalog.NewService(databaseService)
@@ -142,6 +151,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		cancel:    cancel,
 		Database:  databaseService,
 		Catalog:   catalogService,
+		Auth:      authService,
 		Events:    bus,
 		Resources: manager,
 		Jobs:      jobRegistry,
@@ -242,6 +252,7 @@ func (a *Application) Router() http.Handler {
 	return api.NewRouter(api.Deps{
 		Config:    a.Config,
 		StartedAt: a.StartedAt,
+		Auth:      a.Auth,
 		Events:    a.Events,
 		Resources: a.Resources,
 		Jobs:      a.Jobs,

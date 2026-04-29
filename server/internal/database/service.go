@@ -201,7 +201,16 @@ var migrations = []string{
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL
 	)`,
+	`ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'standard'`,
+	`ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN password_updated_at TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN locked_until TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE users ADD COLUMN last_failed_at TEXT NOT NULL DEFAULT ''`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username <> ''`,
 	`INSERT OR IGNORE INTO users(id, display_name, updated_at) VALUES('local', 'Local User', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+	`UPDATE users SET role = 'standard' WHERE id = 'local' AND role = ''`,
 	`CREATE TABLE IF NOT EXISTS playback_states (
 		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		media_source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,
@@ -248,6 +257,19 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_external_ids_item ON metadata_external_ids(kind, item_id)`,
+	`CREATE TABLE IF NOT EXISTS auth_sessions (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		secret_hash TEXT NOT NULL,
+		csrf_token TEXT NOT NULL,
+		remote_addr TEXT NOT NULL DEFAULT '',
+		user_agent TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		last_seen_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		revoked_at TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, expires_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS metadata_ratings (
 		kind TEXT NOT NULL,
 		item_id TEXT NOT NULL,
