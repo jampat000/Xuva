@@ -191,11 +191,11 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: establish a repeatable security baseline and event traceability.
 
 **Tasks**
-- [ ] Add secure headers and strict CORS policy.
-- [ ] Validate and sanitize all user-controlled inputs.
-- [ ] Add path traversal and filesystem safety tests.
-- [ ] Add dependency vulnerability checks to CI.
-- [ ] Add security/audit event stream (`auth`, `settings`, `library`, `stream`).
+- [x] Add secure headers and strict CORS policy.
+- [x] Validate and sanitize all user-controlled inputs.
+- [x] Add path traversal and filesystem safety tests.
+- [x] Add dependency vulnerability checks to CI.
+- [x] Add security/audit event stream (`auth`, `settings`, `library`, `stream`).
 
 **Deliverables**
 - Security middleware package.
@@ -210,10 +210,21 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P0.1, P0.2
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-5-security-baseline-auditability` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/api/...`
+  - `go test ./...`
+  - `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`
+  - Automated coverage added for web/API security headers, CORS rejection/allow behavior, artwork path traversal rejection, and auth/settings/library audit events.
 - Metrics/log evidence:
+  - `audit.auth` records login allow/deny outcomes.
+  - `audit.settings` records settings updates with actor, result, restart flag, playback policy, and sync interval.
+  - `audit.library` records library save/delete/scan actions with actor and library identifiers.
+  - `audit.stream.denied` remains active for rejected stream attempts.
 - Risks/rollback:
+  - CORS starts strict with local-safe defaults plus `VYRDEN_ALLOWED_ORIGINS`; unusual browser origins must be explicitly configured.
+  - CSP allows inline script/style until the web UI is bundled with nonces or external assets.
+  - Rollback is to remove `withSecurity` from router construction and disable the security CI workflow while preserving route/auth audit behavior.
 
 ---
 

@@ -137,7 +137,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/playback/route", playbackRouteHandler(deps))
 	handleProtected(mux, deps, "GET /play/{id}", playerHandler(deps))
 	mux.Handle("GET /", webapp.Handler())
-	return withResolvedSession(deps, mux)
+	return withSecurity(deps, withResolvedSession(deps, mux))
 }
 
 func withResolvedSession(deps Deps, next http.Handler) http.Handler {
@@ -214,6 +214,7 @@ func authLoginHandler(deps Deps) http.HandlerFunc {
 		}
 		principal, session, token, err := deps.Auth.Authenticate(r.Context(), payload.Username, payload.Password, requestRemoteAddr(r), r.UserAgent())
 		if err != nil {
+			publishAuthAudit(deps, r, payload.Username, "", "", "login", "denied")
 			if until, ok := auth.LockoutUntil(err); ok {
 				writeJSON(w, http.StatusTooManyRequests, map[string]any{
 					"error":       "too many invalid login attempts",
@@ -228,6 +229,7 @@ func authLoginHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "login failed")
 			return
 		}
+		publishAuthAudit(deps, r, principal.Username, principal.ID, principal.Role, "login", "allowed")
 		writeAuthCookies(w, r, auth.ResolvedSession{Principal: principal, Session: session, Token: token})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"user": map[string]any{
@@ -242,6 +244,44 @@ func authLoginHandler(deps Deps) http.HandlerFunc {
 			},
 		})
 	}
+}
+
+func publishAuthAudit(deps Deps, r *http.Request, username string, userID string, role string, action string, result string) {
+	if deps.Events == nil {
+		return
+	}
+	deps.Events.Publish("audit.auth", map[string]any{
+		"userId":    userID,
+		"username":  strings.ToLower(strings.TrimSpace(username)),
+		"role":      role,
+		"method":    r.Method,
+		"path":      r.URL.Path,
+		"action":    action,
+		"result":    result,
+		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
+func publishDomainAudit(deps Deps, r *http.Request, eventType string, action string, result string, fields map[string]any) {
+	if deps.Events == nil {
+		return
+	}
+	payload := map[string]any{
+		"method":    r.Method,
+		"path":      r.URL.Path,
+		"action":    action,
+		"result":    result,
+		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok {
+		payload["userId"] = resolved.Principal.ID
+		payload["username"] = resolved.Principal.Username
+		payload["role"] = resolved.Principal.Role
+	}
+	for key, value := range fields {
+		payload[key] = value
+	}
+	deps.Events.Publish(eventType, payload)
 }
 
 func authSessionHandler(deps Deps) http.HandlerFunc {
@@ -391,6 +431,11 @@ func librarySaveHandler(deps Deps) http.HandlerFunc {
 		}
 		deps.Libraries.Set(library)
 		deps.Events.Publish("library.updated", library)
+		publishDomainAudit(deps, r, "audit.library", "library.save", "allowed", map[string]any{
+			"libraryId":   library.ID,
+			"libraryKind": string(library.Kind),
+			"storageType": string(library.StorageType),
+		})
 		writeJSON(w, http.StatusOK, library)
 	}
 }
@@ -404,6 +449,9 @@ func libraryDeleteHandler(deps Deps) http.HandlerFunc {
 		}
 		deps.Libraries.Delete(id)
 		deps.Events.Publish("library.deleted", map[string]string{"id": id})
+		publishDomainAudit(deps, r, "audit.library", "library.delete", "allowed", map[string]any{
+			"libraryId": id,
+		})
 		writeJSON(w, http.StatusOK, map[string]string{"id": id})
 	}
 }
@@ -424,6 +472,11 @@ func libraryScanByIDHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishDomainAudit(deps, r, "audit.library", "library.scan", "allowed", map[string]any{
+			"libraryId":   library.ID,
+			"libraryKind": string(library.Kind),
+			"jobId":       job.ID,
+		})
 		writeJSON(w, http.StatusAccepted, job)
 	}
 }
@@ -646,6 +699,14 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 		if artType == "" {
 			artType = "poster"
 		}
+		if !safePathSegment(kind) || !safePathSegment(id) || !safePathSegment(artType) {
+			writeError(w, http.StatusBadRequest, "invalid artwork path")
+			return
+		}
+		if artType != "poster" && artType != "backdrop" {
+			writeError(w, http.StatusBadRequest, "invalid artwork type")
+			return
+		}
 		if record, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id); err == nil && ok {
 			if artType == "backdrop" && record.BackdropURL != "" {
 				if serveCachedArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, record.BackdropURL) {
@@ -691,12 +752,18 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	if metadataDir == "" {
 		return false
 	}
-	dir := filepath.Join(metadataDir, "artwork", kind, id)
+	dir, ok := safeChildPath(metadataDir, "artwork", kind, id)
+	if !ok {
+		return false
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return false
 	}
 	for _, ext := range []string{".jpg", ".png", ".webp"} {
-		path := filepath.Join(dir, artType+ext)
+		path, ok := safeChildPath(dir, artType+ext)
+		if !ok {
+			return false
+		}
 		if _, err := os.Stat(path); err == nil {
 			http.ServeFile(w, r, path)
 			return true
@@ -717,7 +784,10 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 		return false
 	}
 	ext := artworkExtension(response.Header.Get("Content-Type"), sourceURL)
-	path := filepath.Join(dir, artType+ext)
+	path, ok := safeChildPath(dir, artType+ext)
+	if !ok {
+		return false
+	}
 	file, err := os.Create(path)
 	if err != nil {
 		return false
@@ -829,6 +899,9 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		updated.PlaybackPolicy = normalizedPlaybackPolicy(updated.PlaybackPolicy)
 		mergeInt(&updated.SyncIntervalMins, request.SyncIntervalMins)
 		mergeInt(&updated.ProbeBatchLimit, request.ProbeBatchLimit)
+		if len(request.AllowedOrigins) > 0 {
+			updated.AllowedOrigins = request.AllowedOrigins
+		}
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
 			return
@@ -852,6 +925,11 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		deps.Events.Publish("settings.updated", settingsPayload(updated))
+		publishDomainAudit(deps, r, "audit.settings", "settings.update", "allowed", map[string]any{
+			"restartRequired": true,
+			"playbackPolicy":  updated.PlaybackPolicy,
+			"syncInterval":    updated.SyncIntervalMins,
+		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"config":          settingsPayload(updated),
 			"runtimePaths":    runtimePaths(updated),
@@ -1130,6 +1208,7 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"librarySyncMode":  cfg.LibrarySyncMode,
 		"syncIntervalMins": cfg.SyncIntervalMins,
 		"probeBatchLimit":  cfg.ProbeBatchLimit,
+		"allowedOrigins":   cfg.AllowedOrigins,
 		"metadataProviders": map[string]any{
 			"omdb": map[string]any{
 				"configured": cfg.OMDbAPIKey != "",
