@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,6 +28,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
+	"github.com/vyrdenhq/vyrden/server/internal/observability"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
@@ -48,6 +50,7 @@ type Deps struct {
 	StartedAt time.Time
 	Auth      *auth.Service
 	Events    *events.Bus
+	Observe   *observability.Service
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
 	Libraries *libraries.Service
@@ -73,6 +76,8 @@ type Deps struct {
 func NewRouter(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", healthHandler(deps))
+	mux.HandleFunc("GET /api/ready", readinessHandler(deps))
+	mux.HandleFunc("GET /api/metrics", metricsHandler(deps))
 	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/auth/logout", authLogoutHandler(deps))
@@ -141,7 +146,53 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/playback/route", playbackRouteHandler(deps))
 	handleProtected(mux, deps, "GET /play/{id}", playerHandler(deps))
 	mux.Handle("GET /", webapp.Handler())
-	return withSecurity(deps, withResolvedSession(deps, mux))
+	return withObservability(deps, withSecurity(deps, withResolvedSession(deps, mux)))
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
+func withObservability(deps Deps, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		correlationID := observability.NormalizeCorrelationID(r.Header.Get("X-Request-ID"))
+		w.Header().Set("X-Request-ID", correlationID)
+		recorder := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r.WithContext(observability.WithCorrelationID(r.Context(), correlationID)))
+		status := recorder.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		duration := time.Since(started)
+		if deps.Observe != nil {
+			deps.Observe.ObserveRequest(r.Method, r.URL.Path, status, duration, correlationID)
+		}
+		slog.Info("api request",
+			"correlation_id", correlationID,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", status,
+			"duration_ms", float64(duration.Microseconds())/1000,
+			"remote_addr", requestRemoteAddr(r),
+		)
+	})
 }
 
 func withResolvedSession(deps Deps, next http.Handler) http.Handler {
@@ -255,14 +306,15 @@ func publishAuthAudit(deps Deps, r *http.Request, username string, userID string
 		return
 	}
 	deps.Events.Publish("audit.auth", map[string]any{
-		"userId":    userID,
-		"username":  strings.ToLower(strings.TrimSpace(username)),
-		"role":      role,
-		"method":    r.Method,
-		"path":      r.URL.Path,
-		"action":    action,
-		"result":    result,
-		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
+		"correlationId": observability.CorrelationID(r.Context()),
+		"userId":        userID,
+		"username":      strings.ToLower(strings.TrimSpace(username)),
+		"role":          role,
+		"method":        r.Method,
+		"path":          r.URL.Path,
+		"action":        action,
+		"result":        result,
+		"createdAt":     time.Now().UTC().Format(time.RFC3339Nano),
 	})
 }
 
@@ -271,11 +323,12 @@ func publishDomainAudit(deps Deps, r *http.Request, eventType string, action str
 		return
 	}
 	payload := map[string]any{
-		"method":    r.Method,
-		"path":      r.URL.Path,
-		"action":    action,
-		"result":    result,
-		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
+		"correlationId": observability.CorrelationID(r.Context()),
+		"method":        r.Method,
+		"path":          r.URL.Path,
+		"action":        action,
+		"result":        result,
+		"createdAt":     time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok {
 		payload["userId"] = resolved.Principal.ID
@@ -386,20 +439,180 @@ func requestRemoteAddr(r *http.Request) string {
 
 func healthHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		startedAt := deps.StartedAt
-		if startedAt.IsZero() {
-			startedAt = time.Now().UTC()
+		payload, _ := healthSnapshot(deps)
+		writeJSON(w, http.StatusOK, payload)
+	}
+}
+
+func readinessHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		payload, degraded := healthSnapshot(deps)
+		status := http.StatusOK
+		if degraded {
+			status = http.StatusServiceUnavailable
+		}
+		writeJSON(w, status, payload)
+	}
+}
+
+func metricsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		requests := []observability.RequestMetric{}
+		events := []observability.EventMetric{}
+		if deps.Observe != nil {
+			requests = deps.Observe.Requests()
+			events = deps.Observe.Events()
+		}
+		queues := []map[string]any{}
+		if deps.Jobs != nil {
+			queues = deps.Jobs.Snapshot()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"status":    "ok",
-			"service":   "vyrden-server",
-			"startedAt": startedAt.UTC().Format(time.RFC3339),
-			"httpAddr":  deps.Config.HTTPAddr,
-			"libraries": map[string]string{
-				"movies": deps.Config.MovieLibraryPath,
-				"tv":     deps.Config.TVLibraryPath,
+			"requests": requests,
+			"queues":   queues,
+			"events":   events,
+			"outcomes": map[string]any{
+				"sessions":  sessionOutcomeCounts(deps),
+				"transcode": transcodeOutcomeCounts(deps),
+				"downloads": downloadOutcomeCounts(deps),
+				"probes":    probeOutcomeCounts(deps),
 			},
+			"alerts": observability.EvaluateAlerts(queues, requests),
 		})
+	}
+}
+
+func healthSnapshot(deps Deps) (map[string]any, bool) {
+	startedAt := deps.StartedAt
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	checks := map[string]any{}
+	degraded := false
+	for name, path := range runtimePaths(deps.Config) {
+		if path == "" {
+			continue
+		}
+		ok, message := pathReady(path)
+		checks["path."+name] = map[string]any{"ok": ok, "message": message}
+		if !ok {
+			degraded = true
+		}
+	}
+	if deps.Jobs != nil {
+		for _, queue := range deps.Jobs.Snapshot() {
+			name, _ := queue["name"].(string)
+			workers := intFromAny(queue["workers"])
+			active := intFromAny(queue["active"])
+			queued := intFromAny(queue["queued"])
+			ok := workers <= 0 || active < workers || queued == 0
+			checks["queue."+name] = map[string]any{
+				"ok":      ok,
+				"workers": workers,
+				"active":  active,
+				"queued":  queued,
+			}
+			if !ok {
+				degraded = true
+			}
+		}
+	}
+	status := "ok"
+	if degraded {
+		status = "degraded"
+	}
+	return map[string]any{
+		"status":    status,
+		"service":   "vyrden-server",
+		"startedAt": startedAt.UTC().Format(time.RFC3339),
+		"httpAddr":  deps.Config.HTTPAddr,
+		"checks":    checks,
+		"libraries": map[string]string{
+			"movies": deps.Config.MovieLibraryPath,
+			"tv":     deps.Config.TVLibraryPath,
+		},
+	}, degraded
+}
+
+func pathReady(path string) (bool, string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err.Error()
+	}
+	if !info.IsDir() {
+		return false, "path is not a directory"
+	}
+	testPath, ok := safeChildPath(path, ".vyrden-healthcheck")
+	if !ok {
+		return false, "path cannot be checked safely"
+	}
+	file, err := os.OpenFile(testPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return false, err.Error()
+	}
+	_ = file.Close()
+	_ = os.Remove(testPath)
+	return true, "ready"
+}
+
+func sessionOutcomeCounts(deps Deps) map[string]int {
+	output := map[string]int{}
+	if deps.Sessions == nil {
+		return output
+	}
+	for _, session := range deps.Sessions.List() {
+		key := strings.TrimSpace(session.Status)
+		if key == "" {
+			key = "unknown"
+		}
+		output[key]++
+	}
+	return output
+}
+
+func transcodeOutcomeCounts(deps Deps) map[string]int {
+	output := map[string]int{}
+	if deps.Transcode == nil {
+		return output
+	}
+	for _, job := range deps.Transcode.List() {
+		output[string(job.Status)]++
+	}
+	return output
+}
+
+func downloadOutcomeCounts(deps Deps) map[string]int {
+	output := map[string]int{}
+	if deps.Downloads == nil {
+		return output
+	}
+	for _, job := range deps.Downloads.List() {
+		output[string(job.Status)]++
+	}
+	return output
+}
+
+func probeOutcomeCounts(deps Deps) map[string]int {
+	output := map[string]int{}
+	if deps.Probes == nil {
+		return output
+	}
+	for _, job := range deps.Probes.List() {
+		output[string(job.Status)]++
+	}
+	return output
+}
+
+func intFromAny(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
 	}
 }
 
@@ -1391,6 +1604,11 @@ func probeStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishOperationalEvent(deps, r, "api.probe.accepted", map[string]any{
+			"jobId":         job.ID,
+			"mediaSourceId": job.MediaSourceID,
+			"limit":         job.Limit,
+		})
 		writeJSON(w, http.StatusAccepted, job)
 	}
 }
@@ -2366,6 +2584,7 @@ func publishStreamDenied(deps Deps, r *http.Request, resolved auth.ResolvedSessi
 		return
 	}
 	deps.Events.Publish("audit.stream.denied", map[string]any{
+		"correlationId": observability.CorrelationID(r.Context()),
 		"userId":        resolved.Principal.ID,
 		"username":      resolved.Principal.Username,
 		"role":          resolved.Principal.Role,
@@ -2376,6 +2595,22 @@ func publishStreamDenied(deps Deps, r *http.Request, resolved auth.ResolvedSessi
 		"reason":        reason,
 		"createdAt":     time.Now().UTC().Format(time.RFC3339Nano),
 	})
+}
+
+func publishOperationalEvent(deps Deps, r *http.Request, eventType string, fields map[string]any) {
+	if deps.Events == nil {
+		return
+	}
+	payload := map[string]any{
+		"correlationId": observability.CorrelationID(r.Context()),
+		"method":        r.Method,
+		"path":          r.URL.Path,
+		"createdAt":     time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	for key, value := range fields {
+		payload[key] = value
+	}
+	deps.Events.Publish(eventType, payload)
 }
 
 func workHandler(deps Deps) http.HandlerFunc {
@@ -2413,6 +2648,11 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishOperationalEvent(deps, r, "api.work.accepted", map[string]any{
+			"jobId":         job.ID,
+			"mediaSourceId": job.MediaSourceID,
+			"mode":          string(job.Mode),
+		})
 		writeJSON(w, http.StatusAccepted, job)
 	}
 }
@@ -2490,6 +2730,11 @@ func downloadStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishOperationalEvent(deps, r, "api.download.accepted", map[string]any{
+			"jobId":         job.ID,
+			"mediaSourceId": job.MediaSourceID,
+			"profile":       job.TargetProfile,
+		})
 		writeJSON(w, http.StatusAccepted, job)
 	}
 }
@@ -2551,6 +2796,12 @@ func sessionStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishOperationalEvent(deps, r, "api.session.accepted", map[string]any{
+			"sessionId":     session.ID,
+			"mediaSourceId": session.MediaSourceID,
+			"deviceId":      session.DeviceID,
+			"mode":          session.Mode,
+		})
 		writeJSON(w, http.StatusAccepted, session)
 	}
 }

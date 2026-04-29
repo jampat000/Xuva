@@ -88,12 +88,14 @@ func (r *Registry) Snapshot() []map[string]any {
 	queues := []*Queue{r.Scan, r.Probe, r.Transcode}
 	output := make([]map[string]any, 0, len(queues))
 	for _, queue := range queues {
+		active := queue.active.Load()
 		output = append(output, map[string]any{
-			"name":    queue.Name,
-			"class":   queue.Class,
-			"workers": queue.Workers,
-			"queued":  len(queue.jobs),
-			"active":  queue.active.Load(),
+			"name":              queue.Name,
+			"class":             queue.Class,
+			"workers":           queue.Workers,
+			"queued":            len(queue.jobs),
+			"active":            active,
+			"workerUtilization": float64(active) / float64(queue.Workers),
 		})
 	}
 	return output
