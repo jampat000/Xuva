@@ -2735,6 +2735,9 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 		request := playback.Request{
 			MediaSourceID:       r.URL.Query().Get("mediaSourceId"),
 			ClientProfile:       r.URL.Query().Get("clientProfile"),
+			Policy:              r.URL.Query().Get("policy"),
+			RouteType:           r.URL.Query().Get("routeType"),
+			MaxNetworkBitrate:   queryInt64(r, "maxNetworkBitrate", 0),
 			AudioTrackIndex:     queryInt(r, "audioTrackIndex", 0),
 			AudioCodec:          r.URL.Query().Get("audioCodec"),
 			AudioChannels:       queryInt(r, "audioChannels", 0),
@@ -2771,6 +2774,8 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 				MediaSourceID:    source.ID,
 				Container:        source.Container,
 				VideoCodec:       source.VideoCodec,
+				Width:            source.Width,
+				Height:           source.Height,
 				AudioStreams:     source.AudioStreams,
 				SubtitleStreams:  source.SubtitleStreams,
 				SidecarSubtitles: len(subtitles.DiscoverSidecars(source.Path)),
@@ -2870,6 +2875,9 @@ func playbackDecisionForSource(ctx context.Context, deps Deps, r *http.Request, 
 	request := playback.Request{
 		MediaSourceID:       source.ID,
 		ClientProfile:       firstNonEmpty(r.URL.Query().Get("clientProfile"), "web"),
+		Policy:              r.URL.Query().Get("policy"),
+		RouteType:           r.URL.Query().Get("routeType"),
+		MaxNetworkBitrate:   queryInt64(r, "maxNetworkBitrate", 0),
 		AudioTrackIndex:     queryInt(r, "audioTrackIndex", 0),
 		AudioCodec:          r.URL.Query().Get("audioCodec"),
 		AudioChannels:       queryInt(r, "audioChannels", 0),
@@ -2912,6 +2920,8 @@ func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Reques
 		MediaSourceID:    source.ID,
 		Container:        source.Container,
 		VideoCodec:       source.VideoCodec,
+		Width:            source.Width,
+		Height:           source.Height,
 		AudioStreams:     source.AudioStreams,
 		SubtitleStreams:  source.SubtitleStreams,
 		SidecarSubtitles: len(subtitles.DiscoverSidecars(source.Path)),
@@ -3125,6 +3135,24 @@ func queryInt(r *http.Request, key string, fallback int) int {
 			return fallback
 		}
 		output = output*10 + int(ch-'0')
+	}
+	if output == 0 {
+		return fallback
+	}
+	return output
+}
+
+func queryInt64(r *http.Request, key string, fallback int64) int64 {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return fallback
+	}
+	var output int64
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return fallback
+		}
+		output = output*10 + int64(ch-'0')
 	}
 	if output == 0 {
 		return fallback
