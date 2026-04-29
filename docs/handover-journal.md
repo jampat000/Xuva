@@ -80,11 +80,11 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: prevent anonymous control/stream abuse and establish identity model.
 
 **Tasks**
-- [ ] Implement user credential model with strong password hashing (`argon2id`).
-- [ ] Implement login/logout/session lifecycle (expiry and revocation).
-- [ ] Add CSRF protection to browser-initiated write operations.
-- [ ] Add brute-force mitigation (rate limits and temporary lockouts).
-- [ ] Add secure cookie/session settings and token rotation strategy.
+- [x] Implement user credential model with strong password hashing (`argon2id`).
+- [x] Implement login/logout/session lifecycle (expiry and revocation).
+- [x] Add CSRF protection to browser-initiated write operations.
+- [x] Add brute-force mitigation (rate limits and temporary lockouts).
+- [x] Add secure cookie/session settings and token rotation strategy.
 
 **Deliverables**
 - Auth service module and protected middleware integration.
@@ -101,10 +101,17 @@ Add these under each task’s **Completion Notes** subsection when done.
 - None.
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-2-local-auth-session-security` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/api/...`
+  - `go test ./...`
+  - Automated acceptance coverage added for `401` on protected route, successful login/session access, revoked session denial, login lockout, and CSRF rejection.
 - Metrics/log evidence:
+  - auth bootstrap logs initial admin creation.
+  - auth logs login success, invalid credentials, and lockout window activation.
 - Risks/rollback:
+  - this phase protects write operations and sensitive stream/file routes, but role-based `403` authorization is intentionally deferred to `P0.2`.
+  - rollback is to disable auth with `VYRDEN_AUTH_DISABLED=true` or revert auth/session middleware and `auth_sessions` migration in a follow-up DB migration.
 
 ---
 

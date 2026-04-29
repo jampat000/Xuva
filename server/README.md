@@ -70,3 +70,39 @@ First milestone:
 3. Evaluate a client profile.
 4. Return a playback decision with reasons.
 5. Stream direct-play media.
+
+## Authentication and Session Security
+
+Vyrden now supports local credential authentication with server-side sessions.
+
+Environment variables:
+
+- `VYRDEN_AUTH_DISABLED=false`
+- `VYRDEN_ADMIN_USERNAME=admin`
+- `VYRDEN_ADMIN_PASSWORD=...`
+
+Bootstrap behavior:
+
+- If auth is enabled and no credentialed user exists yet, Vyrden creates the initial local admin user on startup.
+- If `VYRDEN_ADMIN_PASSWORD` is omitted for first boot, Vyrden generates a random bootstrap password and logs it once to the server log.
+- Auth bootstrap settings are environment-only and are not written back into `settings.json`.
+
+Session behavior:
+
+- Passwords are hashed with `argon2id`.
+- Browser auth uses an `HttpOnly` session cookie plus a companion CSRF cookie/token pair.
+- Session expiry is extended on valid use.
+- Session secrets rotate periodically during active use.
+- Logout revokes the current session immediately.
+- Invalid login bursts trigger a temporary lockout window.
+
+Protected routes in this phase:
+
+- browser write operations
+- playback session management
+- direct media stream endpoints
+- subtitle stream endpoints
+- file download endpoints
+- `/play/{id}`
+
+Operators should keep auth enabled outside local development. Role-based authorization and finer route policy are tracked separately in `P0.2`.

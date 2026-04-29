@@ -31,6 +31,9 @@ type Config struct {
 	LibrarySyncMode  string `json:"librarySyncMode,omitempty"`
 	SyncIntervalMins int    `json:"syncIntervalMins,omitempty"`
 	ProbeBatchLimit  int    `json:"probeBatchLimit,omitempty"`
+	AuthDisabled     bool   `json:"-"`
+	AdminUsername    string `json:"-"`
+	AdminPassword    string `json:"-"`
 }
 
 func FromEnv() Config {
@@ -59,6 +62,9 @@ func FromEnv() Config {
 		LibrarySyncMode:  envString("VYRDEN_LIBRARY_SYNC_MODE", "daily"),
 		SyncIntervalMins: envInt("VYRDEN_SYNC_INTERVAL_MINS", 1440),
 		ProbeBatchLimit:  envInt("VYRDEN_PROBE_BATCH_LIMIT", 50),
+		AuthDisabled:     envBool("VYRDEN_AUTH_DISABLED", false),
+		AdminUsername:    envString("VYRDEN_ADMIN_USERNAME", "admin"),
+		AdminPassword:    envString("VYRDEN_ADMIN_PASSWORD", ""),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
@@ -86,6 +92,9 @@ func FromEnv() Config {
 	cfg.LibrarySyncMode = envString("VYRDEN_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
 	cfg.SyncIntervalMins = envInt("VYRDEN_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
 	cfg.ProbeBatchLimit = envInt("VYRDEN_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
+	cfg.AuthDisabled = envBool("VYRDEN_AUTH_DISABLED", cfg.AuthDisabled)
+	cfg.AdminUsername = envString("VYRDEN_ADMIN_USERNAME", cfg.AdminUsername)
+	cfg.AdminPassword = envString("VYRDEN_ADMIN_PASSWORD", cfg.AdminPassword)
 	return cfg
 }
 
