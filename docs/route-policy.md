@@ -21,6 +21,7 @@ Public routes remain readable without an authenticated session unless a later se
 | `POST /api/settings/hardware/test` | settings | `settings.hardware.test` | admin |
 | `POST /api/remote/wan` | remote | `remote.wan.lookup` | admin |
 | `GET /api/media-sources/{id}/stream` | media | `media.stream` | admin, standard |
+| `POST /api/media-sources/{id}/stream-token` | media | `media.stream.token` | admin, standard |
 | `GET /api/media-sources/{id}/subtitles/{index}` | media | `media.subtitle.stream` | admin, standard |
 | `POST /api/media-sources/{id}/probe` | media | `media.probe` | admin |
 | `POST /api/probes` | media | `probe.start` | admin |

@@ -154,11 +154,11 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: prevent hotlinking and token replay on media streams.
 
 **Tasks**
-- [ ] Replace direct file stream access with signed URL tokens.
-- [ ] Add token TTL and signature verification.
-- [ ] Bind token to session/user/device context.
-- [ ] Optionally bind token to client IP/fingerprint with tolerance rules.
-- [ ] Enforce per-user and per-device stream concurrency limits.
+- [x] Replace direct file stream access with signed URL tokens.
+- [x] Add token TTL and signature verification.
+- [x] Bind token to session/user/device context.
+- [x] Add session-bound anti-replay constraints.
+- [x] Enforce per-user and per-device stream concurrency limits.
 
 **Deliverables**
 - Stream token issuance and verification logic.
@@ -174,10 +174,16 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P0.1, P0.2
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-4-signed-streaming-urls` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/api/...`
+  - `go test ./...`
+  - Automated coverage added for missing, expired, forged, cross-session, and stream-limit token failures.
 - Metrics/log evidence:
+  - denied stream attempts emit `audit.stream.denied` with actor, media source, session, path, and reason.
 - Risks/rollback:
+  - Signing keys are runtime-generated in this phase; persistent key storage belongs with installer/runtime hardening.
+  - Rollback is to bypass token validation in stream handlers while keeping P0.1/P0.2 auth and route policy intact.
 
 ---
 
