@@ -74,6 +74,82 @@ func TestRootServesWebApp(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersPresentOnAPIAndWebResponses(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	for _, path := range []string{"/", "/api/health"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected %s 200, got %d", path, response.Code)
+		}
+		for header, want := range map[string]string{
+			"X-Content-Type-Options": "nosniff",
+			"X-Frame-Options":        "DENY",
+			"Referrer-Policy":        "no-referrer",
+		} {
+			if got := response.Header().Get(header); got != want {
+				t.Fatalf("expected %s header %s=%q, got %q", path, header, want, got)
+			}
+		}
+		if got := response.Header().Get("Content-Security-Policy"); !strings.Contains(got, "default-src 'self'") {
+			t.Fatalf("expected CSP on %s, got %q", path, got)
+		}
+	}
+}
+
+func TestDisallowedOriginBlockedByCORS(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.Header.Set("Origin", "https://evil.example")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected disallowed origin 403, got %d", response.Code)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no allow-origin header, got %q", got)
+	}
+}
+
+func TestLocalOriginAllowedByCORS(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
+	request.Header.Set("Origin", "http://localhost:8097")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected preflight 204, got %d", response.Code)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:8097" {
+		t.Fatalf("expected local allow-origin, got %q", got)
+	}
+}
+
+func TestArtworkPathTraversalFailsSafely(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	for _, target := range []string{
+		"/api/artwork/movie/example?type=..",
+		"/api/artwork/movie/example?type=poster/../../secret",
+		"/api/artwork/%2e%2e/example",
+	} {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		response := httptest.NewRecorder()
+
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected traversal request %s to fail with 400, got %d", target, response.Code)
+		}
+	}
+}
+
 func TestArchitectureExposesSeparateQueuesAndWorkloads(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	payload := getJSON(t, router, "/api/architecture")
@@ -574,6 +650,60 @@ func TestAuthzAuditEventsIncludeActorAndAction(t *testing.T) {
 	}
 }
 
+func TestSensitiveActionsEmitDomainAuditEvents(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	ctx, cancel := context.WithCancel(context.Background())
+	eventsCh, stop := deps.Events.Subscribe(ctx)
+	t.Cleanup(func() {
+		stop()
+		cancel()
+	})
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	settingsResponse := client.requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"httpAddr": "127.0.0.1:8097",
+	})
+	if settingsResponse.status != http.StatusOK {
+		t.Fatalf("expected settings update 200, got %d: %s", settingsResponse.status, settingsResponse.body)
+	}
+	libraryResponse := client.requestJSON(t, router, http.MethodPost, "/api/libraries", map[string]any{
+		"name":        "Movies",
+		"kind":        "movies",
+		"path":        t.TempDir(),
+		"storageType": "local",
+	})
+	if libraryResponse.status != http.StatusOK {
+		t.Fatalf("expected library save 200, got %d: %s", libraryResponse.status, libraryResponse.body)
+	}
+
+	seen := map[string]bool{}
+	deadline := time.After(2 * time.Second)
+	for len(seen) < 3 {
+		select {
+		case event := <-eventsCh:
+			data, _ := event.Data.(map[string]any)
+			switch event.Type {
+			case "audit.auth":
+				if data["action"] == "login" && data["result"] == "allowed" && data["userId"] != "" {
+					seen[event.Type] = true
+				}
+			case "audit.settings":
+				if data["action"] == "settings.update" && data["result"] == "allowed" && data["userId"] != "" {
+					seen[event.Type] = true
+				}
+			case "audit.library":
+				if data["action"] == "library.save" && data["result"] == "allowed" && data["libraryId"] != "" {
+					seen[event.Type] = true
+				}
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for domain audit events, saw %#v", seen)
+		}
+	}
+}
+
 func TestSignedStreamWithoutTokenIsDenied(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 	client := newAuthTestClient(t)
@@ -700,7 +830,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		MetadataDir:      filepath.Join(dataDir, "metadata"),
 		CacheDir:         filepath.Join(dataDir, "cache"),
 		TempDir:          filepath.Join(dataDir, "temp"),
-		EventBuffer:      2,
+		EventBuffer:      64,
 		ScanWorkers:      1,
 		ProbeWorkers:     2,
 		TranscodeWorkers: 1,

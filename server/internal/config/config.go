@@ -5,35 +5,37 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
-	HTTPAddr         string `json:"httpAddr"`
-	DataDir          string `json:"dataDir"`
-	TranscodeDir     string `json:"transcodeDir,omitempty"`
-	DownloadsDir     string `json:"downloadsDir,omitempty"`
-	MetadataDir      string `json:"metadataDir,omitempty"`
-	CacheDir         string `json:"cacheDir,omitempty"`
-	TempDir          string `json:"tempDir,omitempty"`
-	MovieLibraryPath string `json:"movieLibraryPath,omitempty"`
-	TVLibraryPath    string `json:"tvLibraryPath,omitempty"`
-	FFprobePath      string `json:"ffprobePath"`
-	FFmpegPath       string `json:"ffmpegPath"`
-	OMDbAPIKey       string `json:"omdbApiKey,omitempty"`
-	TMDBAPIKey       string `json:"tmdbApiKey,omitempty"`
-	EventBuffer      int    `json:"eventBuffer"`
-	ScanWorkers      int    `json:"scanWorkers"`
-	ProbeWorkers     int    `json:"probeWorkers"`
-	TranscodeWorkers int    `json:"transcodeWorkers"`
-	GPUWorkers       int    `json:"gpuWorkers"`
-	HardwareUnlocked bool   `json:"hardwareUnlocked,omitempty"`
-	PlaybackPolicy   string `json:"playbackPolicy,omitempty"`
-	LibrarySyncMode  string `json:"librarySyncMode,omitempty"`
-	SyncIntervalMins int    `json:"syncIntervalMins,omitempty"`
-	ProbeBatchLimit  int    `json:"probeBatchLimit,omitempty"`
-	AuthDisabled     bool   `json:"-"`
-	AdminUsername    string `json:"-"`
-	AdminPassword    string `json:"-"`
+	HTTPAddr         string   `json:"httpAddr"`
+	DataDir          string   `json:"dataDir"`
+	TranscodeDir     string   `json:"transcodeDir,omitempty"`
+	DownloadsDir     string   `json:"downloadsDir,omitempty"`
+	MetadataDir      string   `json:"metadataDir,omitempty"`
+	CacheDir         string   `json:"cacheDir,omitempty"`
+	TempDir          string   `json:"tempDir,omitempty"`
+	MovieLibraryPath string   `json:"movieLibraryPath,omitempty"`
+	TVLibraryPath    string   `json:"tvLibraryPath,omitempty"`
+	FFprobePath      string   `json:"ffprobePath"`
+	FFmpegPath       string   `json:"ffmpegPath"`
+	OMDbAPIKey       string   `json:"omdbApiKey,omitempty"`
+	TMDBAPIKey       string   `json:"tmdbApiKey,omitempty"`
+	EventBuffer      int      `json:"eventBuffer"`
+	ScanWorkers      int      `json:"scanWorkers"`
+	ProbeWorkers     int      `json:"probeWorkers"`
+	TranscodeWorkers int      `json:"transcodeWorkers"`
+	GPUWorkers       int      `json:"gpuWorkers"`
+	HardwareUnlocked bool     `json:"hardwareUnlocked,omitempty"`
+	PlaybackPolicy   string   `json:"playbackPolicy,omitempty"`
+	LibrarySyncMode  string   `json:"librarySyncMode,omitempty"`
+	SyncIntervalMins int      `json:"syncIntervalMins,omitempty"`
+	ProbeBatchLimit  int      `json:"probeBatchLimit,omitempty"`
+	AllowedOrigins   []string `json:"allowedOrigins,omitempty"`
+	AuthDisabled     bool     `json:"-"`
+	AdminUsername    string   `json:"-"`
+	AdminPassword    string   `json:"-"`
 }
 
 func FromEnv() Config {
@@ -62,6 +64,7 @@ func FromEnv() Config {
 		LibrarySyncMode:  envString("VYRDEN_LIBRARY_SYNC_MODE", "daily"),
 		SyncIntervalMins: envInt("VYRDEN_SYNC_INTERVAL_MINS", 1440),
 		ProbeBatchLimit:  envInt("VYRDEN_PROBE_BATCH_LIMIT", 50),
+		AllowedOrigins:   envCSV("VYRDEN_ALLOWED_ORIGINS", nil),
 		AuthDisabled:     envBool("VYRDEN_AUTH_DISABLED", false),
 		AdminUsername:    envString("VYRDEN_ADMIN_USERNAME", "admin"),
 		AdminPassword:    envString("VYRDEN_ADMIN_PASSWORD", ""),
@@ -92,6 +95,7 @@ func FromEnv() Config {
 	cfg.LibrarySyncMode = envString("VYRDEN_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
 	cfg.SyncIntervalMins = envInt("VYRDEN_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
 	cfg.ProbeBatchLimit = envInt("VYRDEN_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
+	cfg.AllowedOrigins = envCSV("VYRDEN_ALLOWED_ORIGINS", cfg.AllowedOrigins)
 	cfg.AuthDisabled = envBool("VYRDEN_AUTH_DISABLED", cfg.AuthDisabled)
 	cfg.AdminUsername = envString("VYRDEN_ADMIN_USERNAME", cfg.AdminUsername)
 	cfg.AdminPassword = envString("VYRDEN_ADMIN_PASSWORD", cfg.AdminPassword)
@@ -191,6 +195,9 @@ func merge(base Config, saved Config) Config {
 	if saved.ProbeBatchLimit > 0 {
 		base.ProbeBatchLimit = saved.ProbeBatchLimit
 	}
+	if len(saved.AllowedOrigins) > 0 {
+		base.AllowedOrigins = saved.AllowedOrigins
+	}
 	return base
 }
 
@@ -230,6 +237,21 @@ func envString(key string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func envCSV(key string, fallback []string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parts := strings.Split(value, ",")
+	output := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			output = append(output, trimmed)
+		}
+	}
+	return output
 }
 
 func envInt(key string, fallback int) int {
