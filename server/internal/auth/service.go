@@ -143,6 +143,48 @@ func (s *Service) Bootstrap(ctx context.Context, options BootstrapOptions) error
 	return nil
 }
 
+func (s *Service) CreateUser(ctx context.Context, username string, password string, displayName string, role string) (Principal, error) {
+	if s.Disabled() {
+		return Principal{}, ErrUnauthorized
+	}
+	username = normalizeUsername(username)
+	if username == "" {
+		return Principal{}, errors.New("username is required")
+	}
+	role = normalizeRole(role)
+	if role == "" {
+		return Principal{}, errors.New("role is required")
+	}
+	if strings.TrimSpace(displayName) == "" {
+		displayName = username
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return Principal{}, err
+	}
+	now := timestamp(time.Now())
+	id := "user_" + uuid.NewString()
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO users(id, username, display_name, role, password_hash, password_updated_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
+	`, id, username, displayName, role, hash, now, now)
+	if err != nil {
+		return Principal{}, err
+	}
+	return Principal{ID: id, Username: username, DisplayName: displayName, Role: role}, nil
+}
+
+func normalizeRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "admin":
+		return "admin"
+	case "standard":
+		return "standard"
+	default:
+		return ""
+	}
+}
+
 func (s *Service) Authenticate(ctx context.Context, username string, password string, remoteAddr string, userAgent string) (Principal, Session, string, error) {
 	if s.Disabled() {
 		return Principal{}, Session{}, "", ErrUnauthorized
