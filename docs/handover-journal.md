@@ -234,11 +234,11 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: replace coarse heuristics with deterministic, explainable compatibility decisions.
 
 **Tasks**
-- [ ] Extend input model: profile/level/bit-depth/HDR/frame-rate/audio/subtitle capabilities.
-- [ ] Add network-aware policy inputs (estimated throughput, route type).
-- [ ] Formalize decision order and tie-break rules.
-- [ ] Emit canonical decision object with machine and human fields.
-- [ ] Add decision trace IDs for debug correlation.
+- [x] Extend input model: profile/level/bit-depth/HDR/frame-rate/audio/subtitle capabilities.
+- [x] Add network-aware policy inputs (estimated throughput, route type).
+- [x] Formalize decision order and tie-break rules.
+- [x] Emit canonical decision object with machine and human fields.
+- [x] Add decision trace IDs for debug correlation.
 
 **Deliverables**
 - Expanded decision schema and engine implementation.
@@ -254,10 +254,16 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P0 gates strongly recommended before broad rollout.
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-6-playback-decision-engine-v2` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/playback ./internal/api`
+  - `go test ./...`
+  - Regression matrix covers direct play, remux, audio conversion, subtitle burn, video conversion, probe required, incomplete facts, network bitrate constraint, and deterministic output.
 - Metrics/log evidence:
+  - Every decision now includes `decisionTraceId`, `reasonCode`, `reasonText`, selected facts, action fields, and suggested fixes for UI/support correlation.
 - Risks/rollback:
+  - `mode` and `reason` remain backward compatible for current UI consumers.
+  - Rollback is to restore the previous `DecideSource` branching while preserving the expanded struct fields until UI consumers migrate.
 
 ---
 

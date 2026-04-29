@@ -193,6 +193,9 @@ func TestPlaybackDecisionEndpointIsExplicitlyDeferred(t *testing.T) {
 	if payload["clientProfile"] != "android-tv" {
 		t.Fatalf("expected client profile to round-trip, got %#v", payload["clientProfile"])
 	}
+	if payload["reasonCode"] != "source_required" || payload["decisionTraceId"] == "" {
+		t.Fatalf("expected v2 decision fields, got %#v", payload)
+	}
 }
 
 func TestMovieScanEndpointUsesMovieClassifier(t *testing.T) {
@@ -322,6 +325,9 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	decision := getJSON(t, router, "/api/playback/decision?mediaSourceId="+sourceID+"&clientProfile=web")
 	if decision["mode"] != string(playback.DecisionDeferred) {
 		t.Fatalf("expected unprobed source to defer playback decision, got %#v", decision["mode"])
+	}
+	if decision["reasonCode"] != "probe_required" || decision["decisionTraceId"] == "" {
+		t.Fatalf("expected v2 probe decision fields, got %#v", decision)
 	}
 }
 
