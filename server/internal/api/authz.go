@@ -44,6 +44,7 @@ var routePolicies = map[string]routePolicy{
 	"POST /api/remote/wan":             route("POST /api/remote/wan", "remote", "remote.wan.lookup", roleAdmin),
 
 	"GET /api/media-sources/{id}/stream":            route("GET /api/media-sources/{id}/stream", "media", "media.stream", roleAdmin, roleStandard),
+	"POST /api/media-sources/{id}/stream-token":     route("POST /api/media-sources/{id}/stream-token", "media", "media.stream.token", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}/subtitles/{index}": route("GET /api/media-sources/{id}/subtitles/{index}", "media", "media.subtitle.stream", roleAdmin, roleStandard),
 	"POST /api/media-sources/{id}/probe":            route("POST /api/media-sources/{id}/probe", "media", "media.probe", roleAdmin),
 	"POST /api/probes":                              route("POST /api/probes", "media", "probe.start", roleAdmin),

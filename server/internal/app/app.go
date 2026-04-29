@@ -268,6 +268,7 @@ func (a *Application) Router() http.Handler {
 		Probes:    a.Probes,
 		Playback:  a.Playback,
 		PlayState: a.PlayState,
+		Streaming: a.Streaming,
 		Transcode: a.Transcode,
 		Downloads: a.Downloads,
 		Devices:   a.Devices,
