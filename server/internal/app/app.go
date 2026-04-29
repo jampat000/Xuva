@@ -20,6 +20,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
+	"github.com/vyrdenhq/vyrden/server/internal/observability"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
@@ -43,6 +44,7 @@ type Application struct {
 	Catalog   *catalog.Service
 	Auth      *auth.Service
 	Events    *events.Bus
+	Observe   *observability.Service
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
 
@@ -75,6 +77,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	}
 	manager := resources.NewManager(limits)
 	bus := events.NewBus(cfg.EventBuffer)
+	observe := observability.NewService()
+	observe.Subscribe(appCtx, bus)
 	databaseService, err := database.Open(ctx, cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -171,6 +175,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Catalog:   catalogService,
 		Auth:      authService,
 		Events:    bus,
+		Observe:   observe,
 		Resources: manager,
 		Jobs:      jobRegistry,
 		Libraries: libraryService,
@@ -297,6 +302,7 @@ func (a *Application) Router() http.Handler {
 		StartedAt: a.StartedAt,
 		Auth:      a.Auth,
 		Events:    a.Events,
+		Observe:   a.Observe,
 		Resources: a.Resources,
 		Jobs:      a.Jobs,
 		Libraries: a.Libraries,

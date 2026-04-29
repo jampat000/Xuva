@@ -27,6 +27,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
+	"github.com/vyrdenhq/vyrden/server/internal/observability"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
@@ -162,6 +163,103 @@ func TestArchitectureExposesSeparateQueuesAndWorkloads(t *testing.T) {
 	workloads, ok := payload["workloads"].([]any)
 	if !ok || len(workloads) != 3 {
 		t.Fatalf("expected three workload classes, got %#v", payload["workloads"])
+	}
+}
+
+func TestRequestCorrelationAndMetrics(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.Header.Set("X-Request-ID", "trace-test-1")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected health 200, got %d", response.Code)
+	}
+	if got := response.Header().Get("X-Request-ID"); got != "trace-test-1" {
+		t.Fatalf("expected propagated request id, got %q", got)
+	}
+	metrics := getJSON(t, router, "/api/metrics")
+	requests := metrics["requests"].([]any)
+	if len(requests) == 0 {
+		t.Fatalf("expected request metrics, got %#v", metrics)
+	}
+	var found bool
+	for _, item := range requests {
+		metric := item.(map[string]any)
+		if metric["path"] == "/api/health" && metric["lastCorrelationId"] == "trace-test-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected health metric with correlation id, got %#v", requests)
+	}
+	queues := metrics["queues"].([]any)
+	if len(queues) != 3 {
+		t.Fatalf("expected queue metrics, got %#v", metrics["queues"])
+	}
+	firstQueue := queues[0].(map[string]any)
+	if _, ok := firstQueue["workerUtilization"]; !ok {
+		t.Fatalf("expected worker utilization in queue metric, got %#v", firstQueue)
+	}
+}
+
+func TestReadinessReflectsDegradedRuntimePath(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	badPath := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(badPath, []byte("file"), 0o600); err != nil {
+		t.Fatalf("write bad path: %v", err)
+	}
+	deps.Config.TranscodeDir = badPath
+	router := NewRouter(deps)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/ready", nil))
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected degraded readiness 503, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := decodeBody(t, response.Body.Bytes())
+	if payload["status"] != "degraded" {
+		t.Fatalf("expected degraded status, got %#v", payload)
+	}
+}
+
+func TestOperationalEventCarriesCorrelationID(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eventsCh, stop := deps.Events.Subscribe(ctx)
+	defer stop()
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(mustJSON(t, map[string]any{
+		"mediaSourceId": "source-1",
+		"title":         "Example",
+	})))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Request-ID", "trace-session-1")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected session start 202, got %d: %s", response.Code, response.Body.String())
+	}
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-eventsCh:
+			if event.Type != "api.session.accepted" {
+				continue
+			}
+			payload := event.Data.(map[string]any)
+			if payload["correlationId"] != "trace-session-1" {
+				t.Fatalf("expected correlated event, got %#v", payload)
+			}
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for correlated session event")
+		}
 	}
 }
 
@@ -910,6 +1008,11 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		TranscodeWorkers: 1,
 		GPUWorkers:       1,
 	}
+	for _, dir := range []string{cfg.TranscodeDir, cfg.DownloadsDir, cfg.MetadataDir, cfg.CacheDir, cfg.TempDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create runtime dir: %v", err)
+		}
+	}
 	manager := resources.NewManager(resources.Limits{
 		ScanWorkers:      cfg.ScanWorkers,
 		ProbeWorkers:     cfg.ProbeWorkers,
@@ -935,10 +1038,13 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 	movieService := movies.NewService()
 	tvService := tv.NewService()
 	eventBus := events.NewBus(cfg.EventBuffer)
+	observe := observability.NewService()
+	observe.Subscribe(ctx, eventBus)
 	return Deps{
 		Config:    cfg,
 		StartedAt: startedAt,
 		Events:    eventBus,
+		Observe:   observe,
 		Resources: manager,
 		Jobs:      registry,
 		Libraries: libraryService,
@@ -1095,6 +1201,15 @@ func getJSON(t *testing.T, router http.Handler, path string) map[string]any {
 
 	var payload map[string]any
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode json: %v", err)
+	}
+	return payload
+}
+
+func decodeBody(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode json: %v", err)
 	}
 	return payload
