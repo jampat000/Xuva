@@ -119,10 +119,10 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: enforce least-privilege across administrative and media operations.
 
 **Tasks**
-- [ ] Add role checks (`admin`, `standard`) for settings/library/system actions.
-- [ ] Enforce authorization for `/api/media-sources/*`, `/api/work/*`, `/api/downloads/*`, `/api/settings*`.
-- [ ] Create centralized policy registry for route-level access.
-- [ ] Ensure internal service operations record acting user context.
+- [x] Add role checks (`admin`, `standard`) for settings/library/system actions.
+- [x] Enforce authorization for `/api/media-sources/*`, `/api/work/*`, `/api/downloads/*`, `/api/settings*`.
+- [x] Create centralized policy registry for route-level access.
+- [x] Ensure internal service operations record acting user context.
 
 **Deliverables**
 - Authorization middleware.
@@ -137,10 +137,16 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P0.1
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-3-authorization-route-hardening` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/api/...`
+  - `go test ./...`
+  - Automated coverage added for standard-user deny, admin allow, protected media/download route policy, and audit event attribution.
 - Metrics/log evidence:
+  - `audit.route` events include user ID, username, role, method, path, route pattern, group, action, result, reason, and timestamp.
 - Risks/rollback:
+  - Content-level ACLs remain out of scope.
+  - Rollback is to restore direct auth middleware wrappers and remove the route policy middleware while keeping P0.1 session auth intact.
 
 ---
 
@@ -619,4 +625,3 @@ Use this block as tasks progress:
 - Keep playback-decision outputs backward compatible where possible; UI and telemetry depend on stable contract fields.
 - Treat subtitle handling as a core product capability, not a follow-up enhancement.
 - Preserve local-first principles in every architecture and product decision.
-
