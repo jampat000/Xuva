@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
+	"github.com/vyrdenhq/vyrden/server/internal/streaming"
 	"github.com/vyrdenhq/vyrden/server/internal/transcode"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
@@ -515,7 +518,16 @@ func TestAuthzProtectedMediaAndDownloadRoutes(t *testing.T) {
 
 	viewer := newAuthTestClient(t)
 	loginAs(t, viewer, router, "viewer", "viewer-password-123!")
-	stream := viewer.requestJSON(t, router, http.MethodGet, "/api/media-sources/missing/stream", nil)
+	sessionID := startPlaybackSession(t, viewer, router, "missing", "web")
+	token := viewer.requestJSON(t, router, http.MethodPost, "/api/media-sources/missing/stream-token", map[string]any{
+		"sessionId": sessionID,
+		"deviceId":  "web",
+	})
+	if token.status != http.StatusOK {
+		t.Fatalf("expected standard stream token 200, got %d: %s", token.status, token.body)
+	}
+	streamURL, _ := token.payload["streamUrl"].(string)
+	stream := viewer.requestJSON(t, router, http.MethodGet, streamURL, nil)
 	if stream.status != http.StatusNotFound {
 		t.Fatalf("expected standard stream request to reach handler and return 404, got %d: %s", stream.status, stream.body)
 	}
@@ -559,6 +571,119 @@ func TestAuthzAuditEventsIncludeActorAndAction(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("timed out waiting for audit route event")
 		}
+	}
+}
+
+func TestSignedStreamWithoutTokenIsDenied(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	sessionID := startPlaybackSession(t, client, router, "source_1", "web")
+
+	response := client.requestJSON(t, router, http.MethodGet, "/api/media-sources/source_1/stream?sessionId="+sessionID+"&deviceId=web", nil)
+
+	if response.status != http.StatusUnauthorized {
+		t.Fatalf("expected missing stream token 401, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestSignedStreamExpiredTokenIsDenied(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	sessionID := startPlaybackSession(t, client, router, "source_1", "web")
+	token, _, err := deps.Streaming.Issue(streaming.Expected{MediaSourceID: "source_1", SessionID: sessionID, UserID: "admin", DeviceID: "web"}, -time.Minute)
+	if err != nil {
+		t.Fatalf("issue expired token: %v", err)
+	}
+
+	response := client.requestJSON(t, router, http.MethodGet, "/api/media-sources/source_1/stream?sessionId="+sessionID+"&deviceId=web&token="+url.QueryEscape(token), nil)
+
+	if response.status != http.StatusForbidden || !strings.Contains(response.body, "expired") {
+		t.Fatalf("expected expired stream token 403, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestSignedStreamForgedTokenIsDenied(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	sessionID := startPlaybackSession(t, client, router, "source_1", "web")
+	token, _, err := deps.Streaming.Issue(streaming.Expected{MediaSourceID: "source_1", SessionID: sessionID, UserID: "admin", DeviceID: "web"}, 0)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	response := client.requestJSON(t, router, http.MethodGet, "/api/media-sources/source_1/stream?sessionId="+sessionID+"&deviceId=web&token="+url.QueryEscape(token+"x"), nil)
+
+	if response.status != http.StatusForbidden || !strings.Contains(response.body, "invalid") {
+		t.Fatalf("expected forged stream token 403, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestSignedStreamTokenCannotMoveAcrossSessions(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	firstSessionID := startPlaybackSession(t, client, router, "source_1", "web")
+	secondSessionID := startPlaybackSession(t, client, router, "source_1", "web")
+	token, _, err := deps.Streaming.Issue(streaming.Expected{MediaSourceID: "source_1", SessionID: firstSessionID, UserID: "admin", DeviceID: "web"}, 0)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	response := client.requestJSON(t, router, http.MethodGet, "/api/media-sources/source_1/stream?sessionId="+secondSessionID+"&deviceId=web&token="+url.QueryEscape(token), nil)
+
+	if response.status != http.StatusForbidden || !strings.Contains(response.body, "session") {
+		t.Fatalf("expected cross-session token 403, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestSignedStreamLimitBlocksExcessStreams(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	deps.Streaming.SetLimits(1, 1)
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	sessionID := startPlaybackSession(t, client, router, "source_1", "web")
+	expected := streaming.Expected{MediaSourceID: "source_1", SessionID: sessionID, UserID: "admin", DeviceID: "web"}
+	firstToken, _, err := deps.Streaming.Issue(expected, 0)
+	if err != nil {
+		t.Fatalf("issue first token: %v", err)
+	}
+	_, release, err := deps.Streaming.Validate(firstToken, expected)
+	if err != nil {
+		t.Fatalf("hold first stream: %v", err)
+	}
+	defer release()
+	secondToken, _, err := deps.Streaming.Issue(expected, 0)
+	if err != nil {
+		t.Fatalf("issue second token: %v", err)
+	}
+
+	response := client.requestJSON(t, router, http.MethodGet, "/api/media-sources/source_1/stream?sessionId="+sessionID+"&deviceId=web&token="+url.QueryEscape(secondToken), nil)
+
+	if response.status != http.StatusTooManyRequests {
+		t.Fatalf("expected stream limit 429, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestSignedStreamTokenEndpointReturnsBoundURL(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	sessionID := startPlaybackSession(t, client, router, "source_1", "web")
+
+	token := client.requestJSON(t, router, http.MethodPost, "/api/media-sources/source_1/stream-token", map[string]any{
+		"sessionId": sessionID,
+		"deviceId":  "web",
+	})
+
+	if token.status != http.StatusOK || token.payload["streamUrl"] == "" || token.payload["token"] == "" {
+		t.Fatalf("expected bound stream token response, got %d: %#v", token.status, token.payload)
 	}
 }
 
@@ -624,6 +749,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Probes:    probes.NewService(eventBus, registry.Probe, catalogService, probe.NewService("ffprobe")),
 		Playback:  playback.NewService(),
 		PlayState: playstate.NewService(db, eventBus),
+		Streaming: streaming.NewServiceWithKey("test", []byte("01234567890123456789012345678901")),
 		Transcode: transcode.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "transcode")),
 		Downloads: downloads.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "downloads")),
 		Devices:   devices.NewService(),
@@ -730,6 +856,25 @@ func loginAs(t *testing.T, client *authTestClient, router http.Handler, username
 	if response.status != http.StatusOK {
 		t.Fatalf("login %s failed with %d: %s", username, response.status, response.body)
 	}
+}
+
+func startPlaybackSession(t *testing.T, client *authTestClient, router http.Handler, mediaSourceID string, deviceID string) string {
+	t.Helper()
+	response := client.requestJSON(t, router, http.MethodPost, "/api/sessions", map[string]any{
+		"mediaSourceId": mediaSourceID,
+		"deviceId":      deviceID,
+		"clientProfile": "web",
+		"mode":          "direct",
+		"route":         "direct",
+	})
+	if response.status != http.StatusAccepted {
+		t.Fatalf("start session failed with %d: %s", response.status, response.body)
+	}
+	sessionID, _ := response.payload["id"].(string)
+	if sessionID == "" {
+		t.Fatalf("expected session id, got %#v", response.payload)
+	}
+	return sessionID
 }
 
 func getJSON(t *testing.T, router http.Handler, path string) map[string]any {
