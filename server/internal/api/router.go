@@ -125,6 +125,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/downloads/{id}/file", downloadFileHandler(deps))
 	mux.HandleFunc("GET /api/devices/profiles", deviceProfilesHandler(deps))
 	handleProtected(mux, deps, "GET /api/sessions", sessionsHandler(deps))
+	handleProtected(mux, deps, "GET /api/sessions/{id}/inspector", sessionInspectorHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/sessions", sessionStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "PATCH /api/sessions/{id}", sessionUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "DELETE /api/sessions/{id}", sessionStopHandler(deps))
@@ -1876,6 +1877,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
     let isSeeking = false;
     let lastMouseMove = Date.now();
     let signedStream = null;
+    let currentDecision = {};
+    let currentRoute = "";
     const player = document.getElementById("player");
     const sessionState = document.getElementById("sessionState");
     const playToggle = document.getElementById("playToggle");
@@ -1944,6 +1947,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     async function loadForecast() {
       const decision = await getJSON("/api/playback/decision?mediaSourceId=" + mediaSourceId + "&clientProfile=web");
+      currentDecision = decision || {};
       const mode = decision.mode || "direct";
       const label = mode.replaceAll("_", " ");
       decisionMode.textContent = label;
@@ -1957,6 +1961,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     async function resolvePlaybackRoute() {
       sessionState.textContent = "Selecting route";
       const route = await getJSON("/api/playback/route?mediaSourceId=" + mediaSourceId + "&clientProfile=web", {});
+      currentRoute = route.route || currentRoute;
       if (route.status === "blocked_by_policy") {
         const policy = route.policy || {};
         const decision = route.decision || {};
@@ -1976,18 +1981,35 @@ func playerHandler(deps Deps) http.HandlerFunc {
         const signed = await authorizeStream();
         player.src = signed.streamUrl || route.url;
         sessionState.textContent = route.route === "direct" ? "Direct stream" : "Prepared stream";
+        await updateInspectorRoute(route.route || "direct", route.decision || currentDecision);
         await player.play().catch(() => {});
         return route.route || "direct";
       }
       if (route.job && route.job.id) {
         sessionState.textContent = "Preparing " + (route.route || "playback");
+        await updateInspectorRoute(route.route || "preparing", route.decision || currentDecision);
         setTimeout(resolvePlaybackRoute, 1800);
         return route.route || "preparing";
       }
       const signed = await authorizeStream();
       player.src = signed.streamUrl || "";
       sessionState.textContent = "Direct fallback";
+      await updateInspectorRoute("direct", currentDecision);
       return "direct";
+    }
+    async function updateInspectorRoute(route, decision) {
+      if (!sessionId) return;
+      await send("/api/sessions/" + sessionId, {
+        route,
+        mode: decision.mode || route,
+        reasonCode: decision.reasonCode || "",
+        reasonText: decision.reasonText || decision.reason || "",
+        serverImpact: decision.estimatedCpuCost === "high" ? "High server load" : decision.estimatedCpuCost === "medium" ? "Moderate server load" : "Low impact",
+        selectedTracks: {
+          audio: "Default",
+          subtitles: subtitleButton.textContent || "Off"
+        }
+      }, "PATCH").catch(() => {});
     }
     async function authorizeStream() {
       if (signedStream && signedStream.streamUrl) return signedStream;
@@ -2079,6 +2101,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       Array.from(player.textTracks || []).forEach((track, index) => {
         track.mode = String(index) === selectedSubtitleTrack ? "showing" : "disabled";
       });
+      updateInspectorRoute(currentRoute || "direct", currentDecision);
     }
     function toggleFullscreen() {
       const target = document.querySelector(".player-shell");
@@ -2499,6 +2522,17 @@ func sessionsHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func sessionInspectorHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		inspector, ok := deps.Sessions.Inspector(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, inspector)
+	}
+}
+
 func sessionStartHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request sessions.StartRequest
@@ -2579,6 +2613,18 @@ func enrichSessionStartRequest(deps Deps, ctx context.Context, request *sessions
 	}
 	if request.ServerImpact == "" {
 		request.ServerImpact = sessionServerImpact(request.Route, request.Mode)
+	}
+	if request.ReasonCode == "" || request.ReasonText == "" {
+		decision := deps.Playback.DecideSource(ctx, playback.Request{
+			MediaSourceID: request.MediaSourceID,
+			ClientProfile: request.ClientProfile,
+		}, playbackSourceFacts(ctx, deps, playback.Request{MediaSourceID: request.MediaSourceID, ClientProfile: request.ClientProfile}, source))
+		if request.ReasonCode == "" {
+			request.ReasonCode = decision.ReasonCode
+		}
+		if request.ReasonText == "" {
+			request.ReasonText = decision.ReasonText
+		}
 	}
 	return nil
 }

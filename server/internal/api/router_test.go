@@ -405,6 +405,46 @@ func TestPlaybackStateAndSessions(t *testing.T) {
 	}
 }
 
+func TestSessionInspectorEndpointExposesPlaybackFields(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	started := postJSON(t, router, "/api/sessions", map[string]any{
+		"mediaSourceId":  "source-1",
+		"deviceId":       "web",
+		"clientProfile":  "web",
+		"route":          "direct",
+		"mode":           "Direct Play",
+		"reasonCode":     "direct_play_supported",
+		"reasonText":     "Direct playback is available.",
+		"serverImpact":   "Low impact",
+		"selectedTracks": map[string]string{"audio": "Default", "subtitles": "Off"},
+	})
+	id := started["id"].(string)
+	updated := requestJSON(t, router, http.MethodPatch, "/api/sessions/"+id, map[string]any{
+		"route":          "transcode",
+		"mode":           "Video Transcode",
+		"reasonCode":     "video_conversion_required",
+		"reasonText":     "Video conversion required.",
+		"serverImpact":   "High server load",
+		"selectedTracks": map[string]string{"audio": "Default", "subtitles": "English PGS"},
+	})
+	if updated["route"] != "transcode" {
+		t.Fatalf("expected route update, got %#v", updated)
+	}
+
+	inspector := getJSON(t, router, "/api/sessions/"+id+"/inspector")
+	if inspector["route"] != "transcode" || inspector["reasonCode"] != "video_conversion_required" {
+		t.Fatalf("expected inspector route/reason, got %#v", inspector)
+	}
+	tracks := inspector["selectedTracks"].(map[string]any)
+	if tracks["subtitles"] != "English PGS" {
+		t.Fatalf("expected selected subtitle track, got %#v", tracks)
+	}
+	history := inspector["routeHistory"].([]any)
+	if len(history) != 1 {
+		t.Fatalf("expected route history, got %#v", inspector)
+	}
+}
+
 func TestMetadataMatchResolvesReview(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Unclear.File.Name.mkv"))

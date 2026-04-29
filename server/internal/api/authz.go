@@ -55,6 +55,7 @@ var routePolicies = map[string]routePolicy{
 	"POST /api/downloads":                                    route("POST /api/downloads", "downloads", "download.start", roleAdmin),
 	"GET /api/downloads/{id}/file":                           route("GET /api/downloads/{id}/file", "downloads", "download.file", roleAdmin, roleStandard),
 	"GET /api/sessions":                                      route("GET /api/sessions", "sessions", "sessions.list", roleAdmin, roleStandard),
+	"GET /api/sessions/{id}/inspector":                       route("GET /api/sessions/{id}/inspector", "sessions", "sessions.inspector", roleAdmin, roleStandard),
 	"POST /api/sessions":                                     route("POST /api/sessions", "sessions", "session.start", roleAdmin, roleStandard),
 	"PATCH /api/sessions/{id}":                               route("PATCH /api/sessions/{id}", "sessions", "session.update", roleAdmin, roleStandard),
 	"DELETE /api/sessions/{id}":                              route("DELETE /api/sessions/{id}", "sessions", "session.stop", roleAdmin, roleStandard),

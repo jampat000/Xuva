@@ -11,51 +11,92 @@ import (
 )
 
 type Session struct {
-	ID            string    `json:"id"`
-	UserID        string    `json:"userId"`
-	DeviceID      string    `json:"deviceId"`
-	MediaSourceID string    `json:"mediaSourceId"`
-	Title         string    `json:"title,omitempty"`
-	ArtworkURL    string    `json:"artworkUrl,omitempty"`
-	SourceName    string    `json:"sourceName,omitempty"`
-	QualityLabel  string    `json:"qualityLabel,omitempty"`
-	Container     string    `json:"container,omitempty"`
-	VideoCodec    string    `json:"videoCodec,omitempty"`
-	Bitrate       int64     `json:"bitrate,omitempty"`
-	ClientProfile string    `json:"clientProfile,omitempty"`
-	Route         string    `json:"route,omitempty"`
-	ServerImpact  string    `json:"serverImpact,omitempty"`
-	Mode          string    `json:"mode"`
-	Status        string    `json:"status"`
-	Progress      float64   `json:"progressSeconds"`
-	Duration      float64   `json:"durationSeconds"`
-	StartedAt     time.Time `json:"startedAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID             string            `json:"id"`
+	UserID         string            `json:"userId"`
+	DeviceID       string            `json:"deviceId"`
+	MediaSourceID  string            `json:"mediaSourceId"`
+	Title          string            `json:"title,omitempty"`
+	ArtworkURL     string            `json:"artworkUrl,omitempty"`
+	SourceName     string            `json:"sourceName,omitempty"`
+	QualityLabel   string            `json:"qualityLabel,omitempty"`
+	Container      string            `json:"container,omitempty"`
+	VideoCodec     string            `json:"videoCodec,omitempty"`
+	Bitrate        int64             `json:"bitrate,omitempty"`
+	ClientProfile  string            `json:"clientProfile,omitempty"`
+	Route          string            `json:"route,omitempty"`
+	ServerImpact   string            `json:"serverImpact,omitempty"`
+	Mode           string            `json:"mode"`
+	ReasonCode     string            `json:"reasonCode,omitempty"`
+	ReasonText     string            `json:"reasonText,omitempty"`
+	SelectedTracks map[string]string `json:"selectedTracks,omitempty"`
+	RouteHistory   []RouteChange     `json:"routeHistory,omitempty"`
+	Status         string            `json:"status"`
+	Progress       float64           `json:"progressSeconds"`
+	Duration       float64           `json:"durationSeconds"`
+	StartedAt      time.Time         `json:"startedAt"`
+	UpdatedAt      time.Time         `json:"updatedAt"`
+}
+
+type RouteChange struct {
+	FromRoute  string    `json:"fromRoute,omitempty"`
+	ToRoute    string    `json:"toRoute"`
+	FromReason string    `json:"fromReason,omitempty"`
+	ToReason   string    `json:"toReason,omitempty"`
+	ChangedAt  time.Time `json:"changedAt"`
+}
+
+type Inspector struct {
+	SessionID      string            `json:"sessionId"`
+	MediaSourceID  string            `json:"mediaSourceId"`
+	DeviceID       string            `json:"deviceId"`
+	ClientProfile  string            `json:"clientProfile,omitempty"`
+	Title          string            `json:"title,omitempty"`
+	Route          string            `json:"route,omitempty"`
+	Mode           string            `json:"mode,omitempty"`
+	ReasonCode     string            `json:"reasonCode,omitempty"`
+	ReasonText     string            `json:"reasonText,omitempty"`
+	SelectedTracks map[string]string `json:"selectedTracks,omitempty"`
+	Bitrate        int64             `json:"bitrate,omitempty"`
+	ServerImpact   string            `json:"serverImpact,omitempty"`
+	Progress       float64           `json:"progressSeconds"`
+	Duration       float64           `json:"durationSeconds"`
+	Status         string            `json:"status"`
+	RouteHistory   []RouteChange     `json:"routeHistory,omitempty"`
+	UpdatedAt      time.Time         `json:"updatedAt"`
 }
 
 type StartRequest struct {
-	UserID          string  `json:"userId"`
-	DeviceID        string  `json:"deviceId"`
-	MediaSourceID   string  `json:"mediaSourceId"`
-	Title           string  `json:"title"`
-	ArtworkURL      string  `json:"artworkUrl"`
-	SourceName      string  `json:"sourceName"`
-	QualityLabel    string  `json:"qualityLabel"`
-	Container       string  `json:"container"`
-	VideoCodec      string  `json:"videoCodec"`
-	Bitrate         int64   `json:"bitrate"`
-	ClientProfile   string  `json:"clientProfile"`
-	Route           string  `json:"route"`
-	ServerImpact    string  `json:"serverImpact"`
-	Mode            string  `json:"mode"`
-	ProgressSeconds float64 `json:"progressSeconds"`
-	DurationSeconds float64 `json:"durationSeconds"`
+	UserID          string            `json:"userId"`
+	DeviceID        string            `json:"deviceId"`
+	MediaSourceID   string            `json:"mediaSourceId"`
+	Title           string            `json:"title"`
+	ArtworkURL      string            `json:"artworkUrl"`
+	SourceName      string            `json:"sourceName"`
+	QualityLabel    string            `json:"qualityLabel"`
+	Container       string            `json:"container"`
+	VideoCodec      string            `json:"videoCodec"`
+	Bitrate         int64             `json:"bitrate"`
+	ClientProfile   string            `json:"clientProfile"`
+	Route           string            `json:"route"`
+	ServerImpact    string            `json:"serverImpact"`
+	Mode            string            `json:"mode"`
+	ReasonCode      string            `json:"reasonCode"`
+	ReasonText      string            `json:"reasonText"`
+	SelectedTracks  map[string]string `json:"selectedTracks"`
+	ProgressSeconds float64           `json:"progressSeconds"`
+	DurationSeconds float64           `json:"durationSeconds"`
 }
 
 type UpdateRequest struct {
-	ProgressSeconds float64 `json:"progressSeconds"`
-	DurationSeconds float64 `json:"durationSeconds"`
-	Status          string  `json:"status"`
+	ProgressSeconds float64           `json:"progressSeconds"`
+	DurationSeconds float64           `json:"durationSeconds"`
+	Status          string            `json:"status"`
+	Route           string            `json:"route"`
+	Mode            string            `json:"mode"`
+	ReasonCode      string            `json:"reasonCode"`
+	ReasonText      string            `json:"reasonText"`
+	ServerImpact    string            `json:"serverImpact"`
+	SelectedTracks  map[string]string `json:"selectedTracks"`
 }
 
 type Service struct {
@@ -84,26 +125,29 @@ func (s *Service) Start(request StartRequest) (Session, error) {
 	}
 	now := time.Now().UTC()
 	session := Session{
-		ID:            s.nextSessionID(),
-		UserID:        request.UserID,
-		DeviceID:      request.DeviceID,
-		MediaSourceID: request.MediaSourceID,
-		Title:         request.Title,
-		ArtworkURL:    request.ArtworkURL,
-		SourceName:    request.SourceName,
-		QualityLabel:  request.QualityLabel,
-		Container:     request.Container,
-		VideoCodec:    request.VideoCodec,
-		Bitrate:       request.Bitrate,
-		ClientProfile: request.ClientProfile,
-		Route:         request.Route,
-		ServerImpact:  request.ServerImpact,
-		Mode:          request.Mode,
-		Status:        "playing",
-		Progress:      nonNegative(request.ProgressSeconds),
-		Duration:      nonNegative(request.DurationSeconds),
-		StartedAt:     now,
-		UpdatedAt:     now,
+		ID:             s.nextSessionID(),
+		UserID:         request.UserID,
+		DeviceID:       request.DeviceID,
+		MediaSourceID:  request.MediaSourceID,
+		Title:          request.Title,
+		ArtworkURL:     request.ArtworkURL,
+		SourceName:     request.SourceName,
+		QualityLabel:   request.QualityLabel,
+		Container:      request.Container,
+		VideoCodec:     request.VideoCodec,
+		Bitrate:        request.Bitrate,
+		ClientProfile:  request.ClientProfile,
+		Route:          request.Route,
+		ServerImpact:   request.ServerImpact,
+		Mode:           request.Mode,
+		ReasonCode:     request.ReasonCode,
+		ReasonText:     request.ReasonText,
+		SelectedTracks: cloneMap(request.SelectedTracks),
+		Status:         "playing",
+		Progress:       nonNegative(request.ProgressSeconds),
+		Duration:       nonNegative(request.DurationSeconds),
+		StartedAt:      now,
+		UpdatedAt:      now,
 	}
 	s.store(session)
 	s.publish("session.started", session)
@@ -119,13 +163,47 @@ func (s *Service) Update(id string, request UpdateRequest) (Session, bool) {
 	}
 	session.Progress = nonNegative(request.ProgressSeconds)
 	session.Duration = nonNegative(request.DurationSeconds)
+	previousRoute := session.Route
+	previousReason := session.ReasonCode
 	if request.Status != "" {
 		session.Status = request.Status
+	}
+	if request.Route != "" {
+		session.Route = request.Route
+	}
+	if request.Mode != "" {
+		session.Mode = request.Mode
+	}
+	if request.ReasonCode != "" {
+		session.ReasonCode = request.ReasonCode
+	}
+	if request.ReasonText != "" {
+		session.ReasonText = request.ReasonText
+	}
+	if request.ServerImpact != "" {
+		session.ServerImpact = request.ServerImpact
+	}
+	if request.SelectedTracks != nil {
+		session.SelectedTracks = cloneMap(request.SelectedTracks)
+	}
+	routeChanged := request.Route != "" && request.Route != previousRoute
+	if routeChanged {
+		session.RouteHistory = append(session.RouteHistory, RouteChange{
+			FromRoute:  previousRoute,
+			ToRoute:    session.Route,
+			FromReason: previousReason,
+			ToReason:   session.ReasonCode,
+			ChangedAt:  time.Now().UTC(),
+		})
 	}
 	session.UpdatedAt = time.Now().UTC()
 	s.items[id] = session
 	s.mu.Unlock()
 	s.publish("session.updated", session)
+	s.publish("session.inspector.updated", s.inspectorFor(session))
+	if routeChanged {
+		s.publish("session.route.changed", session.RouteHistory[len(session.RouteHistory)-1])
+	}
 	return session, true
 }
 
@@ -162,16 +240,57 @@ func (s *Service) Get(id string) (Session, bool) {
 	return session, ok
 }
 
+func (s *Service) Inspector(id string) (Inspector, bool) {
+	session, ok := s.Get(id)
+	if !ok {
+		return Inspector{}, false
+	}
+	return s.inspectorFor(session), true
+}
+
+func (s *Service) inspectorFor(session Session) Inspector {
+	return Inspector{
+		SessionID:      session.ID,
+		MediaSourceID:  session.MediaSourceID,
+		DeviceID:       session.DeviceID,
+		ClientProfile:  session.ClientProfile,
+		Title:          session.Title,
+		Route:          session.Route,
+		Mode:           session.Mode,
+		ReasonCode:     session.ReasonCode,
+		ReasonText:     session.ReasonText,
+		SelectedTracks: cloneMap(session.SelectedTracks),
+		Bitrate:        session.Bitrate,
+		ServerImpact:   session.ServerImpact,
+		Progress:       session.Progress,
+		Duration:       session.Duration,
+		Status:         session.Status,
+		RouteHistory:   append([]RouteChange(nil), session.RouteHistory...),
+		UpdatedAt:      session.UpdatedAt,
+	}
+}
+
 func (s *Service) store(session Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items[session.ID] = session
 }
 
-func (s *Service) publish(eventType string, session Session) {
+func (s *Service) publish(eventType string, payload any) {
 	if s.events != nil {
-		s.events.Publish(eventType, session)
+		s.events.Publish(eventType, payload)
 	}
+}
+
+func cloneMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
 
 func (s *Service) nextSessionID() string {
