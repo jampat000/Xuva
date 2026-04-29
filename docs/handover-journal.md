@@ -346,10 +346,10 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: make active playback operationally transparent to users and admins.
 
 **Tasks**
-- [ ] Include current route, mode, selected tracks, bitrate, buffer health.
-- [ ] Include server impact and transcode speed/load.
-- [ ] Add route-change events (if adaptation occurs).
-- [ ] Ensure inspector updates via SSE without blocking server work.
+- [x] Include current route, mode, selected tracks, bitrate, buffer health.
+- [x] Include server impact and transcode speed/load.
+- [x] Add route-change events (if adaptation occurs).
+- [x] Ensure inspector updates via SSE without blocking server work.
 
 **Deliverables**
 - Inspector API enhancements.
@@ -364,10 +364,16 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P1.1, P1.2, P1.3
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-9-live-playback-inspector` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/sessions ./internal/api`
+  - `go test ./...`
+  - Coverage includes inspector payload fields, selected-track updates, route transition history/events, and slow subscriber non-blocking behavior.
 - Metrics/log evidence:
+  - SSE publishes `session.inspector.updated` and `session.route.changed` with current route and before/after reason data.
 - Risks/rollback:
+  - Inspector state remains runtime-memory backed until #10 persists sessions.
+  - Rollback is to ignore `/api/sessions/{id}/inspector` and use existing session list payloads.
 
 ---
 
