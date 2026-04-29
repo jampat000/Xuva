@@ -1,6 +1,8 @@
 package sessions
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/events"
+	runtimestore "github.com/vyrdenhq/vyrden/server/internal/runtime"
 )
 
 type Session struct {
@@ -101,6 +104,7 @@ type UpdateRequest struct {
 
 type Service struct {
 	events *events.Bus
+	store  *runtimestore.Store
 	nextID atomic.Uint64
 	mu     sync.RWMutex
 	items  map[string]Session
@@ -108,6 +112,14 @@ type Service struct {
 
 func NewService(eventBus *events.Bus) *Service {
 	return &Service{events: eventBus, items: map[string]Session{}}
+}
+
+func NewPersistentService(ctx context.Context, eventBus *events.Bus, store *runtimestore.Store) (*Service, error) {
+	service := &Service{events: eventBus, store: store, items: map[string]Session{}}
+	if err := service.recover(ctx, 15*time.Minute); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
 func (s *Service) Start(request StartRequest) (Session, error) {
@@ -149,7 +161,8 @@ func (s *Service) Start(request StartRequest) (Session, error) {
 		StartedAt:      now,
 		UpdatedAt:      now,
 	}
-	s.store(session)
+	s.remember(session)
+	_ = s.persist(context.Background(), session)
 	s.publish("session.started", session)
 	return session, nil
 }
@@ -199,6 +212,7 @@ func (s *Service) Update(id string, request UpdateRequest) (Session, bool) {
 	session.UpdatedAt = time.Now().UTC()
 	s.items[id] = session
 	s.mu.Unlock()
+	_ = s.persist(context.Background(), session)
 	s.publish("session.updated", session)
 	s.publish("session.inspector.updated", s.inspectorFor(session))
 	if routeChanged {
@@ -218,8 +232,37 @@ func (s *Service) Stop(id string) (Session, bool) {
 	session.UpdatedAt = time.Now().UTC()
 	delete(s.items, id)
 	s.mu.Unlock()
+	_ = s.persist(context.Background(), session)
 	s.publish("session.stopped", session)
 	return session, true
+}
+
+func (s *Service) Cleanup(ctx context.Context, ttl time.Duration, terminalRetention time.Duration) (int, error) {
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	now := time.Now().UTC()
+	cutoff := now.Add(-ttl)
+	var stale int
+	s.mu.Lock()
+	for id, session := range s.items {
+		if session.UpdatedAt.Before(cutoff) {
+			session.Status = "stale"
+			session.ReasonCode = "session_heartbeat_expired"
+			session.ReasonText = "Playback heartbeat expired before the server saw a clean stop."
+			session.UpdatedAt = now
+			delete(s.items, id)
+			stale++
+			_ = s.persist(ctx, session)
+			s.publish("session.stale", session)
+		}
+	}
+	s.mu.Unlock()
+	if terminalRetention > 0 {
+		_, err := s.store.CleanupTerminal(ctx, "session", now.Add(-terminalRetention), "stopped", "stale")
+		return stale, err
+	}
+	return stale, nil
 }
 
 func (s *Service) List() []Session {
@@ -270,10 +313,60 @@ func (s *Service) inspectorFor(session Session) Inspector {
 	}
 }
 
-func (s *Service) store(session Session) {
+func (s *Service) remember(session Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items[session.ID] = session
+}
+
+func (s *Service) recover(ctx context.Context, ttl time.Duration) error {
+	entities, err := s.store.List(ctx, "session")
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	cutoff := now.Add(-ttl)
+	for _, entity := range entities {
+		var session Session
+		if err := json.Unmarshal([]byte(entity.PayloadJSON), &session); err != nil {
+			continue
+		}
+		switch session.Status {
+		case "stopped", "stale":
+			continue
+		default:
+			if entity.HeartbeatAt.Before(cutoff) || session.UpdatedAt.Before(cutoff) {
+				session.Status = "stale"
+				session.ReasonCode = "session_recovered_stale"
+				session.ReasonText = "The server restarted after this playback session stopped sending heartbeats."
+				session.UpdatedAt = now
+				_ = s.persist(ctx, session)
+				continue
+			}
+			s.items[session.ID] = session
+		}
+	}
+	return nil
+}
+
+func (s *Service) persist(ctx context.Context, session Session) error {
+	if s.store == nil {
+		return nil
+	}
+	payload, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+	return s.store.Save(ctx, runtimestore.Entity{
+		Type:        "session",
+		ID:          session.ID,
+		Status:      session.Status,
+		PayloadJSON: string(payload),
+		CreatedAt:   session.StartedAt,
+		UpdatedAt:   session.UpdatedAt,
+		HeartbeatAt: session.UpdatedAt,
+		CompletedAt: terminalTime(session.Status, session.UpdatedAt),
+	})
 }
 
 func (s *Service) publish(eventType string, payload any) {
@@ -302,6 +395,15 @@ func nonNegative(value float64) float64 {
 		return 0
 	}
 	return value
+}
+
+func terminalTime(status string, updatedAt time.Time) time.Time {
+	switch status {
+	case "stopped", "stale":
+		return updatedAt
+	default:
+		return time.Time{}
+	}
 }
 
 func stringID(value uint64) string {

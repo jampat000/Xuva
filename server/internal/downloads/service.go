@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
+	runtimestore "github.com/vyrdenhq/vyrden/server/internal/runtime"
 )
 
 type Status string
@@ -54,13 +56,14 @@ type Job struct {
 }
 
 type Service struct {
-	events *events.Bus
-	queue  *jobs.Queue
-	ffmpeg string
-	outDir string
-	nextID atomic.Uint64
-	mu     sync.RWMutex
-	jobs   map[string]Job
+	events  *events.Bus
+	runtime *runtimestore.Store
+	queue   *jobs.Queue
+	ffmpeg  string
+	outDir  string
+	nextID  atomic.Uint64
+	mu      sync.RWMutex
+	jobs    map[string]Job
 }
 
 func NewService(eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outputDir string) *Service {
@@ -71,6 +74,15 @@ func NewService(eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outp
 		outputDir = filepath.Join("data", "downloads")
 	}
 	return &Service{events: eventBus, queue: queue, ffmpeg: ffmpegPath, outDir: outputDir, jobs: map[string]Job{}}
+}
+
+func NewPersistentService(ctx context.Context, eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outputDir string, store *runtimestore.Store) (*Service, error) {
+	service := NewService(eventBus, queue, ffmpegPath, outputDir)
+	service.runtime = store
+	if err := service.recover(ctx); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
 func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
@@ -99,6 +111,7 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	job.OutputPath = s.outputPath(job, request.SourceName)
 	job.Command = s.command(job)
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("download.queued", job)
 
 	if request.TargetProfile == ProfileOriginal {
@@ -106,6 +119,7 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		job.StartedAt = time.Now().UTC()
 		job.CompletedAt = job.StartedAt
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		s.publish("download.completed", job)
 		return job, nil
 	}
@@ -115,6 +129,7 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		job.Status = StatusRunning
 		job.StartedAt = time.Now().UTC()
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		s.publish("download.running", job)
 		if err := s.execute(workerCtx, job); err != nil {
 			job.Status = StatusFailed
@@ -124,8 +139,14 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		}
 		job.CompletedAt = time.Now().UTC()
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		s.publish("download.completed", job)
 	}); err != nil {
+		job.Status = StatusFailed
+		job.Error = err.Error()
+		job.CompletedAt = time.Now().UTC()
+		s.store(job)
+		_ = s.persist(context.Background(), job)
 		return Job{}, err
 	}
 	return job, nil
@@ -202,6 +223,13 @@ func (s *Service) List() []Job {
 	return output
 }
 
+func (s *Service) Cleanup(ctx context.Context, terminalRetention time.Duration) (int64, error) {
+	if terminalRetention <= 0 {
+		return 0, nil
+	}
+	return s.runtime.CleanupTerminal(ctx, "download", time.Now().UTC().Add(-terminalRetention), string(StatusCompleted), string(StatusFailed))
+}
+
 func validProfile(profile string) bool {
 	return profile == ProfileOriginal || profile == ProfileBalanced || profile == ProfileTravel
 }
@@ -233,8 +261,63 @@ func (s *Service) publish(eventType string, job Job) {
 	}
 }
 
+func (s *Service) recover(ctx context.Context) error {
+	entities, err := s.runtime.List(ctx, "download")
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, entity := range entities {
+		var job Job
+		if err := json.Unmarshal([]byte(entity.PayloadJSON), &job); err != nil {
+			continue
+		}
+		switch job.Status {
+		case StatusQueued, StatusRunning:
+			job.Status = StatusFailed
+			job.CompletedAt = now
+			job.Error = "Download preparation was interrupted by server shutdown or restart."
+			s.store(job)
+			_ = s.persist(ctx, job)
+		default:
+			s.store(job)
+		}
+	}
+	return nil
+}
+
+func (s *Service) persist(ctx context.Context, job Job) error {
+	if s.runtime == nil {
+		return nil
+	}
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	return s.runtime.Save(ctx, runtimestore.Entity{
+		Type:        "download",
+		ID:          job.ID,
+		Status:      string(job.Status),
+		PayloadJSON: string(payload),
+		CreatedAt:   job.CreatedAt,
+		UpdatedAt:   jobUpdatedAt(job),
+		HeartbeatAt: jobUpdatedAt(job),
+		CompletedAt: job.CompletedAt,
+	})
+}
+
 func (s *Service) nextJobID() string {
 	return "download_" + time.Now().UTC().Format("20060102T150405") + "_" + stringID(s.nextID.Add(1))
+}
+
+func jobUpdatedAt(job Job) time.Time {
+	if !job.CompletedAt.IsZero() {
+		return job.CompletedAt
+	}
+	if !job.StartedAt.IsZero() {
+		return job.StartedAt
+	}
+	return job.CreatedAt
 }
 
 func stringID(value uint64) string {
