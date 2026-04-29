@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
+	"github.com/vyrdenhq/vyrden/server/internal/streaming"
 	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
 	"github.com/vyrdenhq/vyrden/server/internal/systemstats"
 	"github.com/vyrdenhq/vyrden/server/internal/transcode"
@@ -60,6 +62,7 @@ type Deps struct {
 	Probes    *probes.Service
 	Playback  *playback.Service
 	PlayState *playstate.Service
+	Streaming *streaming.Service
 	Transcode *transcode.Service
 	Downloads *downloads.Service
 	Devices   *devices.Service
@@ -102,6 +105,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/stream-token", mediaSourceStreamTokenHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/subtitles/{index}", mediaSourceSubtitleStreamHandler(deps))
@@ -1310,6 +1314,11 @@ func probeStartHandler(deps Deps) http.HandlerFunc {
 
 func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		release, ok := authorizeStreamRequest(deps, w, r, r.PathValue("id"))
+		if !ok {
+			return
+		}
+		defer release()
 		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "media source lookup failed")
@@ -1320,6 +1329,60 @@ func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		http.ServeFile(w, r, item.Path)
+	}
+}
+
+func mediaSourceStreamTokenHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		SessionID string `json:"sessionId"`
+		DeviceID  string `json:"deviceId"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Streaming == nil {
+			writeError(w, http.StatusServiceUnavailable, "stream signing is not available")
+			return
+		}
+		resolved, ok := auth.ResolvedSessionFromContext(r.Context())
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		session, ok := deps.Sessions.Get(payload.SessionID)
+		if !ok {
+			writeError(w, http.StatusForbidden, "playback session is not active")
+			return
+		}
+		if session.MediaSourceID != r.PathValue("id") || session.UserID != resolved.Principal.ID {
+			writeError(w, http.StatusForbidden, "playback session does not match this media source")
+			return
+		}
+		deviceID := firstNonEmpty(payload.DeviceID, session.DeviceID)
+		if deviceID == "" || deviceID != session.DeviceID {
+			writeError(w, http.StatusForbidden, "playback device does not match this session")
+			return
+		}
+		token, claims, err := deps.Streaming.Issue(streaming.Expected{
+			MediaSourceID: session.MediaSourceID,
+			SessionID:     session.ID,
+			UserID:        session.UserID,
+			DeviceID:      session.DeviceID,
+		}, 0)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "stream token issue failed")
+			return
+		}
+		query := "?sessionId=" + url.QueryEscape(session.ID) + "&deviceId=" + url.QueryEscape(session.DeviceID) + "&token=" + url.QueryEscape(token)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"token":           token,
+			"expiresAt":       time.Unix(claims.ExpiresAt, 0).UTC().Format(time.RFC3339),
+			"streamUrl":       "/api/media-sources/" + session.MediaSourceID + "/stream" + query,
+			"subtitleBaseUrl": "/api/media-sources/" + session.MediaSourceID + "/subtitles/",
+			"query":           query,
+		})
 	}
 }
 
@@ -1730,6 +1793,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     let queuedSaveStatus = "";
     let isSeeking = false;
     let lastMouseMove = Date.now();
+    let signedStream = null;
     const player = document.getElementById("player");
     const sessionState = document.getElementById("sessionState");
     const playToggle = document.getElementById("playToggle");
@@ -1761,8 +1825,14 @@ func playerHandler(deps Deps) http.HandlerFunc {
     const speedOptions = ["0.75", "1", "1.25", "1.5", "2"];
     let selectedSubtitleTrack = "-1";
 
+    function csrfToken() {
+      return document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("vyrden_csrf="))?.split("=").slice(1).join("=") || "";
+    }
     async function send(path, body, method = "POST", keepalive = false) {
-      const response = await fetch(path, { method, keepalive, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+      const token = csrfToken();
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["X-CSRF-Token"] = decodeURIComponent(token);
+      const response = await fetch(path, { method, keepalive, headers, body: JSON.stringify(body || {}) });
       return response.ok ? response.json() : {};
     }
     async function getJSON(path, fallback = {}) {
@@ -1821,7 +1891,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
         return "blocked";
       }
       if (route.url) {
-        player.src = route.url;
+        const signed = await authorizeStream();
+        player.src = signed.streamUrl || route.url;
         sessionState.textContent = route.route === "direct" ? "Direct stream" : "Prepared stream";
         await player.play().catch(() => {});
         return route.route || "direct";
@@ -1831,9 +1902,16 @@ func playerHandler(deps Deps) http.HandlerFunc {
         setTimeout(resolvePlaybackRoute, 1800);
         return route.route || "preparing";
       }
-      player.src = "/api/media-sources/" + mediaSourceId + "/stream";
+      const signed = await authorizeStream();
+      player.src = signed.streamUrl || "";
       sessionState.textContent = "Direct fallback";
       return "direct";
+    }
+    async function authorizeStream() {
+      if (signedStream && signedStream.streamUrl) return signedStream;
+      if (!sessionId) return {};
+      signedStream = await send("/api/media-sources/" + mediaSourceId + "/stream-token", { sessionId, deviceId: "web" });
+      return signedStream || {};
     }
     async function loadSubtitles() {
       const subtitles = await getJSON("/api/media-sources/" + mediaSourceId + "/subtitles", { sidecars: [] });
@@ -1846,7 +1924,8 @@ func playerHandler(deps Deps) http.HandlerFunc {
         track.kind = "subtitles";
         track.label = item.language || item.relPath || "Subtitle";
         track.srclang = item.language || "und";
-        track.src = "/api/media-sources/" + mediaSourceId + "/subtitles/" + index;
+        const query = signedStream && signedStream.query ? signedStream.query : "";
+        track.src = "/api/media-sources/" + mediaSourceId + "/subtitles/" + index + query;
         player.appendChild(track);
         addMenuOption(subtitleMenu, subtitleControl, subtitleButton, track.label, String(subtitleTrackIndex), value => {
           selectedSubtitleTrack = value;
@@ -1892,7 +1971,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       const body = progressBody(status);
       if (sessionId) {
         await send("/api/sessions/" + sessionId, body, "PATCH").catch(() => {});
-        await fetch("/api/sessions/" + sessionId, { method: "DELETE", keepalive: true }).catch(() => {});
+        await send("/api/sessions/" + sessionId, {}, "DELETE", true).catch(() => {});
         sessionId = "";
       }
       await send("/api/playback/state/" + mediaSourceId, body, "PUT", true).catch(() => {});
@@ -2029,9 +2108,9 @@ func playerHandler(deps Deps) http.HandlerFunc {
     (async function boot() {
       await loadResumeState();
       const mode = await loadForecast();
+      await startSession(mode);
       await resolvePlaybackRoute();
       await loadSubtitles();
-      await startSession(mode);
       fitPlayerTitle();
       refreshProgress();
       showHud(2400);
@@ -2059,6 +2138,11 @@ func mediaSourceSubtitlesHandler(deps Deps) http.HandlerFunc {
 
 func mediaSourceSubtitleStreamHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		release, ok := authorizeStreamRequest(deps, w, r, r.PathValue("id"))
+		if !ok {
+			return
+		}
+		defer release()
 		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "media source lookup failed")
@@ -2081,6 +2165,81 @@ func mediaSourceSubtitleStreamHandler(deps Deps) http.HandlerFunc {
 		}
 		http.ServeFile(w, r, sidecars[index].Path)
 	}
+}
+
+func authorizeStreamRequest(deps Deps, w http.ResponseWriter, r *http.Request, mediaSourceID string) (func(), bool) {
+	if deps.Auth == nil || deps.Auth.Disabled() {
+		return func() {}, true
+	}
+	if deps.Streaming == nil {
+		writeError(w, http.StatusServiceUnavailable, "stream signing is not available")
+		return nil, false
+	}
+	resolved, ok := auth.ResolvedSessionFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return nil, false
+	}
+	sessionID := r.URL.Query().Get("sessionId")
+	deviceID := r.URL.Query().Get("deviceId")
+	session, ok := deps.Sessions.Get(sessionID)
+	if !ok {
+		publishStreamDenied(deps, r, resolved, mediaSourceID, sessionID, "session_inactive")
+		writeError(w, http.StatusForbidden, "playback session is not active")
+		return nil, false
+	}
+	if session.MediaSourceID != mediaSourceID || session.UserID != resolved.Principal.ID || session.DeviceID != deviceID {
+		publishStreamDenied(deps, r, resolved, mediaSourceID, sessionID, "session_mismatch")
+		writeError(w, http.StatusForbidden, "playback session does not match this stream")
+		return nil, false
+	}
+	_, release, err := deps.Streaming.Validate(r.URL.Query().Get("token"), streaming.Expected{
+		MediaSourceID: mediaSourceID,
+		SessionID:     session.ID,
+		UserID:        session.UserID,
+		DeviceID:      session.DeviceID,
+	})
+	if err != nil {
+		status, reason := streamTokenError(err)
+		publishStreamDenied(deps, r, resolved, mediaSourceID, sessionID, reason)
+		writeError(w, status, reason)
+		return nil, false
+	}
+	return release, true
+}
+
+func streamTokenError(err error) (int, string) {
+	switch {
+	case errors.Is(err, streaming.ErrMissingToken):
+		return http.StatusUnauthorized, "stream token is required"
+	case errors.Is(err, streaming.ErrExpiredToken):
+		return http.StatusForbidden, "stream token is expired"
+	case errors.Is(err, streaming.ErrInvalidSignature), errors.Is(err, streaming.ErrMalformedToken), errors.Is(err, streaming.ErrSigningKeyMissing):
+		return http.StatusForbidden, "stream token is invalid"
+	case errors.Is(err, streaming.ErrTokenMismatch):
+		return http.StatusForbidden, "stream token does not match playback session"
+	case errors.Is(err, streaming.ErrStreamLimit):
+		return http.StatusTooManyRequests, "stream limit exceeded"
+	default:
+		return http.StatusForbidden, "stream token rejected"
+	}
+}
+
+func publishStreamDenied(deps Deps, r *http.Request, resolved auth.ResolvedSession, mediaSourceID string, sessionID string, reason string) {
+	if deps.Events == nil {
+		return
+	}
+	deps.Events.Publish("audit.stream.denied", map[string]any{
+		"userId":        resolved.Principal.ID,
+		"username":      resolved.Principal.Username,
+		"role":          resolved.Principal.Role,
+		"method":        r.Method,
+		"path":          r.URL.Path,
+		"mediaSourceId": mediaSourceID,
+		"sessionId":     sessionID,
+		"reason":        reason,
+		"createdAt":     time.Now().UTC().Format(time.RFC3339Nano),
+	})
 }
 
 func workHandler(deps Deps) http.HandlerFunc {

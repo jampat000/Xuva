@@ -155,6 +155,13 @@ func (s *Service) List() []Session {
 	return output
 }
 
+func (s *Service) Get(id string) (Session, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	session, ok := s.items[id]
+	return session, ok
+}
+
 func (s *Service) store(session Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
