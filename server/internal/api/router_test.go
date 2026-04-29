@@ -36,6 +36,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
 	"github.com/vyrdenhq/vyrden/server/internal/streaming"
+	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
 	"github.com/vyrdenhq/vyrden/server/internal/transcode"
 	"github.com/vyrdenhq/vyrden/server/internal/tv"
 )
@@ -195,6 +196,33 @@ func TestPlaybackDecisionEndpointIsExplicitlyDeferred(t *testing.T) {
 	}
 	if payload["reasonCode"] != "source_required" || payload["decisionTraceId"] == "" {
 		t.Fatalf("expected v2 decision fields, got %#v", payload)
+	}
+}
+
+func TestSubtitleConversionEndpointReportsOutputBehavior(t *testing.T) {
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv")
+	writeTestFile(t, mediaPath)
+	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.en.ass"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{
+		"path":        root,
+		"sampleLimit": 10,
+	})
+	waitForScan(t, router, payload["id"].(string))
+	sources := getJSON(t, router, "/api/media-sources")
+	sourceList := sources["mediaSources"].([]any)
+	sourceID := sourceList[0].(map[string]any)["id"].(string)
+
+	response := postJSON(t, router, "/api/media-sources/"+sourceID+"/subtitles/0/convert?clientProfile=web", map[string]any{})
+	conversion := response["conversion"].(map[string]any)
+
+	if conversion["status"] != "available" || conversion["outputFormat"] != "webvtt" {
+		t.Fatalf("expected available WebVTT conversion, got %#v", response)
+	}
+	if conversion["outputBehavior"] == "" || conversion["serverImpact"] != "low" {
+		t.Fatalf("expected clear conversion behavior, got %#v", conversion)
 	}
 }
 
@@ -890,6 +918,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Downloads: downloads.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "downloads")),
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(eventBus),
+		Subtitles: subtitles.NewService(),
 	}
 }
 

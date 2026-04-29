@@ -73,6 +73,8 @@ type Decision struct {
 	VideoAction             string            `json:"videoAction"`
 	AudioAction             string            `json:"audioAction"`
 	SubtitleAction          string            `json:"subtitleAction"`
+	SubtitleClass           string            `json:"subtitleClass,omitempty"`
+	SubtitleImpact          map[string]string `json:"subtitleImpact,omitempty"`
 	EstimatedCPUCost        string            `json:"estimatedCpuCost"`
 	EstimatedGPUCost        string            `json:"estimatedGpuCost"`
 	EstimatedNetworkBitrate int64             `json:"estimatedNetworkBitrate"`
@@ -163,6 +165,8 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	}
 	audioAction := audioAction(request, source.AudioCodec, source.AudioChannels)
 	subtitles := selectedSubtitleAction(request, source)
+	decision.SubtitleClass = subtitleClass(source.SubtitleCodec)
+	decision.SubtitleImpact = subtitleImpact(request, source, subtitles)
 	if subtitles == "burn_in" {
 		decision.Mode = SubtitleBurn
 		decision.ReasonCode = "subtitle_burn_required"
@@ -205,6 +209,11 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 			decision.ReasonText = "The video can play as-is, but the selected audio track needs conversion for this player."
 			decision.EstimatedCPUCost = "medium"
 			decision.SuggestedFixes = []string{"Choose a compatible audio track", "Allow temporary audio conversion", "Create an optimized version for this device"}
+		} else if subtitles == "convert" {
+			decision.ReasonCode = "subtitle_conversion_available"
+			decision.ReasonText = "The video can play as-is, and Vyrden can convert this text subtitle to a compatible sidecar format."
+			decision.EstimatedCPUCost = "low"
+			decision.SuggestedFixes = []string{"Use the converted WebVTT subtitle", "Choose a subtitle format this player supports", "Turn subtitles off for pure direct play"}
 		}
 		return finalizeDecision(request, source, decision)
 	}
@@ -385,9 +394,49 @@ func selectedSubtitleAction(request Request, source SourceFacts) string {
 		if len(request.SubtitleCodecs) > 0 && !codecIn(codec, request.SubtitleCodecs...) {
 			return "convert"
 		}
+		if isTextSubtitle(codec) {
+			return "direct"
+		}
 		return "direct_or_convert"
 	}
 	return "none"
+}
+
+func subtitleImpact(request Request, source SourceFacts, action string) map[string]string {
+	if !source.SubtitleActive {
+		return map[string]string{
+			"class":       "off",
+			"action":      "none",
+			"serverLoad":  "none",
+			"userMessage": "Subtitles are off, so they do not affect playback.",
+		}
+	}
+	class := subtitleClass(source.SubtitleCodec)
+	impact := map[string]string{
+		"class":  class,
+		"action": action,
+		"codec":  normalize(source.SubtitleCodec),
+	}
+	switch action {
+	case "direct", "direct_or_convert", "direct_or_burn":
+		impact["serverLoad"] = "none"
+		impact["userMessage"] = "This subtitle can be used without changing the video."
+	case "convert":
+		impact["serverLoad"] = "low"
+		impact["output"] = "webvtt sidecar"
+		impact["userMessage"] = "Vyrden can convert this text subtitle to WebVTT without video conversion."
+	case "burn_in":
+		impact["serverLoad"] = "high"
+		impact["output"] = "video with subtitles burned in"
+		impact["userMessage"] = "This image subtitle requires video conversion for the selected player."
+	default:
+		impact["serverLoad"] = "unknown"
+		impact["userMessage"] = "Subtitle impact needs a media check."
+	}
+	if request.ClientProfile != "" {
+		impact["profile"] = request.ClientProfile
+	}
+	return impact
 }
 
 func audioAction(request Request, codec string, channels int) string {
@@ -420,6 +469,24 @@ func audioAction(request Request, codec string, channels int) string {
 
 func isImageSubtitle(codec string) bool {
 	return codecIn(codec, "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "pgs")
+}
+
+func isTextSubtitle(codec string) bool {
+	return codecIn(codec, "srt", "subrip", "webvtt", "vtt", "ass", "ssa", "mov_text")
+}
+
+func subtitleClass(codec string) string {
+	codec = normalize(codec)
+	switch {
+	case codec == "":
+		return "none"
+	case isImageSubtitle(codec):
+		return "image"
+	case isTextSubtitle(codec):
+		return "text"
+	default:
+		return "unknown"
+	}
 }
 
 func contains(value string, needle string) bool {
