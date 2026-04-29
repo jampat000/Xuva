@@ -26,14 +26,18 @@ const (
 	StatusRunning   Status = "running"
 	StatusCompleted Status = "completed"
 	StatusFailed    Status = "failed"
+	StatusTimeout   Status = "failed-timeout"
+	StatusCanceled  Status = "cancelled"
 )
 
 type Request struct {
-	MediaSourceID string `json:"mediaSourceId"`
-	Mode          Mode   `json:"mode"`
-	SourcePath    string `json:"sourcePath,omitempty"`
-	Acceleration  string `json:"acceleration,omitempty"`
-	VideoEncoder  string `json:"videoEncoder,omitempty"`
+	MediaSourceID  string `json:"mediaSourceId"`
+	Mode           Mode   `json:"mode"`
+	SourcePath     string `json:"sourcePath,omitempty"`
+	Acceleration   string `json:"acceleration,omitempty"`
+	VideoEncoder   string `json:"videoEncoder,omitempty"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	MaxAttempts    int    `json:"maxAttempts,omitempty"`
 }
 
 type Job struct {
@@ -46,20 +50,27 @@ type Job struct {
 	Command       []string  `json:"command,omitempty"`
 	Acceleration  string    `json:"acceleration,omitempty"`
 	VideoEncoder  string    `json:"videoEncoder,omitempty"`
+	Attempts      int       `json:"attempts"`
+	MaxAttempts   int       `json:"maxAttempts"`
+	Timeout       string    `json:"timeout,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	StartedAt     time.Time `json:"startedAt,omitempty"`
 	CompletedAt   time.Time `json:"completedAt,omitempty"`
 	Error         string    `json:"error,omitempty"`
+	FailureClass  string    `json:"failureClass,omitempty"`
+	ReasonCode    string    `json:"reasonCode,omitempty"`
+	Remediation   string    `json:"remediation,omitempty"`
 }
 
 type Service struct {
-	events *events.Bus
-	queue  *jobs.Queue
-	ffmpeg string
-	outDir string
-	nextID atomic.Uint64
-	mu     sync.RWMutex
-	jobs   map[string]Job
+	events  *events.Bus
+	queue   *jobs.Queue
+	ffmpeg  string
+	outDir  string
+	nextID  atomic.Uint64
+	mu      sync.RWMutex
+	jobs    map[string]Job
+	cancels map[string]context.CancelFunc
 }
 
 func NewService(eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outputDir string) *Service {
@@ -69,7 +80,7 @@ func NewService(eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outp
 	if outputDir == "" {
 		outputDir = filepath.Join("data", "transcode")
 	}
-	return &Service{events: eventBus, queue: queue, ffmpeg: ffmpegPath, outDir: outputDir, jobs: map[string]Job{}}
+	return &Service{events: eventBus, queue: queue, ffmpeg: ffmpegPath, outDir: outputDir, jobs: map[string]Job{}, cancels: map[string]context.CancelFunc{}}
 }
 
 func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
@@ -79,7 +90,14 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	if request.Mode == "" {
 		request.Mode = ModeRemux
 	}
-	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: time.Now().UTC()}
+	maxAttempts := request.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 2
+	}
+	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: time.Now().UTC(), MaxAttempts: maxAttempts}
+	if request.TimeoutSeconds > 0 {
+		job.Timeout = (time.Duration(request.TimeoutSeconds) * time.Second).String()
+	}
 	job.OutputPath = filepath.Join(s.outDir, job.ID+".mp4")
 	job.Command = s.command(job)
 	s.store(job)
@@ -90,19 +108,76 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		job.StartedAt = time.Now().UTC()
 		s.store(job)
 		s.publish("transcode.started", job)
-		if err := s.execute(workerCtx, job); err != nil {
-			job.Status = StatusFailed
-			job.Error = err.Error()
+		ctx := workerCtx
+		cancel := func() {}
+		if request.TimeoutSeconds > 0 {
+			ctx, cancel = context.WithTimeout(workerCtx, time.Duration(request.TimeoutSeconds)*time.Second)
+		} else {
+			ctx, cancel = context.WithCancel(workerCtx)
+		}
+		s.storeCancel(job.ID, cancel)
+		defer cancel()
+		defer s.clearCancel(job.ID)
+		result := s.executeWithRetry(ctx, job)
+		if result.Err != nil {
+			job.Status = statusForFailure(result.Failure)
+			job.Error = result.Err.Error()
+			job.FailureClass = result.Failure.Class
+			job.ReasonCode = result.Failure.ReasonCode
+			job.Remediation = result.Failure.Remediation
+			job.Attempts = result.Attempts
+			_ = os.Remove(job.OutputPath)
 		} else {
 			job.Status = StatusCompleted
+			job.Attempts = result.Attempts
 		}
 		job.CompletedAt = time.Now().UTC()
 		s.store(job)
-		s.publish("transcode.completed", job)
+		if job.Status == StatusCompleted {
+			s.publish("transcode.completed", job)
+		} else {
+			s.publish("transcode.failed", job)
+		}
 	}); err != nil {
 		return Job{}, err
 	}
 	return job, nil
+}
+
+type executeResult struct {
+	Attempts int
+	Failure  Failure
+	Err      error
+}
+
+func (s *Service) executeWithRetry(ctx context.Context, job Job) executeResult {
+	maxAttempts := job.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	var last Failure
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		job.Attempts = attempt
+		s.store(job)
+		err := s.execute(ctx, job)
+		if err == nil {
+			return executeResult{Attempts: attempt}
+		}
+		last = ClassifyFailure(err.Error(), ctx.Err())
+		lastErr = err
+		if !last.Retryable || attempt == maxAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			last = ClassifyFailure("", ctx.Err())
+			lastErr = ctx.Err()
+			return executeResult{Attempts: attempt, Failure: last, Err: lastErr}
+		case <-time.After(time.Duration(attempt) * 100 * time.Millisecond):
+		}
+	}
+	return executeResult{Attempts: maxAttempts, Failure: last, Err: lastErr}
 }
 
 func (s *Service) execute(ctx context.Context, job Job) error {
@@ -116,12 +191,39 @@ func (s *Service) execute(ctx context.Context, job Job) error {
 	cmd := exec.CommandContext(ctx, s.ffmpeg, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if len(output) > 0 {
 			return errors.New(string(output))
 		}
 		return err
 	}
 	return nil
+}
+
+func (s *Service) Cancel(id string) (Job, bool) {
+	job, ok := s.Get(id)
+	if !ok {
+		return Job{}, false
+	}
+	if job.Status != StatusQueued && job.Status != StatusRunning {
+		return job, true
+	}
+	if cancel := s.cancelFor(id); cancel != nil {
+		cancel()
+	}
+	job.Status = StatusCanceled
+	job.CompletedAt = time.Now().UTC()
+	failure := ClassifyFailure("", context.Canceled)
+	job.FailureClass = failure.Class
+	job.ReasonCode = failure.ReasonCode
+	job.Remediation = failure.Remediation
+	job.Error = failure.ReasonText
+	_ = os.Remove(job.OutputPath)
+	s.store(job)
+	s.publish("transcode.cancelled", job)
+	return job, true
 }
 
 func (s *Service) command(job Job) []string {
@@ -183,8 +285,27 @@ func (s *Service) FindActive(mediaSourceID string, mode Mode) (Job, bool) {
 	return Job{}, false
 }
 
-func (s *Service) store(job Job)                     { s.mu.Lock(); defer s.mu.Unlock(); s.jobs[job.ID] = job }
-func (s *Service) publish(eventType string, job Job) { s.events.Publish(eventType, job) }
+func (s *Service) store(job Job) { s.mu.Lock(); defer s.mu.Unlock(); s.jobs[job.ID] = job }
+func (s *Service) storeCancel(id string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cancels[id] = cancel
+}
+func (s *Service) clearCancel(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cancels, id)
+}
+func (s *Service) cancelFor(id string) context.CancelFunc {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cancels[id]
+}
+func (s *Service) publish(eventType string, job Job) {
+	if s.events != nil {
+		s.events.Publish(eventType, job)
+	}
+}
 func (s *Service) nextJobID() string {
 	return "work_" + time.Now().UTC().Format("20060102T150405") + "_" + stringID(s.nextID.Add(1))
 }
