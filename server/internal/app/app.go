@@ -25,6 +25,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/probes"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
+	runtimestore "github.com/vyrdenhq/vyrden/server/internal/runtime"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
 	"github.com/vyrdenhq/vyrden/server/internal/sessions"
@@ -86,6 +87,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		return nil, err
 	}
 	catalogService := catalog.NewService(databaseService)
+	runtimeStore := runtimestore.NewStore(databaseService)
 	libraryService := libraries.NewService()
 	if savedLibraries, err := catalogService.ListLibraries(ctx); err == nil {
 		for _, library := range savedLibraries {
@@ -140,10 +142,26 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	metadataService := metadata.NewService(cfg, catalogService, bus)
 	scanService := scans.NewService(cfg, bus, jobRegistry.Scan, libraryService, scannerService, catalogService, metadataService, movieService, tvService)
 	probeService := probe.NewService(cfg.FFprobePath)
-	probesService := probes.NewService(bus, jobRegistry.Probe, catalogService, probeService)
+	probesService, err := probes.NewPersistentService(ctx, bus, jobRegistry.Probe, catalogService, probeService, runtimeStore)
+	if err != nil {
+		return nil, err
+	}
 	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService)
 
 	playStateService := playstate.NewService(databaseService, bus)
+	transcodeService, err := transcode.NewPersistentService(ctx, bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.TranscodeDir, runtimeStore)
+	if err != nil {
+		return nil, err
+	}
+	downloadService, err := downloads.NewPersistentService(ctx, bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.DownloadsDir, runtimeStore)
+	if err != nil {
+		return nil, err
+	}
+	sessionService, err := sessions.NewPersistentService(ctx, bus, runtimeStore)
+	if err != nil {
+		return nil, err
+	}
+	startRuntimeMaintenance(appCtx, sessionService, transcodeService, probesService, downloadService)
 
 	return &Application{
 		Config:    cfg,
@@ -167,12 +185,37 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Playback:  playback.NewService(),
 		PlayState: playStateService,
 		Streaming: streaming.NewService(),
-		Transcode: transcode.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.TranscodeDir),
+		Transcode: transcodeService,
 		Subtitles: subtitles.NewService(),
 		Devices:   devices.NewService(),
-		Sessions:  sessions.NewService(bus),
-		Downloads: downloads.NewService(bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.DownloadsDir),
+		Sessions:  sessionService,
+		Downloads: downloadService,
 	}, nil
+}
+
+func startRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service) {
+	runRuntimeMaintenance(ctx, sessionService, transcodeService, probesService, downloadService)
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runRuntimeMaintenance(ctx, sessionService, transcodeService, probesService, downloadService)
+			}
+		}
+	}()
+}
+
+func runRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service) {
+	const sessionTTL = 15 * time.Minute
+	const terminalRetention = 24 * time.Hour
+	_, _ = sessionService.Cleanup(ctx, sessionTTL, terminalRetention)
+	_, _ = transcodeService.Cleanup(ctx, terminalRetention)
+	_, _ = probesService.Cleanup(ctx, terminalRetention)
+	_, _ = downloadService.Cleanup(ctx, terminalRetention)
 }
 
 func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.Bus, scanService *scans.Service, probesService *probes.Service) {

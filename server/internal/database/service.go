@@ -285,6 +285,19 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider, rating_type)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_ratings_item ON metadata_ratings(kind, item_id)`,
+	`CREATE TABLE IF NOT EXISTS runtime_entities (
+		entity_type TEXT NOT NULL,
+		id TEXT NOT NULL,
+		status TEXT NOT NULL,
+		payload_json TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		heartbeat_at TEXT NOT NULL,
+		completed_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY(entity_type, id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_runtime_entities_type_status ON runtime_entities(entity_type, status, updated_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_runtime_entities_heartbeat ON runtime_entities(entity_type, heartbeat_at)`,
 	`INSERT OR IGNORE INTO metadata_records(kind, item_id, provider, title, year, confidence, fetched_at, updated_at)
 		SELECT 'movie', id, 'filename', title, year, CASE needs_review WHEN 1 THEN 0.35 ELSE 0.7 END, updated_at, updated_at
 		FROM movies`,

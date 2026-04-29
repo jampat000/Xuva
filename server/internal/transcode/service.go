@@ -2,6 +2,7 @@ package transcode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
+	runtimestore "github.com/vyrdenhq/vyrden/server/internal/runtime"
 )
 
 type Mode string
@@ -64,6 +66,7 @@ type Job struct {
 
 type Service struct {
 	events  *events.Bus
+	runtime *runtimestore.Store
 	queue   *jobs.Queue
 	ffmpeg  string
 	outDir  string
@@ -81,6 +84,15 @@ func NewService(eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outp
 		outputDir = filepath.Join("data", "transcode")
 	}
 	return &Service{events: eventBus, queue: queue, ffmpeg: ffmpegPath, outDir: outputDir, jobs: map[string]Job{}, cancels: map[string]context.CancelFunc{}}
+}
+
+func NewPersistentService(ctx context.Context, eventBus *events.Bus, queue *jobs.Queue, ffmpegPath string, outputDir string, store *runtimestore.Store) (*Service, error) {
+	service := NewService(eventBus, queue, ffmpegPath, outputDir)
+	service.runtime = store
+	if err := service.recover(ctx); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
 func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
@@ -101,12 +113,14 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	job.OutputPath = filepath.Join(s.outDir, job.ID+".mp4")
 	job.Command = s.command(job)
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("transcode.queued", job)
 	if err := s.queue.Submit(ctx, func(workerCtx context.Context) {
 		job, _ := s.Get(job.ID)
 		job.Status = StatusRunning
 		job.StartedAt = time.Now().UTC()
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		s.publish("transcode.started", job)
 		ctx := workerCtx
 		cancel := func() {}
@@ -133,12 +147,21 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		}
 		job.CompletedAt = time.Now().UTC()
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		if job.Status == StatusCompleted {
 			s.publish("transcode.completed", job)
 		} else {
 			s.publish("transcode.failed", job)
 		}
 	}); err != nil {
+		job.Status = StatusFailed
+		job.CompletedAt = time.Now().UTC()
+		job.FailureClass = "queue_rejected"
+		job.ReasonCode = "transcode_queue_rejected"
+		job.Error = err.Error()
+		job.Remediation = "Retry after current playback work has capacity."
+		s.store(job)
+		_ = s.persist(context.Background(), job)
 		return Job{}, err
 	}
 	return job, nil
@@ -160,6 +183,7 @@ func (s *Service) executeWithRetry(ctx context.Context, job Job) executeResult {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		job.Attempts = attempt
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		err := s.execute(ctx, job)
 		if err == nil {
 			return executeResult{Attempts: attempt}
@@ -222,8 +246,16 @@ func (s *Service) Cancel(id string) (Job, bool) {
 	job.Error = failure.ReasonText
 	_ = os.Remove(job.OutputPath)
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("transcode.cancelled", job)
 	return job, true
+}
+
+func (s *Service) Cleanup(ctx context.Context, terminalRetention time.Duration) (int64, error) {
+	if terminalRetention <= 0 {
+		return 0, nil
+	}
+	return s.runtime.CleanupTerminal(ctx, "transcode", time.Now().UTC().Add(-terminalRetention), string(StatusCompleted), string(StatusFailed), string(StatusTimeout), string(StatusCanceled))
 }
 
 func (s *Service) command(job Job) []string {
@@ -286,6 +318,53 @@ func (s *Service) FindActive(mediaSourceID string, mode Mode) (Job, bool) {
 }
 
 func (s *Service) store(job Job) { s.mu.Lock(); defer s.mu.Unlock(); s.jobs[job.ID] = job }
+func (s *Service) recover(ctx context.Context) error {
+	entities, err := s.runtime.List(ctx, "transcode")
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, entity := range entities {
+		var job Job
+		if err := json.Unmarshal([]byte(entity.PayloadJSON), &job); err != nil {
+			continue
+		}
+		switch job.Status {
+		case StatusQueued, StatusRunning:
+			job.Status = StatusFailed
+			job.CompletedAt = now
+			job.FailureClass = "recovered_after_restart"
+			job.ReasonCode = "transcode_recovered_after_restart"
+			job.Remediation = "Start the conversion again if this playback still needs it."
+			job.Error = "Transcode was interrupted by server shutdown or restart."
+			s.store(job)
+			_ = s.persist(ctx, job)
+		default:
+			s.store(job)
+		}
+	}
+	return nil
+}
+
+func (s *Service) persist(ctx context.Context, job Job) error {
+	if s.runtime == nil {
+		return nil
+	}
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	return s.runtime.Save(ctx, runtimestore.Entity{
+		Type:        "transcode",
+		ID:          job.ID,
+		Status:      string(job.Status),
+		PayloadJSON: string(payload),
+		CreatedAt:   job.CreatedAt,
+		UpdatedAt:   updatedAt(job),
+		HeartbeatAt: updatedAt(job),
+		CompletedAt: job.CompletedAt,
+	})
+}
 func (s *Service) storeCancel(id string, cancel context.CancelFunc) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -308,6 +387,16 @@ func (s *Service) publish(eventType string, job Job) {
 }
 func (s *Service) nextJobID() string {
 	return "work_" + time.Now().UTC().Format("20060102T150405") + "_" + stringID(s.nextID.Add(1))
+}
+
+func updatedAt(job Job) time.Time {
+	if !job.CompletedAt.IsZero() {
+		return job.CompletedAt
+	}
+	if !job.StartedAt.IsZero() {
+		return job.StartedAt
+	}
+	return job.CreatedAt
 }
 
 func stringID(value uint64) string {

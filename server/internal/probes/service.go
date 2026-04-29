@@ -2,6 +2,7 @@ package probes
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/events"
 	"github.com/vyrdenhq/vyrden/server/internal/jobs"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
+	runtimestore "github.com/vyrdenhq/vyrden/server/internal/runtime"
 )
 
 type Status string
@@ -45,6 +47,7 @@ type Job struct {
 
 type Service struct {
 	events  *events.Bus
+	runtime *runtimestore.Store
 	queue   *jobs.Queue
 	catalog *catalog.Service
 	probe   *probe.Service
@@ -58,6 +61,15 @@ func NewService(eventBus *events.Bus, queue *jobs.Queue, catalogService *catalog
 	return &Service{events: eventBus, queue: queue, catalog: catalogService, probe: probeService, jobs: map[string]Job{}}
 }
 
+func NewPersistentService(ctx context.Context, eventBus *events.Bus, queue *jobs.Queue, catalogService *catalog.Service, probeService *probe.Service, store *runtimestore.Store) (*Service, error) {
+	service := NewService(eventBus, queue, catalogService, probeService)
+	service.runtime = store
+	if err := service.recover(ctx); err != nil {
+		return nil, err
+	}
+	return service, nil
+}
+
 func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	if request.Limit <= 0 || request.Limit > 500 {
 		request.Limit = 50
@@ -67,12 +79,14 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	}
 	job := Job{ID: s.nextJobID(), Status: StatusQueued, MediaSourceID: request.MediaSourceID, Limit: request.Limit, CreatedAt: time.Now().UTC()}
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("probe.queued", job)
 	if err := s.queue.Submit(ctx, func(workerCtx context.Context) { s.run(workerCtx, job.ID, request) }); err != nil {
 		job.Status = StatusFailed
 		job.Error = err.Error()
 		job.CompletedAt = time.Now().UTC()
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		s.publish("probe.failed", job)
 		return Job{}, err
 	}
@@ -102,6 +116,7 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 	job.Status = StatusRunning
 	job.StartedAt = time.Now().UTC()
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("probe.started", job)
 
 	var sources []catalog.MediaSourceItem
@@ -122,6 +137,7 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 	}
 	job.Total = len(sources)
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	for _, source := range sources {
 		if err := ctx.Err(); err != nil {
 			s.fail(id, err)
@@ -130,6 +146,7 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 		job, _ = s.Get(id)
 		job.LastPath = source.RelPath
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		result, err := s.probe.Probe(ctx, source.Path)
 		if err != nil {
 			job.Failed++
@@ -138,11 +155,13 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 			job.Completed++
 		}
 		s.store(job)
+		_ = s.persist(context.Background(), job)
 		s.publish("probe.progress", job)
 	}
 	job.Status = StatusCompleted
 	job.CompletedAt = time.Now().UTC()
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("probe.completed", job)
 }
 
@@ -155,7 +174,15 @@ func (s *Service) fail(id string, err error) {
 	job.Error = err.Error()
 	job.CompletedAt = time.Now().UTC()
 	s.store(job)
+	_ = s.persist(context.Background(), job)
 	s.publish("probe.failed", job)
+}
+
+func (s *Service) Cleanup(ctx context.Context, terminalRetention time.Duration) (int64, error) {
+	if terminalRetention <= 0 {
+		return 0, nil
+	}
+	return s.runtime.CleanupTerminal(ctx, "probe", time.Now().UTC().Add(-terminalRetention), string(StatusCompleted), string(StatusFailed))
 }
 
 func (s *Service) store(job Job) {
@@ -166,8 +193,63 @@ func (s *Service) store(job Job) {
 
 func (s *Service) publish(eventType string, job Job) { s.events.Publish(eventType, job) }
 
+func (s *Service) recover(ctx context.Context) error {
+	entities, err := s.runtime.List(ctx, "probe")
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, entity := range entities {
+		var job Job
+		if err := json.Unmarshal([]byte(entity.PayloadJSON), &job); err != nil {
+			continue
+		}
+		switch job.Status {
+		case StatusQueued, StatusRunning:
+			job.Status = StatusFailed
+			job.CompletedAt = now
+			job.Error = "Probe was interrupted by server shutdown or restart."
+			s.store(job)
+			_ = s.persist(ctx, job)
+		default:
+			s.store(job)
+		}
+	}
+	return nil
+}
+
+func (s *Service) persist(ctx context.Context, job Job) error {
+	if s.runtime == nil {
+		return nil
+	}
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	return s.runtime.Save(ctx, runtimestore.Entity{
+		Type:        "probe",
+		ID:          job.ID,
+		Status:      string(job.Status),
+		PayloadJSON: string(payload),
+		CreatedAt:   job.CreatedAt,
+		UpdatedAt:   jobUpdatedAt(job),
+		HeartbeatAt: jobUpdatedAt(job),
+		CompletedAt: job.CompletedAt,
+	})
+}
+
 func (s *Service) nextJobID() string {
 	return "probe_" + time.Now().UTC().Format("20060102T150405") + "_" + stringID(s.nextID.Add(1))
+}
+
+func jobUpdatedAt(job Job) time.Time {
+	if !job.CompletedAt.IsZero() {
+		return job.CompletedAt
+	}
+	if !job.StartedAt.IsZero() {
+		return job.StartedAt
+	}
+	return job.CreatedAt
 }
 
 func stringID(value uint64) string {
