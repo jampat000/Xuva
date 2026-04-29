@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vyrdenhq/vyrden/server/internal/auth"
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/devices"
@@ -43,6 +44,7 @@ import (
 type Deps struct {
 	Config    config.Config
 	StartedAt time.Time
+	Auth      *auth.Service
 	Events    *events.Bus
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
@@ -67,12 +69,15 @@ type Deps struct {
 func NewRouter(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", healthHandler(deps))
+	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))
+	mux.HandleFunc("GET /api/auth/session", requireAuth(deps, authSessionHandler(deps)))
+	mux.HandleFunc("POST /api/auth/logout", requireAuthCSRF(deps, authLogoutHandler(deps)))
 	mux.HandleFunc("GET /api/events", eventsHandler(deps))
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
-	mux.HandleFunc("POST /api/libraries", librarySaveHandler(deps))
-	mux.HandleFunc("DELETE /api/libraries/{id}", libraryDeleteHandler(deps))
-	mux.HandleFunc("POST /api/libraries/{id}/scan", libraryScanByIDHandler(deps))
+	mux.HandleFunc("POST /api/libraries", requireAuthCSRF(deps, librarySaveHandler(deps)))
+	mux.HandleFunc("DELETE /api/libraries/{id}", requireAuthCSRF(deps, libraryDeleteHandler(deps)))
+	mux.HandleFunc("POST /api/libraries/{id}/scan", requireAuthCSRF(deps, libraryScanByIDHandler(deps)))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
 	mux.HandleFunc("GET /api/catalog/health", catalogHealthHandler(deps))
 	mux.HandleFunc("GET /api/movies", moviesHandler(deps))
@@ -82,53 +87,253 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
 	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
 	mux.HandleFunc("GET /api/metadata/{kind}/{id}", metadataRecordsHandler(deps))
-	mux.HandleFunc("PUT /api/metadata/match", metadataMatchHandler(deps))
-	mux.HandleFunc("POST /api/metadata/refresh", metadataRefreshHandler(deps))
-	mux.HandleFunc("POST /api/metadata/refresh-batch", metadataRefreshBatchHandler(deps))
+	mux.HandleFunc("PUT /api/metadata/match", requireAuthCSRF(deps, metadataMatchHandler(deps)))
+	mux.HandleFunc("POST /api/metadata/refresh", requireAuthCSRF(deps, metadataRefreshHandler(deps)))
+	mux.HandleFunc("POST /api/metadata/refresh-batch", requireAuthCSRF(deps, metadataRefreshBatchHandler(deps)))
 	mux.HandleFunc("GET /api/artwork/{kind}/{id}", artworkHandler(deps))
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
 	mux.HandleFunc("GET /api/settings", settingsHandler(deps))
-	mux.HandleFunc("PUT /api/settings", settingsUpdateHandler(deps))
-	mux.HandleFunc("POST /api/settings/hardware/test", hardwareTestHandler(deps))
+	mux.HandleFunc("PUT /api/settings", requireAuthCSRF(deps, settingsUpdateHandler(deps)))
+	mux.HandleFunc("POST /api/settings/hardware/test", requireAuthCSRF(deps, hardwareTestHandler(deps)))
 	mux.HandleFunc("GET /api/system/status", systemStatusHandler(deps))
 	mux.HandleFunc("GET /api/remote/access", remoteAccessHandler(deps))
-	mux.HandleFunc("POST /api/remote/wan", wanAddressHandler(deps))
+	mux.HandleFunc("POST /api/remote/wan", requireAuthCSRF(deps, wanAddressHandler(deps)))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
-	mux.HandleFunc("GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}/stream", requireAuth(deps, mediaSourceStreamHandler(deps)))
 	mux.HandleFunc("GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
-	mux.HandleFunc("GET /api/media-sources/{id}/subtitles/{index}", mediaSourceSubtitleStreamHandler(deps))
-	mux.HandleFunc("POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
+	mux.HandleFunc("GET /api/media-sources/{id}/subtitles/{index}", requireAuth(deps, mediaSourceSubtitleStreamHandler(deps)))
+	mux.HandleFunc("POST /api/media-sources/{id}/probe", requireAuthCSRF(deps, mediaSourceProbeHandler(deps)))
 	mux.HandleFunc("GET /api/probes", probesHandler(deps))
 	mux.HandleFunc("GET /api/probes/{id}", probeJobHandler(deps))
-	mux.HandleFunc("POST /api/probes", probeStartHandler(deps))
+	mux.HandleFunc("POST /api/probes", requireAuthCSRF(deps, probeStartHandler(deps)))
 	mux.HandleFunc("GET /api/work", workHandler(deps))
-	mux.HandleFunc("POST /api/work", workStartHandler(deps))
-	mux.HandleFunc("GET /api/work/{id}/file", workFileHandler(deps))
+	mux.HandleFunc("POST /api/work", requireAuthCSRF(deps, workStartHandler(deps)))
+	mux.HandleFunc("GET /api/work/{id}/file", requireAuth(deps, workFileHandler(deps)))
 	mux.HandleFunc("GET /api/downloads", downloadsHandler(deps))
-	mux.HandleFunc("POST /api/downloads", downloadStartHandler(deps))
+	mux.HandleFunc("POST /api/downloads", requireAuthCSRF(deps, downloadStartHandler(deps)))
 	mux.HandleFunc("GET /api/downloads/{id}", downloadJobHandler(deps))
-	mux.HandleFunc("GET /api/downloads/{id}/file", downloadFileHandler(deps))
+	mux.HandleFunc("GET /api/downloads/{id}/file", requireAuth(deps, downloadFileHandler(deps)))
 	mux.HandleFunc("GET /api/devices/profiles", deviceProfilesHandler(deps))
-	mux.HandleFunc("GET /api/sessions", sessionsHandler(deps))
-	mux.HandleFunc("POST /api/sessions", sessionStartHandler(deps))
-	mux.HandleFunc("PATCH /api/sessions/{id}", sessionUpdateHandler(deps))
-	mux.HandleFunc("DELETE /api/sessions/{id}", sessionStopHandler(deps))
+	mux.HandleFunc("GET /api/sessions", requireAuth(deps, sessionsHandler(deps)))
+	mux.HandleFunc("POST /api/sessions", requireAuthCSRF(deps, sessionStartHandler(deps)))
+	mux.HandleFunc("PATCH /api/sessions/{id}", requireAuthCSRF(deps, sessionUpdateHandler(deps)))
+	mux.HandleFunc("DELETE /api/sessions/{id}", requireAuthCSRF(deps, sessionStopHandler(deps)))
 	mux.HandleFunc("GET /api/playback/recent", playbackRecentHandler(deps))
 	mux.HandleFunc("GET /api/playback/state/{id}", playbackStateGetHandler(deps))
-	mux.HandleFunc("PUT /api/playback/state/{id}", playbackStateSetHandler(deps))
+	mux.HandleFunc("PUT /api/playback/state/{id}", requireAuthCSRF(deps, playbackStateSetHandler(deps)))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
-	mux.HandleFunc("POST /api/libraries/movies/scan", movieScanHandler(deps))
-	mux.HandleFunc("POST /api/libraries/tv/scan", tvScanHandler(deps))
-	mux.HandleFunc("POST /api/libraries/scan", allLibrariesScanHandler(deps))
+	mux.HandleFunc("POST /api/libraries/movies/scan", requireAuthCSRF(deps, movieScanHandler(deps)))
+	mux.HandleFunc("POST /api/libraries/tv/scan", requireAuthCSRF(deps, tvScanHandler(deps)))
+	mux.HandleFunc("POST /api/libraries/scan", requireAuthCSRF(deps, allLibrariesScanHandler(deps)))
 	mux.HandleFunc("GET /api/playback/decision", playbackDecisionHandler(deps))
 	mux.HandleFunc("GET /api/playback/route", playbackRouteHandler(deps))
-	mux.HandleFunc("GET /play/{id}", playerHandler(deps))
+	mux.HandleFunc("GET /play/{id}", requireAuth(deps, playerHandler(deps)))
 	mux.Handle("GET /", webapp.Handler())
-	return mux
+	return withResolvedSession(deps, mux)
+}
+
+func withResolvedSession(deps Deps, next http.Handler) http.Handler {
+	if deps.Auth == nil || deps.Auth.Disabled() {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(auth.SessionCookieName)
+		if err != nil || strings.TrimSpace(cookie.Value) == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		resolved, err := deps.Auth.Resolve(r.Context(), cookie.Value, requestRemoteAddr(r), r.UserAgent())
+		if err != nil {
+			clearAuthCookies(w)
+			next.ServeHTTP(w, r)
+			return
+		}
+		if resolved.Rotated {
+			writeAuthCookies(w, r, resolved)
+		}
+		next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), resolved)))
+	})
+}
+
+func requireAuth(deps Deps, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			next(w, r)
+			return
+		}
+		if _, ok := auth.ResolvedSessionFromContext(r.Context()); !ok {
+			clearAuthCookies(w)
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func requireAuthCSRF(deps Deps, next http.HandlerFunc) http.HandlerFunc {
+	return requireAuth(deps, func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			next(w, r)
+			return
+		}
+		resolved, _ := auth.ResolvedSessionFromContext(r.Context())
+		csrfCookie, _ := r.Cookie(auth.CSRFCookieName)
+		csrfCookieValue := ""
+		if csrfCookie != nil {
+			csrfCookieValue = csrfCookie.Value
+		}
+		if err := deps.Auth.ValidateCSRF(resolved, csrfCookieValue, r.Header.Get("X-CSRF-Token")); err != nil {
+			writeError(w, http.StatusForbidden, "valid csrf token required")
+			return
+		}
+		next(w, r)
+	})
+}
+
+func authLoginHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeJSON(w, http.StatusOK, map[string]any{"authDisabled": true})
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		principal, session, token, err := deps.Auth.Authenticate(r.Context(), payload.Username, payload.Password, requestRemoteAddr(r), r.UserAgent())
+		if err != nil {
+			if until, ok := auth.LockoutUntil(err); ok {
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{
+					"error":       "too many invalid login attempts",
+					"lockedUntil": until.Format(time.RFC3339),
+				})
+				return
+			}
+			if errors.Is(err, auth.ErrInvalidCredentials) {
+				writeError(w, http.StatusUnauthorized, "invalid username or password")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "login failed")
+			return
+		}
+		writeAuthCookies(w, r, auth.ResolvedSession{Principal: principal, Session: session, Token: token})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user": map[string]any{
+				"id":          principal.ID,
+				"username":    principal.Username,
+				"displayName": principal.DisplayName,
+				"role":        principal.Role,
+			},
+			"session": map[string]any{
+				"id":        session.ID,
+				"expiresAt": session.ExpiresAt.Format(time.RFC3339),
+			},
+		})
+	}
+}
+
+func authSessionHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeJSON(w, http.StatusOK, map[string]any{"authDisabled": true})
+			return
+		}
+		resolved, ok := auth.ResolvedSessionFromContext(r.Context())
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user": map[string]any{
+				"id":          resolved.Principal.ID,
+				"username":    resolved.Principal.Username,
+				"displayName": resolved.Principal.DisplayName,
+				"role":        resolved.Principal.Role,
+			},
+			"session": map[string]any{
+				"id":        resolved.Session.ID,
+				"expiresAt": resolved.Session.ExpiresAt.Format(time.RFC3339),
+			},
+			"csrfToken": resolved.Session.CSRFToken,
+		})
+	}
+}
+
+func authLogoutHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth != nil && !deps.Auth.Disabled() {
+			if cookie, err := r.Cookie(auth.SessionCookieName); err == nil && cookie.Value != "" {
+				_ = deps.Auth.Revoke(r.Context(), cookie.Value)
+			}
+		}
+		clearAuthCookies(w)
+		writeJSON(w, http.StatusOK, map[string]any{"status": "logged_out"})
+	}
+}
+
+func writeAuthCookies(w http.ResponseWriter, r *http.Request, resolved auth.ResolvedSession) {
+	secure := requestSecure(r)
+	maxAge := int(time.Until(resolved.Session.ExpiresAt).Seconds())
+	if maxAge < 0 {
+		maxAge = 0
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    resolved.Token,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.CSRFCookieName,
+		Value:    resolved.Session.CSRFToken,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: false,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+}
+
+func clearAuthCookies(w http.ResponseWriter) {
+	for _, name := range []string{auth.SessionCookieName, auth.CSRFCookieName} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: name == auth.SessionCookieName,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+}
+
+func requestSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func requestRemoteAddr(r *http.Request) string {
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		return strings.Split(forwarded, ",")[0]
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 func healthHandler(deps Deps) http.HandlerFunc {
@@ -2017,6 +2222,9 @@ func sessionStartHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
+		if request.UserID == "" {
+			request.UserID = requestUserID(r)
+		}
 		if err := enrichSessionStartRequest(deps, r.Context(), &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -2159,7 +2367,7 @@ func sessionStopHandler(deps Deps) http.HandlerFunc {
 
 func playbackRecentHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := deps.PlayState.Recent(r.Context(), r.URL.Query().Get("userId"), queryInt(r, "limit", 24))
+		items, err := deps.PlayState.Recent(r.Context(), requestUserID(r), queryInt(r, "limit", 24))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "recent playback lookup failed")
 			return
@@ -2170,7 +2378,7 @@ func playbackRecentHandler(deps Deps) http.HandlerFunc {
 
 func playbackStateGetHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		state, _, err := deps.PlayState.Get(r.Context(), r.URL.Query().Get("userId"), r.PathValue("id"))
+		state, _, err := deps.PlayState.Get(r.Context(), requestUserID(r), r.PathValue("id"))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "playback state lookup failed")
 			return
@@ -2185,6 +2393,9 @@ func playbackStateSetHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
+		if request.UserID == "" {
+			request.UserID = requestUserID(r)
+		}
 		state, err := deps.PlayState.Set(r.Context(), r.PathValue("id"), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -2192,6 +2403,13 @@ func playbackStateSetHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, state)
 	}
+}
+
+func requestUserID(r *http.Request) string {
+	if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok && strings.TrimSpace(resolved.Principal.ID) != "" {
+		return resolved.Principal.ID
+	}
+	return r.URL.Query().Get("userId")
 }
 
 func movieScanHandler(deps Deps) http.HandlerFunc {

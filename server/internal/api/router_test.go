@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/vyrdenhq/vyrden/server/internal/auth"
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
 	"github.com/vyrdenhq/vyrden/server/internal/database"
@@ -348,6 +350,123 @@ func TestLibraryManagementRemoteAndArtworkEndpoints(t *testing.T) {
 	}
 }
 
+func TestAuthProtectedRouteRequiresSession(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAuthLoginAndProtectedRouteAccess(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+	if login.payload["user"].(map[string]any)["username"] != "admin" {
+		t.Fatalf("expected admin user, got %#v", login.payload)
+	}
+	if client.csrfToken == "" {
+		t.Fatalf("expected csrf token to be captured")
+	}
+
+	protected := client.requestJSON(t, router, http.MethodGet, "/api/sessions", nil)
+	if protected.status != http.StatusOK {
+		t.Fatalf("expected protected route 200, got %d: %s", protected.status, protected.body)
+	}
+
+	session := client.requestJSON(t, router, http.MethodGet, "/api/auth/session", nil)
+	if session.status != http.StatusOK {
+		t.Fatalf("expected session route 200, got %d: %s", session.status, session.body)
+	}
+	if session.payload["csrfToken"] == "" {
+		t.Fatalf("expected csrf token in session payload, got %#v", session.payload)
+	}
+}
+
+func TestAuthRevokedSessionDenied(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+	logout := client.requestJSON(t, router, http.MethodPost, "/api/auth/logout", map[string]any{})
+	if logout.status != http.StatusOK {
+		t.Fatalf("expected logout 200, got %d: %s", logout.status, logout.body)
+	}
+
+	protected := client.requestJSON(t, router, http.MethodGet, "/api/sessions", nil)
+	if protected.status != http.StatusUnauthorized {
+		t.Fatalf("expected revoked session to get 401, got %d: %s", protected.status, protected.body)
+	}
+}
+
+func TestAuthInvalidLoginsTriggerLockout(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	for attempt := 0; attempt < 4; attempt++ {
+		response := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+			"username": "admin",
+			"password": "wrong-password",
+		})
+		if response.status != http.StatusUnauthorized {
+			t.Fatalf("attempt %d expected 401, got %d: %s", attempt+1, response.status, response.body)
+		}
+	}
+
+	locked := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "wrong-password",
+	})
+	if locked.status != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 on lockout, got %d: %s", locked.status, locked.body)
+	}
+	if locked.payload["lockedUntil"] == "" {
+		t.Fatalf("expected lockedUntil in response, got %#v", locked.payload)
+	}
+}
+
+func TestAuthMutationRejectsMissingCSRF(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+
+	request := httptest.NewRequest(http.MethodPut, "http://vyrden.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+		"httpAddr": "127.0.0.1:8097",
+	})))
+	request.Header.Set("Content-Type", "application/json")
+	client.apply(request, false)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without csrf header, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func testDeps(t *testing.T, startedAt time.Time) Deps {
 	t.Helper()
 
@@ -355,6 +474,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 	cfg := config.Config{
 		HTTPAddr:         "127.0.0.1:8097",
 		DataDir:          dataDir,
+		AuthDisabled:     true,
 		TranscodeDir:     filepath.Join(dataDir, "transcode"),
 		DownloadsDir:     filepath.Join(dataDir, "downloads"),
 		MetadataDir:      filepath.Join(dataDir, "metadata"),
@@ -413,6 +533,96 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Downloads: downloads.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "downloads")),
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(eventBus),
+	}
+}
+
+func testDepsWithAuth(t *testing.T, startedAt time.Time) Deps {
+	t.Helper()
+
+	deps := testDeps(t, startedAt)
+	deps.Config.AuthDisabled = false
+	db, err := database.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("open auth database: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("close auth database: %v", err)
+		}
+	})
+	deps.Catalog = catalog.NewService(db)
+	deps.Metadata = metaprovider.NewService(deps.Config, deps.Catalog, deps.Events)
+	deps.Scans = scans.NewService(deps.Config, deps.Events, deps.Jobs.Scan, deps.Libraries, deps.Scanner, deps.Catalog, deps.Metadata, deps.Movies, deps.TV)
+	deps.Probes = probes.NewService(deps.Events, deps.Jobs.Probe, deps.Catalog, probe.NewService("ffprobe"))
+	deps.PlayState = playstate.NewService(db, deps.Events)
+	deps.Auth = auth.NewService(db, false)
+	if err := deps.Auth.Bootstrap(context.Background(), auth.BootstrapOptions{
+		Username: "admin",
+		Password: "test-password-123!",
+	}); err != nil {
+		t.Fatalf("bootstrap auth: %v", err)
+	}
+	return deps
+}
+
+type authTestClient struct {
+	jar       http.CookieJar
+	csrfToken string
+}
+
+type authJSONResponse struct {
+	status  int
+	payload map[string]any
+	body    string
+}
+
+func newAuthTestClient(t *testing.T) *authTestClient {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("create cookie jar: %v", err)
+	}
+	return &authTestClient{jar: jar}
+}
+
+func (c *authTestClient) requestJSON(t *testing.T, router http.Handler, method string, path string, body any) authJSONResponse {
+	t.Helper()
+
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(mustJSON(t, body))
+	}
+	request := httptest.NewRequest(method, "http://vyrden.test"+path, reader)
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	c.apply(request, method != http.MethodGet && method != http.MethodHead)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	c.store(request, response)
+
+	result := authJSONResponse{status: response.Code, body: response.Body.String()}
+	if response.Body.Len() > 0 {
+		_ = json.Unmarshal(response.Body.Bytes(), &result.payload)
+	}
+	return result
+}
+
+func (c *authTestClient) apply(request *http.Request, includeCSRF bool) {
+	for _, cookie := range c.jar.Cookies(request.URL) {
+		request.AddCookie(cookie)
+	}
+	if includeCSRF && c.csrfToken != "" {
+		request.Header.Set("X-CSRF-Token", c.csrfToken)
+	}
+}
+
+func (c *authTestClient) store(request *http.Request, response *httptest.ResponseRecorder) {
+	c.jar.SetCookies(request.URL, response.Result().Cookies())
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == auth.CSRFCookieName {
+			c.csrfToken = cookie.Value
+		}
 	}
 }
 
@@ -489,4 +699,13 @@ func writeTestFile(t *testing.T, path string) {
 	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	return raw
 }
