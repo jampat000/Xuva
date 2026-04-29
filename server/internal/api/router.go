@@ -117,6 +117,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/probes", probeStartHandler(deps))
 	mux.HandleFunc("GET /api/work", workHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/work", workStartHandler(deps))
+	handleProtectedCSRF(mux, deps, "DELETE /api/work/{id}", workCancelHandler(deps))
 	handleProtected(mux, deps, "GET /api/work/{id}/file", workFileHandler(deps))
 	mux.HandleFunc("GET /api/downloads", downloadsHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/downloads", downloadStartHandler(deps))
@@ -2390,6 +2391,17 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
+	}
+}
+
+func workCancelHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Transcode.Cancel(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "work job not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, job)
 	}
 }
 

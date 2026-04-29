@@ -50,6 +50,7 @@ var routePolicies = map[string]routePolicy{
 	"POST /api/media-sources/{id}/probe":                     route("POST /api/media-sources/{id}/probe", "media", "media.probe", roleAdmin),
 	"POST /api/probes":                                       route("POST /api/probes", "media", "probe.start", roleAdmin),
 	"POST /api/work":                                         route("POST /api/work", "work", "work.start", roleAdmin),
+	"DELETE /api/work/{id}":                                  route("DELETE /api/work/{id}", "work", "work.cancel", roleAdmin),
 	"GET /api/work/{id}/file":                                route("GET /api/work/{id}/file", "work", "work.file", roleAdmin, roleStandard),
 	"POST /api/downloads":                                    route("POST /api/downloads", "downloads", "download.start", roleAdmin),
 	"GET /api/downloads/{id}/file":                           route("GET /api/downloads/{id}/file", "downloads", "download.file", roleAdmin, roleStandard),

@@ -308,11 +308,11 @@ Add these under each task’s **Completion Notes** subsection when done.
 **Objective**: make transcode behavior deterministic, debuggable, and recoverable.
 
 **Tasks**
-- [ ] Parse ffmpeg failures into normalized error categories.
-- [ ] Add retry/backoff policy for retryable failures.
-- [ ] Add hard timeout and cancellation cleanup.
-- [ ] Track job state transitions with persisted reasons.
-- [ ] Surface actionable remediation tips in API/UI.
+- [x] Parse ffmpeg failures into normalized error categories.
+- [x] Add retry/backoff policy for retryable failures.
+- [x] Add hard timeout and cancellation cleanup.
+- [x] Track job state transitions with persisted reasons.
+- [x] Surface actionable remediation tips in API/UI.
 
 **Deliverables**
 - Error taxonomy spec and parser.
@@ -328,10 +328,17 @@ Add these under each task’s **Completion Notes** subsection when done.
 - P1.1; durable job storage from P2.1 strongly recommended.
 
 **Completion Notes**
-- PR(s):
+- PR(s): local branch `issue-8-transcode-reliability` pending publish/PR creation.
 - Tests:
+  - `go test ./internal/transcode`
+  - `go test ./...`
+  - Taxonomy tests cover missing input, permission, disk full, retryable I/O, unsupported codec, timeout, and cancellation.
+  - Lifecycle tests cover retry count, timeout cleanup, and cancellation cleanup.
 - Metrics/log evidence:
+  - Transcode jobs and events include attempts, max attempts, timeout, failure class, reason code, and remediation.
 - Risks/rollback:
+  - Terminal diagnostics are in-memory until #10 persists jobs durably.
+  - Rollback is to ignore the new diagnostic fields and restore single-attempt execution.
 
 ---
 
