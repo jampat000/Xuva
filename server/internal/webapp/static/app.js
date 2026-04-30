@@ -10,6 +10,7 @@ const densityButton = document.getElementById("densityButton");
 const densityLabel = document.getElementById("densityLabel");
 const densityOptions = document.getElementById("densityOptions");
 const densityNames = { compact: "Compact", balanced: "Balanced", comfortable: "Comfortable", cinematic: "Cinematic" };
+const apiClient = window.VyrdenApi?.createApiClient(fetch, { timeoutMs: 20000, retries: 1 });
 
 const savedTheme = localStorage.getItem("vyrden-theme") || "dark";
 applyTheme(savedTheme);
@@ -43,15 +44,11 @@ document.querySelectorAll(".nav-item").forEach(button => {
 });
 
 async function api(path, options) {
-  const response = await fetch(path, options);
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(payload.error || response.statusText);
-  return payload;
+  return apiClient.request(path, options);
 }
 
 async function send(path, body, method = "POST") {
-  return api(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  return apiClient.send(path, body, method);
 }
 
 async function navigate(name) {
@@ -62,7 +59,7 @@ async function navigate(name) {
   try {
     await render(name);
   } catch (error) {
-    view.innerHTML = `<div class="card error">${escapeHTML(error.message)}</div>`;
+    view.innerHTML = window.VyrdenErrors.renderErrorBoundary(error, { title: `${title(name)} could not load`, retryHandler: `navigate('${name}')` });
   }
 }
 
@@ -557,6 +554,9 @@ function policyDecisionLabel(policy = {}, decision = {}) {
 }
 
 function playbackSummary(decision = {}, hardware = {}, policy = {}) {
+  if (window.VyrdenPlayback) {
+    return window.VyrdenPlayback.playbackSummary(decision, hardware, { ...policy, allowed: policyAllowsDecision(policy, decision) });
+  }
   const mode = String(decision.mode || "").toLowerCase();
   if (!mode || mode === "decision deferred") return playbackReason(decision, hardware);
   if (mode === "direct play") return "This source should play as-is with no conversion work.";
@@ -681,14 +681,7 @@ async function openSourceInspector(mediaSourceId) {
       <button type="button" onclick="closeSourceInspector()">Close</button>
     </div>
     <div class="decision"><strong>${escapeHTML(playbackReadinessLabel(decision))}</strong><span>${escapeHTML(playbackSummary(decision, hardware, policy))}</span></div>
-    <div class="source-inspector-grid">
-      ${inspectorFact("Probe", source.probed ? "Complete" : "Needed", source.probed ? "Media facts are cached locally." : "Run ffprobe for this one source now.")}
-      ${inspectorFact("Container", source.container || "Pending", sourceCodecLine(source))}
-      ${inspectorFact("Video", sourceVideoLine(source, decision), source.bitrate ? formatBitrate(source.bitrate) : "Bitrate pending")}
-      ${inspectorFact("Tracks", `${tracks.audioTracks?.length || 0} audio / ${tracks.subtitleTracks?.length || 0} subtitles`, source.subtitleStreams ? `${source.subtitleStreams} embedded subtitle streams` : "No subtitle facts yet")}
-      ${inspectorFact("Progress", playbackState.watched ? "Watched" : `${Math.round((playbackState.percent || 0) * 100)}%`, playbackState.progressSeconds ? formatDuration(playbackState.progressSeconds) : "Not started")}
-      ${inspectorFact("Server work", playbackEffortLabel(decision), loadLabel(decision))}
-    </div>
+    ${window.VyrdenPlayback.renderInspectorFacts({ source, tracks, decision, playbackState, hardware, formatBitrate, formatDuration })}
     <div class="drawer-section">
       <div class="panel-title"><strong>Audio Tracks</strong></div>
       <div class="mini-list">${trackSummaryRows(tracks.audioTracks, "No audio tracks cached. Probe this source.")}</div>
@@ -719,6 +712,7 @@ function closeSourceInspector() {
 }
 
 function inspectorFact(label, value, note) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.inspectorFact(label, value, note);
   return `<div class="inspector-fact"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value || "Pending")}</strong><small>${escapeHTML(note || "")}</small></div>`;
 }
 
@@ -778,15 +772,18 @@ function sourceQualityLabel(source = {}) {
 }
 
 function sourceCodecLine(source = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.sourceCodecLine(source);
   if (!source.probed) return "File check needed";
   return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "video", source.container ? String(source.container).toUpperCase() : "container", source.audioStreams ? `${source.audioStreams} audio` : "", source.subtitleStreams ? `${source.subtitleStreams} subs` : ""].filter(Boolean).join(" - ");
 }
 
 function sourceVideoLine(source = {}, decision = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.sourceVideoLine(source, decision);
   return [source.videoCodec ? String(source.videoCodec).toUpperCase() : "Video pending", source.width && source.height ? `${source.width}x${source.height}` : "", playbackActionLabel(decision.videoAction || "")].filter(Boolean).join(" - ");
 }
 
 function loadLabel(decision = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.loadLabel(decision);
   if (String(decision.mode || "").toLowerCase() === "decision deferred") return "Check needed";
   if (decision.estimatedCpuCost === "high") return "Heavy server work";
   if (decision.estimatedCpuCost === "medium") return "Some server work";
@@ -874,6 +871,7 @@ function setText(id, value) {
 }
 
 function serverImpact(decision = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.serverImpact(decision);
   if (decision.mode === "Subtitle Burn" || decision.mode === "Video Transcode") return "Video conversion needed";
   if (decision.mode === "Audio Transcode") return "Audio conversion needed";
   if (decision.mode === "Remux") return "Live repackage";
@@ -882,6 +880,7 @@ function serverImpact(decision = {}) {
 }
 
 function playbackReadinessLabel(decision = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.playbackReadinessLabel(decision);
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "Ready to play";
   if (mode === "remux") return "Repackage while playing";
@@ -894,6 +893,7 @@ function playbackReadinessLabel(decision = {}) {
 }
 
 function playbackEffortLabel(decision = {}, hardware = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.playbackEffortLabel(decision, hardware);
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "No extra work";
   if (mode === "remux") return "Low PC load";
@@ -908,6 +908,7 @@ function playbackEffortLabel(decision = {}, hardware = {}) {
 }
 
 function playbackReason(decision = {}, hardware = {}) {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.playbackReason(decision, hardware);
   const reason = String(decision.reason || "");
   const mode = String(decision.mode || "").toLowerCase();
   if (!reason) return "Vyrden is checking this file before choosing the best playback path.";
@@ -929,6 +930,7 @@ function playbackReason(decision = {}, hardware = {}) {
 }
 
 function playbackActionLabel(value = "") {
+  if (window.VyrdenPlayback) return window.VyrdenPlayback.playbackActionLabel(value);
   const labels = {
     probe_required: "Needs file check",
     pending: "Checking",
@@ -2151,10 +2153,20 @@ function refreshLiveViews(eventName = "") {
 function patchLiveView(eventName = "") {
   clearTimeout(livePatchTimer);
   livePatchTimer = setTimeout(async () => {
-    if (state.activeView === "dashboard") await patchDashboardLive(eventName);
-    if (state.activeView === "activity") await patchActivityLive();
-    if (state.activeView === "playback") await patchPlaybackLive();
+    try {
+      if (state.activeView === "dashboard") await patchDashboardLive(eventName);
+      if (state.activeView === "activity") await patchActivityLive();
+      if (state.activeView === "playback") await patchPlaybackLive();
+    } catch (error) {
+      showLivePatchError(error);
+    }
   }, 180);
+}
+
+function showLivePatchError(error) {
+  const target = document.querySelector("[data-live='operations']") || document.querySelector("[data-live='playing-now']") || view;
+  if (!target) return;
+  target.innerHTML = window.VyrdenErrors.renderInlineError(error, "patchLiveView('retry')");
 }
 
 async function patchDashboardLive(eventName = "") {

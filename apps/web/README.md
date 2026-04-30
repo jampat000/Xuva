@@ -13,3 +13,9 @@ Primary screens:
 - Server health.
 - Remote access diagnostics.
 
+Frontend runtime notes:
+
+- The production web UI is served from `server/internal/webapp/static`.
+- Shared browser modules live in `server/internal/webapp/static/modules`.
+- Critical frontend tests live in `server/internal/webapp/frontend_tests` and run with `node --test`.
+- Architecture and contribution conventions are documented in `docs/frontend-architecture.md`.
