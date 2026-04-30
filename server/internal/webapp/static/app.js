@@ -1,4 +1,4 @@
-const state = { activeView: "dashboard", activeSession: "", playbackSelections: {}, movieWall: [], movieFilter: "all", movieSort: "title" };
+const state = { activeView: "dashboard", activeSession: "", playbackSelections: {}, movieWall: [], movieFilter: "all", movieSort: "title", settingsTab: "libraries" };
 
 const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
@@ -52,6 +52,10 @@ async function send(path, body, method = "POST") {
 }
 
 async function navigate(name) {
+  if (name === "libraries") {
+    state.settingsTab = "libraries";
+    name = "settings";
+  }
   state.activeView = name;
   document.querySelectorAll(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.view === name));
   viewTitle.textContent = title(name);
@@ -116,7 +120,6 @@ async function render(name) {
   if (name === "dashboard") return renderDashboard();
   if (name === "movies") return renderMovies();
   if (name === "tv") return renderTV();
-  if (name === "libraries") return renderLibraries();
   if (name === "activity") return renderActivity();
   if (name === "health") return renderHealth();
   if (name === "playback") return renderPlaybackLab();
@@ -223,15 +226,15 @@ async function renderDashboard() {
 
       <section class="dashboard-grid">
         <div class="panel pad">
-          <div class="panel-title"><strong>Libraries & Storage</strong><button onclick="navigate('libraries')">Manage</button></div>
+          <div class="panel-title"><strong>Libraries & Storage</strong><button onclick="openSettings('libraries')">Manage</button></div>
           ${libraryCards(libraries.libraries)}
         </div>
-        <div class="panel pad"><div class="panel-title"><strong>Library Automation</strong><button onclick="navigate('settings')">Schedule</button></div>${automationStatus(settings.config || {}, scanJobs, probeJobs)}</div>
+        <div class="panel pad"><div class="panel-title"><strong>Library Automation</strong><button onclick="openSettings('automation')">Schedule</button></div>${automationStatus(settings.config || {}, scanJobs, probeJobs)}</div>
       </section>
 
       <section class="dashboard-grid">
         <div class="panel pad"><div class="panel-title"><strong>Version Intelligence</strong><button onclick="navigate('health')">Review</button></div>${versionGroups(versions.versions, totalTitles)}</div>
-        <div class="panel pad"><div class="panel-title"><strong>Runtime Folders</strong><button onclick="navigate('settings')">Move</button></div>${runtimeFolders(system.disks || [])}</div>
+        <div class="panel pad"><div class="panel-title"><strong>Runtime Folders</strong><button onclick="openSettings('runtime')">Move</button></div>${runtimeFolders(system.disks || [])}</div>
       </section>
 
       <section class="panel pad">
@@ -1100,22 +1103,37 @@ async function showEpisode(seriesId, episodeId) {
 
 async function renderLibraries() {
   const payload = await api("/api/libraries");
-  view.innerHTML = `
-    <div class="stack">
-      <div class="library-panel">
-        <div>
-          <h2>Add Library</h2>
-          <p class="muted">Use any local, USB, mapped, NAS, SMB, NFS, or mounted path that the logged-in user can access.</p>
-        </div>
-        <form class="library-form" onsubmit="saveLibrary(event)">
-          <select name="kind"><option value="movies">Movies</option><option value="tv">TV</option></select>
-          <input name="name" placeholder="Library name">
-          <input name="path" placeholder="D:\\Media\\Movies or \\\\NAS\\Share\\TV" required>
-          <button class="primary">Add</button>
-        </form>
+  view.innerHTML = `<div class="stack">${librarySettingsPanel(payload.libraries)}</div>`;
+}
+
+function librarySettingsPanel(libraries = []) {
+  return `<div class="card"><h2>Libraries</h2>
+    <div class="library-panel">
+      <div>
+        <h3>Add Library</h3>
+        <p class="muted">Use any local, USB, mapped, NAS, SMB, NFS, or mounted path that the logged-in user can access.</p>
       </div>
-      <div class="library-grid">${libraryCards(payload.libraries, true)}</div>
-    </div>`;
+      <form class="library-form" onsubmit="saveLibrary(event)">
+        <select name="kind"><option value="movies">Movies</option><option value="tv">TV</option></select>
+        <input name="name" placeholder="Library name">
+        <div class="path-input-row"><input id="library-path" name="path" placeholder="D:\\Media\\Movies or \\\\NAS\\Share\\TV" required><button type="button" onclick="openLibraryFolderBrowser()">Browse</button></div>
+        <button class="primary">Add</button>
+      </form>
+      <div id="folderBrowser" class="folder-browser" hidden></div>
+    </div>
+    <div class="library-grid">${libraryCards(libraries, true)}</div>
+  </div>`;
+}
+
+async function openLibraryFolderBrowser() {
+  const input = document.getElementById("library-path");
+  await chooseFolder({
+    field: "library",
+    label: "Library folder",
+    path: input ? input.value : "",
+    inputId: "library-path",
+    purpose: "library",
+  });
 }
 
 function libraryCards(items = [], controls = false) {
@@ -1131,7 +1149,7 @@ async function saveLibrary(event) {
   event.preventDefault();
   const data = new FormData(event.currentTarget);
   await send("/api/libraries", { kind: data.get("kind"), name: data.get("name"), path: data.get("path") });
-  navigate("libraries");
+  openSettings("libraries");
 }
 
 async function scanLibrary(id) {
@@ -1142,7 +1160,7 @@ async function scanLibrary(id) {
 async function deleteLibrary(id) {
   if (!confirm("Remove this library from Vyrden? Media files are not deleted.")) return;
   await api(`/api/libraries/${id}`, { method: "DELETE" });
-  navigate("libraries");
+  openSettings("libraries");
 }
 
 async function renderActivity() {
@@ -1306,22 +1324,94 @@ async function lookupWan() {
   target.textContent = JSON.stringify(payload, null, 2);
 }
 
+function openSettings(tab = "libraries") {
+  state.settingsTab = tab;
+  navigate("settings");
+}
+
 async function renderSettings() {
-  const [settings, performance, system] = await Promise.all([api("/api/settings"), api("/api/settings/performance"), api("/api/system/status")]);
+  const [settings, performance, system, pairing] = await Promise.all([
+    api("/api/settings"),
+    api("/api/settings/performance"),
+    api("/api/system/status"),
+    api("/api/pairing/requests").catch(() => ({ requests: [] })),
+  ]);
+  const active = settingsTabExists(state.settingsTab) ? state.settingsTab : "libraries";
+  state.settingsTab = active;
   view.innerHTML = `<div class="stack">
     <div class="hero-strip">
-      <div class="hero-copy"><span>Runtime</span><strong>Local-first settings before tray and installer.</strong><p>These values are persisted locally and give the future tray app a real product runtime to control.</p></div>
+      <div class="hero-copy"><span>Settings</span><strong>Configure the server without hunting through one long page.</strong><p>Libraries, runtime folders, playback behavior, automation, hardware, and metadata each have their own workspace.</p></div>
       <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
     </div>
-    <div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div>
-    <div class="card"><h2>Playback Policy</h2>${playbackPolicyForm(settings.config.playbackPolicy || "original_only")}</div>
-    <div class="card"><h2>Library Automation</h2>${automationSettingsForm(settings.config)}</div>
-    <div class="card"><h2>Hardware Acceleration</h2>${hardwareAccelerationPanel(performance.hardwareAcceleration || {}, settings.config)}</div>
-    <div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>
-    <div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>
-    <div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div>
-    <div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>
+    <div class="settings-tabs">${settingsTabs(active)}</div>
+    <div class="settings-panel">${settingsPanel(active, settings, performance, system, pairing)}</div>
   </div>`;
+}
+
+function settingsTabExists(tab) {
+  return ["libraries", "runtime", "devices", "playback", "automation", "hardware", "metadata", "advanced"].includes(tab);
+}
+
+function settingsTabs(active) {
+  const tabs = [
+    ["libraries", "Libraries"],
+    ["runtime", "Folders"],
+    ["devices", "Devices"],
+    ["playback", "Playback"],
+    ["automation", "Automation"],
+    ["hardware", "Hardware"],
+    ["metadata", "Metadata"],
+    ["advanced", "Advanced"],
+  ];
+  return tabs.map(([id, label]) => `<button type="button" class="${active === id ? "selected" : ""}" onclick="openSettings('${escapeAttr(id)}')">${escapeHTML(label)}</button>`).join("");
+}
+
+function settingsPanel(active, settings, performance, system, pairing) {
+  if (active === "libraries") return librarySettingsPanel(settings.libraries || []);
+  if (active === "runtime") return `<div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div><div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>`;
+  if (active === "devices") return `<div class="card"><h2>Device Pairing</h2>${devicePairingPanel(pairing.requests || [])}</div>`;
+  if (active === "playback") return `<div class="card"><h2>Playback Policy</h2>${playbackPolicyForm(settings.config.playbackPolicy || "original_only")}</div>`;
+  if (active === "automation") return `<div class="card"><h2>Library Automation</h2>${automationSettingsForm(settings.config)}</div>`;
+  if (active === "hardware") return `<div class="card"><h2>Hardware Acceleration</h2>${hardwareAccelerationPanel(performance.hardwareAcceleration || {}, settings.config)}</div>`;
+  if (active === "metadata") return `<div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>`;
+  return `<div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div><div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>`;
+}
+
+function devicePairingPanel(requests = []) {
+  const pending = requests.filter(item => item.status === "pending");
+  return `<div class="device-pairing-panel">
+    <div class="remote-result idle">
+      <strong>Pair Apple TV and future native apps from your local network.</strong>
+      <span>The TV app shows a short code. Approve it here to connect the device without a cloud account or vendor relay.</span>
+    </div>
+    <div class="pairing-list">
+      ${requests.length ? requests.map(pairingRequestRow).join("") : empty("No pairing requests yet. Open the Apple TV app and choose Connect to this server.")}
+    </div>
+    ${pending.length ? "" : `<p class="muted">Waiting for a TV app to request pairing.</p>`}
+  </div>`;
+}
+
+function pairingRequestRow(item = {}) {
+  const pending = item.status === "pending";
+  return `<div class="pairing-row ${escapeAttr(item.status || "unknown")}">
+    <div>
+      <strong>${escapeHTML(item.deviceName || "Unknown device")}</strong>
+      <span>${escapeHTML(profileName(item.clientProfile || ""))} - ${escapeHTML(item.status || "unknown")}</span>
+      ${item.code ? `<code>${escapeHTML(item.code)}</code>` : ""}
+    </div>
+    <small>${escapeHTML(item.expiresAt ? `Expires ${formatDateTime(item.expiresAt)}` : item.deviceId || "")}</small>
+    ${pending ? `<div class="inline-actions"><button class="primary" onclick="approvePairing('${escapeAttr(item.id)}')">Approve</button><button onclick="denyPairing('${escapeAttr(item.id)}')">Deny</button></div>` : ""}
+  </div>`;
+}
+
+async function approvePairing(id) {
+  await send(`/api/pairing/requests/${id}/approve`, {});
+  openSettings("devices");
+}
+
+async function denyPairing(id) {
+  await send(`/api/pairing/requests/${id}/deny`, {});
+  openSettings("devices");
 }
 
 function playbackPolicyForm(current = "original_only") {
@@ -1412,9 +1502,106 @@ function runtimePathForm(paths = {}) {
     ["temp", "Scratch temp"],
   ];
   return `<form class="path-form" onsubmit="saveRuntimePaths(event)">
-    ${fields.map(([key, label]) => `<label><span>${escapeHTML(label)}</span><input name="${key}" value="${escapeAttr(paths[key] || "")}" autocomplete="off"></label>`).join("")}
-    <div class="inline-actions"><button class="primary" type="submit">Save folders</button><span class="muted">Applies fully after restart so active jobs do not lose files.</span></div>
+    ${fields.map(([key, label]) => `<label><span>${escapeHTML(label)}</span><div class="path-input-row"><input id="runtime-path-${escapeAttr(key)}" name="${key}" value="${escapeAttr(paths[key] || "")}" autocomplete="off"><button type="button" onclick="openFolderBrowser('${escapeAttr(key)}', '${escapeAttr(label)}')">Browse</button></div></label>`).join("")}
+    <div class="inline-actions"><button class="primary" type="submit">Save folders</button><span id="runtimePathSaveState" class="save-state muted">Ready</span><button id="runtimePathRestartButton" type="button" hidden disabled>Restart now</button></div>
+    <div id="folderBrowser" class="folder-browser" hidden></div>
   </form>`;
+}
+
+async function openFolderBrowser(field, label) {
+  const input = document.getElementById(`runtime-path-${field}`);
+  const startPath = input ? input.value : "";
+  await chooseFolder({ field, label, path: startPath, inputId: `runtime-path-${field}`, purpose: `runtime-${field}` });
+}
+
+async function chooseFolder({ field, label, path, inputId, purpose }) {
+  const picker = window.VyrdenFolderPicker;
+  if (picker && typeof picker.pickFolder === "function") {
+    try {
+      const result = await picker.pickFolder({ title: label, currentPath: path, purpose });
+      if (result.supported && result.path) {
+        const input = document.getElementById(inputId);
+        if (input) input.value = result.path;
+        closeFolderBrowser();
+        return;
+      }
+      if (result.supported) return;
+    } catch (error) {
+      showFolderPickerFallback(label, error.message || "Native folder picker failed. Use the browser below instead.");
+    }
+  }
+  await renderFolderBrowser({ field, label, path, inputId });
+}
+
+function showFolderPickerFallback(label, message) {
+  const target = document.getElementById("folderBrowser");
+  if (!target) return;
+  target.hidden = false;
+  target.innerHTML = `<div class="folder-browser-head"><div><span>${escapeHTML(label)}</span><strong>Use browser fallback</strong></div><button type="button" onclick="closeFolderBrowser()">Close</button></div>
+    <div class="inline-error"><strong>Native folder picker unavailable</strong><span>${escapeHTML(message)}</span></div>`;
+}
+
+async function renderFolderBrowser({ field, label, path, inputId }) {
+  const target = document.getElementById("folderBrowser");
+  if (!target) return;
+  const targetInputId = inputId || `runtime-path-${field}`;
+  target.hidden = false;
+  target.innerHTML = `<div class="folder-browser-head"><div><span>${escapeHTML(label)}</span><strong>Loading folders</strong></div><button type="button" onclick="closeFolderBrowser()">Close</button></div>`;
+  let payload = {};
+  try {
+    payload = await api(`/api/settings/folders/browse?path=${encodeURIComponent(path || "")}`);
+  } catch (error) {
+    payload = { path, error: error.userMessage || error.message || "Folder browse failed", roots: [], entries: [] };
+  }
+  const current = payload.path || path || "";
+  const roots = Array.isArray(payload.roots) ? payload.roots : [];
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
+  target.innerHTML = `<div class="folder-browser-head">
+      <div><span>${escapeHTML(label)}</span><strong>${escapeHTML(current || "Choose a folder")}</strong></div>
+      <button type="button" onclick="closeFolderBrowser()">Close</button>
+    </div>
+    <div class="folder-browser-path">
+      <input id="folderBrowserPath" value="${escapeAttr(current)}" autocomplete="off" placeholder="C:\\Media or \\\\nas\\share">
+      <button type="button" onclick="browseTypedFolder('${escapeAttr(field)}', '${escapeAttr(label)}', '${escapeAttr(targetInputId)}')">Open</button>
+      <button class="primary" type="button" onclick="useBrowsedFolder('${escapeAttr(targetInputId)}')">Use this folder</button>
+    </div>
+    ${payload.error ? `<div class="inline-error"><strong>Folder unavailable</strong><span>${escapeHTML(payload.error)}</span></div>` : ""}
+    ${roots.length ? `<div class="folder-root-list">${roots.map(root => folderBrowseButton(field, label, root.path || "", root.name || root.path, targetInputId)).join("")}</div>` : ""}
+    <div class="folder-browser-status">${escapeHTML(payload.writable ? "Writable by Vyrden" : payload.message || "Select a folder Vyrden can access")}</div>
+    <div class="folder-entry-list">
+      ${payload.parent ? folderBrowseButton(field, label, payload.parent, "Up one folder", targetInputId) : ""}
+      ${entries.map(entry => folderBrowseButton(field, label, entry.path || "", entry.name || entry.path, targetInputId)).join("") || `<span class="muted">No child folders visible from here.</span>`}
+    </div>`;
+}
+
+function folderBrowseButton(field, label, path, text, inputId) {
+  return `<button type="button" data-field="${escapeAttr(field)}" data-label="${escapeAttr(label)}" data-path="${escapeAttr(path)}" data-input-id="${escapeAttr(inputId || "")}" onclick="renderFolderBrowserFromButton(this)">${escapeHTML(text)}</button>`;
+}
+
+function renderFolderBrowserFromButton(button) {
+  renderFolderBrowser({
+    field: button.dataset.field || "",
+    label: button.dataset.label || "",
+    path: button.dataset.path || "",
+    inputId: button.dataset.inputId || "",
+  });
+}
+
+function closeFolderBrowser() {
+  const target = document.getElementById("folderBrowser");
+  if (target) target.hidden = true;
+}
+
+async function browseTypedFolder(field, label, inputId) {
+  const input = document.getElementById("folderBrowserPath");
+  await renderFolderBrowser({ field, label, path: input ? input.value : "", inputId });
+}
+
+function useBrowsedFolder(inputId) {
+  const browserPath = document.getElementById("folderBrowserPath");
+  const target = document.getElementById(inputId);
+  if (browserPath && target) target.value = browserPath.value;
+  closeFolderBrowser();
 }
 
 function providerSettingsForm(providers = {}) {
@@ -1454,6 +1641,7 @@ async function saveProviderSettings(event) {
 
 async function saveRuntimePaths(event) {
   event.preventDefault();
+  setRuntimePathSaveState("Saving...", false);
   const data = new FormData(event.currentTarget);
   const payload = {
     dataDir: data.get("data"),
@@ -1463,9 +1651,26 @@ async function saveRuntimePaths(event) {
     cacheDir: data.get("cache"),
     tempDir: data.get("temp"),
   };
-  const result = await send("/api/settings", payload, "PUT");
-  alert(result.restartRequired ? "Saved. Restart Vyrden to move active runtime folders." : "Saved.");
-  navigate("settings");
+  try {
+    const result = await send("/api/settings", payload, "PUT");
+    setRuntimePathSaveState(result.restartRequired ? "Saved. New folders will be used after restart." : "Saved.", !!result.restartRequired);
+  } catch (error) {
+    setRuntimePathSaveState(error.userMessage || error.message || "Save failed.", false, true);
+  }
+}
+
+function setRuntimePathSaveState(message, restartRequired = false, error = false) {
+  const target = document.getElementById("runtimePathSaveState");
+  if (target) {
+    target.textContent = message;
+    target.className = `save-state ${error ? "warn" : restartRequired ? "needs-restart" : "saved"}`;
+  }
+  const restartButton = document.getElementById("runtimePathRestartButton");
+  if (restartButton) {
+    restartButton.hidden = !restartRequired;
+    restartButton.disabled = true;
+    restartButton.title = "Restart from the tray app after packaging is enabled.";
+  }
 }
 
 async function saveAutomationSettings(event) {
@@ -1729,6 +1934,12 @@ function formatInterval(minutes) {
   if (value >= 1440 && value % 1440 === 0) return `${value / 1440} day${value === 1440 ? "" : "s"}`;
   if (value >= 60 && value % 60 === 0) return `${value / 60} hour${value === 60 ? "" : "s"}`;
   return `${value} minutes`;
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function snapshotTile(label, value, note, tone = "") {

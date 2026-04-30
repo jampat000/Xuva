@@ -28,6 +28,7 @@ import (
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
+	"github.com/vyrdenhq/vyrden/server/internal/pairing"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
@@ -205,6 +206,118 @@ func TestRequestCorrelationAndMetrics(t *testing.T) {
 	}
 }
 
+func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
+	startedAt := time.Date(2026, 4, 30, 4, 5, 6, 0, time.UTC)
+	router := NewRouter(testDeps(t, startedAt))
+	request := httptest.NewRequest(http.MethodGet, "/api/client/bootstrap", nil)
+	request.Host = "vyrden.local:8097"
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bootstrap 200, got %d", response.Code)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+	server := payload["server"].(map[string]any)
+	if server["baseUrl"] != "http://vyrden.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
+		t.Fatalf("expected server identity, got %#v", server)
+	}
+	client := payload["client"].(map[string]any)
+	profile := client["profile"].(map[string]any)
+	if client["requestedProfile"] != "apple-tv" || profile["id"] != "apple-tv" || profile["supportsHls"] != true {
+		t.Fatalf("expected apple-tv HLS profile, got %#v", client)
+	}
+	authPayload := payload["auth"].(map[string]any)
+	if authPayload["required"] != false {
+		t.Fatalf("expected auth disabled bootstrap to report auth not required, got %#v", authPayload)
+	}
+	features := payload["features"].(map[string]any)
+	if features["vendorRelay"] != false || features["hlsAdaptive"] != true {
+		t.Fatalf("expected local-first playback features, got %#v", features)
+	}
+	endpoints := payload["endpoints"].(map[string]any)
+	if endpoints["adaptiveMaster"] != "/api/media-sources/{id}/adaptive/master.m3u8" || endpoints["sessions"] != "/api/sessions" {
+		t.Fatalf("expected tv playback endpoints, got %#v", endpoints)
+	}
+}
+
+func TestClientBootstrapIsReadableBeforeLogin(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/api/client/bootstrap?clientProfile=ios", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected unauthenticated bootstrap 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+	authPayload := payload["auth"].(map[string]any)
+	if authPayload["required"] != true {
+		t.Fatalf("expected auth-enabled bootstrap to report auth required, got %#v", authPayload)
+	}
+	client := payload["client"].(map[string]any)
+	profile := client["profile"].(map[string]any)
+	if client["requestedProfile"] != "ios" || profile["id"] != "ios" {
+		t.Fatalf("expected requested ios profile, got %#v", client)
+	}
+}
+
+func TestPairingRequestCreateStatusAndAdminApprove(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+
+	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
+		"deviceName":    "Living Room Apple TV",
+		"clientProfile": "apple-tv",
+	})
+	pairingID, _ := create["id"].(string)
+	if pairingID == "" || create["status"] != "pending" || len(create["code"].(string)) != 6 {
+		t.Fatalf("expected pending pairing request, got %#v", create)
+	}
+
+	status := getJSON(t, router, "/api/pairing/requests/"+pairingID)
+	if status["status"] != "pending" || status["code"] == "" {
+		t.Fatalf("expected public pending status with code, got %#v", status)
+	}
+
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	approved := client.requestJSON(t, router, http.MethodPost, "/api/pairing/requests/"+pairingID+"/approve", map[string]any{})
+	if approved.status != http.StatusOK {
+		t.Fatalf("expected approval 200, got %d: %s", approved.status, approved.body)
+	}
+	if approved.payload["status"] != "approved" || approved.payload["deviceId"] == "" || approved.payload["code"] != nil {
+		t.Fatalf("expected approved pairing without code, got %#v", approved.payload)
+	}
+
+	polled := getJSON(t, router, "/api/pairing/requests/"+pairingID)
+	if polled["status"] != "approved" || polled["deviceId"] == "" || polled["code"] != nil {
+		t.Fatalf("expected approved polling result without code, got %#v", polled)
+	}
+}
+
+func TestPairingAdminRoutesRequireAdmin(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "viewer", "viewer-password-123!")
+
+	list := client.requestJSON(t, router, http.MethodGet, "/api/pairing/requests", nil)
+	if list.status != http.StatusForbidden {
+		t.Fatalf("expected standard user to get 403 on pairing list, got %d: %s", list.status, list.body)
+	}
+}
+
 func TestReadinessReflectsDegradedRuntimePath(t *testing.T) {
 	deps := testDeps(t, time.Now())
 	badPath := filepath.Join(t.TempDir(), "not-a-dir")
@@ -279,6 +392,204 @@ func TestSystemStatusAndRuntimeFolders(t *testing.T) {
 	paths := settings["runtimePaths"].(map[string]any)
 	if paths["transcode"] == "" || paths["metadata"] == "" {
 		t.Fatalf("expected configurable runtime paths, got %#v", paths)
+	}
+}
+
+func TestClientHomeReturnsTVRows(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Movies", "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+	writeTestFile(t, filepath.Join(root, "TV", "The Bear", "Season 01", "The.Bear.S01E01.1080p.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	movieScan := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{
+		"path":        filepath.Join(root, "Movies"),
+		"sampleLimit": 10,
+	})
+	waitForScan(t, router, movieScan["id"].(string))
+	tvScan := postJSON(t, router, "/api/libraries/tv/scan", map[string]any{
+		"path":        filepath.Join(root, "TV"),
+		"sampleLimit": 10,
+	})
+	waitForScan(t, router, tvScan["id"].(string))
+
+	home := getJSON(t, router, "/api/client/home?clientProfile=apple-tv")
+	if home["profile"] != "apple-tv" {
+		t.Fatalf("expected apple-tv profile, got %#v", home)
+	}
+	hero := home["hero"].(map[string]any)
+	if hero["title"] == "" || hero["kind"] == "" {
+		t.Fatalf("expected hero item, got %#v", hero)
+	}
+	rows := home["rows"].([]any)
+	if len(rows) != 4 {
+		t.Fatalf("expected four TV rows, got %#v", rows)
+	}
+	rowItems := map[string]int{}
+	for _, raw := range rows {
+		row := raw.(map[string]any)
+		items := row["items"].([]any)
+		rowItems[row["id"].(string)] = len(items)
+	}
+	if rowItems["movies"] != 1 || rowItems["tv"] != 1 || rowItems["recently-added"] < 2 {
+		t.Fatalf("expected movie, tv, and recently added rows, got %#v", rowItems)
+	}
+}
+
+func TestClientDetailEndpointsReturnNativePayloads(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Movies", "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+	writeTestFile(t, filepath.Join(root, "Movies", "Arrival (2016)", "Arrival.2016.1080p.en.ass"))
+	writeTestFile(t, filepath.Join(root, "TV", "The Bear", "Season 01", "The.Bear.S01E01.1080p.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	movieScan := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{
+		"path":        filepath.Join(root, "Movies"),
+		"sampleLimit": 10,
+	})
+	waitForScan(t, router, movieScan["id"].(string))
+	tvScan := postJSON(t, router, "/api/libraries/tv/scan", map[string]any{
+		"path":        filepath.Join(root, "TV"),
+		"sampleLimit": 10,
+	})
+	waitForScan(t, router, tvScan["id"].(string))
+
+	movies := getJSON(t, router, "/api/movies")
+	movieID := movies["movies"].([]any)[0].(map[string]any)["id"].(string)
+	movieDetail := getJSON(t, router, "/api/client/movies/"+movieID+"?clientProfile=apple-tv")
+	if movieDetail["defaultMediaSourceId"] == "" {
+		t.Fatalf("expected default movie media source, got %#v", movieDetail)
+	}
+	movieVersions := movieDetail["versions"].([]any)
+	if len(movieVersions) != 1 {
+		t.Fatalf("expected one movie version, got %#v", movieDetail)
+	}
+	movieVersion := movieVersions[0].(map[string]any)
+	sidecars := movieVersion["sidecars"].([]any)
+	if len(sidecars) != 1 {
+		t.Fatalf("expected one sidecar subtitle payload, got %#v", movieVersion)
+	}
+	conversion := sidecars[0].(map[string]any)["conversion"].(map[string]any)
+	if conversion["outputFormat"] != "webvtt" || conversion["reasonCode"] != "subtitle_text_conversion_available" {
+		t.Fatalf("expected text subtitle conversion plan, got %#v", conversion)
+	}
+
+	series := getJSON(t, router, "/api/series")
+	seriesID := series["series"].([]any)[0].(map[string]any)["id"].(string)
+	seriesDetail := getJSON(t, router, "/api/client/series/"+seriesID+"?clientProfile=apple-tv")
+	if seriesDetail["defaultMediaSourceId"] == "" {
+		t.Fatalf("expected default series media source, got %#v", seriesDetail)
+	}
+	seasons := seriesDetail["seasons"].([]any)
+	if len(seasons) != 1 {
+		t.Fatalf("expected one season payload, got %#v", seriesDetail)
+	}
+	episodes := seasons[0].(map[string]any)["episodes"].([]any)
+	if len(episodes) != 1 {
+		t.Fatalf("expected one episode payload, got %#v", seasons[0])
+	}
+	episodeVersions := episodes[0].(map[string]any)["versions"].([]any)
+	if len(episodeVersions) != 1 {
+		t.Fatalf("expected one episode version payload, got %#v", episodes[0])
+	}
+}
+
+func TestClientPlaybackStartHeartbeatAndStop(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	sources := getJSON(t, router, "/api/media-sources")
+	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+
+	started := postJSON(t, router, "/api/client/playback/start", map[string]any{
+		"mediaSourceId": sourceID,
+		"deviceId":      "apple-tv-living-room",
+		"clientProfile": "apple-tv",
+		"routeType":     "lan",
+	})
+	if started["sessionId"] == "" || started["heartbeatUrl"] == "" || started["stopUrl"] == "" {
+		t.Fatalf("expected client playback session payload, got %#v", started)
+	}
+	route := started["route"].(map[string]any)
+	if route["route"] != "direct" || route["url"] == "" {
+		t.Fatalf("expected direct route payload, got %#v", route)
+	}
+	sessionID := started["sessionId"].(string)
+
+	heartbeat := requestJSON(t, router, http.MethodPatch, "/api/client/playback/"+sessionID, map[string]any{
+		"progressSeconds": 48,
+		"durationSeconds": 120,
+		"status":          "playing",
+	})
+	session := heartbeat["session"].(map[string]any)
+	if session["progressSeconds"] != float64(48) {
+		t.Fatalf("expected heartbeat progress update, got %#v", session)
+	}
+	state := getJSON(t, router, "/api/playback/state/"+sourceID)
+	if state["progressSeconds"] != float64(48) {
+		t.Fatalf("expected playback state to follow heartbeat, got %#v", state)
+	}
+
+	stopped := postJSON(t, router, "/api/client/playback/"+sessionID+"/stop", map[string]any{
+		"progressSeconds": 120,
+		"durationSeconds": 120,
+		"status":          "stopped",
+	})
+	stoppedSession := stopped["session"].(map[string]any)
+	if stoppedSession["status"] != "stopped" {
+		t.Fatalf("expected stopped session, got %#v", stoppedSession)
+	}
+	active := getJSON(t, router, "/api/sessions")
+	if len(active["sessions"].([]any)) != 0 {
+		t.Fatalf("expected no active sessions after stop, got %#v", active)
+	}
+}
+
+func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+
+	deps := testDepsWithAuth(t, time.Now())
+	deps.Config.PlaybackPolicy = "full"
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	scan := client.requestJSON(t, router, http.MethodPost, "/api/libraries/movies/scan", map[string]any{"path": root})
+	if scan.status != http.StatusAccepted {
+		t.Fatalf("expected authenticated scan start, got %d: %s", scan.status, scan.body)
+	}
+	waitForScan(t, router, scan.payload["id"].(string))
+	sources := client.requestJSON(t, router, http.MethodGet, "/api/media-sources", nil)
+	sourceID := sources.payload["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+	if err := deps.Catalog.SaveProbe(context.Background(), sourceID, catalog.ProbeResult{
+		Container:       "mkv",
+		DurationSeconds: 120,
+		Bitrate:         24_000_000,
+		VideoCodec:      "h264",
+		Width:           1920,
+		Height:          1080,
+		AudioStreams:    1,
+		SubtitleStreams: 0,
+		RawJSON:         "{}",
+	}); err != nil {
+		t.Fatalf("save probe: %v", err)
+	}
+
+	started := client.requestJSON(t, router, http.MethodPost, "/api/client/playback/start", map[string]any{
+		"mediaSourceId":     sourceID,
+		"deviceId":          "apple-tv-living-room",
+		"clientProfile":     "apple-tv",
+		"routeType":         "remote",
+		"maxNetworkBitrate": 8_000_000,
+	})
+	if started.status != http.StatusConflict {
+		t.Fatalf("expected protected native playback to block until device auth exists, got %d: %#v", started.status, started.payload)
+	}
+	if !strings.Contains(started.body, "persistent device authentication") {
+		t.Fatalf("expected clear device auth blocker, got %s", started.body)
 	}
 }
 
@@ -821,6 +1132,11 @@ func TestAuthzStandardCannotCallAdminSettingsRoutes(t *testing.T) {
 	if response.status != http.StatusForbidden {
 		t.Fatalf("expected standard user to get 403 on settings, got %d: %s", response.status, response.body)
 	}
+
+	browse := client.requestJSON(t, router, http.MethodGet, "/api/settings/folders/browse?path="+url.QueryEscape(t.TempDir()), nil)
+	if browse.status != http.StatusForbidden {
+		t.Fatalf("expected standard user to get 403 on folder browse, got %d: %s", browse.status, browse.body)
+	}
 }
 
 func TestAuthzAdminCanCallAdminSettingsRoutes(t *testing.T) {
@@ -834,6 +1150,63 @@ func TestAuthzAdminCanCallAdminSettingsRoutes(t *testing.T) {
 
 	if response.status != http.StatusOK {
 		t.Fatalf("expected admin settings update 200, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestSettingsFolderBrowseListsDirectories(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Movies"), 0o755); err != nil {
+		t.Fatalf("mkdir movies: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "readme.txt"), []byte("not a folder"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	router := NewRouter(testDeps(t, time.Now()))
+
+	response := requestJSON(t, router, http.MethodGet, "/api/settings/folders/browse?path="+url.QueryEscape(root), nil)
+	if response["path"] == "" || response["parent"] == "" {
+		t.Fatalf("expected current path and parent, got %#v", response)
+	}
+	entries := response["entries"].([]any)
+	if len(entries) != 1 || entries[0].(map[string]any)["name"] != "Movies" {
+		t.Fatalf("expected only child folders, got %#v", response)
+	}
+	if response["writable"] != true {
+		t.Fatalf("expected writable temp folder, got %#v", response)
+	}
+}
+
+func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+	nextData := t.TempDir()
+	nextTranscode := filepath.Join(nextData, "transcode")
+
+	update := requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"dataDir":      nextData,
+		"transcodeDir": nextTranscode,
+	})
+	updatedPaths := update["runtimePaths"].(map[string]any)
+	if updatedPaths["data"] != nextData || updatedPaths["transcode"] != nextTranscode {
+		t.Fatalf("expected update response to include saved paths, got %#v", update)
+	}
+
+	reloaded := getJSON(t, router, "/api/settings")
+	reloadedPaths := reloaded["runtimePaths"].(map[string]any)
+	if reloadedPaths["data"] != nextData || reloadedPaths["transcode"] != nextTranscode {
+		t.Fatalf("expected settings reload to keep saved paths before restart, got %#v", reloaded)
+	}
+	status := getJSON(t, router, "/api/system/status")
+	disks := status["disks"].([]any)
+	found := false
+	for _, item := range disks {
+		disk := item.(map[string]any)
+		if disk["name"] == "data" && disk["path"] == nextData {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected system status to use saved data dir before restart, got %#v", status)
 	}
 }
 
@@ -1152,6 +1525,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Devices:   devices.NewService(),
 		Sessions:  sessions.NewService(eventBus),
 		Subtitles: subtitles.NewService(),
+		Pairing:   pairing.NewService(),
 	}
 }
 

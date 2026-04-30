@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: server/go.mod
 
+      - name: Agent harness check
+        run: node tools/agent-check.cjs
+
       - name: Test
         working-directory: server
         run: go test ./...

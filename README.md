@@ -68,6 +68,10 @@ The first technical milestone is a playback decision prototype:
 
 ## Documentation
 
+- [Agent Map](AGENTS.md)
+- [Docs Index](docs/index.md)
+- [Agent Harness](docs/agent-harness.md)
+- [Quality Scorecard](docs/quality-score.md)
 - [Open Design Prototypes](designs.html)
 - [Branding](docs/branding.md)
 - [Product Principles](docs/product-principles.md)

@@ -21,6 +21,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
+	"github.com/vyrdenhq/vyrden/server/internal/pairing"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
@@ -65,6 +66,7 @@ type Application struct {
 	Devices   *devices.Service
 	Sessions  *sessions.Service
 	Downloads *downloads.Service
+	Pairing   *pairing.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -199,6 +201,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Devices:   devices.NewService(),
 		Sessions:  sessionService,
 		Downloads: downloadService,
+		Pairing:   pairing.NewService(),
 	}, nil
 }
 
@@ -335,6 +338,7 @@ func (a *Application) Router() http.Handler {
 		Devices:   a.Devices,
 		Sessions:  a.Sessions,
 		Subtitles: a.Subtitles,
+		Pairing:   a.Pairing,
 	})
 }
 

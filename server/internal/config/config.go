@@ -207,6 +207,10 @@ func merge(base Config, saved Config) Config {
 	return base
 }
 
+func Merge(base Config, saved Config) Config {
+	return merge(base, saved)
+}
+
 func defaultSyncMode(value string) string {
 	switch value {
 	case "manual", "daily", "watch":

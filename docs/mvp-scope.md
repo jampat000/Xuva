@@ -24,8 +24,9 @@ The MVP is successful when a user can install the server, add a movie or TV fold
 - Subtitle handling for common text and image formats.
 - Hardware acceleration detection.
 - Playback inspector.
-- Android TV client.
-- Apple TV client.
+- Apple TV client as the first native playback client.
+- Android TV client after the Apple TV playback contract is validated.
+- iOS and Android mobile companion apps after TV playback is stable.
 - User-owned remote access setup guidance.
 
 ## Out Of Scope For V1
@@ -52,4 +53,3 @@ The MVP is successful when a user can install the server, add a movie or TV fold
 - Advanced parental controls.
 - Server health dashboard.
 - Migration tools.
-

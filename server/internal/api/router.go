@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
+	"github.com/vyrdenhq/vyrden/server/internal/pairing"
 	"github.com/vyrdenhq/vyrden/server/internal/playback"
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
@@ -73,6 +76,7 @@ type Deps struct {
 	Devices   *devices.Service
 	Sessions  *sessions.Service
 	Subtitles *subtitles.Service
+	Pairing   *pairing.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -80,6 +84,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/health", healthHandler(deps))
 	mux.HandleFunc("GET /api/ready", readinessHandler(deps))
 	mux.HandleFunc("GET /api/metrics", metricsHandler(deps))
+	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))
+	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))
+	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))
 	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/auth/logout", authLogoutHandler(deps))
@@ -91,6 +98,12 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/libraries/{id}/scan", libraryScanByIDHandler(deps))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
 	mux.HandleFunc("GET /api/catalog/health", catalogHealthHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/home", clientHomeHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/movies/{id}", clientMovieDetailHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/series/{id}", clientSeriesDetailHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/client/playback/start", clientPlaybackStartHandler(deps))
+	handleProtectedCSRF(mux, deps, "PATCH /api/client/playback/{id}", clientPlaybackHeartbeatHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/client/playback/{id}/stop", clientPlaybackStopHandler(deps))
 	mux.HandleFunc("GET /api/movies", moviesHandler(deps))
 	mux.HandleFunc("GET /api/movies/{id}", movieDetailHandler(deps))
 	mux.HandleFunc("GET /api/series", seriesHandler(deps))
@@ -105,6 +118,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/versions", versionsHandler(deps))
 	mux.HandleFunc("GET /api/settings/performance", performanceSettingsHandler(deps))
 	mux.HandleFunc("GET /api/settings", settingsHandler(deps))
+	handleProtected(mux, deps, "GET /api/settings/folders/browse", settingsFolderBrowseHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/settings", settingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
 	mux.HandleFunc("GET /api/system/status", systemStatusHandler(deps))
@@ -135,6 +149,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/downloads/{id}", downloadJobHandler(deps))
 	handleProtected(mux, deps, "GET /api/downloads/{id}/file", downloadFileHandler(deps))
 	mux.HandleFunc("GET /api/devices/profiles", deviceProfilesHandler(deps))
+	handleProtected(mux, deps, "GET /api/pairing/requests", pairingListHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/pairing/requests/{id}/approve", pairingApproveHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/pairing/requests/{id}/deny", pairingDenyHandler(deps))
 	handleProtected(mux, deps, "GET /api/sessions", sessionsHandler(deps))
 	handleProtected(mux, deps, "GET /api/sessions/{id}/inspector", sessionInspectorHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/sessions", sessionStartHandler(deps))
@@ -489,6 +506,72 @@ func metricsHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func clientBootstrapHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		profileID := firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv")
+		profile, ok := deps.Devices.GetProfile(profileID)
+		if !ok {
+			profile, _ = deps.Devices.GetProfile("apple-tv")
+		}
+		startedAt := deps.StartedAt
+		if startedAt.IsZero() {
+			startedAt = time.Now().UTC()
+		}
+		authRequired := deps.Auth != nil && !deps.Auth.Disabled()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"server": map[string]any{
+				"product":      "vyrden",
+				"name":         "Vyrden",
+				"baseUrl":      requestBaseURL(r, deps.Config.HTTPAddr),
+				"httpAddr":     deps.Config.HTTPAddr,
+				"lanAddresses": lanAddresses(deps.Config.HTTPAddr),
+				"startedAt":    startedAt.UTC().Format(time.RFC3339),
+			},
+			"auth": map[string]any{
+				"required": authRequired,
+				"methods":  []string{"session_cookie", "local_pairing_code"},
+			},
+			"client": map[string]any{
+				"requestedProfile": profileID,
+				"profile":          profile,
+			},
+			"profiles": deps.Devices.Profiles(),
+			"features": map[string]any{
+				"directPlay":        true,
+				"hlsAdaptive":       true,
+				"resume":            true,
+				"watchedState":      true,
+				"trackSelection":    true,
+				"devicePairing":     "local_code",
+				"remoteDiagnostics": true,
+				"vendorRelay":       false,
+			},
+			"endpoints": map[string]string{
+				"health":           "/api/health",
+				"authSession":      "/api/auth/session",
+				"login":            "/api/auth/login",
+				"pairingCreate":    "/api/pairing/requests",
+				"pairingStatus":    "/api/pairing/requests/{id}",
+				"clientHome":       "/api/client/home",
+				"deviceProfiles":   "/api/devices/profiles",
+				"movies":           "/api/movies",
+				"series":           "/api/series",
+				"playbackDecision": "/api/playback/decision",
+				"playbackRoute":    "/api/playback/route",
+				"sessions":         "/api/sessions",
+				"playbackState":    "/api/playback/state/{mediaSourceId}",
+				"streamToken":      "/api/media-sources/{id}/stream-token",
+				"directStream":     "/api/media-sources/{id}/stream",
+				"adaptiveMaster":   "/api/media-sources/{id}/adaptive/master.m3u8",
+				"adaptiveSession":  "/api/media-sources/{id}/adaptive/session",
+				"tracks":           "/api/media-sources/{id}/tracks",
+				"subtitles":        "/api/media-sources/{id}/subtitles",
+				"remoteAccess":     "/api/remote/access",
+			},
+		})
+	}
+}
+
 func healthSnapshot(deps Deps) (map[string]any, bool) {
 	startedAt := deps.StartedAt
 	if startedAt.IsZero() {
@@ -725,6 +808,570 @@ func catalogHealthHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, health)
 	}
+}
+
+func clientHomeHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := queryInt(r, "limit", 24)
+		recent, err := deps.PlayState.Recent(r.Context(), requestUserID(r), limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "recent playback lookup failed")
+			return
+		}
+		movieItems, err := deps.Catalog.ListMovies(r.Context(), limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "movie list failed")
+			return
+		}
+		seriesItems, err := deps.Catalog.ListSeries(r.Context(), limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "series list failed")
+			return
+		}
+		rows := []map[string]any{
+			{"id": "continue", "title": "Continue Watching", "items": tvRecentItems(recent)},
+			{"id": "movies", "title": "Movies", "items": tvMovieItems(movieItems)},
+			{"id": "tv", "title": "TV Shows", "items": tvSeriesItems(seriesItems)},
+			{"id": "recently-added", "title": "Recently Added", "items": tvRecentlyAddedItems(movieItems, seriesItems, limit)},
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"profile": firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv"),
+			"hero":    firstTVHomeItem(rows),
+			"rows":    rows,
+			"actions": map[string]string{
+				"movieDetail":  "/api/movies/{id}",
+				"seriesDetail": "/api/series/{id}",
+				"playback":     "/api/playback/route",
+			},
+		})
+	}
+}
+
+func clientMovieDetailHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		detail, ok, err := deps.Catalog.GetMovie(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "movie detail failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "movie not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, clientMovieDetailPayload(r.Context(), deps, r, detail))
+	}
+}
+
+func clientSeriesDetailHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		detail, ok, err := deps.Catalog.GetSeries(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "series detail failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "series not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, clientSeriesDetailPayload(r.Context(), deps, r, detail))
+	}
+}
+
+func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload clientPlaybackStartRequest
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		if payload.MediaSourceID == "" {
+			writeError(w, http.StatusBadRequest, "media source id is required")
+			return
+		}
+		source, ok, err := deps.Catalog.GetMediaSource(r.Context(), payload.MediaSourceID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		decision := clientPlaybackDecision(r.Context(), deps, source, clientPlaybackOptions{
+			ClientProfile:      payload.ClientProfile,
+			RouteType:          payload.RouteType,
+			MaxNetworkBitrate:  payload.MaxNetworkBitrate,
+			AudioTrackIndex:    payload.AudioTrackIndex,
+			SubtitleTrackIndex: payload.SubtitleTrackIndex,
+			SubtitleMode:       payload.SubtitleMode,
+			SubtitleActive:     payload.SubtitleActive,
+		})
+		routePayload, status, err := clientPlaybackRoutePayload(deps, r, source, decision, payload)
+		if err != nil {
+			writeError(w, status, err.Error())
+			return
+		}
+		start := sessions.StartRequest{
+			UserID:          requestUserID(r),
+			DeviceID:        firstNonEmpty(payload.DeviceID, "apple-tv"),
+			MediaSourceID:   source.ID,
+			ClientProfile:   firstNonEmpty(payload.ClientProfile, "apple-tv"),
+			Route:           clientRouteLabel(decision),
+			Mode:            string(decision.Mode),
+			ReasonCode:      decision.ReasonCode,
+			ReasonText:      decision.ReasonText,
+			SelectedTracks:  clientSelectedTracks(payload.AudioTrackIndex, payload.SubtitleTrackIndex),
+			ProgressSeconds: 0,
+		}
+		if err := enrichSessionStartRequest(deps, r.Context(), &start); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		session, err := deps.Sessions.Start(start)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"sessionId":           session.ID,
+			"deviceId":            session.DeviceID,
+			"mediaSourceId":       session.MediaSourceID,
+			"playbackStateUrl":    "/api/playback/state/" + session.MediaSourceID,
+			"heartbeatUrl":        "/api/client/playback/" + session.ID,
+			"stopUrl":             "/api/client/playback/" + session.ID + "/stop",
+			"heartbeatIntervalMs": 2000,
+			"decision":            decision,
+			"route":               routePayload,
+		})
+	}
+}
+
+func clientPlaybackHeartbeatHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request sessions.UpdateRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		session, ok := deps.Sessions.Update(r.PathValue("id"), request)
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		_, _ = deps.PlayState.Set(r.Context(), session.MediaSourceID, playstate.Update{
+			UserID:          session.UserID,
+			ProgressSeconds: session.Progress,
+			DurationSeconds: session.Duration,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"session": session})
+	}
+}
+
+func clientPlaybackStopHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request sessions.UpdateRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		if request.Status == "" {
+			request.Status = "stopped"
+		}
+		session, ok := deps.Sessions.Update(r.PathValue("id"), request)
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		_, _ = deps.PlayState.Set(r.Context(), session.MediaSourceID, playstate.Update{
+			UserID:          session.UserID,
+			ProgressSeconds: session.Progress,
+			DurationSeconds: session.Duration,
+		})
+		stopped, _ := deps.Sessions.Stop(r.PathValue("id"))
+		writeJSON(w, http.StatusOK, map[string]any{"session": stopped})
+	}
+}
+
+type clientPlaybackOptions struct {
+	ClientProfile      string
+	RouteType          string
+	MaxNetworkBitrate  int64
+	AudioTrackIndex    int
+	SubtitleTrackIndex int
+	SubtitleMode       string
+	SubtitleActive     bool
+}
+
+type clientPlaybackStartRequest struct {
+	MediaSourceID      string `json:"mediaSourceId"`
+	DeviceID           string `json:"deviceId"`
+	ClientProfile      string `json:"clientProfile"`
+	RouteType          string `json:"routeType"`
+	MaxNetworkBitrate  int64  `json:"maxNetworkBitrate"`
+	AudioTrackIndex    int    `json:"audioTrackIndex"`
+	SubtitleTrackIndex int    `json:"subtitleTrackIndex"`
+	SubtitleMode       string `json:"subtitleMode"`
+	SubtitleActive     bool   `json:"subtitleActive"`
+}
+
+func clientMovieDetailPayload(ctx context.Context, deps Deps, r *http.Request, detail catalog.MovieDetail) map[string]any {
+	versions := make([]map[string]any, 0, len(detail.Versions))
+	defaultMediaSourceID := ""
+	for _, version := range detail.Versions {
+		if defaultMediaSourceID == "" {
+			defaultMediaSourceID = version.MediaSourceID
+		}
+		if payload, ok := clientVersionPayload(ctx, deps, r, version.MediaSourceID); ok {
+			versions = append(versions, payload)
+		}
+	}
+	return map[string]any{
+		"item": map[string]any{
+			"id":           detail.ID,
+			"kind":         "movie",
+			"title":        detail.Title,
+			"year":         detail.Year,
+			"overview":     metadataOverview(detail.Metadata),
+			"posterUrl":    metadataPoster(detail.Metadata),
+			"backdropUrl":  metadataBackdrop(detail.Metadata),
+			"versionCount": detail.VersionCount,
+		},
+		"defaultMediaSourceId": defaultMediaSourceID,
+		"versions":             versions,
+	}
+}
+
+func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, detail catalog.SeriesDetail) map[string]any {
+	seasons := make([]map[string]any, 0, len(detail.Seasons))
+	defaultMediaSourceID := ""
+	for _, season := range detail.Seasons {
+		episodes := make([]map[string]any, 0, len(season.Episodes))
+		for _, episode := range season.Episodes {
+			versionPayloads := make([]map[string]any, 0, len(episode.Versions))
+			for _, version := range episode.Versions {
+				if defaultMediaSourceID == "" {
+					defaultMediaSourceID = version.MediaSourceID
+				}
+				if payload, ok := clientVersionPayload(ctx, deps, r, version.MediaSourceID); ok {
+					versionPayloads = append(versionPayloads, payload)
+				}
+			}
+			episodes = append(episodes, map[string]any{
+				"id":            episode.ID,
+				"title":         firstNonEmpty(episode.Title, episodeEpisodeLabel(episode)),
+				"seasonNumber":  episode.SeasonNumber,
+				"episodeNumber": episode.EpisodeNumber,
+				"versionCount":  episode.VersionCount,
+				"versions":      versionPayloads,
+			})
+		}
+		seasons = append(seasons, map[string]any{
+			"id":           season.ID,
+			"seasonNumber": season.SeasonNumber,
+			"episodes":     episodes,
+		})
+	}
+	return map[string]any{
+		"item": map[string]any{
+			"id":           detail.ID,
+			"kind":         "series",
+			"title":        detail.Title,
+			"overview":     metadataOverview(detail.Metadata),
+			"posterUrl":    metadataPoster(detail.Metadata),
+			"backdropUrl":  metadataBackdrop(detail.Metadata),
+			"seasonCount":  detail.SeasonCount,
+			"episodeCount": detail.EpisodeCount,
+		},
+		"defaultMediaSourceId": defaultMediaSourceID,
+		"seasons":              seasons,
+	}
+}
+
+func clientVersionPayload(ctx context.Context, deps Deps, r *http.Request, mediaSourceID string) (map[string]any, bool) {
+	source, ok, err := deps.Catalog.GetMediaSource(ctx, mediaSourceID)
+	if err != nil || !ok {
+		return nil, false
+	}
+	tracks, _, _ := deps.Catalog.GetMediaSourceTracks(ctx, mediaSourceID)
+	sidecars := subtitles.DiscoverSidecars(source.Path)
+	decision := clientPlaybackDecision(ctx, deps, source, clientPlaybackOptions{
+		ClientProfile:     firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv"),
+		RouteType:         firstNonEmpty(r.URL.Query().Get("routeType"), "lan"),
+		MaxNetworkBitrate: queryInt64(r, "maxNetworkBitrate", 0),
+	})
+	return map[string]any{
+		"mediaSourceId":  source.ID,
+		"path":           source.RelPath,
+		"qualityLabel":   sessionQualityLabel(source),
+		"source":         source,
+		"audioTracks":    tracks.AudioTracks,
+		"subtitleTracks": tracks.SubtitleTracks,
+		"sidecars":       clientSidecarPayloads(deps.Subtitles, sidecars, firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv")),
+		"decision":       decision,
+	}, true
+}
+
+func clientPlaybackDecision(ctx context.Context, deps Deps, source catalog.MediaSourceItem, options clientPlaybackOptions) playback.Decision {
+	request := playback.Request{
+		MediaSourceID:       source.ID,
+		ClientProfile:       firstNonEmpty(options.ClientProfile, "apple-tv"),
+		RouteType:           firstNonEmpty(options.RouteType, "lan"),
+		MaxNetworkBitrate:   options.MaxNetworkBitrate,
+		AudioTrackIndex:     options.AudioTrackIndex,
+		SubtitleTrackIndex:  options.SubtitleTrackIndex,
+		SubtitleMode:        options.SubtitleMode,
+		SubtitleTrackActive: options.SubtitleActive,
+	}
+	request = applyClientProfile(deps, request)
+	return deps.Playback.DecideSource(ctx, request, playbackSourceFacts(ctx, deps, request, source))
+}
+
+func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.MediaSourceItem, decision playback.Decision, payload clientPlaybackStartRequest) (map[string]any, int, error) {
+	if decision.Mode == playback.DirectPlay || decision.Mode == playback.DecisionDeferred {
+		return map[string]any{
+			"route":    "direct",
+			"status":   "ready",
+			"url":      "/api/media-sources/" + source.ID + "/stream",
+			"decision": decision,
+		}, http.StatusOK, nil
+	}
+	if !playbackPolicyAllows(deps.Config.PlaybackPolicy, decision) {
+		return map[string]any{
+			"route":           "blocked",
+			"status":          "blocked_by_policy",
+			"policy":          playbackPolicyStatus(deps.Config.PlaybackPolicy),
+			"decision":        decision,
+			"fallbackOptions": playbackPolicyFallbacks(deps.Config.PlaybackPolicy, decision),
+		}, http.StatusOK, nil
+	}
+	if deps.Auth != nil && !deps.Auth.Disabled() {
+		return nil, http.StatusConflict, fmt.Errorf("native client playback requires persistent device authentication before protected stream URLs can be issued")
+	}
+	if decision.Mode == playback.AdaptiveStream {
+		plan := adaptivePlanForSource(deps, source, payload.ClientProfile, firstNonEmpty(payload.RouteType, "remote"), payload.MaxNetworkBitrate)
+		if plan.Enabled {
+			return map[string]any{
+				"route":       "adaptive",
+				"status":      "ready",
+				"protocol":    plan.Protocol,
+				"manifestUrl": "/api/media-sources/" + source.ID + "/adaptive/master.m3u8?clientProfile=" + url.QueryEscape(firstNonEmpty(payload.ClientProfile, "apple-tv")) + "&routeType=" + url.QueryEscape(firstNonEmpty(payload.RouteType, "remote")) + "&maxNetworkBitrate=" + fmt.Sprintf("%d", payload.MaxNetworkBitrate),
+				"plan":        plan,
+				"decision":    decision,
+			}, http.StatusOK, nil
+		}
+	}
+	mode := transcode.ModeTranscode
+	if decision.Mode == playback.Remux {
+		mode = transcode.ModeRemux
+	}
+	if job, ok := deps.Transcode.FindCompleted(source.ID, mode); ok {
+		return map[string]any{
+			"route":    string(mode),
+			"status":   "ready",
+			"url":      "/api/work/" + job.ID + "/file",
+			"job":      job,
+			"decision": decision,
+		}, http.StatusOK, nil
+	}
+	if job, ok := deps.Transcode.FindActive(source.ID, mode); ok {
+		return map[string]any{
+			"route":    string(mode),
+			"status":   string(job.Status),
+			"job":      job,
+			"decision": decision,
+		}, http.StatusAccepted, nil
+	}
+	request := transcode.Request{MediaSourceID: source.ID, Mode: mode, SourcePath: source.Path}
+	if mode == transcode.ModeTranscode {
+		if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
+			request.Acceleration = "hardware"
+			request.VideoEncoder = encoder
+		}
+	}
+	job, err := deps.Transcode.Start(r.Context(), request)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	return map[string]any{
+		"route":    string(mode),
+		"status":   string(job.Status),
+		"job":      job,
+		"decision": decision,
+	}, http.StatusAccepted, nil
+}
+
+func clientRouteLabel(decision playback.Decision) string {
+	switch decision.Mode {
+	case playback.DirectPlay:
+		return "direct"
+	case playback.AdaptiveStream:
+		return "adaptive"
+	case playback.Remux:
+		return "remux"
+	case playback.AudioTranscode:
+		return "audio-transcode"
+	case playback.SubtitleBurn:
+		return "subtitle-burn"
+	case playback.VideoTranscode:
+		return "transcode"
+	default:
+		return "pending"
+	}
+}
+
+func clientSelectedTracks(audioTrackIndex int, subtitleTrackIndex int) map[string]string {
+	selected := map[string]string{}
+	if audioTrackIndex > 0 {
+		selected["audioTrack"] = fmt.Sprintf("%d", audioTrackIndex)
+	}
+	if subtitleTrackIndex > 0 {
+		selected["subtitleTrack"] = fmt.Sprintf("%d", subtitleTrackIndex)
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	return selected
+}
+
+func clientSidecarPayloads(service *subtitles.Service, sidecars []subtitles.Sidecar, clientProfile string) []map[string]any {
+	if len(sidecars) == 0 {
+		return nil
+	}
+	output := make([]map[string]any, 0, len(sidecars))
+	for _, sidecar := range sidecars {
+		output = append(output, map[string]any{
+			"path":              sidecar.Path,
+			"relPath":           sidecar.RelPath,
+			"format":            sidecar.Format,
+			"language":          sidecar.Language,
+			"forced":            sidecar.Forced,
+			"hearingImpaired":   sidecar.HearingImpaired,
+			"requiresVideoBurn": sidecar.RequiresVideoBurn,
+			"conversion":        service.PlanConversion(sidecar, clientProfile),
+		})
+	}
+	return output
+}
+
+func metadataOverview(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return record.Overview
+}
+
+func episodeEpisodeLabel(episode catalog.EpisodeBrief) string {
+	return fmt.Sprintf("S%02d E%02d", episode.SeasonNumber, episode.EpisodeNumber)
+}
+
+func tvRecentItems(items []playstate.RecentItem) []map[string]any {
+	output := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		output = append(output, map[string]any{
+			"id":              item.MediaSourceID,
+			"kind":            item.Kind,
+			"title":           firstNonEmpty(item.Name, item.RelPath, "Resume playback"),
+			"subtitle":        "Resume from " + formatProgress(item.Percent),
+			"mediaSourceId":   item.MediaSourceID,
+			"progressPercent": item.Percent,
+			"lastPlayedAt":    item.LastPlayedAt,
+			"route":           "Resume",
+		})
+	}
+	return output
+}
+
+func tvMovieItems(items []catalog.MovieListItem) []map[string]any {
+	output := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		subtitle := "Movie"
+		if item.Year > 0 {
+			subtitle = fmt.Sprintf("%d", item.Year)
+		}
+		output = append(output, map[string]any{
+			"id":           item.ID,
+			"kind":         "movie",
+			"title":        item.Title,
+			"subtitle":     subtitle,
+			"posterUrl":    metadataPoster(item.Metadata),
+			"backdropUrl":  metadataBackdrop(item.Metadata),
+			"versionCount": item.VersionCount,
+			"route":        "Ready",
+		})
+	}
+	return output
+}
+
+func tvSeriesItems(items []catalog.SeriesListItem) []map[string]any {
+	output := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		output = append(output, map[string]any{
+			"id":           item.ID,
+			"kind":         "series",
+			"title":        item.Title,
+			"subtitle":     fmt.Sprintf("%d season%s / %d episode%s", item.SeasonCount, plural(item.SeasonCount), item.EpisodeCount, plural(item.EpisodeCount)),
+			"posterUrl":    metadataPoster(item.Metadata),
+			"backdropUrl":  metadataBackdrop(item.Metadata),
+			"seasonCount":  item.SeasonCount,
+			"episodeCount": item.EpisodeCount,
+			"route":        "Ready",
+		})
+	}
+	return output
+}
+
+func tvRecentlyAddedItems(movies []catalog.MovieListItem, series []catalog.SeriesListItem, limit int) []map[string]any {
+	output := []map[string]any{}
+	output = append(output, tvMovieItems(movies)...)
+	output = append(output, tvSeriesItems(series)...)
+	if len(output) > limit {
+		return output[:limit]
+	}
+	return output
+}
+
+func firstTVHomeItem(rows []map[string]any) map[string]any {
+	for _, row := range rows {
+		items, _ := row["items"].([]map[string]any)
+		if len(items) > 0 {
+			return items[0]
+		}
+	}
+	return map[string]any{
+		"id":       "empty",
+		"kind":     "empty",
+		"title":    "Add your first library",
+		"subtitle": "Open Vyrden Settings to add Movies or TV Shows.",
+		"route":    "Setup",
+	}
+}
+
+func metadataPoster(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return record.PosterURL
+}
+
+func metadataBackdrop(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return record.BackdropURL
+}
+
+func formatProgress(value float64) string {
+	if value <= 0 {
+		return "the beginning"
+	}
+	if value > 1 {
+		value = 1
+	}
+	return fmt.Sprintf("%.0f%%", value*100)
+}
+
+func plural(value int) string {
+	if value == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func moviesHandler(deps Deps) http.HandlerFunc {
@@ -1097,11 +1744,23 @@ func storageDefaults(libraryList []libraries.Library) map[string]libraries.Worke
 
 func settingsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := currentConfig(deps)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"config":       settingsPayload(deps.Config),
-			"runtimePaths": runtimePaths(deps.Config),
+			"config":       settingsPayload(cfg),
+			"runtimePaths": runtimePaths(cfg),
 			"libraries":    deps.Libraries.List(),
 		})
+	}
+}
+
+func settingsFolderBrowseHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimSpace(r.URL.Query().Get("path"))
+		if path == "" {
+			path = currentConfig(deps).DataDir
+		}
+		payload, status := browseFolderPayload(path)
+		writeJSON(w, status, payload)
 	}
 }
 
@@ -1111,7 +1770,7 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		updated := deps.Config
+		updated := currentConfig(deps)
 		mergeString(&updated.HTTPAddr, request.HTTPAddr)
 		mergeString(&updated.DataDir, request.DataDir)
 		mergeString(&updated.TranscodeDir, request.TranscodeDir)
@@ -1170,6 +1829,105 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			"restartRequired": true,
 		})
 	}
+}
+
+func browseFolderPayload(path string) (map[string]any, int) {
+	resolved, err := resolveBrowsePath(path)
+	if err != nil {
+		return map[string]any{
+			"path":  path,
+			"roots": browseRoots(),
+			"error": err.Error(),
+		}, http.StatusBadRequest
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return map[string]any{
+			"path":   resolved,
+			"parent": parentFolder(resolved),
+			"roots":  browseRoots(),
+			"error":  err.Error(),
+		}, http.StatusOK
+	}
+	if !info.IsDir() {
+		return map[string]any{
+			"path":   resolved,
+			"parent": parentFolder(resolved),
+			"roots":  browseRoots(),
+			"error":  "path is not a folder",
+		}, http.StatusOK
+	}
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		return map[string]any{
+			"path":     resolved,
+			"parent":   parentFolder(resolved),
+			"roots":    browseRoots(),
+			"writable": false,
+			"error":    err.Error(),
+		}, http.StatusOK
+	}
+	folders := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		folders = append(folders, map[string]any{
+			"name": name,
+			"path": filepath.Join(resolved, name),
+		})
+	}
+	sort.Slice(folders, func(i, j int) bool {
+		return strings.ToLower(folders[i]["name"].(string)) < strings.ToLower(folders[j]["name"].(string))
+	})
+	writable, message := pathReady(resolved)
+	return map[string]any{
+		"path":     resolved,
+		"parent":   parentFolder(resolved),
+		"roots":    browseRoots(),
+		"entries":  folders,
+		"writable": writable,
+		"message":  message,
+	}, http.StatusOK
+}
+
+func resolveBrowsePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return filepath.Abs(".")
+	}
+	cleaned := filepath.Clean(os.ExpandEnv(path))
+	if filepath.IsAbs(cleaned) {
+		return cleaned, nil
+	}
+	return filepath.Abs(cleaned)
+}
+
+func parentFolder(path string) string {
+	parent := filepath.Dir(path)
+	if parent == path || parent == "." {
+		return ""
+	}
+	return parent
+}
+
+func browseRoots() []map[string]string {
+	roots := []map[string]string{}
+	if runtime.GOOS == "windows" {
+		for drive := 'A'; drive <= 'Z'; drive++ {
+			root := string(drive) + `:\`
+			if info, err := os.Stat(root); err == nil && info.IsDir() {
+				roots = append(roots, map[string]string{"name": strings.TrimSuffix(root, `\`), "path": root})
+			}
+		}
+		return roots
+	}
+	roots = append(roots, map[string]string{"name": "Root", "path": string(filepath.Separator)})
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		roots = append(roots, map[string]string{"name": "Home", "path": home})
+	}
+	return roots
 }
 
 func hardwareAccelerationStatus(cfg config.Config) map[string]any {
@@ -1418,8 +2176,15 @@ func selectedHardwareEncoder(ctx context.Context, cfg config.Config) (string, bo
 
 func systemStatusHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, systemstats.Collect(runtimePaths(deps.Config)))
+		writeJSON(w, http.StatusOK, systemstats.Collect(runtimePaths(currentConfig(deps))))
 	}
+}
+
+func currentConfig(deps Deps) config.Config {
+	if saved, err := config.LoadFile(deps.Config.DataDir); err == nil {
+		return config.Merge(deps.Config, saved)
+	}
+	return deps.Config
 }
 
 func settingsPayload(cfg config.Config) map[string]any {
@@ -2793,6 +3558,112 @@ func deviceProfilesHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func pairingCreateHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Pairing == nil {
+			writeError(w, http.StatusServiceUnavailable, "pairing is not available")
+			return
+		}
+		var request pairing.CreateRequest
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		if _, ok := deps.Devices.GetProfile(firstNonEmpty(request.ClientProfile, "apple-tv")); !ok {
+			writeError(w, http.StatusBadRequest, "unknown client profile")
+			return
+		}
+		item, err := deps.Pairing.Create(request)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "pairing request failed")
+			return
+		}
+		publishOperationalEvent(deps, r, "pairing.request.created", map[string]any{
+			"pairingId":     item.ID,
+			"clientProfile": item.ClientProfile,
+			"deviceName":    item.DeviceName,
+			"expiresAt":     item.ExpiresAt,
+		})
+		writeJSON(w, http.StatusAccepted, item)
+	}
+}
+
+func pairingStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Pairing == nil {
+			writeError(w, http.StatusServiceUnavailable, "pairing is not available")
+			return
+		}
+		item, ok := deps.Pairing.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "pairing request not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	}
+}
+
+func pairingListHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Pairing == nil {
+			writeError(w, http.StatusServiceUnavailable, "pairing is not available")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"requests": deps.Pairing.List()})
+	}
+}
+
+func pairingApproveHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		closePairingRequest(w, r, deps, true)
+	}
+}
+
+func pairingDenyHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		closePairingRequest(w, r, deps, false)
+	}
+}
+
+func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, approve bool) {
+	if deps.Pairing == nil {
+		writeError(w, http.StatusServiceUnavailable, "pairing is not available")
+		return
+	}
+	actor := "local-admin"
+	if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok {
+		actor = firstNonEmpty(resolved.Principal.Username, resolved.Principal.ID, actor)
+	}
+	var (
+		item pairing.Request
+		err  error
+	)
+	if approve {
+		item, err = deps.Pairing.Approve(r.PathValue("id"), actor)
+	} else {
+		item, err = deps.Pairing.Deny(r.PathValue("id"), actor)
+	}
+	if err != nil {
+		switch err {
+		case pairing.ErrNotFound:
+			writeError(w, http.StatusNotFound, "pairing request not found")
+		case pairing.ErrExpired:
+			writeError(w, http.StatusGone, "pairing request expired")
+		case pairing.ErrClosed:
+			writeError(w, http.StatusConflict, "pairing request is already closed")
+		default:
+			writeError(w, http.StatusInternalServerError, "pairing request failed")
+		}
+		return
+	}
+	publishOperationalEvent(deps, r, "pairing.request."+item.Status, map[string]any{
+		"pairingId":     item.ID,
+		"clientProfile": item.ClientProfile,
+		"deviceName":    item.DeviceName,
+		"deviceId":      item.DeviceID,
+	})
+	writeJSON(w, http.StatusOK, item)
+}
+
 func sessionsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"sessions": deps.Sessions.List()})
@@ -3632,6 +4503,21 @@ func lanAddresses(httpAddr string) []string {
 		}
 	}
 	return output
+}
+
+func requestBaseURL(r *http.Request, fallbackAddr string) string {
+	host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(r.Host)
+	}
+	if host == "" {
+		host = fallbackAddr
+	}
+	scheme := "http"
+	if requestSecure(r) {
+		scheme = "https"
+	}
+	return scheme + "://" + host
 }
 
 func truncate(value string, limit int) string {

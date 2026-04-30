@@ -1,5 +1,15 @@
 # Vyrden Tools
 
+## Agent Harness Check
+
+`agent-check.cjs` verifies that the repository remains legible to future agent runs:
+
+```powershell
+node tools/agent-check.cjs
+```
+
+It checks the agent map, docs index, execution-plan folders, and protected route policy alignment.
+
 ## Media Scanner
 
 `vyrden_scan.py` inventories a local or mapped NAS media folder and optionally runs `ffprobe` for stream metadata.
