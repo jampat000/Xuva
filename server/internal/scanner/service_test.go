@@ -37,6 +37,59 @@ func TestScanRequiresDirectoryRoot(t *testing.T) {
 	}
 }
 
+func TestScanMarksKnownFilesUnchangedAndPrioritizesChanges(t *testing.T) {
+	root := t.TempDir()
+	unchanged := filepath.Join(root, "a-unchanged.mkv")
+	changed := filepath.Join(root, "b-changed.mkv")
+	writeFile(t, unchanged)
+	writeFile(t, changed)
+	info, err := os.Stat(unchanged)
+	if err != nil {
+		t.Fatalf("stat unchanged: %v", err)
+	}
+
+	result, err := NewService().Scan(context.Background(), Request{
+		Kind: KindMovies,
+		Root: root,
+		KnownFiles: map[string]FileSignature{
+			"a-unchanged.mkv": {Size: info.Size(), ModifiedAt: info.ModTime().UTC()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if result.ChangedFiles != 1 || result.Unchanged != 1 {
+		t.Fatalf("expected one changed and one unchanged file, got %#v", result.Summary)
+	}
+	if len(result.Files) != 2 || !result.Files[0].Changed {
+		t.Fatalf("expected changed files first, got %#v", result.Files)
+	}
+}
+
+func TestScanCanSkipUnchangedPayloads(t *testing.T) {
+	root := t.TempDir()
+	unchanged := filepath.Join(root, "unchanged.mkv")
+	writeFile(t, unchanged)
+	info, err := os.Stat(unchanged)
+	if err != nil {
+		t.Fatalf("stat unchanged: %v", err)
+	}
+	result, err := NewService().Scan(context.Background(), Request{
+		Kind:          KindMovies,
+		Root:          root,
+		SkipUnchanged: true,
+		KnownFiles: map[string]FileSignature{
+			"unchanged.mkv": {Size: info.Size(), ModifiedAt: info.ModTime().UTC()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if result.MediaFiles != 1 || result.Unchanged != 1 || len(result.Files) != 0 || len(result.SeenRelPaths) != 1 {
+		t.Fatalf("expected unchanged file to be counted but omitted from payload, got %#v", result)
+	}
+}
+
 func writeFile(t *testing.T, path string) {
 	t.Helper()
 

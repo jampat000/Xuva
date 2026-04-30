@@ -1069,6 +1069,7 @@ func performanceSettingsHandler(deps Deps) http.HandlerFunc {
 			"limits":               deps.Resources.Limits(),
 			"queues":               deps.Jobs.Snapshot(),
 			"libraries":            libraryList,
+			"storageDefaults":      storageDefaults(libraryList),
 			"hardwareAcceleration": hardwareAccelerationStatus(deps.Config),
 			"recommendations": []string{
 				"Keep scan concurrency low for network/removable storage",
@@ -1077,6 +1078,14 @@ func performanceSettingsHandler(deps Deps) http.HandlerFunc {
 			},
 		})
 	}
+}
+
+func storageDefaults(libraryList []libraries.Library) map[string]libraries.WorkerDefaults {
+	output := map[string]libraries.WorkerDefaults{}
+	for _, library := range libraryList {
+		output[library.ID] = libraries.DefaultsForStorage(library.StorageType)
+	}
+	return output
 }
 
 func settingsHandler(deps Deps) http.HandlerFunc {
@@ -1115,6 +1124,7 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeString(&updated.PlaybackPolicy, request.PlaybackPolicy)
 		updated.PlaybackPolicy = normalizedPlaybackPolicy(updated.PlaybackPolicy)
 		mergeInt(&updated.SyncIntervalMins, request.SyncIntervalMins)
+		mergeInt(&updated.WatchDebounceSecs, request.WatchDebounceSecs)
 		mergeInt(&updated.ProbeBatchLimit, request.ProbeBatchLimit)
 		if len(request.AllowedOrigins) > 0 {
 			updated.AllowedOrigins = request.AllowedOrigins
@@ -1407,25 +1417,26 @@ func systemStatusHandler(deps Deps) http.HandlerFunc {
 
 func settingsPayload(cfg config.Config) map[string]any {
 	return map[string]any{
-		"httpAddr":         cfg.HTTPAddr,
-		"dataDir":          cfg.DataDir,
-		"transcodeDir":     cfg.TranscodeDir,
-		"downloadsDir":     cfg.DownloadsDir,
-		"metadataDir":      cfg.MetadataDir,
-		"cacheDir":         cfg.CacheDir,
-		"tempDir":          cfg.TempDir,
-		"ffmpegPath":       cfg.FFmpegPath,
-		"ffprobePath":      cfg.FFprobePath,
-		"scanWorkers":      cfg.ScanWorkers,
-		"probeWorkers":     cfg.ProbeWorkers,
-		"transcodeWorkers": cfg.TranscodeWorkers,
-		"gpuWorkers":       cfg.GPUWorkers,
-		"hardwareUnlocked": cfg.HardwareUnlocked,
-		"playbackPolicy":   cfg.PlaybackPolicy,
-		"librarySyncMode":  cfg.LibrarySyncMode,
-		"syncIntervalMins": cfg.SyncIntervalMins,
-		"probeBatchLimit":  cfg.ProbeBatchLimit,
-		"allowedOrigins":   cfg.AllowedOrigins,
+		"httpAddr":          cfg.HTTPAddr,
+		"dataDir":           cfg.DataDir,
+		"transcodeDir":      cfg.TranscodeDir,
+		"downloadsDir":      cfg.DownloadsDir,
+		"metadataDir":       cfg.MetadataDir,
+		"cacheDir":          cfg.CacheDir,
+		"tempDir":           cfg.TempDir,
+		"ffmpegPath":        cfg.FFmpegPath,
+		"ffprobePath":       cfg.FFprobePath,
+		"scanWorkers":       cfg.ScanWorkers,
+		"probeWorkers":      cfg.ProbeWorkers,
+		"transcodeWorkers":  cfg.TranscodeWorkers,
+		"gpuWorkers":        cfg.GPUWorkers,
+		"hardwareUnlocked":  cfg.HardwareUnlocked,
+		"playbackPolicy":    cfg.PlaybackPolicy,
+		"librarySyncMode":   cfg.LibrarySyncMode,
+		"syncIntervalMins":  cfg.SyncIntervalMins,
+		"watchDebounceSecs": cfg.WatchDebounceSecs,
+		"probeBatchLimit":   cfg.ProbeBatchLimit,
+		"allowedOrigins":    cfg.AllowedOrigins,
 		"metadataProviders": map[string]any{
 			"omdb": map[string]any{
 				"configured": cfg.OMDbAPIKey != "",

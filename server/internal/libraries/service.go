@@ -31,6 +31,14 @@ type Library struct {
 	StorageType StorageType `json:"storageType"`
 }
 
+type WorkerDefaults struct {
+	ScanWorkers      int    `json:"scanWorkers"`
+	ProbeWorkers     int    `json:"probeWorkers"`
+	TranscodeWorkers int    `json:"transcodeWorkers"`
+	SyncMode         string `json:"syncMode"`
+	Reason           string `json:"reason"`
+}
+
 type Service struct {
 	mu        sync.RWMutex
 	libraries map[string]Library
@@ -114,4 +122,19 @@ func DetectStorageType(path string) StorageType {
 		return StorageLocal
 	}
 	return StorageUnknown
+}
+
+func DefaultsForStorage(storage StorageType) WorkerDefaults {
+	switch storage {
+	case StorageNetwork:
+		return WorkerDefaults{ScanWorkers: 1, ProbeWorkers: 1, TranscodeWorkers: 1, SyncMode: "watch", Reason: "Network storage benefits from low concurrent reads and debounced change batching."}
+	case StorageRemovable:
+		return WorkerDefaults{ScanWorkers: 1, ProbeWorkers: 1, TranscodeWorkers: 1, SyncMode: "manual", Reason: "Removable storage can disappear, so background pressure should stay conservative."}
+	case StorageMounted:
+		return WorkerDefaults{ScanWorkers: 1, ProbeWorkers: 2, TranscodeWorkers: 1, SyncMode: "watch", Reason: "Mounted storage is usually shared or external, so scans should be debounced."}
+	case StorageLocal:
+		return WorkerDefaults{ScanWorkers: 2, ProbeWorkers: 2, TranscodeWorkers: 1, SyncMode: "daily", Reason: "Local disks can tolerate more scan and probe parallelism."}
+	default:
+		return WorkerDefaults{ScanWorkers: 1, ProbeWorkers: 1, TranscodeWorkers: 1, SyncMode: "daily", Reason: "Unknown storage uses safe low-overhead defaults."}
+	}
 }

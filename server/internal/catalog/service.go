@@ -25,27 +25,33 @@ type Service struct {
 }
 
 type PersistSummary struct {
-	LibraryID    string `json:"libraryId"`
-	ScanRunID    int64  `json:"scanRunId"`
-	MediaSources int    `json:"mediaSources"`
-	Movies       int    `json:"movies,omitempty"`
-	Episodes     int    `json:"episodes,omitempty"`
+	LibraryID        string `json:"libraryId"`
+	ScanRunID        int64  `json:"scanRunId"`
+	MediaSources     int    `json:"mediaSources"`
+	ChangedSources   int    `json:"changedSources"`
+	UnchangedSources int    `json:"unchangedSources"`
+	Movies           int    `json:"movies,omitempty"`
+	Episodes         int    `json:"episodes,omitempty"`
 }
 
 type RuntimeSettings struct {
-	HTTPAddr         string `json:"httpAddr"`
-	DataDir          string `json:"dataDir"`
-	TranscodeDir     string `json:"transcodeDir"`
-	DownloadsDir     string `json:"downloadsDir"`
-	MetadataDir      string `json:"metadataDir"`
-	CacheDir         string `json:"cacheDir"`
-	TempDir          string `json:"tempDir"`
-	FFmpegPath       string `json:"ffmpegPath"`
-	FFprobePath      string `json:"ffprobePath"`
-	ScanWorkers      int    `json:"scanWorkers"`
-	ProbeWorkers     int    `json:"probeWorkers"`
-	TranscodeWorkers int    `json:"transcodeWorkers"`
-	GPUWorkers       int    `json:"gpuWorkers"`
+	HTTPAddr          string `json:"httpAddr"`
+	DataDir           string `json:"dataDir"`
+	TranscodeDir      string `json:"transcodeDir"`
+	DownloadsDir      string `json:"downloadsDir"`
+	MetadataDir       string `json:"metadataDir"`
+	CacheDir          string `json:"cacheDir"`
+	TempDir           string `json:"tempDir"`
+	FFmpegPath        string `json:"ffmpegPath"`
+	FFprobePath       string `json:"ffprobePath"`
+	ScanWorkers       int    `json:"scanWorkers"`
+	ProbeWorkers      int    `json:"probeWorkers"`
+	TranscodeWorkers  int    `json:"transcodeWorkers"`
+	GPUWorkers        int    `json:"gpuWorkers"`
+	LibrarySyncMode   string `json:"librarySyncMode"`
+	SyncIntervalMins  int    `json:"syncIntervalMins"`
+	WatchDebounceSecs int    `json:"watchDebounceSecs"`
+	ProbeBatchLimit   int    `json:"probeBatchLimit"`
 }
 
 type Summary struct {
@@ -243,6 +249,29 @@ func NewService(database *database.Service) *Service {
 	return &Service{db: database.DB()}
 }
 
+func (s *Service) ScanState(ctx context.Context, libraryID string) (map[string]scanner.FileSignature, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT rel_path, size_bytes, modified_at
+		FROM scan_file_state
+		WHERE library_id = ?
+	`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	output := map[string]scanner.FileSignature{}
+	for rows.Next() {
+		var relPath string
+		var size int64
+		var modifiedAt string
+		if err := rows.Scan(&relPath, &size, &modifiedAt); err != nil {
+			return nil, err
+		}
+		output[relPath] = scanner.FileSignature{Size: size, ModifiedAt: parseTimestamp(modifiedAt)}
+	}
+	return output, rows.Err()
+}
+
 func (s *Service) ListLibraries(ctx context.Context) ([]libraries.Library, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, kind, name, path, storage_type
@@ -303,19 +332,23 @@ func (s *Service) DeleteLibrary(ctx context.Context, id string) error {
 func (s *Service) SaveSettings(ctx context.Context, settings RuntimeSettings) error {
 	now := timestamp(time.Now())
 	values := map[string]string{
-		"httpAddr":         settings.HTTPAddr,
-		"dataDir":          settings.DataDir,
-		"transcodeDir":     settings.TranscodeDir,
-		"downloadsDir":     settings.DownloadsDir,
-		"metadataDir":      settings.MetadataDir,
-		"cacheDir":         settings.CacheDir,
-		"tempDir":          settings.TempDir,
-		"ffmpegPath":       settings.FFmpegPath,
-		"ffprobePath":      settings.FFprobePath,
-		"scanWorkers":      intString(settings.ScanWorkers),
-		"probeWorkers":     intString(settings.ProbeWorkers),
-		"transcodeWorkers": intString(settings.TranscodeWorkers),
-		"gpuWorkers":       intString(settings.GPUWorkers),
+		"httpAddr":          settings.HTTPAddr,
+		"dataDir":           settings.DataDir,
+		"transcodeDir":      settings.TranscodeDir,
+		"downloadsDir":      settings.DownloadsDir,
+		"metadataDir":       settings.MetadataDir,
+		"cacheDir":          settings.CacheDir,
+		"tempDir":           settings.TempDir,
+		"ffmpegPath":        settings.FFmpegPath,
+		"ffprobePath":       settings.FFprobePath,
+		"scanWorkers":       intString(settings.ScanWorkers),
+		"probeWorkers":      intString(settings.ProbeWorkers),
+		"transcodeWorkers":  intString(settings.TranscodeWorkers),
+		"gpuWorkers":        intString(settings.GPUWorkers),
+		"librarySyncMode":   settings.LibrarySyncMode,
+		"syncIntervalMins":  intString(settings.SyncIntervalMins),
+		"watchDebounceSecs": intString(settings.WatchDebounceSecs),
+		"probeBatchLimit":   intString(settings.ProbeBatchLimit),
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1162,15 +1195,20 @@ func (s *Service) SaveMovieScan(ctx context.Context, library libraries.Library, 
 
 	now := timestamp(time.Now())
 	movieIDs := make(map[string]struct{}, len(candidates))
-	sourceIDs := make([]string, 0, len(candidates))
+	sourceIDs := observedSourceIDs(result)
 	for _, candidate := range candidates {
 		sourceID := sourceID(candidate.Media.Path)
-		sourceIDs = append(sourceIDs, sourceID)
-		if err := upsertMediaSource(ctx, tx, library.ID, media.KindMovie, sourceID, candidate.Media, now); err != nil {
+		if err := upsertScanFileState(ctx, tx, library.ID, candidate.Media, now); err != nil {
 			return PersistSummary{}, err
 		}
 		movieID := movieRecordID(candidate, sourceID)
 		movieIDs[movieID] = struct{}{}
+		if !candidate.Media.Changed {
+			continue
+		}
+		if err := upsertMediaSource(ctx, tx, library.ID, media.KindMovie, sourceID, candidate.Media, now); err != nil {
+			return PersistSummary{}, err
+		}
 		if err := upsertMovie(ctx, tx, movieID, candidate, now); err != nil {
 			return PersistSummary{}, err
 		}
@@ -1193,15 +1231,23 @@ func (s *Service) SaveMovieScan(ctx context.Context, library libraries.Library, 
 	if err := deleteMissingSources(ctx, tx, library.ID, sourceIDs); err != nil {
 		return PersistSummary{}, err
 	}
+	if err := touchSeenScanState(ctx, tx, library.ID, result.SeenRelPaths, now); err != nil {
+		return PersistSummary{}, err
+	}
+	if err := deleteMissingScanState(ctx, tx, library.ID, result.SeenRelPaths); err != nil {
+		return PersistSummary{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return PersistSummary{}, err
 	}
 	return PersistSummary{
-		LibraryID:    library.ID,
-		ScanRunID:    scanRunID,
-		MediaSources: len(candidates),
-		Movies:       len(movieIDs),
+		LibraryID:        library.ID,
+		ScanRunID:        scanRunID,
+		MediaSources:     len(result.SeenRelPaths),
+		ChangedSources:   result.ChangedFiles,
+		UnchangedSources: result.Unchanged,
+		Movies:           len(movieIDs),
 	}, nil
 }
 
@@ -1222,17 +1268,22 @@ func (s *Service) SaveTVScan(ctx context.Context, library libraries.Library, res
 
 	now := timestamp(time.Now())
 	episodeIDs := make(map[string]struct{}, len(candidates))
-	sourceIDs := make([]string, 0, len(candidates))
+	sourceIDs := observedSourceIDs(result)
 	for _, candidate := range candidates {
 		sourceID := sourceID(candidate.Media.Path)
-		sourceIDs = append(sourceIDs, sourceID)
-		if err := upsertMediaSource(ctx, tx, library.ID, media.KindEpisode, sourceID, candidate.Media, now); err != nil {
+		if err := upsertScanFileState(ctx, tx, library.ID, candidate.Media, now); err != nil {
 			return PersistSummary{}, err
 		}
 		seriesID := seriesID(candidate.SeriesTitle)
 		seasonID := seasonID(seriesID, candidate.SeasonNumber)
 		episodeID := episodeRecordID(seriesID, candidate, sourceID)
 		episodeIDs[episodeID] = struct{}{}
+		if !candidate.Media.Changed {
+			continue
+		}
+		if err := upsertMediaSource(ctx, tx, library.ID, media.KindEpisode, sourceID, candidate.Media, now); err != nil {
+			return PersistSummary{}, err
+		}
 		if err := upsertSeries(ctx, tx, seriesID, candidate.SeriesTitle, now); err != nil {
 			return PersistSummary{}, err
 		}
@@ -1271,15 +1322,23 @@ func (s *Service) SaveTVScan(ctx context.Context, library libraries.Library, res
 	if err := deleteMissingSources(ctx, tx, library.ID, sourceIDs); err != nil {
 		return PersistSummary{}, err
 	}
+	if err := touchSeenScanState(ctx, tx, library.ID, result.SeenRelPaths, now); err != nil {
+		return PersistSummary{}, err
+	}
+	if err := deleteMissingScanState(ctx, tx, library.ID, result.SeenRelPaths); err != nil {
+		return PersistSummary{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return PersistSummary{}, err
 	}
 	return PersistSummary{
-		LibraryID:    library.ID,
-		ScanRunID:    scanRunID,
-		MediaSources: len(candidates),
-		Episodes:     len(episodeIDs),
+		LibraryID:        library.ID,
+		ScanRunID:        scanRunID,
+		MediaSources:     len(result.SeenRelPaths),
+		ChangedSources:   result.ChangedFiles,
+		UnchangedSources: result.Unchanged,
+		Episodes:         len(episodeIDs),
 	}, nil
 }
 
@@ -1393,6 +1452,26 @@ func upsertMediaSource(ctx context.Context, tx *sql.Tx, libraryID string, kind m
 	return err
 }
 
+func upsertScanFileState(ctx context.Context, tx *sql.Tx, libraryID string, file scanner.FileCandidate, now string) error {
+	changedAt := now
+	if !file.Changed {
+		changedAt = timestamp(file.ModifiedAt)
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO scan_file_state(library_id, rel_path, size_bytes, modified_at, last_seen_at, changed_at)
+		VALUES(?, ?, ?, ?, ?, ?)
+		ON CONFLICT(library_id, rel_path) DO UPDATE SET
+			size_bytes = excluded.size_bytes,
+			modified_at = excluded.modified_at,
+			last_seen_at = excluded.last_seen_at,
+			changed_at = CASE
+				WHEN scan_file_state.size_bytes != excluded.size_bytes OR scan_file_state.modified_at != excluded.modified_at THEN excluded.changed_at
+				ELSE scan_file_state.changed_at
+			END
+	`, libraryID, file.RelPath, file.Size, timestamp(file.ModifiedAt), now, changedAt)
+	return err
+}
+
 func upsertMovie(ctx context.Context, tx *sql.Tx, id string, candidate movies.Candidate, now string) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO movies(id, title, year, sort_title, needs_review, review_reason, updated_at)
@@ -1485,6 +1564,58 @@ func deleteMissingSources(ctx context.Context, tx *sql.Tx, libraryID string, sou
 	return err
 }
 
+func observedSourceIDs(result scanner.Result) []string {
+	relPaths := result.SeenRelPaths
+	if len(relPaths) == 0 {
+		relPaths = make([]string, 0, len(result.Files))
+		for _, file := range result.Files {
+			relPaths = append(relPaths, file.RelPath)
+		}
+	}
+	fileIDs := make(map[string]string, len(result.Files))
+	for _, file := range result.Files {
+		fileIDs[file.RelPath] = sourceID(file.Path)
+	}
+	output := make([]string, 0, len(relPaths))
+	for _, relPath := range relPaths {
+		if id := fileIDs[relPath]; id != "" {
+			output = append(output, id)
+		} else {
+			output = append(output, sourceID(filepath.Join(result.Root, relPath)))
+		}
+	}
+	return output
+}
+
+func deleteMissingScanState(ctx context.Context, tx *sql.Tx, libraryID string, relPaths []string) error {
+	if len(relPaths) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM scan_file_state WHERE library_id = ?", libraryID)
+		return err
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(relPaths)), ",")
+	args := make([]any, 0, len(relPaths)+1)
+	args = append(args, libraryID)
+	for _, relPath := range relPaths {
+		args = append(args, relPath)
+	}
+	_, err := tx.ExecContext(ctx, "DELETE FROM scan_file_state WHERE library_id = ? AND rel_path NOT IN ("+placeholders+")", args...)
+	return err
+}
+
+func touchSeenScanState(ctx context.Context, tx *sql.Tx, libraryID string, relPaths []string, now string) error {
+	if len(relPaths) == 0 {
+		return nil
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(relPaths)), ",")
+	args := make([]any, 0, len(relPaths)+2)
+	args = append(args, now, libraryID)
+	for _, relPath := range relPaths {
+		args = append(args, relPath)
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE scan_file_state SET last_seen_at = ? WHERE library_id = ? AND rel_path IN ("+placeholders+")", args...)
+	return err
+}
+
 func insertScanRun(ctx context.Context, tx *sql.Tx, summary scanner.Summary) (int64, error) {
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO scan_runs(kind, root, started_at, completed_at, duration_ms, total_files, media_files, ignored_files, error_count)
@@ -1552,6 +1683,14 @@ func timestamp(value time.Time) string {
 		value = time.Now()
 	}
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func parseTimestamp(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
 }
 
 func boolInt(value bool) int {
