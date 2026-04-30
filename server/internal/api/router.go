@@ -33,6 +33,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/playstate"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/probes"
+	"github.com/vyrdenhq/vyrden/server/internal/remote"
 	"github.com/vyrdenhq/vyrden/server/internal/resources"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
 	"github.com/vyrdenhq/vyrden/server/internal/scans"
@@ -107,6 +108,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
 	mux.HandleFunc("GET /api/system/status", systemStatusHandler(deps))
 	mux.HandleFunc("GET /api/remote/access", remoteAccessHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/remote/diagnostics", remoteDiagnosticsHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/remote/wan", wanAddressHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
@@ -1481,8 +1483,22 @@ func remoteAccessHandler(deps Deps) http.HandlerFunc {
 			"lanAddresses":   lanAddresses(deps.Config.HTTPAddr),
 			"wanAddress":     "",
 			"wanLookup":      "available_on_request",
+			"diagnostics":    "available",
+			"failureClasses": []string{remote.ClassNotConfigured, remote.ClassPrivateRoute, remote.ClassDNS, remote.ClassNATFirewall, remote.ClassCertificate, remote.ClassThroughput},
 			"recommendation": "Use your own VPN, reverse proxy, or port-forwarding setup. Vyrden does not require hosted relay servers.",
 		})
+	}
+}
+
+func remoteDiagnosticsHandler(deps Deps) http.HandlerFunc {
+	checker := remote.NewChecker()
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload remote.Request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		result := checker.Diagnose(r.Context(), payload, lanAddresses(deps.Config.HTTPAddr))
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
