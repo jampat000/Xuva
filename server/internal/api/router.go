@@ -30,6 +30,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
+	"github.com/vyrdenhq/vyrden/server/internal/migration"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
 	"github.com/vyrdenhq/vyrden/server/internal/pairing"
@@ -77,6 +78,7 @@ type Deps struct {
 	Sessions  *sessions.Service
 	Subtitles *subtitles.Service
 	Pairing   *pairing.Service
+	Migration *migration.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -98,6 +100,12 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/libraries/{id}/scan", libraryScanByIDHandler(deps))
 	mux.HandleFunc("GET /api/catalog/summary", catalogSummaryHandler(deps))
 	mux.HandleFunc("GET /api/catalog/health", catalogHealthHandler(deps))
+	handleProtected(mux, deps, "GET /api/migrations/formats", migrationFormatsHandler(deps))
+	handleProtected(mux, deps, "GET /api/migrations/runs", migrationRunsHandler(deps))
+	handleProtected(mux, deps, "GET /api/migrations/runs/{id}", migrationRunDetailHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/migrations/dry-run", migrationDryRunHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/migrations/import", migrationImportHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/migrations/runs/{id}/rollback", migrationRollbackHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/home", clientHomeHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/movies/{id}", clientMovieDetailHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/series/{id}", clientSeriesDetailHandler(deps))
@@ -807,6 +815,106 @@ func catalogHealthHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, health)
+	}
+}
+
+func migrationFormatsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"formats": migration.Formats()})
+	}
+}
+
+func migrationRunsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Migration == nil {
+			writeError(w, http.StatusServiceUnavailable, "migration tooling is not available")
+			return
+		}
+		runs, err := deps.Migration.ListRuns(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "migration runs lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"runs": runs})
+	}
+}
+
+func migrationRunDetailHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Migration == nil {
+			writeError(w, http.StatusServiceUnavailable, "migration tooling is not available")
+			return
+		}
+		report, ok, err := deps.Migration.GetRun(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "migration run lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "migration run not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+func migrationDryRunHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Migration == nil {
+			writeError(w, http.StatusServiceUnavailable, "migration tooling is not available")
+			return
+		}
+		var request migration.Request
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		report, err := deps.Migration.DryRun(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+func migrationImportHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Migration == nil {
+			writeError(w, http.StatusServiceUnavailable, "migration tooling is not available")
+			return
+		}
+		var request migration.Request
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		report, err := deps.Migration.Import(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+func migrationRollbackHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Migration == nil {
+			writeError(w, http.StatusServiceUnavailable, "migration tooling is not available")
+			return
+		}
+		report, err := deps.Migration.Rollback(r.Context(), r.PathValue("id"))
+		if err != nil {
+			switch err {
+			case migration.ErrRunNotFound:
+				writeError(w, http.StatusNotFound, "migration run not found")
+			case migration.ErrRunRollback:
+				writeError(w, http.StatusConflict, "migration run cannot be rolled back")
+			default:
+				writeError(w, http.StatusBadRequest, err.Error())
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
 	}
 }
 

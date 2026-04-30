@@ -291,6 +291,36 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider, rating_type)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_ratings_item ON metadata_ratings(kind, item_id)`,
+	`CREATE TABLE IF NOT EXISTS migration_runs (
+		id TEXT PRIMARY KEY,
+		source TEXT NOT NULL,
+		schema TEXT NOT NULL,
+		status TEXT NOT NULL,
+		scopes_json TEXT NOT NULL,
+		summary_json TEXT NOT NULL,
+		verification_json TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		completed_at TEXT NOT NULL DEFAULT '',
+		rolled_back_at TEXT NOT NULL DEFAULT '',
+		error_text TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_migration_runs_created ON migration_runs(created_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS migration_run_items (
+		run_id TEXT NOT NULL REFERENCES migration_runs(id) ON DELETE CASCADE,
+		import_key TEXT NOT NULL,
+		item_json TEXT NOT NULL,
+		PRIMARY KEY(run_id, import_key)
+	)`,
+	`CREATE TABLE IF NOT EXISTS migration_backups (
+		run_id TEXT NOT NULL REFERENCES migration_runs(id) ON DELETE CASCADE,
+		scope TEXT NOT NULL,
+		target_kind TEXT NOT NULL,
+		target_id TEXT NOT NULL,
+		provider TEXT NOT NULL DEFAULT '',
+		media_source_id TEXT NOT NULL DEFAULT '',
+		backup_json TEXT NOT NULL,
+		PRIMARY KEY(run_id, scope, target_kind, target_id, provider, media_source_id)
+	)`,
 	`CREATE TABLE IF NOT EXISTS scan_file_state (
 		library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
 		rel_path TEXT NOT NULL,

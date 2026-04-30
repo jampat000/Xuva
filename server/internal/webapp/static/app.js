@@ -1,4 +1,4 @@
-const state = { activeView: "dashboard", activeSession: "", playbackSelections: {}, movieWall: [], movieFilter: "all", movieSort: "title", settingsTab: "libraries" };
+const state = { activeView: "dashboard", activeSession: "", playbackSelections: {}, movieWall: [], movieFilter: "all", movieSort: "title", settingsTab: "libraries", migrationPayload: "", migrationPreview: null, migrationLastRun: null, migrationScopes: ["playback", "metadata"] };
 
 const view = document.getElementById("view");
 const viewTitle = document.getElementById("viewTitle");
@@ -1330,11 +1330,13 @@ function openSettings(tab = "libraries") {
 }
 
 async function renderSettings() {
-  const [settings, performance, system, pairing] = await Promise.all([
+  const [settings, performance, system, pairing, migrationFormats, migrationRuns] = await Promise.all([
     api("/api/settings"),
     api("/api/settings/performance"),
     api("/api/system/status"),
     api("/api/pairing/requests").catch(() => ({ requests: [] })),
+    api("/api/migrations/formats").catch(() => ({ formats: [] })),
+    api("/api/migrations/runs").catch(() => ({ runs: [] })),
   ]);
   const active = settingsTabExists(state.settingsTab) ? state.settingsTab : "libraries";
   state.settingsTab = active;
@@ -1344,7 +1346,7 @@ async function renderSettings() {
       <div class="signal-stack">${signalPill("Profile", performance.profile)}${signalPill("Queues", performance.queues.length)}${signalPill("Libraries", settings.libraries.length)}</div>
     </div>
     <div class="settings-tabs">${settingsTabs(active)}</div>
-    <div class="settings-panel">${settingsPanel(active, settings, performance, system, pairing)}</div>
+    <div class="settings-panel">${settingsPanel(active, settings, performance, system, pairing, { formats: migrationFormats.formats || [], runs: migrationRuns.runs || [] })}</div>
   </div>`;
 }
 
@@ -1366,7 +1368,7 @@ function settingsTabs(active) {
   return tabs.map(([id, label]) => `<button type="button" class="${active === id ? "selected" : ""}" onclick="openSettings('${escapeAttr(id)}')">${escapeHTML(label)}</button>`).join("");
 }
 
-function settingsPanel(active, settings, performance, system, pairing) {
+function settingsPanel(active, settings, performance, system, pairing, migrations) {
   if (active === "libraries") return librarySettingsPanel(settings.libraries || []);
   if (active === "runtime") return `<div class="card"><h2>Runtime Folders</h2>${runtimePathForm(settings.runtimePaths)}</div><div class="card"><h2>Folder Capacity</h2>${runtimeFolders(system.disks || [])}</div>`;
   if (active === "devices") return `<div class="card"><h2>Device Pairing</h2>${devicePairingPanel(pairing.requests || [])}</div>`;
@@ -1374,7 +1376,7 @@ function settingsPanel(active, settings, performance, system, pairing) {
   if (active === "automation") return `<div class="card"><h2>Library Automation</h2>${automationSettingsForm(settings.config)}</div>`;
   if (active === "hardware") return `<div class="card"><h2>Hardware Acceleration</h2>${hardwareAccelerationPanel(performance.hardwareAcceleration || {}, settings.config)}</div>`;
   if (active === "metadata") return `<div class="card"><h2>Metadata Providers</h2>${providerSettingsForm(settings.config.metadataProviders || {})}</div>`;
-  return `<div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div><div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>`;
+  return `<div class="card"><h2>Migration Import</h2>${migrationImportPanel(migrations.formats || [], migrations.runs || [])}</div><div class="card"><h2>Server Config</h2>${settingsGrid(settings.config)}</div><div class="card"><h2>Performance</h2><pre>${escapeHTML(JSON.stringify(performance, null, 2))}</pre></div>`;
 }
 
 function devicePairingPanel(requests = []) {
@@ -1401,6 +1403,143 @@ function pairingRequestRow(item = {}) {
     </div>
     <small>${escapeHTML(item.expiresAt ? `Expires ${formatDateTime(item.expiresAt)}` : item.deviceId || "")}</small>
     ${pending ? `<div class="inline-actions"><button class="primary" onclick="approvePairing('${escapeAttr(item.id)}')">Approve</button><button onclick="denyPairing('${escapeAttr(item.id)}')">Deny</button></div>` : ""}
+  </div>`;
+}
+
+function migrationImportPanel(formats = [], runs = []) {
+  const format = formats[0] || { schema: "vyrden.migration.v1", sources: ["plex", "emby", "jellyfin", "generic"], validationRules: [] };
+  const playbackChecked = state.migrationScopes.includes("playback");
+  const metadataChecked = state.migrationScopes.includes("metadata");
+  return `<div class="migration-panel">
+    <div class="remote-result idle">
+      <strong>Bring watched history over before the first real couch session.</strong>
+      <span>Preview conflicts first, then import only the rows Vyrden can match safely. Rollback stays available for completed runs.</span>
+    </div>
+    <div class="settings-grid migration-facts">
+      <div><span>Supported sources</span><strong>${escapeHTML((format.sources || []).join(", ") || "generic")}</strong></div>
+      <div><span>Schema</span><strong>${escapeHTML(format.schema || "vyrden.migration.v1")}</strong></div>
+      <div><span>Recent runs</span><strong>${escapeHTML(String(runs.length || 0))}</strong></div>
+    </div>
+    <div class="migration-rules">${(format.validationRules || []).map(rule => `<div>${escapeHTML(rule)}</div>`).join("")}</div>
+    <form class="migration-form" onsubmit="previewMigrationImport(event)">
+      <label class="migration-upload"><span>Import file</span><input type="file" accept=".json,application/json" onchange="loadMigrationFile(event)"></label>
+      <label><span>Paste migration JSON</span><textarea id="migrationPayload" rows="12" placeholder="Paste a Plex, Emby, Jellyfin, or normalized Vyrden migration bundle here.">${escapeHTML(state.migrationPayload || "")}</textarea></label>
+      <div class="migration-scopes">
+        <label><input id="migrationScopePlayback" type="checkbox" ${playbackChecked ? "checked" : ""}> Watched and resume</label>
+        <label><input id="migrationScopeMetadata" type="checkbox" ${metadataChecked ? "checked" : ""}> Metadata identifiers</label>
+      </div>
+      <div class="inline-actions">
+        <button class="primary" type="submit">Preview import</button>
+        <button type="button" onclick="runMigrationImport()">Run import</button>
+        <span class="muted">Dry-run first. Imports only touch matched rows you explicitly preview.</span>
+      </div>
+    </form>
+    <div id="migrationStatus" class="save-state muted">Ready</div>
+    <div id="migrationReport">${renderMigrationReport(state.migrationPreview || state.migrationLastRun)}</div>
+    <div class="migration-runs">
+      <h3>Recent migration runs</h3>
+      ${runs.length ? runs.map(renderMigrationRunSummary).join("") : empty("No migration runs yet. Preview a bundle to see what Vyrden can import safely.")}
+    </div>
+  </div>`;
+}
+
+async function loadMigrationFile(event) {
+  const file = event.target?.files?.[0];
+  if (!file) return;
+  state.migrationPayload = await file.text();
+  const target = document.getElementById("migrationPayload");
+  if (target) target.value = state.migrationPayload;
+  const status = document.getElementById("migrationStatus");
+  if (status) status.textContent = `Loaded ${file.name}`;
+}
+
+function selectedMigrationScopes() {
+  const scopes = [];
+  if (document.getElementById("migrationScopePlayback")?.checked) scopes.push("playback");
+  if (document.getElementById("migrationScopeMetadata")?.checked) scopes.push("metadata");
+  state.migrationScopes = scopes;
+  return scopes;
+}
+
+async function previewMigrationImport(event) {
+  event?.preventDefault?.();
+  const payloadInput = document.getElementById("migrationPayload");
+  state.migrationPayload = payloadInput?.value || "";
+  const status = document.getElementById("migrationStatus");
+  if (status) status.textContent = "Previewing import bundle...";
+  const report = await send("/api/migrations/dry-run", {
+    payload: state.migrationPayload,
+    scopes: selectedMigrationScopes(),
+    userId: "local",
+  });
+  state.migrationPreview = report;
+  state.migrationLastRun = null;
+  openSettings("advanced");
+}
+
+async function runMigrationImport() {
+  const payloadInput = document.getElementById("migrationPayload");
+  state.migrationPayload = payloadInput?.value || "";
+  const preview = state.migrationPreview || await send("/api/migrations/dry-run", {
+    payload: state.migrationPayload,
+    scopes: selectedMigrationScopes(),
+    userId: "local",
+  });
+  const selectedImportKeys = (preview.items || []).filter(item => item.outcome === "importable").map(item => item.importKey);
+  const report = await send("/api/migrations/import", {
+    payload: state.migrationPayload,
+    scopes: selectedMigrationScopes(),
+    userId: "local",
+    selectedImportKeys,
+  });
+  state.migrationPreview = null;
+  state.migrationLastRun = report;
+  openSettings("advanced");
+}
+
+async function rollbackMigrationRun(id) {
+  const report = await send(`/api/migrations/runs/${id}/rollback`, {});
+  state.migrationPreview = null;
+  state.migrationLastRun = report;
+  openSettings("advanced");
+}
+
+function renderMigrationReport(report) {
+  if (!report) return "";
+  const summary = report.summary || {};
+  const items = Array.isArray(report.items) ? report.items.slice(0, 12) : [];
+  return `<div class="migration-report ${escapeAttr(report.status || "idle")}">
+    <div class="settings-grid migration-facts">
+      <div><span>Status</span><strong>${escapeHTML(report.status || "unknown")}</strong></div>
+      <div><span>Importable</span><strong>${escapeHTML(String(summary.importable || 0))}</strong></div>
+      <div><span>Conflicts</span><strong>${escapeHTML(String(summary.conflicted || 0))}</strong></div>
+      <div><span>Verified</span><strong>${escapeHTML(String((report.verification || {}).passed || 0))}</strong></div>
+    </div>
+    ${report.error ? `<div class="inline-error"><strong>Import blocked</strong><span>${escapeHTML(report.error)}</span></div>` : ""}
+    <div class="migration-item-list">${items.map(renderMigrationItem).join("")}</div>
+  </div>`;
+}
+
+function renderMigrationItem(item = {}) {
+  return `<div class="migration-item ${escapeAttr(item.outcome || "unknown")}">
+    <div>
+      <strong>${escapeHTML(item.title || item.importKey || "Import row")}</strong>
+      <span>${escapeHTML(item.kind || "item")} - ${escapeHTML(item.outcome || "unknown")}</span>
+    </div>
+    <small>${escapeHTML(item.reasonText || "Ready to import.")}</small>
+  </div>`;
+}
+
+function renderMigrationRunSummary(run = {}) {
+  const rollback = run.status === "completed" ? `<button type="button" onclick="rollbackMigrationRun('${escapeAttr(run.runId)}')">Rollback</button>` : "";
+  const summary = run.summary || {};
+  return `<div class="migration-run-row ${escapeAttr(run.status || "unknown")}">
+    <div>
+      <strong>${escapeHTML(run.source || "migration")} - ${escapeHTML(run.status || "unknown")}</strong>
+      <span>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "Recent run")}</span>
+    </div>
+    <small>${escapeHTML(`Imported ${summary.imported || 0} / Conflicts ${summary.conflicted || 0}`)}</small>
+    <div class="inline-actions">${rollback}</div>
   </div>`;
 }
 

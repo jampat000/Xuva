@@ -26,6 +26,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
+	"github.com/vyrdenhq/vyrden/server/internal/migration"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
 	"github.com/vyrdenhq/vyrden/server/internal/pairing"
@@ -590,6 +591,95 @@ func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing
 	}
 	if !strings.Contains(started.body, "persistent device authentication") {
 		t.Fatalf("expected clear device auth blocker, got %s", started.body)
+	}
+}
+
+func TestMigrationDryRunImportAndRollback(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Movies", "Heat (1995)", "Heat.1995.1080p.BluRay.mkv"))
+	writeTestFile(t, filepath.Join(root, "TV", "The Bear", "Season 01", "The.Bear.S01E01.1080p.WEB-DL.mkv"))
+
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	movieScan := client.requestJSON(t, router, http.MethodPost, "/api/libraries/movies/scan", map[string]any{
+		"path": filepath.Join(root, "Movies"),
+	})
+	if movieScan.status != http.StatusAccepted {
+		t.Fatalf("movie scan start: %d %s", movieScan.status, movieScan.body)
+	}
+	waitForScan(t, router, movieScan.payload["id"].(string))
+	tvScan := client.requestJSON(t, router, http.MethodPost, "/api/libraries/tv/scan", map[string]any{
+		"path": filepath.Join(root, "TV"),
+	})
+	if tvScan.status != http.StatusAccepted {
+		t.Fatalf("tv scan start: %d %s", tvScan.status, tvScan.body)
+	}
+	waitForScan(t, router, tvScan.payload["id"].(string))
+
+	movies := client.requestJSON(t, router, http.MethodGet, "/api/movies", nil)
+	series := client.requestJSON(t, router, http.MethodGet, "/api/series", nil)
+	movieID := movies.payload["movies"].([]any)[0].(map[string]any)["id"].(string)
+	seriesID := series.payload["series"].([]any)[0].(map[string]any)["id"].(string)
+	if err := deps.Catalog.UpsertExternalID(context.Background(), catalog.ExternalID{Kind: "movie", ItemID: movieID, Provider: "tmdb", ExternalID: "949"}); err != nil {
+		t.Fatalf("seed movie external id: %v", err)
+	}
+	if err := deps.Catalog.UpsertExternalID(context.Background(), catalog.ExternalID{Kind: "series", ItemID: seriesID, Provider: "tvdb", ExternalID: "411211"}); err != nil {
+		t.Fatalf("seed series external id: %v", err)
+	}
+
+	fixture, err := os.ReadFile(filepath.Join("..", "migration", "testdata", "plex-watch-history.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	formats := client.requestJSON(t, router, http.MethodGet, "/api/migrations/formats", nil)
+	if formats.status != http.StatusOK || len(formats.payload["formats"].([]any)) == 0 {
+		t.Fatalf("expected migration formats, got %d %#v", formats.status, formats.payload)
+	}
+
+	dryRun := client.requestJSON(t, router, http.MethodPost, "/api/migrations/dry-run", map[string]any{
+		"payload": string(fixture),
+		"scopes":  []string{migration.ScopePlayback, migration.ScopeMetadata},
+		"userId":  "local",
+	})
+	if dryRun.status != http.StatusOK {
+		t.Fatalf("dry run failed: %d %s", dryRun.status, dryRun.body)
+	}
+	summary := dryRun.payload["summary"].(map[string]any)
+	if summary["importable"] != float64(2) || summary["conflicted"] != float64(1) {
+		t.Fatalf("expected dry-run conflict classification, got %#v", dryRun.payload)
+	}
+
+	imported := client.requestJSON(t, router, http.MethodPost, "/api/migrations/import", map[string]any{
+		"payload":            string(fixture),
+		"scopes":             []string{migration.ScopePlayback, migration.ScopeMetadata},
+		"userId":             "local",
+		"selectedImportKeys": []string{"plex-heat", "plex-bear-s1e1"},
+	})
+	if imported.status != http.StatusOK || imported.payload["runId"] == "" {
+		t.Fatalf("expected successful migration import, got %d %#v", imported.status, imported.payload)
+	}
+	runID := imported.payload["runId"].(string)
+	run := client.requestJSON(t, router, http.MethodGet, "/api/migrations/runs/"+runID, nil)
+	if run.status != http.StatusOK || run.payload["status"] != "completed" {
+		t.Fatalf("expected stored migration run detail, got %d %#v", run.status, run.payload)
+	}
+
+	runs := client.requestJSON(t, router, http.MethodGet, "/api/migrations/runs", nil)
+	if runs.status != http.StatusOK || len(runs.payload["runs"].([]any)) == 0 {
+		t.Fatalf("expected migration runs list, got %d %#v", runs.status, runs.payload)
+	}
+
+	rollback := client.requestJSON(t, router, http.MethodPost, "/api/migrations/runs/"+runID+"/rollback", map[string]any{})
+	if rollback.status != http.StatusOK || rollback.payload["status"] != "rolled_back" {
+		t.Fatalf("expected rollback report, got %d %#v", rollback.status, rollback.payload)
+	}
+	recent := getJSON(t, router, "/api/playback/recent")
+	if len(recent["recent"].([]any)) != 0 {
+		t.Fatalf("expected rollback to clear imported playback state, got %#v", recent)
 	}
 }
 
@@ -1526,6 +1616,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Sessions:  sessions.NewService(eventBus),
 		Subtitles: subtitles.NewService(),
 		Pairing:   pairing.NewService(),
+		Migration: migration.NewService(db, eventBus),
 	}
 }
 
@@ -1548,6 +1639,7 @@ func testDepsWithAuth(t *testing.T, startedAt time.Time) Deps {
 	deps.Scans = scans.NewService(deps.Config, deps.Events, deps.Jobs.Scan, deps.Libraries, deps.Scanner, deps.Catalog, deps.Metadata, deps.Movies, deps.TV)
 	deps.Probes = probes.NewService(deps.Events, deps.Jobs.Probe, deps.Catalog, probe.NewService("ffprobe"))
 	deps.PlayState = playstate.NewService(db, deps.Events)
+	deps.Migration = migration.NewService(db, deps.Events)
 	deps.Auth = auth.NewService(db, false)
 	if err := deps.Auth.Bootstrap(context.Background(), auth.BootstrapOptions{
 		Username: "admin",

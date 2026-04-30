@@ -16,6 +16,7 @@ This index is the repository map for humans and agents. Keep it short, current, 
 - [Alpha desktop packaging](alpha-desktop.md)
 - [Remote access](remote-access.md)
 - [Remote diagnostics](remote-diagnostics.md)
+- [Migration import](migration-import.md)
 
 ## Architecture And Runtime
 
