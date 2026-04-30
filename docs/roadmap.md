@@ -26,6 +26,7 @@
 ## Phase 2: Server MVP
 
 - Real Vyrden player shell.
+- Alpha desktop shell that starts the local server, opens the web UI, restarts the server, and provides native folder picking.
 - Live dashboard updates through SSE.
 - Playback session heartbeat and cleanup.
 - Playback forecast with selected source, audio, and subtitle tracks.
@@ -45,8 +46,9 @@
 ## Phase 3: First Clients
 
 - Web admin and browser player.
-- Android TV client.
-- Apple TV client.
+- Apple TV client as the lead native alpha playback target.
+- Android TV client after the Apple TV contract is proven.
+- iOS and Android mobile apps after the TV playback loop is stable.
 - Playback inspector in admin UI.
 - Per-client capability reporting.
 - Version selector.
