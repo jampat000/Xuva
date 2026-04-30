@@ -593,11 +593,28 @@ func TestLibraryManagementRemoteAndArtworkEndpoints(t *testing.T) {
 	if remote["wanLookup"] != "available_on_request" {
 		t.Fatalf("expected explicit wan lookup flag, got %#v", remote)
 	}
+	if remote["diagnostics"] != "available" {
+		t.Fatalf("expected diagnostics to be advertised, got %#v", remote)
+	}
 	request := httptest.NewRequest(http.MethodGet, "/api/artwork/movie/example", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("expected svg artwork response, got %d %q", response.Code, response.Header().Get("Content-Type"))
+	}
+}
+
+func TestRemoteDiagnosticsEndpointRejectsSensitiveURLParts(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	result := postJSON(t, router, "/api/remote/diagnostics", map[string]any{
+		"publicUrl": "https://media.example.com/watch?token=secret",
+	})
+	if result["failureClass"] != "invalid_input" {
+		t.Fatalf("expected invalid input without leaking url details, got %#v", result)
+	}
+	target := result["target"].(map[string]any)
+	if len(target) != 0 {
+		t.Fatalf("expected empty sanitized target for invalid input, got %#v", target)
 	}
 }
 

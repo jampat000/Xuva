@@ -41,6 +41,7 @@ var routePolicies = map[string]routePolicy{
 
 	"PUT /api/settings":                route("PUT /api/settings", "settings", "settings.update", roleAdmin),
 	"POST /api/settings/hardware/test": route("POST /api/settings/hardware/test", "settings", "settings.hardware.test", roleAdmin),
+	"POST /api/remote/diagnostics":     route("POST /api/remote/diagnostics", "remote", "remote.diagnostics.run", roleAdmin),
 	"POST /api/remote/wan":             route("POST /api/remote/wan", "remote", "remote.wan.lookup", roleAdmin),
 
 	"GET /api/media-sources/{id}/stream":                     route("GET /api/media-sources/{id}/stream", "media", "media.stream", roleAdmin, roleStandard),

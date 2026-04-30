@@ -1233,6 +1233,16 @@ async function renderRemote() {
       <div class="card"><h2>LAN addresses</h2>${payload.lanAddresses.length ? `<div class="mini-list">${payload.lanAddresses.map(url => `<a href="${url}" target="_blank"><strong>${escapeHTML(url)}</strong><span>Reachable inside your network if firewall allows it</span></a>`).join("")}</div>` : empty("No LAN address detected.")}</div>
       <div class="card"><h2>WAN address</h2><pre id="wanResult">Not checked. Click Detect WAN IP to call an external IP service.</pre></div>
     </div>
+    <div class="card remote-diagnostics">
+      <div class="panel-title"><strong>Remote Diagnostics</strong><span class="badge route">No relay required</span></div>
+      <form class="remote-diagnostics-form" onsubmit="runRemoteDiagnostics(event)">
+        <label><span>Remote URL</span><input name="publicUrl" placeholder="https://media.example.com or https://example.com:8097" autocomplete="off"></label>
+        <label><span>Required Mbps</span><input name="requiredMbps" type="number" min="0" step="1" placeholder="25"></label>
+        <label><span>Measured Mbps</span><input name="measuredMbps" type="number" min="0" step="1" placeholder="Optional"></label>
+        <button class="primary" type="submit">Run diagnostics</button>
+      </form>
+      <div id="remoteDiagnosticResult">${remoteDiagnosticIntro(payload.failureClasses || [])}</div>
+    </div>
     <div class="card"><h2>Recommended paths</h2>
       <div class="remote-options">
         <div><strong>VPN mesh</strong><span>Tailscale, WireGuard, ZeroTier. Lowest operational burden for most users.</span></div>
@@ -1240,6 +1250,47 @@ async function renderRemote() {
         <div><strong>Port forward</strong><span>Works, but users must own firewall, router, and update hygiene.</span></div>
       </div>
     </div>
+  </div>`;
+}
+
+function remoteDiagnosticIntro(classes = []) {
+  return `<div class="remote-result idle">
+    <strong>What Vyrden checks</strong>
+    <span>Route type, DNS, port reachability, TLS certificate health, and whether the connection target is fast enough for the quality you expect.</span>
+    <small>Failure classes: ${classes.map(escapeHTML).join(", ") || "not configured, DNS, firewall/NAT, certificate, throughput"}</small>
+  </div>`;
+}
+
+async function runRemoteDiagnostics(event) {
+  event.preventDefault();
+  const target = document.getElementById("remoteDiagnosticResult");
+  const data = new FormData(event.currentTarget);
+  target.innerHTML = `<div class="remote-result idle"><strong>Running diagnostics...</strong><span>Checking the user-owned route without using a Vyrden relay.</span></div>`;
+  try {
+    const result = await send("/api/remote/diagnostics", {
+      publicUrl: data.get("publicUrl"),
+      requiredMbps: Number(data.get("requiredMbps") || 0),
+      measuredMbps: Number(data.get("measuredMbps") || 0),
+    });
+    target.innerHTML = remoteDiagnosticResult(result);
+  } catch (error) {
+    target.innerHTML = window.VyrdenErrors.renderInlineError(error, "navigate('remote')");
+  }
+}
+
+function remoteDiagnosticResult(result = {}) {
+  const ok = result.failureClass === "ready";
+  const checks = Array.isArray(result.checks) ? result.checks : [];
+  const actions = Array.isArray(result.nextActions) ? result.nextActions : [];
+  const privacy = Array.isArray(result.privacy) ? result.privacy : [];
+  return `<div class="remote-result ${ok ? "ready" : "needs-action"}">
+    <div class="remote-result-head">
+      <div><span>${escapeHTML(result.route || "route unknown")}</span><strong>${escapeHTML(result.summary || "Diagnostics complete")}</strong></div>
+      <span class="badge ${ok ? "good" : "warn"}">${escapeHTML(result.failureClass || "unknown")}</span>
+    </div>
+    <div class="remote-checks">${checks.map(check => `<div class="${escapeAttr(check.status)}"><strong>${escapeHTML(check.name)}</strong><span>${escapeHTML(check.message)}</span></div>`).join("")}</div>
+    <div class="remote-actions"><strong>Next actions</strong>${actions.map(action => `<span>${escapeHTML(action)}</span>`).join("")}</div>
+    <details><summary>Privacy notes</summary>${privacy.map(item => `<span>${escapeHTML(item)}</span>`).join("")}</details>
   </div>`;
 }
 
