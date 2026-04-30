@@ -1,0 +1,20 @@
+{
+  "schema": "vyrden.migration.v1",
+  "source": "jellyfin",
+  "createdAt": "2026-04-30T09:10:00Z",
+  "items": [
+    {
+      "id": "jf-heat",
+      "kind": "movie",
+      "path": "Heat (1995)/Heat.1995.1080p.BluRay.mkv",
+      "externalIds": {
+        "imdb": "tt0113277",
+        "tmdb": "949"
+      },
+      "watched": false,
+      "progressSeconds": 3600,
+      "durationSeconds": 10200,
+      "lastPlayedAt": "2026-04-03T08:30:00Z"
+    }
+  ]
+}

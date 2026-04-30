@@ -25,6 +25,12 @@ Public client bootstrap routes:
 | `PUT /api/metadata/match` | metadata | `metadata.match` | admin |
 | `POST /api/metadata/refresh` | metadata | `metadata.refresh` | admin |
 | `POST /api/metadata/refresh-batch` | metadata | `metadata.refresh.batch` | admin |
+| `GET /api/migrations/formats` | migration | `migration.formats` | admin |
+| `GET /api/migrations/runs` | migration | `migration.runs.list` | admin |
+| `GET /api/migrations/runs/{id}` | migration | `migration.run.read` | admin |
+| `POST /api/migrations/dry-run` | migration | `migration.dry_run` | admin |
+| `POST /api/migrations/import` | migration | `migration.import` | admin |
+| `POST /api/migrations/runs/{id}/rollback` | migration | `migration.rollback` | admin |
 | `GET /api/client/home` | client | `client.home` | admin, standard |
 | `GET /api/client/movies/{id}` | client | `client.movie.detail` | admin, standard |
 | `GET /api/client/series/{id}` | client | `client.series.detail` | admin, standard |

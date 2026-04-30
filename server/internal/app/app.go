@@ -19,6 +19,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	"github.com/vyrdenhq/vyrden/server/internal/metadata"
+	"github.com/vyrdenhq/vyrden/server/internal/migration"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
 	"github.com/vyrdenhq/vyrden/server/internal/pairing"
@@ -67,6 +68,7 @@ type Application struct {
 	Sessions  *sessions.Service
 	Downloads *downloads.Service
 	Pairing   *pairing.Service
+	Migration *migration.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -202,6 +204,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Sessions:  sessionService,
 		Downloads: downloadService,
 		Pairing:   pairing.NewService(),
+		Migration: migration.NewService(databaseService, bus),
 	}, nil
 }
 

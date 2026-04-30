@@ -1,0 +1,42 @@
+{
+  "schema": "vyrden.migration.v1",
+  "source": "plex",
+  "createdAt": "2026-04-30T09:00:00Z",
+  "items": [
+    {
+      "id": "plex-heat",
+      "kind": "movie",
+      "title": "Heat",
+      "year": 1995,
+      "externalIds": {
+        "imdb": "tt0113277",
+        "tmdb": "949"
+      },
+      "watched": true,
+      "progressSeconds": 10200,
+      "durationSeconds": 10200,
+      "lastPlayedAt": "2026-04-01T10:00:00Z"
+    },
+    {
+      "id": "plex-bear-s1e1",
+      "kind": "episode",
+      "seriesTitle": "The Bear",
+      "seasonNumber": 1,
+      "episodeNumber": 1,
+      "externalIds": {
+        "tvdb": "411211"
+      },
+      "progressSeconds": 1500,
+      "durationSeconds": 1800,
+      "lastPlayedAt": "2026-04-02T10:00:00Z"
+    },
+    {
+      "id": "plex-missing",
+      "kind": "movie",
+      "title": "Missing Movie",
+      "year": 2001,
+      "watched": true,
+      "durationSeconds": 7200
+    }
+  ]
+}
