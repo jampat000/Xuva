@@ -45,6 +45,10 @@ var routePolicies = map[string]routePolicy{
 	"POST /api/remote/wan":             route("POST /api/remote/wan", "remote", "remote.wan.lookup", roleAdmin),
 
 	"GET /api/media-sources/{id}/stream":                     route("GET /api/media-sources/{id}/stream", "media", "media.stream", roleAdmin, roleStandard),
+	"GET /api/media-sources/{id}/adaptive/master.m3u8":       route("GET /api/media-sources/{id}/adaptive/master.m3u8", "media", "media.adaptive.master", roleAdmin, roleStandard),
+	"GET /api/media-sources/{id}/adaptive/{variant}":         route("GET /api/media-sources/{id}/adaptive/{variant}", "media", "media.adaptive.variant", roleAdmin, roleStandard),
+	"POST /api/media-sources/{id}/adaptive/session":          route("POST /api/media-sources/{id}/adaptive/session", "media", "media.adaptive.session", roleAdmin, roleStandard),
+	"POST /api/adaptive/telemetry":                           route("POST /api/adaptive/telemetry", "media", "media.adaptive.telemetry", roleAdmin, roleStandard),
 	"POST /api/media-sources/{id}/stream-token":              route("POST /api/media-sources/{id}/stream-token", "media", "media.stream.token", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}/subtitles/{index}":          route("GET /api/media-sources/{id}/subtitles/{index}", "media", "media.subtitle.stream", roleAdmin, roleStandard),
 	"POST /api/media-sources/{id}/subtitles/{index}/convert": route("POST /api/media-sources/{id}/subtitles/{index}/convert", "media", "media.subtitle.convert", roleAdmin, roleStandard),

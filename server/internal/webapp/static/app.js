@@ -544,7 +544,7 @@ function policyAllowsDecision(policy = {}, decision = {}) {
   if (!mode || mode === "direct play" || mode === "decision deferred") return true;
   const id = policy.id || "original_only";
   if (id === "light") return mode === "remux" || mode === "audio transcode";
-  if (id === "full" || id === "cinema") return ["remux", "audio transcode", "video transcode", "subtitle burn"].includes(mode);
+  if (id === "full" || id === "cinema") return ["remux", "audio transcode", "adaptive stream", "video transcode", "subtitle burn"].includes(mode);
   return false;
 }
 
@@ -874,6 +874,7 @@ function serverImpact(decision = {}) {
   if (window.VyrdenPlayback) return window.VyrdenPlayback.serverImpact(decision);
   if (decision.mode === "Subtitle Burn" || decision.mode === "Video Transcode") return "Video conversion needed";
   if (decision.mode === "Audio Transcode") return "Audio conversion needed";
+  if (decision.mode === "Adaptive Stream") return "Adaptive remote stream";
   if (decision.mode === "Remux") return "Live repackage";
   if (decision.mode === "Direct Play") return "Low impact route";
   return "Decision pending";
@@ -884,6 +885,7 @@ function playbackReadinessLabel(decision = {}) {
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "Ready to play";
   if (mode === "remux") return "Repackage while playing";
+  if (mode === "adaptive stream") return "Adaptive stream";
   if (mode === "audio transcode") return "Audio conversion";
   if (mode === "video transcode") return "Video conversion";
   if (mode === "subtitle burn") return "Subtitle conversion";
@@ -897,6 +899,7 @@ function playbackEffortLabel(decision = {}, hardware = {}) {
   const mode = String(decision.mode || "").toLowerCase();
   if (mode === "direct play") return "No extra work";
   if (mode === "remux") return "Low PC load";
+  if (mode === "adaptive stream") return hardware.available ? "Adaptive GPU route" : "Adaptive CPU route";
   if (mode === "audio transcode") return "Light PC load";
   if (mode === "video transcode" || mode === "subtitle burn") {
     if (hardware.unlockState === "unlocked" && hardware.configured) return "GPU conversion";
@@ -939,6 +942,8 @@ function playbackActionLabel(value = "") {
     direct_play: "Ready",
     copy: "No conversion",
     remux: "Live repackage",
+    adaptive: "Adaptive stream",
+    adaptive_hls: "Adaptive HLS",
     transcode: "Convert",
     burn_in: "Burn subtitles",
     selected_source: "Selected source",

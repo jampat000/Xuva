@@ -54,7 +54,7 @@ The engine evaluates in this stable order:
 1. Missing media source or media check required.
 2. Incomplete probe facts.
 3. Subtitle burn-in requirement.
-4. Network bitrate constraint.
+4. Network bitrate constraint, preferring adaptive stream when the client and route support it.
 5. Direct play.
 6. Audio conversion with compatible video.
 7. Container remux with compatible video.
@@ -68,6 +68,7 @@ This order prevents ambiguous mixed outcomes from changing between runs.
 - `probe_required`
 - `media_facts_incomplete`
 - `subtitle_burn_required`
+- `adaptive_remote_route`
 - `network_bitrate_limit`
 - `direct_play_supported`
 - `audio_conversion_required`

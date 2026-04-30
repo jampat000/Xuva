@@ -33,6 +33,21 @@ test("video conversion forecast explains impact without saying the file cannot p
   assert.doesNotMatch(playback.playbackReason(decision), /cannot use this file/);
 });
 
+test("adaptive stream forecast explains remote resilience", () => {
+  const decision = {
+    mode: "Adaptive Stream",
+    reason: "The selected network is below the source bitrate, so Vyrden can use adaptive streaming to step quality down before playback stalls.",
+    estimatedCpuCost: "medium",
+    videoAction: "adaptive",
+    containerAction: "adaptive_hls",
+  };
+
+  assert.equal(playback.playbackReadinessLabel(decision), "Adaptive stream");
+  assert.equal(playback.playbackActionLabel(decision.videoAction), "Adaptive stream");
+  assert.equal(playback.playbackActionLabel(decision.containerAction), "Adaptive HLS");
+  assert.match(playback.playbackSummary(decision), /step down before buffering stalls/);
+});
+
 test("inspector facts escape source and track data", () => {
   const html = playback.renderInspectorFacts({
     source: { probed: true, container: "<mkv>", videoCodec: "h264", bitrate: 1000, audioStreams: 1, subtitleStreams: 2 },

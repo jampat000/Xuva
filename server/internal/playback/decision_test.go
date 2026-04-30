@@ -264,6 +264,37 @@ func TestDecideSourceNetworkLimitChoosesVideoTranscode(t *testing.T) {
 	}
 }
 
+func TestDecideSourceNetworkLimitChoosesAdaptiveWhenSupported(t *testing.T) {
+	decision := NewService().DecideSource(context.Background(), Request{
+		MediaSourceID:     "source-1",
+		ClientProfile:     "web",
+		MaxNetworkBitrate: 10_000_000,
+		RouteType:         "remote",
+		SupportsAdaptive:  true,
+		Containers:        []string{"mp4", "webm"},
+		VideoCodecs:       []string{"h264", "vp9"},
+		AudioCodecs:       []string{"aac"},
+		SubtitleCodecs:    []string{"webvtt"},
+	}, SourceFacts{
+		MediaSourceID: "source-1",
+		Container:     "matroska",
+		VideoCodec:    "hevc",
+		Width:         3840,
+		Height:        2160,
+		AudioCodec:    "aac",
+		AudioChannels: 2,
+		Bitrate:       61_000_000,
+		Probed:        true,
+	})
+
+	if decision.Mode != AdaptiveStream {
+		t.Fatalf("expected adaptive stream, got %#v", decision)
+	}
+	if decision.ReasonCode != "adaptive_remote_route" || decision.VideoAction != "adaptive" {
+		t.Fatalf("expected adaptive reason/action, got %#v", decision)
+	}
+}
+
 func TestDecideSourceIncompleteProbeFailsGracefully(t *testing.T) {
 	decision := NewService().DecideSource(context.Background(), Request{
 		MediaSourceID: "source-1",

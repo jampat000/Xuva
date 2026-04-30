@@ -76,4 +76,4 @@ Throughput failure:
 
 1. Route is reachable but measured bandwidth is lower than required.
 2. Vyrden returns `throughput`.
-3. User lowers remote quality or uses optimized versions until adaptive streaming is available.
+3. User lowers remote quality, uses adaptive streaming, or creates an optimized version.

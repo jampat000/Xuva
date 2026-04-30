@@ -21,15 +21,21 @@ Public routes remain readable without an authenticated session unless a later se
 | `POST /api/settings/hardware/test` | settings | `settings.hardware.test` | admin |
 | `POST /api/remote/wan` | remote | `remote.wan.lookup` | admin |
 | `GET /api/media-sources/{id}/stream` | media | `media.stream` | admin, standard |
+| `GET /api/media-sources/{id}/adaptive/master.m3u8` | media | `media.adaptive.master` | admin, standard |
+| `GET /api/media-sources/{id}/adaptive/{variant}` | media | `media.adaptive.variant` | admin, standard |
+| `POST /api/media-sources/{id}/adaptive/session` | media | `media.adaptive.session` | admin, standard |
+| `POST /api/adaptive/telemetry` | media | `media.adaptive.telemetry` | admin, standard |
 | `POST /api/media-sources/{id}/stream-token` | media | `media.stream.token` | admin, standard |
 | `GET /api/media-sources/{id}/subtitles/{index}` | media | `media.subtitle.stream` | admin, standard |
 | `POST /api/media-sources/{id}/probe` | media | `media.probe` | admin |
 | `POST /api/probes` | media | `probe.start` | admin |
 | `POST /api/work` | work | `work.start` | admin |
+| `DELETE /api/work/{id}` | work | `work.cancel` | admin |
 | `GET /api/work/{id}/file` | work | `work.file` | admin, standard |
 | `POST /api/downloads` | downloads | `download.start` | admin |
 | `GET /api/downloads/{id}/file` | downloads | `download.file` | admin, standard |
 | `GET /api/sessions` | sessions | `sessions.list` | admin, standard |
+| `GET /api/sessions/{id}/inspector` | sessions | `sessions.inspector` | admin, standard |
 | `POST /api/sessions` | sessions | `session.start` | admin, standard |
 | `PATCH /api/sessions/{id}` | sessions | `session.update` | admin, standard |
 | `DELETE /api/sessions/{id}` | sessions | `session.stop` | admin, standard |

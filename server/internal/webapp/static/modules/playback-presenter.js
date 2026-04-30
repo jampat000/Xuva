@@ -10,6 +10,7 @@
   function serverImpact(decision = {}) {
     if (decision.mode === "Subtitle Burn" || decision.mode === "Video Transcode") return "Video conversion needed";
     if (decision.mode === "Audio Transcode") return "Audio conversion needed";
+    if (decision.mode === "Adaptive Stream") return "Adaptive remote stream";
     if (decision.mode === "Remux") return "Live repackage";
     if (decision.mode === "Direct Play") return "Low impact route";
     return "Decision pending";
@@ -19,6 +20,7 @@
     const mode = String(decision.mode || "").toLowerCase();
     if (mode === "direct play") return "Ready to play";
     if (mode === "remux") return "Repackage while playing";
+    if (mode === "adaptive stream") return "Adaptive stream";
     if (mode === "audio transcode") return "Audio conversion";
     if (mode === "video transcode") return "Video conversion";
     if (mode === "subtitle burn") return "Subtitle conversion";
@@ -31,6 +33,7 @@
     const mode = String(decision.mode || "").toLowerCase();
     if (mode === "direct play") return "No extra work";
     if (mode === "remux") return "Low PC load";
+    if (mode === "adaptive stream") return hardware.available ? "Adaptive GPU route" : "Adaptive CPU route";
     if (mode === "audio transcode") return "Light PC load";
     if (mode === "video transcode" || mode === "subtitle burn") {
       if (hardware.unlockState === "unlocked" && hardware.configured) return "GPU conversion";
@@ -59,6 +62,8 @@
       direct_play: "Ready",
       copy: "No conversion",
       remux: "Live repackage",
+      adaptive: "Adaptive stream",
+      adaptive_hls: "Adaptive HLS",
       transcode: "Convert",
       burn_in: "Burn subtitles",
       selected_source: "Selected source",
@@ -82,8 +87,10 @@
       if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
       if (mode === "audio transcode") return "The video can stay intact, but Vyrden may convert audio for this player. This is usually a light PC load.";
       if (mode === "remux") return "The streams can stay intact, but Vyrden may repackage the file while playing for this device. This is temporary and usually low impact.";
+      if (mode === "adaptive stream") return "This file can still play through an adaptive remote stream. Vyrden can lower quality during weak network moments instead of hard buffering.";
       return "This file can still play, but Vyrden may need to prepare it before or during playback for this player profile.";
     }
+    if (reason.includes("adaptive streaming")) return "Vyrden can use adaptive streaming so remote playback can step quality down before stalls.";
     return reason;
   }
 
@@ -100,6 +107,7 @@
         : "This source can play with video conversion, but it will use more CPU.";
     }
     if (mode === "remux") return "This source can play after a live container repack with no quality loss.";
+    if (mode === "adaptive stream") return "This source can use adaptive streaming so remote quality can step down before buffering stalls.";
     if (mode === "audio transcode") return "This source can play with lightweight audio conversion.";
     return playbackReason(decision, hardware);
   }

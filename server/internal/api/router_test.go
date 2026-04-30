@@ -618,6 +618,76 @@ func TestRemoteDiagnosticsEndpointRejectsSensitiveURLParts(t *testing.T) {
 	}
 }
 
+func TestAdaptiveStreamingPlanManifestAndTelemetry(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Big Movie (2026)", "Big.Movie.2026.2160p.mkv"))
+
+	deps := testDeps(t, time.Now())
+	deps.Config.PlaybackPolicy = "full"
+	router := NewRouter(deps)
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	sources := getJSON(t, router, "/api/media-sources")
+	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+	if err := deps.Catalog.SaveProbe(context.Background(), sourceID, catalog.ProbeResult{
+		Container:       "matroska",
+		DurationSeconds: 7200,
+		Bitrate:         61_000_000,
+		VideoCodec:      "hevc",
+		Width:           3840,
+		Height:          2160,
+		AudioStreams:    1,
+		RawJSON:         `{"streams":[]}`,
+	}); err != nil {
+		t.Fatalf("save probe: %v", err)
+	}
+
+	decision := getJSON(t, router, "/api/playback/decision?mediaSourceId="+sourceID+"&clientProfile=web&routeType=remote&maxNetworkBitrate=10000000")
+	if decision["mode"] != string(playback.AdaptiveStream) {
+		t.Fatalf("expected adaptive decision, got %#v", decision)
+	}
+	route := getJSON(t, router, "/api/playback/route?mediaSourceId="+sourceID+"&clientProfile=web&routeType=remote&maxNetworkBitrate=10000000")
+	if route["route"] != "adaptive" || route["manifestUrl"] == "" {
+		t.Fatalf("expected adaptive route, got %#v", route)
+	}
+	session := postJSON(t, router, "/api/media-sources/"+sourceID+"/adaptive/session", map[string]any{
+		"clientProfile":     "web",
+		"routeType":         "remote",
+		"maxNetworkBitrate": 10_000_000,
+	})
+	plan := session["plan"].(map[string]any)
+	if plan["enabled"] != true {
+		t.Fatalf("expected enabled adaptive plan, got %#v", session)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/media-sources/"+sourceID+"/adaptive/master.m3u8?clientProfile=web&routeType=remote&maxNetworkBitrate=10000000", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "#EXT-X-STREAM-INF") {
+		t.Fatalf("expected hls master playlist, got %d: %s", response.Code, response.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/media-sources/"+sourceID+"/adaptive/variant-720p.m3u8?clientProfile=web&routeType=remote&maxNetworkBitrate=10000000", nil)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "#EXT-X-TARGETDURATION") {
+		t.Fatalf("expected hls variant playlist, got %d: %s", response.Code, response.Body.String())
+	}
+
+	telemetry := requestJSON(t, router, http.MethodPost, "/api/adaptive/telemetry", map[string]any{
+		"sessionId":       "sess_1",
+		"mediaSourceId":   sourceID,
+		"clientProfile":   "web",
+		"event":           "stall",
+		"variantId":       "720p",
+		"bufferSeconds":   0.4,
+		"stallMs":         1200,
+		"observedBitrate": 3_800_000,
+	})
+	if telemetry["event"] != "adaptive.stall" || telemetry["correlationId"] == "" {
+		t.Fatalf("expected correlated adaptive telemetry, got %#v", telemetry)
+	}
+}
+
 func TestAuthProtectedRouteRequiresSession(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)

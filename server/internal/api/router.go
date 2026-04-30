@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vyrdenhq/vyrden/server/internal/adaptive"
 	"github.com/vyrdenhq/vyrden/server/internal/auth"
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
 	"github.com/vyrdenhq/vyrden/server/internal/config"
@@ -112,6 +113,9 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/remote/wan", wanAddressHandler(deps))
 	mux.HandleFunc("GET /api/media-sources", mediaSourcesHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/adaptive/master.m3u8", adaptiveMasterHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/adaptive/{variant}", adaptiveVariantHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/adaptive/session", adaptiveSessionHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/stream-token", mediaSourceStreamTokenHandler(deps))
 	mux.HandleFunc("GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
@@ -139,6 +143,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/playback/recent", playbackRecentHandler(deps))
 	mux.HandleFunc("GET /api/playback/state/{id}", playbackStateGetHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/playback/state/{id}", playbackStateSetHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/adaptive/telemetry", adaptiveTelemetryHandler(deps))
 	mux.HandleFunc("GET /api/scans", scansHandler(deps))
 	mux.HandleFunc("GET /api/scans/{id}", scanJobHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/libraries/movies/scan", movieScanHandler(deps))
@@ -1244,7 +1249,7 @@ func playbackPolicyAllows(policy string, decision playback.Decision) bool {
 	case "light":
 		return decision.Mode == playback.Remux || decision.Mode == playback.AudioTranscode
 	case "full", "cinema":
-		return decision.Mode == playback.Remux || decision.Mode == playback.AudioTranscode || decision.Mode == playback.VideoTranscode || decision.Mode == playback.SubtitleBurn
+		return decision.Mode == playback.Remux || decision.Mode == playback.AudioTranscode || decision.Mode == playback.AdaptiveStream || decision.Mode == playback.VideoTranscode || decision.Mode == playback.SubtitleBurn
 	default:
 		return false
 	}
@@ -3099,6 +3104,106 @@ func scanJobHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func adaptiveSessionHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		source, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		var payload struct {
+			ClientProfile     string `json:"clientProfile"`
+			RouteType         string `json:"routeType"`
+			MaxNetworkBitrate int64  `json:"maxNetworkBitrate"`
+		}
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		plan := adaptivePlanForSource(deps, source, payload.ClientProfile, payload.RouteType, payload.MaxNetworkBitrate)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"plan":        plan,
+			"manifestUrl": "/api/media-sources/" + source.ID + "/adaptive/master.m3u8?clientProfile=" + url.QueryEscape(firstNonEmpty(payload.ClientProfile, "web")) + "&routeType=" + url.QueryEscape(payload.RouteType) + "&maxNetworkBitrate=" + fmt.Sprintf("%d", payload.MaxNetworkBitrate),
+		})
+	}
+}
+
+func adaptiveMasterHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		source, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		plan := adaptivePlanForSource(deps, source, r.URL.Query().Get("clientProfile"), r.URL.Query().Get("routeType"), queryInt64(r, "maxNetworkBitrate", 0))
+		if !plan.Enabled {
+			writeError(w, http.StatusPreconditionFailed, plan.Reason)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		_, _ = w.Write([]byte(adaptive.MasterPlaylist(plan)))
+	}
+}
+
+func adaptiveVariantHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		source, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		variantID, validVariant := adaptiveVariantID(r.PathValue("variant"))
+		if !validVariant {
+			writeError(w, http.StatusNotFound, "adaptive variant not found")
+			return
+		}
+		plan := adaptivePlanForSource(deps, source, r.URL.Query().Get("clientProfile"), r.URL.Query().Get("routeType"), queryInt64(r, "maxNetworkBitrate", 0))
+		playlist, ok := adaptive.MediaPlaylist(plan, variantID)
+		if !plan.Enabled || !ok {
+			writeError(w, http.StatusPreconditionFailed, "adaptive variant is not available")
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		_, _ = w.Write([]byte(playlist))
+	}
+}
+
+func adaptiveTelemetryHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload adaptive.Telemetry
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		event := adaptive.NormalizeTelemetry(payload, observability.CorrelationID(r.Context()))
+		if deps.Events != nil {
+			deps.Events.Publish(event.Event, map[string]any{
+				"sessionId":         event.SessionID,
+				"mediaSourceId":     event.MediaSourceID,
+				"clientProfile":     event.ClientProfile,
+				"variantId":         event.VariantID,
+				"previousVariantId": event.PreviousVariant,
+				"bufferSeconds":     event.BufferSeconds,
+				"stallMs":           event.StallMS,
+				"observedBitrate":   event.ObservedBitrate,
+				"correlationId":     event.CorrelationID,
+				"createdAt":         event.CreatedAt,
+			})
+		}
+		writeJSON(w, http.StatusAccepted, event)
+	}
+}
+
 func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := playback.Request{
@@ -3114,6 +3219,7 @@ func playbackDecisionHandler(deps Deps) http.HandlerFunc {
 			SubtitleCodec:       r.URL.Query().Get("subtitleCodec"),
 			SubtitleMode:        r.URL.Query().Get("subtitleMode"),
 			SubtitleTrackActive: r.URL.Query().Get("subtitleTrackActive") == "true",
+			SupportsAdaptive:    r.URL.Query().Get("supportsAdaptive") == "true",
 		}
 		request = applyClientProfile(deps, request)
 		decision := deps.Playback.Decide(r.Context(), request)
@@ -3196,6 +3302,20 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
+		if decision.Mode == playback.AdaptiveStream {
+			plan := adaptivePlanForSource(deps, item, r.URL.Query().Get("clientProfile"), firstNonEmpty(r.URL.Query().Get("routeType"), "remote"), queryInt64(r, "maxNetworkBitrate", 0))
+			if plan.Enabled {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"route":       "adaptive",
+					"status":      "ready",
+					"protocol":    plan.Protocol,
+					"manifestUrl": "/api/media-sources/" + mediaSourceID + "/adaptive/master.m3u8?clientProfile=" + url.QueryEscape(firstNonEmpty(r.URL.Query().Get("clientProfile"), "web")) + "&routeType=" + url.QueryEscape(firstNonEmpty(r.URL.Query().Get("routeType"), "remote")) + "&maxNetworkBitrate=" + fmt.Sprintf("%d", queryInt64(r, "maxNetworkBitrate", 0)),
+					"plan":        plan,
+					"decision":    decision,
+				})
+				return
+			}
+		}
 		mode := transcode.ModeTranscode
 		if decision.Mode == playback.Remux {
 			mode = transcode.ModeRemux
@@ -3254,9 +3374,37 @@ func playbackDecisionForSource(ctx context.Context, deps Deps, r *http.Request, 
 		SubtitleCodec:       r.URL.Query().Get("subtitleCodec"),
 		SubtitleMode:        r.URL.Query().Get("subtitleMode"),
 		SubtitleTrackActive: r.URL.Query().Get("subtitleTrackActive") == "true",
+		SupportsAdaptive:    r.URL.Query().Get("supportsAdaptive") == "true",
 	}
 	request = applyClientProfile(deps, request)
 	return deps.Playback.DecideSource(ctx, request, playbackSourceFacts(ctx, deps, request, source))
+}
+
+func adaptivePlanForSource(deps Deps, source catalog.MediaSourceItem, clientProfile string, routeType string, maxNetworkBitrate int64) adaptive.Plan {
+	profileID := firstNonEmpty(clientProfile, "web")
+	profile, ok := deps.Devices.GetProfile(profileID)
+	supportsHLS := ok && profile.SupportsHLS
+	return adaptive.BuildPlan(adaptive.Request{
+		MediaSourceID:     source.ID,
+		ClientProfile:     profileID,
+		RouteType:         routeType,
+		SourceBitrate:     source.Bitrate,
+		MaxNetworkBitrate: maxNetworkBitrate,
+		Width:             source.Width,
+		Height:            source.Height,
+		SupportsHLS:       supportsHLS,
+	})
+}
+
+func adaptiveVariantID(segment string) (string, bool) {
+	if !strings.HasPrefix(segment, "variant-") || !strings.HasSuffix(segment, ".m3u8") {
+		return "", false
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(segment, "variant-"), ".m3u8")
+	if id == "" || strings.ContainsAny(id, `/\`) {
+		return "", false
+	}
+	return id, true
 }
 
 func applyClientProfile(deps Deps, request playback.Request) playback.Request {
@@ -3269,6 +3417,7 @@ func applyClientProfile(deps Deps, request playback.Request) playback.Request {
 	request.VideoCodecs = profile.VideoCodecs
 	request.AudioCodecs = profile.AudioCodecs
 	request.SubtitleCodecs = profile.SubtitleCodecs
+	request.SupportsAdaptive = request.SupportsAdaptive || profile.SupportsHLS
 	return request
 }
 
