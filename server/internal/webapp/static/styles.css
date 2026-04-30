@@ -782,6 +782,39 @@ a:focus-visible {
 }
 .panel.pad,
 .card { padding: var(--panel-pad); min-width: 0; }
+
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--shell-gap);
+  padding: calc(var(--panel-pad) * 1.35);
+}
+
+.error-boundary h2 {
+  margin: 0 0 8px;
+  font-size: var(--h2-font);
+}
+
+.error-boundary p,
+.error-boundary small {
+  margin: 0;
+  color: var(--soft);
+}
+
+.inline-error {
+  display: grid;
+  gap: 8px;
+  padding: var(--panel-pad);
+  border: 1px solid rgba(187, 102, 93, 0.42);
+  border-radius: 8px;
+  background: rgba(187, 102, 93, 0.08);
+}
+
+.inline-error span {
+  color: var(--soft);
+}
+
 .panel-title {
   display: flex;
   align-items: center;
