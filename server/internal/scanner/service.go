@@ -21,9 +21,11 @@ const (
 var ErrMissingRoot = errors.New("scan root is required")
 
 type Request struct {
-	Kind          LibraryKind    `json:"kind"`
-	Root          string         `json:"root"`
-	IncludeHidden bool           `json:"includeHidden"`
+	Kind          LibraryKind `json:"kind"`
+	Root          string      `json:"root"`
+	IncludeHidden bool        `json:"includeHidden"`
+	KnownFiles    map[string]FileSignature
+	SkipUnchanged bool           `json:"skipUnchanged"`
 	Progress      func(Progress) `json:"-"`
 }
 
@@ -32,8 +34,15 @@ type Progress struct {
 	Root         string      `json:"root"`
 	TotalFiles   int         `json:"totalFiles"`
 	MediaFiles   int         `json:"mediaFiles"`
+	ChangedFiles int         `json:"changedFiles"`
+	Unchanged    int         `json:"unchangedFiles"`
 	IgnoredFiles int         `json:"ignoredFiles"`
 	LastPath     string      `json:"lastPath,omitempty"`
+}
+
+type FileSignature struct {
+	Size       int64     `json:"size"`
+	ModifiedAt time.Time `json:"modifiedAt"`
 }
 
 type FileCandidate struct {
@@ -43,6 +52,7 @@ type FileCandidate struct {
 	Extension  string    `json:"extension"`
 	Size       int64     `json:"size"`
 	ModifiedAt time.Time `json:"modifiedAt"`
+	Changed    bool      `json:"changed"`
 }
 
 type ScanError struct {
@@ -58,6 +68,8 @@ type Summary struct {
 	DurationMS   int64          `json:"durationMs"`
 	TotalFiles   int            `json:"totalFiles"`
 	MediaFiles   int            `json:"mediaFiles"`
+	ChangedFiles int            `json:"changedFiles"`
+	Unchanged    int            `json:"unchangedFiles"`
 	IgnoredFiles int            `json:"ignoredFiles"`
 	ErrorCount   int            `json:"errorCount"`
 	Extensions   map[string]int `json:"extensions"`
@@ -65,8 +77,9 @@ type Summary struct {
 
 type Result struct {
 	Summary
-	Files  []FileCandidate `json:"files"`
-	Errors []ScanError     `json:"errors,omitempty"`
+	Files        []FileCandidate `json:"files"`
+	SeenRelPaths []string        `json:"seenRelPaths,omitempty"`
+	Errors       []ScanError     `json:"errors,omitempty"`
 }
 
 type Service struct {
@@ -162,6 +175,31 @@ func (s *Service) Scan(ctx context.Context, request Request) (Result, error) {
 
 		result.MediaFiles++
 		result.Extensions[extension]++
+		changed := true
+		if known, ok := request.KnownFiles[relPath]; ok {
+			changed = known.Size != info.Size() || !known.ModifiedAt.Equal(info.ModTime().UTC())
+		}
+		if changed {
+			result.ChangedFiles++
+		} else {
+			result.Unchanged++
+		}
+		result.SeenRelPaths = append(result.SeenRelPaths, relPath)
+		if !changed && request.SkipUnchanged {
+			if request.Progress != nil {
+				request.Progress(Progress{
+					Kind:         request.Kind,
+					Root:         absoluteRoot,
+					TotalFiles:   result.TotalFiles,
+					MediaFiles:   result.MediaFiles,
+					ChangedFiles: result.ChangedFiles,
+					Unchanged:    result.Unchanged,
+					IgnoredFiles: result.IgnoredFiles,
+					LastPath:     relPath,
+				})
+			}
+			return nil
+		}
 		candidate := FileCandidate{
 			Path:       path,
 			RelPath:    relPath,
@@ -169,6 +207,7 @@ func (s *Service) Scan(ctx context.Context, request Request) (Result, error) {
 			Extension:  extension,
 			Size:       info.Size(),
 			ModifiedAt: info.ModTime().UTC(),
+			Changed:    changed,
 		}
 		result.Files = append(result.Files, candidate)
 		if request.Progress != nil {
@@ -177,6 +216,8 @@ func (s *Service) Scan(ctx context.Context, request Request) (Result, error) {
 				Root:         absoluteRoot,
 				TotalFiles:   result.TotalFiles,
 				MediaFiles:   result.MediaFiles,
+				ChangedFiles: result.ChangedFiles,
+				Unchanged:    result.Unchanged,
 				IgnoredFiles: result.IgnoredFiles,
 				LastPath:     candidate.RelPath,
 			})
@@ -189,6 +230,9 @@ func (s *Service) Scan(ctx context.Context, request Request) (Result, error) {
 	}
 
 	sort.Slice(result.Files, func(i, j int) bool {
+		if result.Files[i].Changed != result.Files[j].Changed {
+			return result.Files[i].Changed
+		}
 		return result.Files[i].RelPath < result.Files[j].RelPath
 	})
 	result.finish(startedAt)

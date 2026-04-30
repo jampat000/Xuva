@@ -123,19 +123,23 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	_ = config.SaveFile(cfg.DataDir, cfg)
 	_ = ensureRuntimeDirs(cfg)
 	_ = catalogService.SaveSettings(ctx, catalog.RuntimeSettings{
-		HTTPAddr:         cfg.HTTPAddr,
-		DataDir:          cfg.DataDir,
-		TranscodeDir:     cfg.TranscodeDir,
-		DownloadsDir:     cfg.DownloadsDir,
-		MetadataDir:      cfg.MetadataDir,
-		CacheDir:         cfg.CacheDir,
-		TempDir:          cfg.TempDir,
-		FFmpegPath:       cfg.FFmpegPath,
-		FFprobePath:      cfg.FFprobePath,
-		ScanWorkers:      cfg.ScanWorkers,
-		ProbeWorkers:     cfg.ProbeWorkers,
-		TranscodeWorkers: cfg.TranscodeWorkers,
-		GPUWorkers:       cfg.GPUWorkers,
+		HTTPAddr:          cfg.HTTPAddr,
+		DataDir:           cfg.DataDir,
+		TranscodeDir:      cfg.TranscodeDir,
+		DownloadsDir:      cfg.DownloadsDir,
+		MetadataDir:       cfg.MetadataDir,
+		CacheDir:          cfg.CacheDir,
+		TempDir:           cfg.TempDir,
+		FFmpegPath:        cfg.FFmpegPath,
+		FFprobePath:       cfg.FFprobePath,
+		ScanWorkers:       cfg.ScanWorkers,
+		ProbeWorkers:      cfg.ProbeWorkers,
+		TranscodeWorkers:  cfg.TranscodeWorkers,
+		GPUWorkers:        cfg.GPUWorkers,
+		LibrarySyncMode:   cfg.LibrarySyncMode,
+		SyncIntervalMins:  cfg.SyncIntervalMins,
+		WatchDebounceSecs: cfg.WatchDebounceSecs,
+		ProbeBatchLimit:   cfg.ProbeBatchLimit,
 	})
 
 	jobRegistry := jobs.NewRegistry(manager)
@@ -228,7 +232,15 @@ func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.
 		return
 	}
 	interval := time.Duration(cfg.SyncIntervalMins) * time.Minute
-	if interval < 15*time.Minute {
+	if cfg.LibrarySyncMode == "watch" {
+		interval = time.Duration(cfg.WatchDebounceSecs) * time.Second
+		if interval < 5*time.Second {
+			interval = 5 * time.Second
+		}
+		if interval > 5*time.Minute {
+			interval = 5 * time.Minute
+		}
+	} else if interval < 15*time.Minute {
 		interval = 15 * time.Minute
 	}
 	probeLimit := cfg.ProbeBatchLimit

@@ -207,6 +207,43 @@ func TestSaveTVScanKeepsUnmatchedEpisodesSeparate(t *testing.T) {
 	}
 }
 
+func TestSaveMovieScanPersistsIncrementalState(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+	file := fileCandidate(`X:\Movies\Heat (1995)\Heat.1995.1080p.mkv`, "Heat (1995)/Heat.1995.1080p.mkv")
+	result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+	candidates := []movies.Candidate{{Title: "Heat", Year: 1995, QualityLabel: "1080p", Media: file}}
+	persisted, err := service.SaveMovieScan(ctx, library, result, candidates)
+	if err != nil {
+		t.Fatalf("save movie scan: %v", err)
+	}
+	if persisted.ChangedSources != 1 || persisted.UnchangedSources != 0 {
+		t.Fatalf("expected changed source count, got %#v", persisted)
+	}
+	state, err := service.ScanState(ctx, library.ID)
+	if err != nil {
+		t.Fatalf("scan state: %v", err)
+	}
+	signature, ok := state[file.RelPath]
+	if !ok {
+		t.Fatalf("expected scan state for %q, got %#v", file.RelPath, state)
+	}
+	if signature.Size != file.Size || !signature.ModifiedAt.Equal(file.ModifiedAt) {
+		t.Fatalf("unexpected signature: %#v", signature)
+	}
+	file.Changed = false
+	result = scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+	candidates[0].Media = file
+	persisted, err = service.SaveMovieScan(ctx, library, result, candidates)
+	if err != nil {
+		t.Fatalf("save incremental movie scan: %v", err)
+	}
+	if persisted.ChangedSources != 0 || persisted.UnchangedSources != 1 {
+		t.Fatalf("expected unchanged source count, got %#v", persisted)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 
@@ -224,18 +261,32 @@ func newTestService(t *testing.T) *Service {
 
 func scanResult(kind scanner.LibraryKind, root string, files []scanner.FileCandidate) scanner.Result {
 	startedAt := time.Now().UTC()
+	seen := make([]string, 0, len(files))
+	changed := 0
+	unchanged := 0
+	for _, file := range files {
+		seen = append(seen, file.RelPath)
+		if file.Changed {
+			changed++
+		} else {
+			unchanged++
+		}
+	}
 	return scanner.Result{
 		Summary: scanner.Summary{
-			Kind:        kind,
-			Root:        root,
-			StartedAt:   startedAt,
-			CompletedAt: startedAt.Add(time.Millisecond),
-			DurationMS:  1,
-			TotalFiles:  len(files),
-			MediaFiles:  len(files),
-			Extensions:  map[string]int{".mkv": len(files)},
+			Kind:         kind,
+			Root:         root,
+			StartedAt:    startedAt,
+			CompletedAt:  startedAt.Add(time.Millisecond),
+			DurationMS:   1,
+			TotalFiles:   len(files),
+			MediaFiles:   len(files),
+			ChangedFiles: changed,
+			Unchanged:    unchanged,
+			Extensions:   map[string]int{".mkv": len(files)},
 		},
-		Files: files,
+		Files:        files,
+		SeenRelPaths: seen,
 	}
 }
 
@@ -247,5 +298,6 @@ func fileCandidate(path string, relPath string) scanner.FileCandidate {
 		Extension:  ".mkv",
 		Size:       1024,
 		ModifiedAt: time.Now().UTC(),
+		Changed:    true,
 	}
 }

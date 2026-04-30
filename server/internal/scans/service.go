@@ -56,6 +56,8 @@ type Job struct {
 	CompletedAt  time.Time      `json:"completedAt,omitempty"`
 	TotalFiles   int            `json:"totalFiles"`
 	MediaFiles   int            `json:"mediaFiles"`
+	ChangedFiles int            `json:"changedFiles"`
+	Unchanged    int            `json:"unchangedFiles"`
 	IgnoredFiles int            `json:"ignoredFiles"`
 	LastPath     string         `json:"lastPath,omitempty"`
 	Error        string         `json:"error,omitempty"`
@@ -227,9 +229,15 @@ func (s *Service) runTV(ctx context.Context, id string, path string) bool {
 }
 
 func (s *Service) runMoviesLibrary(ctx context.Context, id string, library libraries.Library) bool {
+	if library.ID == "" {
+		library.ID = libraries.IDFor(library.Kind, library.Path)
+	}
+	state := s.scanState(ctx, library.ID)
 	result, err := s.scanner.Scan(ctx, scanner.Request{
-		Kind: scanner.KindMovies,
-		Root: library.Path,
+		Kind:          scanner.KindMovies,
+		Root:          library.Path,
+		KnownFiles:    state,
+		SkipUnchanged: len(state) > 0,
 		Progress: func(progress scanner.Progress) {
 			s.updateProgress(id, progress)
 		},
@@ -240,9 +248,6 @@ func (s *Service) runMoviesLibrary(ctx context.Context, id string, library libra
 	}
 	candidates := s.movies.Classify(result.Files)
 	library.Path = result.Root
-	if library.ID == "" {
-		library.ID = libraries.IDFor(library.Kind, library.Path)
-	}
 	if library.Name == "" {
 		library.Name = "Movies"
 	}
@@ -263,9 +268,15 @@ func (s *Service) runMoviesLibrary(ctx context.Context, id string, library libra
 }
 
 func (s *Service) runTVLibrary(ctx context.Context, id string, library libraries.Library) bool {
+	if library.ID == "" {
+		library.ID = libraries.IDFor(library.Kind, library.Path)
+	}
+	state := s.scanState(ctx, library.ID)
 	result, err := s.scanner.Scan(ctx, scanner.Request{
-		Kind: scanner.KindTV,
-		Root: library.Path,
+		Kind:          scanner.KindTV,
+		Root:          library.Path,
+		KnownFiles:    state,
+		SkipUnchanged: len(state) > 0,
 		Progress: func(progress scanner.Progress) {
 			s.updateProgress(id, progress)
 		},
@@ -276,9 +287,6 @@ func (s *Service) runTVLibrary(ctx context.Context, id string, library libraries
 	}
 	candidates := s.tv.Classify(result.Files)
 	library.Path = result.Root
-	if library.ID == "" {
-		library.ID = libraries.IDFor(library.Kind, library.Path)
-	}
 	if library.Name == "" {
 		library.Name = "TV"
 	}
@@ -359,11 +367,24 @@ func (s *Service) updateProgress(id string, progress scanner.Progress) {
 	job := s.jobs[id]
 	job.TotalFiles = progress.TotalFiles
 	job.MediaFiles = progress.MediaFiles
+	job.ChangedFiles = progress.ChangedFiles
+	job.Unchanged = progress.Unchanged
 	job.IgnoredFiles = progress.IgnoredFiles
 	job.LastPath = progress.LastPath
 	s.jobs[id] = job
 	s.mu.Unlock()
 	s.publish("scan.progress", job)
+}
+
+func (s *Service) scanState(ctx context.Context, libraryID string) map[string]scanner.FileSignature {
+	if s.catalog == nil || libraryID == "" {
+		return nil
+	}
+	state, err := s.catalog.ScanState(ctx, libraryID)
+	if err != nil {
+		return nil
+	}
+	return state
 }
 
 func (s *Service) mergeResult(id string, key string, value any) {

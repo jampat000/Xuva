@@ -114,6 +114,8 @@ var migrations = []string{
 		updated_at TEXT NOT NULL
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_media_sources_library_kind ON media_sources(library_id, kind)`,
+	`CREATE INDEX IF NOT EXISTS idx_media_sources_library_rel_path ON media_sources(library_id, rel_path)`,
+	`CREATE INDEX IF NOT EXISTS idx_media_sources_updated ON media_sources(updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS media_probes (
 		media_source_id TEXT PRIMARY KEY REFERENCES media_sources(id) ON DELETE CASCADE,
 		container TEXT NOT NULL,
@@ -137,6 +139,7 @@ var migrations = []string{
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL
 	)`,
+	`CREATE INDEX IF NOT EXISTS idx_movies_sort ON movies(sort_title, year)`,
 	`CREATE TABLE IF NOT EXISTS movie_versions (
 		movie_id TEXT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
 		media_source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,
@@ -154,6 +157,7 @@ var migrations = []string{
 		updated_at TEXT NOT NULL
 	)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_tv_series_title ON tv_series(title)`,
+	`CREATE INDEX IF NOT EXISTS idx_tv_series_sort ON tv_series(sort_title)`,
 	`CREATE TABLE IF NOT EXISTS tv_seasons (
 		id TEXT PRIMARY KEY,
 		series_id TEXT NOT NULL REFERENCES tv_series(id) ON DELETE CASCADE,
@@ -175,6 +179,7 @@ var migrations = []string{
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL
 	)`,
+	`CREATE INDEX IF NOT EXISTS idx_tv_episodes_series_season_episode ON tv_episodes(series_id, season_number, episode_number)`,
 	`CREATE TABLE IF NOT EXISTS episode_versions (
 		episode_id TEXT NOT NULL REFERENCES tv_episodes(id) ON DELETE CASCADE,
 		media_source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,
@@ -248,6 +253,7 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_records_item ON metadata_records(kind, item_id, updated_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_metadata_records_best ON metadata_records(kind, item_id, provider, confidence DESC, updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS metadata_external_ids (
 		kind TEXT NOT NULL,
 		item_id TEXT NOT NULL,
@@ -285,6 +291,16 @@ var migrations = []string{
 		PRIMARY KEY(kind, item_id, provider, rating_type)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_ratings_item ON metadata_ratings(kind, item_id)`,
+	`CREATE TABLE IF NOT EXISTS scan_file_state (
+		library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+		rel_path TEXT NOT NULL,
+		size_bytes INTEGER NOT NULL,
+		modified_at TEXT NOT NULL,
+		last_seen_at TEXT NOT NULL,
+		changed_at TEXT NOT NULL,
+		PRIMARY KEY(library_id, rel_path)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_scan_file_state_seen ON scan_file_state(library_id, last_seen_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS runtime_entities (
 		entity_type TEXT NOT NULL,
 		id TEXT NOT NULL,
