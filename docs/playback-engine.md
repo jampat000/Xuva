@@ -21,6 +21,7 @@ Playback mode:
 
 - Direct play.
 - Remux.
+- Adaptive stream.
 - Audio transcode.
 - Subtitle conversion.
 - Subtitle burn-in.
@@ -32,6 +33,7 @@ Examples:
 
 - Direct play: client supports MKV, HEVC Main10, EAC3, and selected SRT subtitles.
 - Remux: client supports H.264 and AAC but not MKV container.
+- Adaptive stream: remote network limit is below the source bitrate and the client supports HLS.
 - Audio transcode: client supports video stream but not DTS-HD MA audio.
 - Subtitle burn-in: selected PGS subtitle cannot be rendered by this client.
 - Video transcode: client cannot decode AV1 Main10 at this resolution.
@@ -70,8 +72,9 @@ Decision order:
 2. Try container remux if streams are compatible but the container is not.
 3. Try audio-only transcode if video and subtitles are compatible.
 4. Try subtitle conversion or direct subtitle rendering before burn-in.
-5. Burn subtitles only when the selected subtitle cannot render on the client.
-6. Transcode video only when video compatibility, bitrate, HDR, or subtitle burn-in requires it.
+5. Use adaptive streaming for constrained remote routes before plain video transcode when the client supports it.
+6. Burn subtitles only when the selected subtitle cannot render on the client.
+7. Transcode video only when video compatibility, bitrate, HDR, or subtitle burn-in requires it.
 
 ## Version Selection
 

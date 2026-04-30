@@ -9,6 +9,7 @@ type Profile struct {
 	SubtitleCodecs      []string `json:"subtitleCodecs"`
 	SupportsHDR         bool     `json:"supportsHdr"`
 	SupportsToneMapping bool     `json:"supportsToneMapping"`
+	SupportsHLS         bool     `json:"supportsHls"`
 }
 
 type Service struct{}
@@ -26,6 +27,7 @@ func (s *Service) Profiles() []Profile {
 			VideoCodecs:    []string{"h264", "av1", "vp9"},
 			AudioCodecs:    []string{"aac", "opus", "mp3"},
 			SubtitleCodecs: []string{"webvtt", "srt"},
+			SupportsHLS:    true,
 		},
 		{
 			ID:                  "android-tv",
@@ -36,6 +38,7 @@ func (s *Service) Profiles() []Profile {
 			SubtitleCodecs:      []string{"srt", "ass", "webvtt", "pgs"},
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
+			SupportsHLS:         true,
 		},
 		{
 			ID:                  "apple-tv",
@@ -46,6 +49,7 @@ func (s *Service) Profiles() []Profile {
 			SubtitleCodecs:      []string{"webvtt", "srt"},
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
+			SupportsHLS:         true,
 		},
 		{
 			ID:                  "ios",
@@ -56,6 +60,7 @@ func (s *Service) Profiles() []Profile {
 			SubtitleCodecs:      []string{"webvtt", "srt"},
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
+			SupportsHLS:         true,
 		},
 		{
 			ID:             "chromecast",
@@ -65,6 +70,7 @@ func (s *Service) Profiles() []Profile {
 			AudioCodecs:    []string{"aac", "ac3", "eac3", "opus"},
 			SubtitleCodecs: []string{"webvtt", "srt"},
 			SupportsHDR:    true,
+			SupportsHLS:    true,
 		},
 	}
 }

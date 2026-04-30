@@ -16,6 +16,7 @@ const (
 	Remux            Mode = "Remux"
 	AudioTranscode   Mode = "Audio Transcode"
 	SubtitleBurn     Mode = "Subtitle Burn"
+	AdaptiveStream   Mode = "Adaptive Stream"
 	VideoTranscode   Mode = "Video Transcode"
 	DecisionDeferred Mode = "Decision Deferred"
 )
@@ -33,6 +34,7 @@ type Request struct {
 	SubtitleCodec       string `json:"subtitleCodec,omitempty"`
 	SubtitleMode        string `json:"subtitleMode,omitempty"`
 	SubtitleTrackActive bool   `json:"subtitleTrackActive,omitempty"`
+	SupportsAdaptive    bool   `json:"supportsAdaptive,omitempty"`
 	Containers          []string
 	VideoCodecs         []string
 	AudioCodecs         []string
@@ -181,6 +183,19 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		return finalizeDecision(request, source, decision)
 	}
 	if networkConstrained(request, source) {
+		if request.SupportsAdaptive && !needsVideoSubtitleBurn(subtitles) {
+			decision.Mode = AdaptiveStream
+			decision.ReasonCode = "adaptive_remote_route"
+			decision.ReasonText = "The selected network is below the source bitrate, so Vyrden can use adaptive streaming to step quality down before playback stalls."
+			decision.ContainerAction = "adaptive_hls"
+			decision.VideoAction = "adaptive"
+			decision.AudioAction = audioAction
+			decision.SubtitleAction = subtitles
+			decision.EstimatedCPUCost = "medium"
+			decision.EstimatedGPUCost = "optional"
+			decision.SuggestedFixes = []string{"Use adaptive streaming for this remote route", "Raise the remote quality limit on faster networks", "Use hardware acceleration for lower server impact"}
+			return finalizeDecision(request, source, decision)
+		}
 		decision.Mode = VideoTranscode
 		decision.ReasonCode = "network_bitrate_limit"
 		decision.ReasonText = "The file bitrate is above the selected network limit, so Vyrden should create a lower-bitrate stream for smoother playback."
@@ -311,6 +326,10 @@ func decisionTraceID(request Request, source SourceFacts, decision Decision) str
 
 func networkConstrained(request Request, source SourceFacts) bool {
 	return request.MaxNetworkBitrate > 0 && source.Bitrate > request.MaxNetworkBitrate
+}
+
+func needsVideoSubtitleBurn(subtitles string) bool {
+	return subtitles == "burn_in"
 }
 
 func isDirectPlayable(request Request, container string, videoCodec string) bool {
