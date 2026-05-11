@@ -70,7 +70,7 @@
 
 	.toolbar-message {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
 		font-size: 0.82rem;
 	}
 

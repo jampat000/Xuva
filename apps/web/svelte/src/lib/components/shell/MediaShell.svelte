@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import VyrdenBrand from './VyrdenBrand.svelte';
-	import VyrdenSearch from '../ui/VyrdenSearch.svelte';
+	import LorivoBrand from './LorivoBrand.svelte';
+	import LorivoSearch from '../ui/LorivoSearch.svelte';
 
 	type ActiveRoute =
 		| 'home'
@@ -74,11 +74,11 @@
 				<span></span>
 			</button>
 			<a class="brand-link" href="/" aria-label="Go to Home">
-				<VyrdenBrand />
+				<LorivoBrand />
 			</a>
 		</div>
 		<div class="media-shell__topbar-search">
-			<VyrdenSearch bind:value={searchValue} />
+			<LorivoSearch bind:value={searchValue} />
 		</div>
 		<div class="media-shell__topbar-actions">
 			<button class="profile-button" type="button" aria-label="Open profile menu" onclick={openProfileMenu}>
@@ -98,7 +98,7 @@
 
 	<aside class="media-shell__drawer" class:media-shell__drawer--open={menuOpen}>
 		<div class="media-shell__drawer-brand">
-			<VyrdenBrand />
+			<LorivoBrand />
 		</div>
 		<nav class="media-shell__drawer-nav" aria-label="Media navigation">
 			{#each mediaNavItems as item (item.id)}
@@ -132,7 +132,7 @@
 			radial-gradient(circle at 22% -18%, rgb(124 92 255 / 16%) 0%, transparent 38%),
 			radial-gradient(circle at 84% 3%, rgb(55 84 150 / 16%) 0%, transparent 32%),
 			linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 24%),
-			var(--vyrden-color-bg-shell);
+			var(--lorivo-color-bg-shell);
 	}
 
 	.media-shell__topbar {
@@ -186,7 +186,7 @@
 		height: 2px;
 		margin: 0 auto;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--vyrden-color-text) 86%, transparent);
+		background: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
 	}
 
 	.media-shell__topbar-search {
@@ -246,11 +246,11 @@
 		display: grid;
 		grid-template-rows: auto 1fr auto;
 		gap: 14px;
-		border-right: 1px solid var(--vyrden-color-border-soft);
+		border-right: 1px solid var(--lorivo-color-border-soft);
 		background:
 			radial-gradient(circle at 14% -18%, rgb(124 92 255 / 16%) 0%, rgb(124 92 255 / 0%) 36%),
 			radial-gradient(circle at 80% 108%, rgb(55 84 150 / 14%) 0%, rgb(55 84 150 / 0%) 42%),
-			var(--vyrden-color-bg-sidebar);
+			var(--lorivo-color-bg-sidebar);
 		box-shadow: 18px 0 36px rgb(0 0 0 / 36%);
 		transform: translateX(-103%);
 		transition: transform 180ms ease;
@@ -280,7 +280,7 @@
 		border-radius: 10px;
 		font-size: 0.92rem;
 		font-weight: 620;
-		color: color-mix(in srgb, var(--vyrden-color-text) 90%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 90%, transparent);
 		text-decoration: none;
 		border: 1px solid transparent;
 	}
@@ -292,21 +292,21 @@
 		height: 5px;
 		margin-right: 8px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--vyrden-color-text-muted) 60%, transparent);
+		background: color-mix(in srgb, var(--lorivo-color-text-muted) 60%, transparent);
 	}
 
 	.media-shell__drawer a.active {
-		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 35%, transparent);
+		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 35%, transparent);
 		background: linear-gradient(90deg, rgb(124 92 255 / 18%), rgb(124 92 255 / 3%));
 	}
 
 	.media-shell__drawer a.active::before {
-		background: color-mix(in srgb, var(--vyrden-color-accent-teal) 75%, white 25%);
+		background: color-mix(in srgb, var(--lorivo-color-accent-teal) 75%, white 25%);
 	}
 
 	.media-shell__drawer-manage {
 		padding-top: 10px;
-		border-top: 1px solid var(--vyrden-color-border-soft);
+		border-top: 1px solid var(--lorivo-color-border-soft);
 	}
 
 	.media-shell__content {

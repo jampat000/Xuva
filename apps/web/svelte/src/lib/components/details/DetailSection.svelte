@@ -45,14 +45,14 @@
 
 	.detail-section__head h2 {
 		margin: 0;
-		font-family: var(--vyrden-font-display);
+		font-family: var(--lorivo-font-display);
 		font-size: 1.35rem;
 		letter-spacing: 0;
 	}
 
 	.detail-section__head p {
 		margin: 3px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
 		font-size: 0.86rem;
 	}
 </style>

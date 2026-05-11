@@ -1,5 +1,5 @@
-const AUTH_TOKEN_KEY = 'vyrden-auth-token';
-const WINDOW_NAME_TOKEN_KEY = 'vyrdenAuthToken';
+const AUTH_TOKEN_KEY = 'lorivo-auth-token';
+const WINDOW_NAME_TOKEN_KEY = 'lorivoAuthToken';
 
 let memoryAuthToken = '';
 

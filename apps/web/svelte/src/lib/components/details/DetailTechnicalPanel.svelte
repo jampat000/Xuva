@@ -58,6 +58,6 @@
 		border-radius: 999px;
 		background: rgb(255 255 255 / 5%);
 		font-size: 0.72rem;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 88%, transparent);
 	}
 </style>

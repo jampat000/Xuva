@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Calo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lorivo">
   <defs>
-    <linearGradient id="caloTileSurface" x1="10%" y1="8%" x2="90%" y2="92%">
+    <linearGradient id="lorivoTileSurface" x1="10%" y1="8%" x2="90%" y2="92%">
       <stop offset="0%" stop-color="#2f3b45"/>
       <stop offset="100%" stop-color="#1d262f"/>
     </linearGradient>
-    <linearGradient id="caloTileFold" x1="8%" y1="8%" x2="92%" y2="92%">
+    <linearGradient id="lorivoTileFold" x1="8%" y1="8%" x2="92%" y2="92%">
       <stop offset="0%" stop-color="#e8f3ed"/>
       <stop offset="64%" stop-color="#8dc9ba"/>
       <stop offset="100%" stop-color="#6d9d91"/>
     </linearGradient>
   </defs>
-  <rect x="7.4" y="9.3" width="45.2" height="39.4" rx="12.4" fill="url(#caloTileSurface)" stroke="rgba(140,189,174,0.36)" stroke-width="2.35"/>
-  <path d="m37.8 10.3 13.8 13.8H40.5a2.8 2.8 0 0 1-2.7-2.7z" fill="url(#caloTileFold)"/>
+  <rect x="7.4" y="9.3" width="45.2" height="39.4" rx="12.4" fill="url(#lorivoTileSurface)" stroke="rgba(140,189,174,0.36)" stroke-width="2.35"/>
+  <path d="m37.8 10.3 13.8 13.8H40.5a2.8 2.8 0 0 1-2.7-2.7z" fill="url(#lorivoTileFold)"/>
   <rect x="16" y="32.5" width="22.8" height="3.5" rx="1.75" fill="rgba(238,231,217,0.36)"/>
   <rect x="16" y="39.9" width="16.6" height="3" rx="1.5" fill="rgba(238,231,217,0.22)"/>
 </svg>

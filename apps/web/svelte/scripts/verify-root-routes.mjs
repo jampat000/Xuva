@@ -9,7 +9,7 @@ const staticNextDir = path.resolve(appDir, '../../../server/internal/webapp/stat
 const localBuildInfoPath = path.join(staticNextDir, 'build-info.json');
 
 const rootOrigin = String(
-	process.argv[2] || process.env.VYRDEN_ROOT_ORIGIN || process.env.VYRDEN_PREVIEW_ORIGIN || 'http://127.0.0.1:18100'
+	process.argv[2] || process.env.LORIVO_ROOT_ORIGIN || process.env.LORIVO_ORIGIN || 'http://127.0.0.1:18100'
 )
 	.trim()
 	.replace(/\/+$/, '');
