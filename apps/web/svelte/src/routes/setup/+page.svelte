@@ -60,7 +60,7 @@
 			const librariesPayload = await getLibraries();
 			libraries = librariesPayload.libraries || [];
 		} catch (error) {
-			loadError = formatError(error, 'Setup could not load.');
+			loadError = formatError(error, 'Library setup could not load.');
 		} finally {
 			isLoading = false;
 		}
@@ -148,22 +148,22 @@
 <MediaShell active="setup" bind:searchValue userInitials={userInitials}>
 	<div class="setup-page">
 		{#if isLoading}
-			<LorivoPanel title="Loading setup" subtitle="Checking account and library status." />
+			<LorivoPanel title="Loading Library Setup" subtitle="Checking account and library status." />
 		{:else if authRequired}
-			<LorivoPanel title="Sign in required" subtitle="Sign in to set up your first library.">
+			<LorivoPanel title="Library Setup" subtitle="Sign in to set up your first library.">
 				<div class="actions">
 					<LorivoButton variant="primary" href="/signin">Open Sign In</LorivoButton>
 					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
 				</div>
 			</LorivoPanel>
 		{:else if loadError}
-			<LorivoPanel title="Setup could not load" subtitle={loadError}>
+			<LorivoPanel title="Library setup could not load" subtitle={loadError}>
 				<div class="actions">
 					<LorivoButton variant="secondary" onclick={initialize}>Retry</LorivoButton>
 				</div>
 			</LorivoPanel>
 		{:else}
-			<LorivoPanel title="First library setup" subtitle="Add a Movies or TV folder to start building your Lorivo home.">
+			<LorivoPanel title="Library Setup" subtitle="Add a Movies or TV folder to start building your Lorivo home.">
 				<form class="setup-form" onsubmit={(event) => { event.preventDefault(); void createLibrary(); }}>
 					<label class="field">
 						<span>Library name</span>

@@ -14,7 +14,7 @@
 		| 'setup';
 
 	interface NavItem {
-		id: ActiveRoute | 'admin' | 'settings';
+		id: ActiveRoute | 'settings';
 		label: string;
 		href: string;
 	}
@@ -22,16 +22,11 @@
 	const mediaNavItems: NavItem[] = [
 		{ id: 'home', label: 'Home', href: '/' },
 		{ id: 'movies', label: 'Movies', href: '/movies' },
-		{ id: 'tv', label: 'TV Shows', href: '/tv' },
-		{ id: 'continue-watching', label: 'Continue Watching', href: '/continue-watching' },
-		{ id: 'recently-added', label: 'Recently Added', href: '/recently-added' },
-		{ id: 'watchlist', label: 'Watchlist', href: '/watchlist' },
-		{ id: 'collections', label: 'Collections', href: '/collections' }
+		{ id: 'tv', label: 'TV', href: '/tv' }
 	];
 
 	const manageNavItems: NavItem[] = [
-		{ id: 'admin', label: 'Manage Server', href: '/admin' },
-		{ id: 'settings', label: 'Server Settings', href: '/settings' }
+		{ id: 'settings', label: 'Settings', href: '/settings' }
 	];
 
 	let {

@@ -5,11 +5,11 @@
 	import LorivoSidebar from './LorivoSidebar.svelte';
 
 	let {
-		active = 'admin',
+		active = 'library',
 		userDisplayName = 'Local User',
 		userRole = 'Local Account'
 	} = $props<{
-		active?: 'admin' | 'settings';
+		active?: 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 	}>();
@@ -21,11 +21,11 @@
 	{/snippet}
 
 	{#snippet primary()}
-		<SidebarItem label="Dashboard" href="/admin" active={active === 'admin'}>
+		<SidebarItem label="Library" href="/settings#library" active={active === 'library'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path
-						d="M4.5 4.5h6.8v6.8H4.5Zm8.2 0h6.8v4.2h-6.8Zm0 5.8h6.8v9h-6.8Zm-8.2 2.4h6.8v6.6H4.5Z"
+						d="M4.8 6.2h5.4l1.4 1.8h7.6v9.8a1.4 1.4 0 0 1-1.4 1.4h-13a1.4 1.4 0 0 1-1.4-1.4V7.6a1.4 1.4 0 0 1 1.4-1.4Z"
 						fill="none"
 						stroke="currentColor"
 						stroke-width="1.5"
@@ -33,17 +33,50 @@
 				</svg>
 			{/snippet}
 		</SidebarItem>
-		<SidebarItem label="Settings" href="/settings" active={active === 'settings'}>
+		<SidebarItem label="Scanning" href="/settings#scanning" active={active === 'scanning'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path
-						d="M9.4 4.8h5.2l.7 2.1 2 .8 1.9-1.1 2.6 4.5-1.8 1.4.1 2.2 1.7 1.4-2.6 4.5-1.9-1.1-2 .8-.7 2.1H9.4l-.7-2.1-2-.8-1.9 1.1L2.2 16l1.7-1.4.1-2.2-1.8-1.4 2.6-4.5 1.9 1.1 2-.8z"
+						d="M5 12a7 7 0 0 1 12-4.9M19 12a7 7 0 0 1-12 4.9"
 						fill="none"
 						stroke="currentColor"
-						stroke-width="1.3"
-						stroke-linejoin="round"
+						stroke-width="1.6"
+						stroke-linecap="round"
 					/>
-					<circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3" />
+					<path d="M17 4.8v3.5h-3.5M7 19.2v-3.5h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+		<SidebarItem label="Metadata" href="/settings#metadata" active={active === 'metadata'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M5 5.5h14v13H5z" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="M8 9h8M8 12h8M8 15h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+		<SidebarItem label="Playback" href="/settings#playback" active={active === 'playback'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="m10 8.8 5.2 3.2-5.2 3.2z" fill="currentColor" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+		<SidebarItem label="Server" href="/settings#server" active={active === 'server'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<rect x="5" y="5" width="14" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<rect x="5" y="13.5" width="14" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="M8 7.8h.1M8 16.3h.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+		<SidebarItem label="About" href="/settings#about" active={active === 'about'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="M12 10.8v5M12 8h.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
 				</svg>
 			{/snippet}
 		</SidebarItem>

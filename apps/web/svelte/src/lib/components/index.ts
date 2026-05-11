@@ -28,7 +28,7 @@ export { default as ViewerQuickActions } from './media/ViewerQuickActions.svelte
 export { default as ViewerCompanion } from './media/ViewerCompanion.svelte';
 export { default as BrowseCompanion } from './media/BrowseCompanion.svelte';
 
-export { default as AdminPanel } from './operator/AdminPanel.svelte';
+export { default as SettingsPanel } from './operator/SettingsPanel.svelte';
 export { default as SettingsSection } from './operator/SettingsSection.svelte';
 export { default as FormRow } from './operator/FormRow.svelte';
 export { default as LiveStatusBadge } from './operator/LiveStatusBadge.svelte';

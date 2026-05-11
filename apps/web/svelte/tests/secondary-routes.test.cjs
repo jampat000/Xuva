@@ -9,17 +9,17 @@ function read(file) {
 	return fs.readFileSync(path.join(appRoot, file), 'utf8');
 }
 
-test('media shell drawer keeps viewer-first navigation and secondary server links', () => {
+test('media shell drawer keeps primary media navigation and settings mode link', () => {
 	const source = read('src/lib/components/shell/MediaShell.svelte');
 	assert.match(source, /label:\s*'Home',\s*href:\s*'\/'/);
 	assert.match(source, /label:\s*'Movies',\s*href:\s*'\/movies'/);
-	assert.match(source, /label:\s*'TV Shows',\s*href:\s*'\/tv'/);
-	assert.match(source, /label:\s*'Continue Watching',\s*href:\s*'\/continue-watching'/);
-	assert.match(source, /label:\s*'Recently Added',\s*href:\s*'\/recently-added'/);
-	assert.match(source, /label:\s*'Watchlist',\s*href:\s*'\/watchlist'/);
-	assert.match(source, /label:\s*'Collections',\s*href:\s*'\/collections'/);
-	assert.match(source, /label:\s*'Manage Server',\s*href:\s*'\/admin'/);
-	assert.match(source, /label:\s*'Server Settings',\s*href:\s*'\/settings'/);
+	assert.match(source, /label:\s*'TV',\s*href:\s*'\/tv'/);
+	assert.match(source, /label:\s*'Settings',\s*href:\s*'\/settings'/);
+	assert.doesNotMatch(source, /label:\s*'Watchlist'/);
+	assert.doesNotMatch(source, /label:\s*'Collections'/);
+	assert.doesNotMatch(source, /label:\s*'Manage Server'/);
+	assert.doesNotMatch(source, /label:\s*'Server Settings'/);
+	assert.doesNotMatch(source, /href:\s*'\/admin'/);
 });
 
 test('watchlist route uses shared secondary loader and explicit unavailable state', () => {

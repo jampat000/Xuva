@@ -65,7 +65,7 @@ test('design-system component exports include phase 2 primitives', () => {
 		'ProgressBar',
 		'MediaCompanionPanel',
 		'ViewerQuickActions',
-		'AdminPanel',
+		'SettingsPanel',
 		'SettingsSection',
 		'FormRow',
 		'LiveStatusBadge',

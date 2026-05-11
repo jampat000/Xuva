@@ -9,12 +9,9 @@
 		| 'home'
 		| 'movies'
 		| 'tv'
-		| 'collections'
-		| 'watchlist'
 		| 'continue-watching'
 		| 'recently-added'
-		| 'settings'
-		| 'admin';
+		| 'settings';
 
 	interface LibraryItem {
 		id?: string;
@@ -84,7 +81,7 @@
 				</svg>
 			{/snippet}
 		</SidebarItem>
-		<SidebarItem label="TV Shows" href="/tv" active={active === 'tv'}>
+		<SidebarItem label="TV" href="/tv" active={active === 'tv'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path
@@ -92,65 +89,6 @@
 						fill="none"
 						stroke="currentColor"
 						stroke-width="1.5"
-					/>
-				</svg>
-			{/snippet}
-		</SidebarItem>
-		<SidebarItem label="Collections" href="/collections" active={active === 'collections'}>
-			{#snippet icon()}
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<rect
-						x="4"
-						y="4"
-						width="6.4"
-						height="6.4"
-						rx="1.4"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-					/>
-					<rect
-						x="13.6"
-						y="4"
-						width="6.4"
-						height="6.4"
-						rx="1.4"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-					/>
-					<rect
-						x="4"
-						y="13.6"
-						width="6.4"
-						height="6.4"
-						rx="1.4"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-					/>
-					<rect
-						x="13.6"
-						y="13.6"
-						width="6.4"
-						height="6.4"
-						rx="1.4"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-					/>
-				</svg>
-			{/snippet}
-		</SidebarItem>
-		<SidebarItem label="Watchlist" href="/watchlist" active={active === 'watchlist'}>
-			{#snippet icon()}
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path
-						d="M7 4.8h10A1.2 1.2 0 0 1 18.2 6v14l-6.2-3.8L5.8 20V6A1.2 1.2 0 0 1 7 4.8Z"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.6"
-						stroke-linejoin="round"
 					/>
 				</svg>
 			{/snippet}
@@ -240,7 +178,7 @@
 					</SidebarItem>
 				{/each}
 			{:else}
-				<SidebarItem label="Add Library" href="/">
+				<SidebarItem label="Add Library" href="/setup">
 					{#snippet icon()}
 						<span class="library-glyph library-glyph--empty">
 							<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -271,20 +209,6 @@
 						stroke-linejoin="round"
 					/>
 					<circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3" />
-				</svg>
-			{/snippet}
-		</SidebarItem>
-		<SidebarItem label="Admin" href="/admin" active={active === 'admin'}>
-			{#snippet icon()}
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path
-						d="m12 4 2.4 2.4L18 4l2 2-2.4 3 2.4 3-2 2-3-2.4L12 14l-3-2.4L6 14l-2-2 2.4-3L4 6l2-2 3 2.4z"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-						stroke-linejoin="round"
-					/>
-					<circle cx="12" cy="9.5" r="1.8" fill="currentColor" />
 				</svg>
 			{/snippet}
 		</SidebarItem>

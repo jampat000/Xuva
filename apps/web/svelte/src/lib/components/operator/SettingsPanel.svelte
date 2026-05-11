@@ -21,7 +21,7 @@
 </script>
 
 <LorivoSurface tone="elevated">
-	<section class="admin-panel">
+	<section class="settings-panel">
 		<header>
 			<div>
 				<h2>{title}</h2>
@@ -29,7 +29,7 @@
 					<p>{description}</p>
 				{/if}
 			</div>
-			<div class="admin-panel__header-right">
+			<div class="settings-panel__header-right">
 				<LiveStatusBadge {status} />
 				{@render actions?.()}
 			</div>
@@ -41,7 +41,7 @@
 </LorivoSurface>
 
 <style>
-	.admin-panel {
+	.settings-panel {
 		display: grid;
 		gap: var(--lorivo-space-4);
 	}
@@ -66,7 +66,7 @@
 		font-size: 0.84rem;
 	}
 
-	.admin-panel__header-right {
+	.settings-panel__header-right {
 		display: flex;
 		gap: var(--lorivo-space-2);
 		align-items: center;

@@ -9,20 +9,13 @@ function read(file) {
 	return fs.readFileSync(path.join(appRoot, file), 'utf8');
 }
 
-test('admin route uses existing live operator APIs and event stream', () => {
+test('admin route redirects to settings compatibility surface', () => {
 	const source = read('src/routes/admin/+page.svelte');
 
-	assert.match(source, /getCatalogSummary\(apiClient\)/);
-	assert.match(source, /getCatalogHealth\(apiClient\)/);
-	assert.match(source, /getSystemStatus\(apiClient\)/);
-	assert.match(source, /getScans\(apiClient\)/);
-	assert.match(source, /getProbes\(apiClient\)/);
-	assert.match(source, /getWork\(apiClient\)/);
-	assert.match(source, /getDownloads\(apiClient\)/);
-	assert.match(source, /getSessions\(apiClient\)/);
-	assert.match(source, /createEventStream\(\)/);
-	assert.match(source, /Admin controls are read-only in this build\./);
-	assert.match(source, /<ServerShell/);
+	assert.match(source, /window\.location\.replace\('\/settings#server'\)/);
+	assert.match(source, /Opening Settings/);
+	assert.match(source, /Open Settings/);
+	assert.doesNotMatch(source, /Dashboard/);
+	assert.doesNotMatch(source, /Controls/);
 	assert.doesNotMatch(source, /legacy/i);
-	assert.doesNotMatch(source, /send<.*\/api\//s);
 });
