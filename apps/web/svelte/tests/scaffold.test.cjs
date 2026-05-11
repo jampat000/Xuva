@@ -9,6 +9,7 @@ test('svelte config uses root base path for cutover', () => {
 	const configPath = path.join(appRoot, 'svelte.config.js');
 	const config = fs.readFileSync(configPath, 'utf8');
 
+	assert.doesNotMatch(config, /base:\s*['"]\/next['"]/);
 	assert.match(config, /static-next/);
 });
 
@@ -34,27 +35,28 @@ test('publish script generates build marker and required smoke route list', () =
 	assert.match(source, /\/continue-watching/);
 	assert.match(source, /\/recently-added/);
 	assert.match(source, /routePatterns/);
+	assert.doesNotMatch(source, /legacyPath/);
 	assert.doesNotMatch(source, /compatibilityBasePaths/);
 });
 
-test('design-system component exports include Lorivo primitives', () => {
+test('design-system component exports include phase 2 primitives', () => {
 	const indexPath = path.join(appRoot, 'src/lib/components/index.ts');
 	const exportsFile = fs.readFileSync(indexPath, 'utf8');
 
 	const required = [
-		'LorivoShell',
-		'LorivoBrand',
-		'LorivoSidebar',
+		'VyrdenShell',
+		'VyrdenBrand',
+		'VyrdenSidebar',
 		'SidebarItem',
 		'SidebarSection',
 		'SidebarUser',
-		'LorivoButton',
-		'LorivoPanel',
-		'LorivoSurface',
-		'LorivoSearch',
-		'LorivoEmptyState',
-		'LorivoStat',
-		'LorivoActionList',
+		'VyrdenButton',
+		'VyrdenPanel',
+		'VyrdenSurface',
+		'VyrdenSearch',
+		'VyrdenEmptyState',
+		'VyrdenStat',
+		'VyrdenActionList',
 		'HeroSurface',
 		'MediaRow',
 		'ResumeTile',
@@ -75,7 +77,7 @@ test('design-system component exports include Lorivo primitives', () => {
 	}
 });
 
-test('root home route no longer includes showroom copy', () => {
+test('root home route no longer includes phase 2 showroom copy', () => {
 	const pagePath = path.join(appRoot, 'src/routes/+page.svelte');
 	const homeComponentPath = path.join(appRoot, 'src/lib/components/home/LorivoMediaHome.svelte');
 	const pageSource = fs.readFileSync(pagePath, 'utf8');

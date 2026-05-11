@@ -149,7 +149,7 @@
 
 	.detail-hero__copy h1 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--vyrden-font-display);
 		font-size: clamp(1.95rem, 2.45vw, 2.5rem);
 		letter-spacing: -0.04em;
 		line-height: 1.02;
@@ -159,7 +159,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 86%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 86%, transparent);
 		text-decoration: none;
 		font-size: 0.82rem;
 		font-weight: 620;
@@ -174,7 +174,7 @@
 
 	.detail-hero__meta {
 		margin: 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 88%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
 		font-size: 0.95rem;
 		font-weight: 580;
 	}
@@ -182,7 +182,7 @@
 	.detail-hero__overview {
 		margin: 6px 0 0;
 		max-width: 820px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
 		font-size: 0.91rem;
 		line-height: 1.46;
 	}
@@ -203,7 +203,7 @@
 		border: 1px solid rgb(255 246 229 / 12%);
 		border-radius: 999px;
 		background: rgb(255 246 229 / 5%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
 		font-size: 0.82rem;
 		font-weight: 630;
 	}

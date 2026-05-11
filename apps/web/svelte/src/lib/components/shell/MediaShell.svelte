@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import LorivoBrand from './LorivoBrand.svelte';
-	import LorivoSearch from '../ui/LorivoSearch.svelte';
+	import VyrdenBrand from './VyrdenBrand.svelte';
+	import VyrdenSearch from '../ui/VyrdenSearch.svelte';
 
 	type ActiveRoute =
 		| 'home'
@@ -30,8 +30,8 @@
 	];
 
 	const manageNavItems: NavItem[] = [
-		{ id: 'admin', label: 'Library Admin', href: '/admin' },
-		{ id: 'settings', label: 'Settings', href: '/settings' }
+		{ id: 'admin', label: 'Manage Server', href: '/admin' },
+		{ id: 'settings', label: 'Server Settings', href: '/settings' }
 	];
 
 	let {
@@ -74,11 +74,11 @@
 				<span></span>
 			</button>
 			<a class="brand-link" href="/" aria-label="Go to Home">
-				<LorivoBrand />
+				<VyrdenBrand />
 			</a>
 		</div>
 		<div class="media-shell__topbar-search">
-			<LorivoSearch bind:value={searchValue} />
+			<VyrdenSearch bind:value={searchValue} />
 		</div>
 		<div class="media-shell__topbar-actions">
 			<button class="profile-button" type="button" aria-label="Open profile menu" onclick={openProfileMenu}>
@@ -98,14 +98,14 @@
 
 	<aside class="media-shell__drawer" class:media-shell__drawer--open={menuOpen}>
 		<div class="media-shell__drawer-brand">
-			<LorivoBrand />
+			<VyrdenBrand />
 		</div>
 		<nav class="media-shell__drawer-nav" aria-label="Media navigation">
 			{#each mediaNavItems as item (item.id)}
 				<a href={item.href} class:active={active === item.id} onclick={closeMenu}>{item.label}</a>
 			{/each}
 		</nav>
-		<nav class="media-shell__drawer-manage" aria-label="Library management">
+		<nav class="media-shell__drawer-manage" aria-label="Server management">
 			{#each manageNavItems as item (item.id)}
 				<a href={item.href} onclick={closeMenu}>{item.label}</a>
 			{/each}
@@ -129,9 +129,9 @@
 		min-height: 100dvh;
 		padding: 14px 18px 24px;
 		background:
-			radial-gradient(circle at 50% -24%, rgb(124 92 255 / 16%) 0%, transparent 42%),
-			linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 24%),
-			var(--lorivo-color-bg-shell);
+			radial-gradient(circle at 50% -24%, rgb(128 195 219 / 10%) 0%, transparent 42%),
+			linear-gradient(180deg, rgb(255 246 229 / 3%), transparent 24%),
+			var(--vyrden-color-bg-shell);
 	}
 
 	.media-shell__topbar {
@@ -146,7 +146,7 @@
 		background:
 			linear-gradient(180deg, rgb(13 17 23 / 96%), rgb(13 17 23 / 90%) 70%, transparent),
 			transparent;
-		border-bottom: 1px solid color-mix(in srgb, var(--lorivo-color-border-soft) 82%, transparent);
+		border-bottom: 1px solid color-mix(in srgb, var(--vyrden-color-border-soft) 82%, transparent);
 	}
 
 	.media-shell__topbar-left {
@@ -162,7 +162,7 @@
 		text-decoration: none;
 	}
 
-	.brand-link :global(.l-brand) {
+	.brand-link :global(.v-brand) {
 		min-height: 34px;
 		justify-content: flex-start;
 	}
@@ -185,14 +185,14 @@
 		height: 2px;
 		margin: 0 auto;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+		background: color-mix(in srgb, var(--vyrden-color-text) 86%, transparent);
 	}
 
 	.media-shell__topbar-search {
 		min-width: 0;
 	}
 
-	.media-shell__topbar-search :global(.l-search) {
+	.media-shell__topbar-search :global(.v-search) {
 		width: min(100%, 560px);
 		margin: 0 auto;
 	}
@@ -245,11 +245,11 @@
 		display: grid;
 		grid-template-rows: auto 1fr auto;
 		gap: 14px;
-		border-right: 1px solid var(--lorivo-color-border-soft);
+		border-right: 1px solid var(--vyrden-color-border-soft);
 		background:
-			radial-gradient(circle at 14% -18%, rgb(124 92 255 / 16%) 0%, rgb(124 92 255 / 0%) 36%),
-			radial-gradient(circle at 80% 108%, rgb(59 130 246 / 10%) 0%, rgb(59 130 246 / 0%) 42%),
-			var(--lorivo-color-bg-sidebar);
+			radial-gradient(circle at 14% -18%, rgb(88 201 176 / 10%) 0%, rgb(88 201 176 / 0%) 36%),
+			radial-gradient(circle at 80% 108%, rgb(131 119 93 / 10%) 0%, rgb(131 119 93 / 0%) 42%),
+			var(--vyrden-color-bg-sidebar);
 		box-shadow: 18px 0 36px rgb(0 0 0 / 36%);
 		transform: translateX(-103%);
 		transition: transform 180ms ease;
@@ -259,7 +259,7 @@
 		transform: translateX(0);
 	}
 
-	.media-shell__drawer-brand :global(.l-brand) {
+	.media-shell__drawer-brand :global(.v-brand) {
 		justify-content: flex-start;
 		padding-left: 6px;
 	}
@@ -279,7 +279,7 @@
 		border-radius: 10px;
 		font-size: 0.92rem;
 		font-weight: 620;
-		color: color-mix(in srgb, var(--lorivo-color-text) 90%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 90%, transparent);
 		text-decoration: none;
 		border: 1px solid transparent;
 	}
@@ -291,21 +291,21 @@
 		height: 5px;
 		margin-right: 8px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--lorivo-color-text-muted) 60%, transparent);
+		background: color-mix(in srgb, var(--vyrden-color-text-muted) 60%, transparent);
 	}
 
 	.media-shell__drawer a.active {
-		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 35%, transparent);
-		background: linear-gradient(90deg, rgb(124 92 255 / 20%), rgb(124 92 255 / 4%));
+		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 35%, transparent);
+		background: linear-gradient(90deg, rgb(92 205 180 / 14%), rgb(92 205 180 / 2%));
 	}
 
 	.media-shell__drawer a.active::before {
-		background: color-mix(in srgb, var(--lorivo-color-accent-teal) 75%, white 25%);
+		background: color-mix(in srgb, var(--vyrden-color-accent-teal) 75%, white 25%);
 	}
 
 	.media-shell__drawer-manage {
 		padding-top: 10px;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--vyrden-color-border-soft);
 	}
 
 	.media-shell__content {
@@ -337,7 +337,7 @@
 			padding-bottom: 9px;
 		}
 
-		.media-shell__topbar-search :global(.l-search) {
+		.media-shell__topbar-search :global(.v-search) {
 			width: 100%;
 		}
 
@@ -368,7 +368,7 @@
 			grid-area: search;
 		}
 
-		.brand-link :global(.l-brand__wordmark) {
+		.brand-link :global(.v-brand__wordmark) {
 			font-size: 1.08rem;
 		}
 

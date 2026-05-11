@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import LorivoSurface from './LorivoSurface.svelte';
+	import VyrdenSurface from './VyrdenSurface.svelte';
 
 	let {
 		title,
@@ -15,9 +15,9 @@
 	}>();
 </script>
 
-<LorivoSurface tone="elevated">
-	<section class="l-panel">
-		<header class="l-panel__header">
+<VyrdenSurface tone="elevated">
+	<section class="v-panel">
+		<header class="v-panel__header">
 			<div>
 				<h2>{title}</h2>
 				{#if subtitle}
@@ -25,25 +25,25 @@
 				{/if}
 			</div>
 			{#if actions}
-				<div class="l-panel__actions">{@render actions()}</div>
+				<div class="v-panel__actions">{@render actions()}</div>
 			{/if}
 		</header>
-		<div class="l-panel__body">
+		<div class="v-panel__body">
 			{@render children?.()}
 		</div>
 	</section>
-</LorivoSurface>
+</VyrdenSurface>
 
 <style>
-	.l-panel {
+	.v-panel {
 		display: grid;
-		gap: var(--lorivo-space-4);
+		gap: var(--vyrden-space-4);
 	}
 
-	.l-panel__header {
+	.v-panel__header {
 		display: flex;
 		justify-content: space-between;
-		gap: var(--lorivo-space-4);
+		gap: var(--vyrden-space-4);
 	}
 
 	h2 {
@@ -54,8 +54,8 @@
 	}
 
 	p {
-		margin: var(--lorivo-space-1) 0 0;
-		color: var(--lorivo-color-text-muted);
+		margin: var(--vyrden-space-1) 0 0;
+		color: var(--vyrden-color-text-muted);
 		font-size: 0.9rem;
 		line-height: 1.4;
 	}

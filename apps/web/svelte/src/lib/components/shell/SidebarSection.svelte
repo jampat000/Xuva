@@ -38,12 +38,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--lorivo-space-2);
+		gap: var(--vyrden-space-2);
 	}
 
 	h2 {
 		margin: 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 86%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 86%, transparent);
 		font-size: 0.74rem;
 		font-weight: 750;
 		letter-spacing: 0.08em;
@@ -63,12 +63,12 @@
 	}
 
 	.sidebar-section__action:hover {
-		color: var(--lorivo-color-text);
+		color: var(--vyrden-color-text);
 		background: rgb(255 246 229 / 5%);
 	}
 
 	.sidebar-section__body {
 		display: grid;
-		gap: var(--lorivo-space-1);
+		gap: var(--vyrden-space-1);
 	}
 </style>

@@ -90,10 +90,10 @@
 	.hero-surface {
 		position: relative;
 		min-height: 418px;
-		border: 1px solid rgb(255 255 255 / 10%);
+		border: 1px solid rgb(255 246 229 / 10%);
 		border-radius: 20px;
 		overflow: hidden;
-		background: #111827;
+		background: #181915;
 		box-shadow:
 			0 28px 62px rgb(0 0 0 / 34%),
 			0 0 0 1px rgb(16 19 24 / 34%);
@@ -117,13 +117,13 @@
 		background:
 			linear-gradient(
 				90deg,
-				rgb(11 17 32 / 88%) 0%,
-				rgb(11 17 32 / 66%) 24%,
-				rgb(17 24 39 / 24%) 56%,
-				rgb(11 17 32 / 62%) 100%
+				rgb(12 13 11 / 87%) 0%,
+				rgb(16 16 14 / 64%) 24%,
+				rgb(20 20 18 / 24%) 56%,
+				rgb(15 16 14 / 60%) 100%
 			),
-			radial-gradient(circle at 76% 18%, rgb(124 92 255 / 16%), transparent 42%),
-			linear-gradient(180deg, rgb(11 17 32 / 5%), rgb(11 17 32 / 42%));
+			radial-gradient(circle at 76% 18%, rgb(88 201 176 / 13%), transparent 42%),
+			linear-gradient(180deg, rgb(16 15 12 / 5%), rgb(16 15 12 / 42%));
 	}
 
 	.hero-surface__copy {
@@ -143,9 +143,9 @@
 		width: min(272px, 30%);
 		aspect-ratio: 2 / 3;
 		overflow: hidden;
-		border: 1px solid rgb(255 255 255 / 16%);
+		border: 1px solid rgb(255 246 229 / 16%);
 		border-radius: 14px;
-		background: rgb(17 24 39 / 86%);
+		background: rgb(22 24 21 / 84%);
 		box-shadow: 0 18px 34px rgb(0 0 0 / 38%);
 		z-index: 1;
 	}
@@ -162,7 +162,7 @@
 		inset: 0;
 		background:
 			linear-gradient(180deg, rgb(10 12 15 / 4%) 0%, rgb(10 12 15 / 14%) 48%, rgb(10 12 15 / 62%) 100%),
-			radial-gradient(circle at 70% 18%, rgb(124 92 255 / 12%), transparent 42%);
+			radial-gradient(circle at 70% 18%, rgb(88 201 176 / 10%), transparent 42%);
 	}
 
 	.hero-surface__badge {
@@ -171,11 +171,11 @@
 		justify-content: center;
 		min-height: 24px;
 		padding: 0 11px;
-		border: 1px solid rgb(124 92 255 / 28%);
+		border: 1px solid rgb(39 211 189 / 20%);
 		border-radius: 999px;
-		background: rgb(124 92 255 / 16%);
+		background: rgb(88 201 176 / 12%);
 		box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%);
-		color: #c4b5fd;
+		color: #7ad5bf;
 		font-size: 0.71rem;
 		font-weight: 800;
 		letter-spacing: 0.07em;
@@ -185,7 +185,7 @@
 
 	h1 {
 		margin: 10px 0 6px;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--vyrden-font-display);
 		font-size: clamp(2.35rem, 2.7vw, 3.05rem);
 		line-height: 0.98;
 		letter-spacing: -0.05em;
@@ -195,7 +195,7 @@
 
 	.hero-surface__meta {
 		margin: 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
 		font-size: 0.98rem;
 		font-weight: 560;
 		letter-spacing: 0.005em;
@@ -204,7 +204,7 @@
 	.hero-surface__description {
 		margin: 10px 0 0;
 		max-width: 520px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 86%, transparent);
 		font-size: 0.95rem;
 		line-height: 1.5;
 	}
@@ -224,7 +224,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
 	.hero-surface__close {
@@ -265,11 +265,11 @@
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: color-mix(in srgb, var(--lorivo-color-text-muted) 48%, transparent);
+		background: color-mix(in srgb, var(--vyrden-color-text-muted) 48%, transparent);
 	}
 
 	.hero-surface__dots span.active {
-		background: var(--lorivo-color-accent-teal);
+		background: var(--vyrden-color-accent-teal);
 	}
 
 	@media (max-width: 920px) {

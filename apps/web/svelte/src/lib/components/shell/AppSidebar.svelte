@@ -2,8 +2,8 @@
 	import SidebarItem from './SidebarItem.svelte';
 	import SidebarSection from './SidebarSection.svelte';
 	import SidebarUser from './SidebarUser.svelte';
-	import LorivoBrand from './LorivoBrand.svelte';
-	import LorivoSidebar from './LorivoSidebar.svelte';
+	import VyrdenBrand from './VyrdenBrand.svelte';
+	import VyrdenSidebar from './VyrdenSidebar.svelte';
 
 	type ActiveRoute =
 		| 'home'
@@ -55,9 +55,9 @@
 	const hasLibraries = $derived.by(() => libraryItems.length > 0);
 </script>
 
-<LorivoSidebar>
+<VyrdenSidebar>
 	{#snippet brand()}
-		<LorivoBrand />
+		<VyrdenBrand />
 	{/snippet}
 
 	{#snippet primary()}
@@ -293,7 +293,7 @@
 	{#snippet profile()}
 		<SidebarUser name={userDisplayName} subtitle={userRole} />
 	{/snippet}
-</LorivoSidebar>
+</VyrdenSidebar>
 
 <style>
 	.library-glyph {
@@ -302,15 +302,15 @@
 		justify-content: center;
 		width: 21px;
 		height: 21px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 78%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 78%, transparent);
 	}
 
 	.library-glyph[data-kind='movies'] {
-		color: var(--lorivo-color-accent-teal);
+		color: var(--vyrden-color-accent-teal);
 	}
 
 	.library-glyph[data-kind='tv'] {
-		color: color-mix(in srgb, var(--lorivo-color-text) 82%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 82%, transparent);
 	}
 
 	.library-glyph :global(svg) {
@@ -319,6 +319,6 @@
 	}
 
 	.library-glyph--empty {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 72%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 72%, transparent);
 	}
 </style>

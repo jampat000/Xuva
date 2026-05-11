@@ -1,5 +1,5 @@
 <script lang="ts">
-	export interface LorivoActionItem {
+	export interface VyrdenActionItem {
 		id: string;
 		label: string;
 		description?: string;
@@ -11,25 +11,25 @@
 		items = [],
 		emptyLabel = 'No actions available'
 	} = $props<{
-		items?: LorivoActionItem[];
+		items?: VyrdenActionItem[];
 		emptyLabel?: string;
 	}>();
 </script>
 
 {#if items.length === 0}
-	<p class="l-action-list__empty">{emptyLabel}</p>
+	<p class="v-action-list__empty">{emptyLabel}</p>
 {:else}
-	<ul class="l-action-list">
+	<ul class="v-action-list">
 		{#each items as item (item.id)}
 			<li>
-				<div class="l-action-list__copy">
+				<div class="v-action-list__copy">
 					<strong>{item.label}</strong>
 					{#if item.description}
 						<p>{item.description}</p>
 					{/if}
 				</div>
 				{#if item.status}
-					<span class="l-action-list__status">{item.status}</span>
+					<span class="v-action-list__status">{item.status}</span>
 				{/if}
 				{#if item.actionLabel}
 					<button type="button" aria-label={item.actionLabel}>{item.actionLabel}</button>
@@ -40,26 +40,26 @@
 {/if}
 
 <style>
-	.l-action-list {
+	.v-action-list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: var(--lorivo-space-2);
+		gap: var(--vyrden-space-2);
 	}
 
 	li {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto auto;
 		align-items: center;
-		gap: var(--lorivo-space-3);
-		padding: var(--lorivo-space-3);
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
+		gap: var(--vyrden-space-3);
+		padding: var(--vyrden-space-3);
+		border: 1px solid var(--vyrden-color-border-soft);
+		border-radius: var(--vyrden-radius-md);
 		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 2%));
 	}
 
-	.l-action-list__copy {
+	.v-action-list__copy {
 		min-width: 0;
 	}
 
@@ -70,30 +70,30 @@
 	}
 
 	p {
-		margin: var(--lorivo-space-1) 0 0;
+		margin: var(--vyrden-space-1) 0 0;
 		font-size: 0.81rem;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
-	.l-action-list__status {
+	.v-action-list__status {
 		font-size: 0.73rem;
-		color: var(--lorivo-color-text-soft);
+		color: var(--vyrden-color-text-soft);
 		white-space: nowrap;
 	}
 
 	button {
-		min-height: var(--lorivo-control-height-sm);
-		padding: 0 var(--lorivo-space-3);
-		border-radius: var(--lorivo-radius-sm);
+		min-height: var(--vyrden-control-height-sm);
+		padding: 0 var(--vyrden-space-3);
+		border-radius: var(--vyrden-radius-sm);
 		background: rgb(255 246 229 / 8%);
-		color: var(--lorivo-color-text);
+		color: var(--vyrden-color-text);
 		font-size: 0.82rem;
 		font-weight: 620;
 	}
 
-	.l-action-list__empty {
+	.v-action-list__empty {
 		margin: 0;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 		font-size: 0.88rem;
 	}
 

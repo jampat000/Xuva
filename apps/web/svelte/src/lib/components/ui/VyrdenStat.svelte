@@ -14,7 +14,7 @@
 	}>();
 </script>
 
-<article class="l-stat" data-tone={tone}>
+<article class="v-stat" data-tone={tone}>
 	<span>{label}</span>
 	<strong>{value}</strong>
 	{#if meta}
@@ -23,17 +23,17 @@
 </article>
 
 <style>
-	.l-stat {
+	.v-stat {
 		display: grid;
-		gap: var(--lorivo-space-1);
-		padding: var(--lorivo-space-3);
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
+		gap: var(--vyrden-space-1);
+		padding: var(--vyrden-space-3);
+		border: 1px solid var(--vyrden-color-border-soft);
+		border-radius: var(--vyrden-radius-md);
 		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 2%));
 	}
 
 	span {
-		color: var(--lorivo-color-text-soft);
+		color: var(--vyrden-color-text-soft);
 		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.01em;
@@ -47,18 +47,18 @@
 	p {
 		margin: 0;
 		font-size: 0.78rem;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
-	.l-stat[data-tone='good'] strong {
-		color: var(--lorivo-color-good);
+	.v-stat[data-tone='good'] strong {
+		color: var(--vyrden-color-good);
 	}
 
-	.l-stat[data-tone='warn'] strong {
-		color: var(--lorivo-color-warn);
+	.v-stat[data-tone='warn'] strong {
+		color: var(--vyrden-color-warn);
 	}
 
-	.l-stat[data-tone='danger'] strong {
-		color: var(--lorivo-color-danger);
+	.v-stat[data-tone='danger'] strong {
+		color: var(--vyrden-color-danger);
 	}
 </style>

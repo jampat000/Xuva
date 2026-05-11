@@ -27,10 +27,10 @@
 <style>
 	.settings-section {
 		display: grid;
-		gap: var(--lorivo-space-3);
-		padding: var(--lorivo-space-4);
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
+		gap: var(--vyrden-space-3);
+		padding: var(--vyrden-space-4);
+		border: 1px solid var(--vyrden-color-border-soft);
+		border-radius: var(--vyrden-radius-md);
 		background: rgb(255 255 255 / 2%);
 	}
 
@@ -40,13 +40,13 @@
 	}
 
 	p {
-		margin: var(--lorivo-space-1) 0 0;
+		margin: var(--vyrden-space-1) 0 0;
 		font-size: 0.84rem;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
 	.settings-section__body {
 		display: grid;
-		gap: var(--lorivo-space-3);
+		gap: var(--vyrden-space-3);
 	}
 </style>

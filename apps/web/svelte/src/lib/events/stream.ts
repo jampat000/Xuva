@@ -1,4 +1,4 @@
-export interface LorivoEventPayloadMap {
+export interface VyrdenEventPayloadMap {
 	ready: { status: string };
 	[type: string]: unknown;
 }
@@ -28,7 +28,7 @@ const DEFAULT_RECONNECT_POLICY: EventStreamReconnectPolicy = {
 	backoffMultiplier: 1.8
 };
 
-export class EventStream<TEvents extends Record<string, unknown> = LorivoEventPayloadMap> {
+export class EventStream<TEvents extends Record<string, unknown> = VyrdenEventPayloadMap> {
 	private readonly url: string;
 	private readonly withCredentials: boolean;
 	private readonly reconnect: EventStreamReconnectPolicy;
@@ -152,7 +152,7 @@ function parseEventPayload(raw: string): unknown {
 	}
 }
 
-export function createEventStream<TEvents extends Record<string, unknown> = LorivoEventPayloadMap>(
+export function createEventStream<TEvents extends Record<string, unknown> = VyrdenEventPayloadMap>(
 	options?: EventStreamOptions<TEvents>
 ): EventStream<TEvents> {
 	return new EventStream<TEvents>(options);

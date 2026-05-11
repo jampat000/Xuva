@@ -26,11 +26,11 @@
 		ActivityListShell,
 		AdminPanel,
 		ServerShell,
-		LorivoActionList,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel,
-		LorivoStat
+		VyrdenActionList,
+		VyrdenButton,
+		VyrdenEmptyState,
+		VyrdenPanel,
+		VyrdenStat
 	} from '$lib/components';
 
 	let isLoading = $state(true);
@@ -387,21 +387,21 @@
 >
 	<div class="admin-page">
 		{#if isLoading}
-			<LorivoPanel title="Loading Admin Dashboard" subtitle="Reading live operations from the server APIs." />
+			<VyrdenPanel title="Loading Admin Dashboard" subtitle="Reading live operations from the server APIs." />
 		{:else if authMessage}
-			<LorivoPanel title="Sign in required" subtitle={authMessage}>
+			<VyrdenPanel title="Sign in required" subtitle={authMessage}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={() => loadAdmin(false)}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/signin">Open Sign In</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={() => loadAdmin(false)}>Retry</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/signin">Open Sign In</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else if loadError}
-			<LorivoPanel title="Admin dashboard could not load" subtitle={loadError}>
+			<VyrdenPanel title="Admin dashboard could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={() => loadAdmin(false)}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/settings">Open Settings</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={() => loadAdmin(false)}>Retry</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/settings">Open Settings</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else}
 			<header class="admin-head">
 				<div>
@@ -414,9 +414,9 @@
 			</header>
 
 			{#if partialLoadMessage}
-				<LorivoPanel title="Partial data" subtitle={partialLoadMessage}>
+				<VyrdenPanel title="Partial data" subtitle={partialLoadMessage}>
 					<p class="partial-copy">Live tiles continue to update as APIs recover.</p>
-				</LorivoPanel>
+				</VyrdenPanel>
 			{/if}
 
 			<AdminPanel
@@ -425,19 +425,19 @@
 				status={serverStatus}
 			>
 				<div class="stat-grid">
-					<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Session API requires authenticated access.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
-					<LorivoStat label="Active Queue Jobs" value={asCount(activeQueueCount)} meta="Scans, probes, work, and downloads." tone={activeQueueCount > 0 ? 'warn' : 'good'} />
-					<LorivoStat label="CPU" value={asPercent(system.cpu?.percent)} meta={`${asCount(system.cpu?.cores)} cores`} tone={Number(system.cpu?.percent || 0) >= 75 ? 'warn' : 'neutral'} />
-					<LorivoStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={`${asCount(system.memory?.usedBytes)} bytes used`} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
-					<LorivoStat label="Catalog" value={`${asCount(summary.mediaSources)} sources`} meta={`${asCount(summary.movies)} movies / ${asCount(summary.series)} shows`} />
-					<LorivoStat label="Needs Review" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} unprobed`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
+					<VyrdenStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Session API requires authenticated access.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
+					<VyrdenStat label="Active Queue Jobs" value={asCount(activeQueueCount)} meta="Scans, probes, work, and downloads." tone={activeQueueCount > 0 ? 'warn' : 'good'} />
+					<VyrdenStat label="CPU" value={asPercent(system.cpu?.percent)} meta={`${asCount(system.cpu?.cores)} cores`} tone={Number(system.cpu?.percent || 0) >= 75 ? 'warn' : 'neutral'} />
+					<VyrdenStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={`${asCount(system.memory?.usedBytes)} bytes used`} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
+					<VyrdenStat label="Catalog" value={`${asCount(summary.mediaSources)} sources`} meta={`${asCount(summary.movies)} movies / ${asCount(summary.series)} shows`} />
+					<VyrdenStat label="Needs Review" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} unprobed`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
 				</div>
 			</AdminPanel>
 
 			<div class="ops-grid">
 				<AdminPanel title="Current Playback Sessions" description="Active sessions and routes." status={activeSessionCount > 0 ? 'warning' : 'healthy'}>
 					<ActivityListShell title="Sessions">
-						<LorivoActionList
+						<VyrdenActionList
 							items={sessionItems}
 							emptyLabel={sessionsUnavailable
 								? 'Session endpoint is protected for this account.'
@@ -448,7 +448,7 @@
 
 				<AdminPanel title="Queue Activity" description="Live queue stream from scan/probe/work/download APIs." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
 					<ActivityListShell title="Active Queue Entries">
-						<LorivoActionList items={activeQueueItems} emptyLabel="No active queue jobs right now." />
+						<VyrdenActionList items={activeQueueItems} emptyLabel="No active queue jobs right now." />
 					</ActivityListShell>
 				</AdminPanel>
 			</div>
@@ -456,16 +456,16 @@
 			<div class="ops-grid">
 				<AdminPanel title="Operational Warnings" description="Warnings from catalog and runtime signals." status={warningItems.length > 0 ? 'warning' : 'healthy'}>
 					<ActivityListShell title="Warnings">
-						<LorivoActionList items={warningItems} emptyLabel="No operational warnings right now." />
+						<VyrdenActionList items={warningItems} emptyLabel="No operational warnings right now." />
 					</ActivityListShell>
 				</AdminPanel>
 
 				<AdminPanel title="Admin Controls" description="Admin controls are read-only in this build." status="idle">
 					<div class="status-actions">
-						<LorivoButton variant="primary" href="/settings">Open Settings</LorivoButton>
-						<LorivoButton variant="secondary" disabled>Admin controls are read-only in this build.</LorivoButton>
+						<VyrdenButton variant="primary" href="/settings">Open Settings</VyrdenButton>
+						<VyrdenButton variant="secondary" disabled>Admin controls are read-only in this build.</VyrdenButton>
 					</div>
-					<LorivoEmptyState
+					<VyrdenEmptyState
 						title="Read-only operator view"
 						message="Write operations remain intentionally unavailable in this build to keep backend behavior unchanged."
 					/>
@@ -479,7 +479,7 @@
 	.admin-page {
 		display: grid;
 		gap: 18px;
-		padding-bottom: var(--lorivo-space-8);
+		padding-bottom: var(--vyrden-space-8);
 		min-width: 0;
 	}
 
@@ -492,20 +492,20 @@
 
 	.admin-head h1 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--vyrden-font-display);
 		font-size: clamp(1.5rem, 1.4vw + 1rem, 2rem);
 		letter-spacing: -0.03em;
 	}
 
 	.admin-head p {
 		margin: 6px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
 		font-size: 0.9rem;
 		line-height: 1.42;
 	}
 
 	.admin-head__meta {
-		color: color-mix(in srgb, var(--lorivo-color-text-soft) 90%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-soft) 90%, transparent);
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
@@ -525,12 +525,12 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--vyrden-space-2);
 	}
 
 	.partial-copy {
 		margin: 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
 		font-size: 0.86rem;
 	}
 

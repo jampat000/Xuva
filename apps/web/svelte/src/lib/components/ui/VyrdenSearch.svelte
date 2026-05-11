@@ -12,17 +12,17 @@
 	}>();
 </script>
 
-<label class="l-search">
+<label class="v-search">
 	<span class="sr-only">{label}</span>
-	<span class="l-search__icon" aria-hidden="true">
+	<span class="v-search__icon" aria-hidden="true">
 		<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.2" fill="none" stroke="currentColor" stroke-width="1.7" /><path d="m16 16 4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
 	</span>
 	<input bind:value {placeholder} />
-	<span class="l-search__shortcut" aria-hidden="true">{shortcut}</span>
+	<span class="v-search__shortcut" aria-hidden="true">{shortcut}</span>
 </label>
 
 <style>
-	.l-search {
+	.v-search {
 		display: flex;
 		align-items: center;
 		gap: 12px;
@@ -39,18 +39,18 @@
 			0 10px 24px rgb(0 0 0 / 14%);
 	}
 
-	.l-search:focus-within {
-		border-color: var(--lorivo-color-border-strong);
+	.v-search:focus-within {
+		border-color: var(--vyrden-color-border-strong);
 	}
 
-	.l-search__icon {
+	.v-search__icon {
 		display: inline-flex;
 		width: 18px;
 		height: 18px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 72%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 72%, transparent);
 	}
 
-	.l-search__icon svg {
+	.v-search__icon svg {
 		width: 100%;
 		height: 100%;
 	}
@@ -59,16 +59,16 @@
 		flex: 1;
 		border: 0;
 		background: transparent;
-		color: color-mix(in srgb, var(--lorivo-color-text) 96%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 96%, transparent);
 		font-size: 0.95rem;
 		letter-spacing: 0.008em;
 	}
 
 	input::placeholder {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 74%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 74%, transparent);
 	}
 
-	.l-search__shortcut {
+	.v-search__shortcut {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -77,14 +77,14 @@
 		padding: 0 8px;
 		border-radius: 8px;
 		background: rgb(255 246 229 / 6%);
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 72%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 72%, transparent);
 		font-size: 0.8rem;
 		font-weight: 600;
 		letter-spacing: 0.01em;
 	}
 
 	@media (max-width: 560px) {
-		.l-search {
+		.v-search {
 			height: 36px;
 			gap: 9px;
 			padding: 0 10px;
@@ -94,7 +94,7 @@
 			font-size: 0.88rem;
 		}
 
-		.l-search__shortcut {
+		.v-search__shortcut {
 			min-width: 44px;
 			font-size: 0.74rem;
 			padding: 0 6px;
@@ -102,7 +102,7 @@
 	}
 
 	@media (max-width: 430px) {
-		.l-search__shortcut {
+		.v-search__shortcut {
 			display: none;
 		}
 	}

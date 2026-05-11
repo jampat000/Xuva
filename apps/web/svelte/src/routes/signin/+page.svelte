@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { LorivoButton, LorivoPanel } from '$lib/components';
+	import { VyrdenButton, VyrdenPanel } from '$lib/components';
 	import {
 		bootstrapAccount,
 		getAuthSession,
@@ -135,7 +135,7 @@
 
 <div class="auth-shell">
 	<div class="auth-card">
-		<LorivoPanel
+		<VyrdenPanel
 			title={mode === 'bootstrap' ? 'Create your Lorivo account' : 'Sign in to Lorivo'}
 			subtitle={mode === 'bootstrap'
 				? 'Set up the first local account to start your server.'
@@ -174,7 +174,7 @@
 					{/if}
 
 					<div class="actions">
-						<LorivoButton variant="primary" type="submit" disabled={isSubmitting}>
+						<VyrdenButton variant="primary" type="submit" disabled={isSubmitting}>
 							{isSubmitting
 								? mode === 'bootstrap'
 									? 'Creating account...'
@@ -182,12 +182,12 @@
 								: mode === 'bootstrap'
 									? 'Create account'
 									: 'Sign in'}
-						</LorivoButton>
-						<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+						</VyrdenButton>
+						<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
 					</div>
 				</form>
 			{/if}
-		</LorivoPanel>
+		</VyrdenPanel>
 	</div>
 </div>
 
@@ -208,7 +208,7 @@
 
 	.auth-copy {
 		margin: 0;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 		font-size: 0.94rem;
 	}
 
@@ -225,14 +225,14 @@
 	.field span {
 		font-size: 0.8rem;
 		font-weight: 600;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
 	.field input {
-		border: 1px solid var(--lorivo-color-border-soft);
-		background: var(--lorivo-color-surface-elevated);
-		color: var(--lorivo-color-text);
-		border-radius: var(--lorivo-radius-md);
+		border: 1px solid var(--vyrden-color-border-soft);
+		background: var(--vyrden-color-surface-elevated);
+		color: var(--vyrden-color-text);
+		border-radius: var(--vyrden-radius-md);
 		min-height: 38px;
 		padding: 0 11px;
 		font: inherit;
@@ -241,13 +241,13 @@
 	.auth-error {
 		margin: 0;
 		font-size: 0.85rem;
-		color: var(--lorivo-color-danger, #ff9f9f);
+		color: var(--vyrden-color-danger, #ff9f9f);
 	}
 
 	.auth-status {
 		margin: 0;
 		font-size: 0.85rem;
-		color: var(--lorivo-color-accent-teal);
+		color: var(--vyrden-color-accent-teal);
 	}
 
 	.actions {

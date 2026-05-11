@@ -8,9 +8,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		ResumeTile,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel
+		VyrdenButton,
+		VyrdenEmptyState,
+		VyrdenPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -71,17 +71,17 @@
 <MediaShell active="continue-watching" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<LorivoPanel
+			<VyrdenPanel
 				title="Loading Continue Watching"
 				subtitle="Fetching in-progress playback from existing APIs."
 			/>
 		{:else if loadError}
-			<LorivoPanel title="Continue Watching could not load" subtitle={loadError}>
+			<VyrdenPanel title="Continue Watching could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadContinueWatching}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={loadContinueWatching}>Retry</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else}
 			<BrowseHeader title="Continue Watching" subtitle="Resume in-progress movies and episodes.">
 				{#snippet chips()}
@@ -97,21 +97,21 @@
 			<BrowseToolbar />
 
 			{#if !rowAvailable && !usingPreviewData}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="Continue Watching is not available yet"
 					message="The current backend payload does not expose a continue row for this route."
 				>
 					{#snippet action()}
-						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
+						<VyrdenButton variant="secondary" href="/">Back to Home</VyrdenButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</VyrdenEmptyState>
 			{:else if items.length === 0}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="Nothing in progress"
 					message="Start playback and your in-progress titles will appear here."
 				/>
 			{:else if visibleItems.length === 0}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="No continue matches"
 					message="Try changing search terms to find in-progress titles."
 				/>
@@ -137,7 +137,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--vyrden-space-2);
 	}
 
 	.resume-grid {

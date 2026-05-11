@@ -30,14 +30,14 @@
 </script>
 
 {#if href}
-	<a class="l-button" data-variant={variant} data-size={size} href={href} aria-label={ariaLabel} {onclick}>
-		{#if leading}<span class="l-button__slot">{@render leading()}</span>{/if}
-		<span class="l-button__label">{@render children?.()}</span>
-		{#if trailing}<span class="l-button__slot">{@render trailing()}</span>{/if}
+	<a class="v-button" data-variant={variant} data-size={size} href={href} aria-label={ariaLabel} {onclick}>
+		{#if leading}<span class="v-button__slot">{@render leading()}</span>{/if}
+		<span class="v-button__label">{@render children?.()}</span>
+		{#if trailing}<span class="v-button__slot">{@render trailing()}</span>{/if}
 	</a>
 {:else}
 	<button
-		class="l-button"
+		class="v-button"
 		data-variant={variant}
 		data-size={size}
 		{type}
@@ -45,21 +45,21 @@
 		aria-label={ariaLabel}
 		{onclick}
 	>
-		{#if leading}<span class="l-button__slot">{@render leading()}</span>{/if}
-		<span class="l-button__label">{@render children?.()}</span>
-		{#if trailing}<span class="l-button__slot">{@render trailing()}</span>{/if}
+		{#if leading}<span class="v-button__slot">{@render leading()}</span>{/if}
+		<span class="v-button__label">{@render children?.()}</span>
+		{#if trailing}<span class="v-button__slot">{@render trailing()}</span>{/if}
 	</button>
 {/if}
 
 <style>
-	.l-button {
+	.v-button {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: var(--lorivo-space-2);
-		padding: 0 var(--lorivo-space-4);
+		gap: var(--vyrden-space-2);
+		padding: 0 var(--vyrden-space-4);
 		border: 1px solid transparent;
-		border-radius: var(--lorivo-radius-md);
+		border-radius: var(--vyrden-radius-md);
 		font-weight: 650;
 		letter-spacing: 0.006em;
 		text-decoration: none;
@@ -71,62 +71,62 @@
 			box-shadow 140ms ease;
 	}
 
-	.l-button[data-size='sm'] {
-		min-height: var(--lorivo-control-height-sm);
+	.v-button[data-size='sm'] {
+		min-height: var(--vyrden-control-height-sm);
 		font-size: 0.85rem;
 	}
 
-	.l-button[data-size='md'] {
-		min-height: var(--lorivo-control-height-md);
+	.v-button[data-size='md'] {
+		min-height: var(--vyrden-control-height-md);
 		font-size: 0.95rem;
 	}
 
-	.l-button[data-size='lg'] {
-		min-height: var(--lorivo-control-height-lg);
+	.v-button[data-size='lg'] {
+		min-height: var(--vyrden-control-height-lg);
 		font-size: 1rem;
 	}
 
-	.l-button[data-variant='primary'] {
+	.v-button[data-variant='primary'] {
 		background: linear-gradient(180deg, #6fd3ba, #49b59b);
 		color: #f7f3ea;
 		border-color: rgb(111 211 186 / 42%);
 		box-shadow: 0 10px 24px rgb(0 0 0 / 26%);
 	}
 
-	.l-button[data-variant='secondary'] {
+	.v-button[data-variant='secondary'] {
 		background: rgb(255 246 229 / 4%);
-		border-color: var(--lorivo-color-border-soft);
-		color: var(--lorivo-color-text);
+		border-color: var(--vyrden-color-border-soft);
+		color: var(--vyrden-color-text);
 	}
 
-	.l-button[data-variant='ghost'] {
-		color: var(--lorivo-color-text-muted);
+	.v-button[data-variant='ghost'] {
+		color: var(--vyrden-color-text-muted);
 		background: rgb(255 246 229 / 2%);
 	}
 
-	.l-button[data-variant='danger'] {
+	.v-button[data-variant='danger'] {
 		background: rgb(220 139 131 / 15%);
 		border-color: rgb(220 139 131 / 28%);
 		color: #ffc6c6;
 	}
 
-	.l-button:hover:not(:disabled) {
+	.v-button:hover:not(:disabled) {
 		transform: translateY(-1px);
 		box-shadow: 0 12px 28px rgb(0 0 0 / 26%);
 	}
 
-	.l-button:disabled {
+	.v-button:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
 	}
 
-	.l-button__slot {
+	.v-button__slot {
 		display: inline-flex;
 		width: 1rem;
 		height: 1rem;
 	}
 
-	.l-button__slot :global(svg) {
+	.v-button__slot :global(svg) {
 		width: 100%;
 		height: 100%;
 	}

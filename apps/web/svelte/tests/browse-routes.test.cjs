@@ -60,7 +60,7 @@ test('home preview fallback remains explicit for 401 responses', () => {
 	const source = read('src/routes/+page.svelte');
 	assert.match(source, /<LorivoMediaHome[\s\S]*previewMode=\{previewMode\}/);
 	assert.doesNotMatch(source, /Add your first library/);
-	assert.doesNotMatch(source, /Open Lorivo Settings/);
+	assert.doesNotMatch(source, /Open Vyrden Settings/);
 	assert.doesNotMatch(source, /effectivePreviewMode\s*=\s*true/);
 	assert.doesNotMatch(source, /hasTruthyFlagInHref\(/);
 });

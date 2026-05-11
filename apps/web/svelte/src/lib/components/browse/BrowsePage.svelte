@@ -13,7 +13,7 @@
 		display: grid;
 		gap: 18px;
 		padding-inline: clamp(2px, 0.8vw, 12px);
-		padding-bottom: var(--lorivo-space-8);
+		padding-bottom: var(--vyrden-space-8);
 		min-width: 0;
 	}
 </style>
