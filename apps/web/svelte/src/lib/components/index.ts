@@ -1,6 +1,6 @@
-export { default as LorivoShell } from './shell/LorivoShell.svelte';
-export { default as LorivoBrand } from './shell/LorivoBrand.svelte';
-export { default as LorivoSidebar } from './shell/LorivoSidebar.svelte';
+export { default as VyrdenShell } from './shell/VyrdenShell.svelte';
+export { default as VyrdenBrand } from './shell/VyrdenBrand.svelte';
+export { default as VyrdenSidebar } from './shell/VyrdenSidebar.svelte';
 export { default as SidebarItem } from './shell/SidebarItem.svelte';
 export { default as SidebarSection } from './shell/SidebarSection.svelte';
 export { default as SidebarUser } from './shell/SidebarUser.svelte';
@@ -9,13 +9,13 @@ export { default as AppTopbar } from './shell/AppTopbar.svelte';
 export { default as MediaShell } from './shell/MediaShell.svelte';
 export { default as ServerShell } from './shell/ServerShell.svelte';
 
-export { default as LorivoButton } from './ui/LorivoButton.svelte';
-export { default as LorivoPanel } from './ui/LorivoPanel.svelte';
-export { default as LorivoSurface } from './ui/LorivoSurface.svelte';
-export { default as LorivoSearch } from './ui/LorivoSearch.svelte';
-export { default as LorivoEmptyState } from './ui/LorivoEmptyState.svelte';
-export { default as LorivoStat } from './ui/LorivoStat.svelte';
-export { default as LorivoActionList } from './ui/LorivoActionList.svelte';
+export { default as VyrdenButton } from './ui/VyrdenButton.svelte';
+export { default as VyrdenPanel } from './ui/VyrdenPanel.svelte';
+export { default as VyrdenSurface } from './ui/VyrdenSurface.svelte';
+export { default as VyrdenSearch } from './ui/VyrdenSearch.svelte';
+export { default as VyrdenEmptyState } from './ui/VyrdenEmptyState.svelte';
+export { default as VyrdenStat } from './ui/VyrdenStat.svelte';
+export { default as VyrdenActionList } from './ui/VyrdenActionList.svelte';
 
 export { default as HeroSurface } from './media/HeroSurface.svelte';
 export { default as MediaRow } from './media/MediaRow.svelte';

@@ -9,9 +9,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel
+		VyrdenButton,
+		VyrdenEmptyState,
+		VyrdenPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -111,24 +111,24 @@
 <MediaShell active="recently-added" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<LorivoPanel
+			<VyrdenPanel
 				title="Loading Recently Added"
 				subtitle="Fetching recent movie and TV additions from existing APIs."
 			/>
 		{:else if loadError}
-			<LorivoPanel title="Recently Added could not load" subtitle={loadError}>
+			<VyrdenPanel title="Recently Added could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadRecentlyAdded}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={loadRecentlyAdded}>Retry</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else if authMessage}
-			<LorivoPanel title="Sign in required" subtitle={authMessage}>
+			<VyrdenPanel title="Sign in required" subtitle={authMessage}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadRecentlyAdded}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/signin">Open Sign In</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={loadRecentlyAdded}>Retry</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/signin">Open Sign In</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else}
 			<BrowseHeader title="Recently Added" subtitle="Latest additions across movies and TV.">
 				{#snippet chips()}
@@ -146,21 +146,21 @@
 			<BrowseToolbar />
 
 			{#if !rowAvailable && !usingPreviewData}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="Recently Added is not available yet"
 					message="The current backend payload does not expose a recently added row for this route."
 				>
 					{#snippet action()}
-						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
+						<VyrdenButton variant="secondary" href="/">Back to Home</VyrdenButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</VyrdenEmptyState>
 			{:else if movieItems.length === 0 && tvItems.length === 0}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="Nothing recently added"
 					message="Scan your libraries to populate recent additions."
 				/>
 			{:else if totalVisible === 0}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="No recent matches"
 					message="Try changing search terms to find recent titles."
 				/>
@@ -202,7 +202,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--vyrden-space-2);
 	}
 
 	.row {

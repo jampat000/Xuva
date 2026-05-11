@@ -21,9 +21,9 @@
 	.live-status-badge {
 		display: inline-flex;
 		align-items: center;
-		min-height: var(--lorivo-control-height-sm);
-		padding: 0 var(--lorivo-space-3);
-		border-radius: var(--lorivo-radius-pill);
+		min-height: var(--vyrden-control-height-sm);
+		padding: 0 var(--vyrden-space-3);
+		border-radius: var(--vyrden-radius-pill);
 		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.02em;
@@ -32,21 +32,21 @@
 
 	.live-status-badge[data-status='healthy'] {
 		background: rgb(123 200 146 / 18%);
-		color: var(--lorivo-color-good);
+		color: var(--vyrden-color-good);
 	}
 
 	.live-status-badge[data-status='warning'] {
 		background: rgb(226 191 115 / 18%);
-		color: var(--lorivo-color-warn);
+		color: var(--vyrden-color-warn);
 	}
 
 	.live-status-badge[data-status='critical'] {
 		background: rgb(220 139 131 / 18%);
-		color: var(--lorivo-color-danger);
+		color: var(--vyrden-color-danger);
 	}
 
 	.live-status-badge[data-status='idle'] {
 		background: rgb(255 246 229 / 8%);
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 </style>

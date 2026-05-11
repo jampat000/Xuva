@@ -1,217 +1,75 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { onMount } from 'svelte';
-	import { getAuthSession, type AuthSessionResponse } from '$lib/api/auth';
-	import { ApiClientError, apiClient } from '$lib/api/client';
-	import {
-		getClientHome,
-		getLibraries,
-		getPlaybackRecent,
-		type ClientHomeResponse,
-		type LibrariesResponse,
-		type PlaybackRecentResponse
-	} from '$lib/api/home';
-	import LorivoMediaHome from '$lib/components/home/LorivoMediaHome.svelte';
-	import {
-		buildHomeViewModel,
-		resolveForceEmptyMode,
-		resolvePreviewMode,
-		type HomeDisplayItem,
-		type HomeViewModel
-	} from '$lib/home/model';
+	import Hero from '$lib/lorivo/Hero.svelte';
+	import LandscapeCard from '$lib/lorivo/LandscapeCard.svelte';
+	import PosterCard from '$lib/lorivo/PosterCard.svelte';
+	import Row from '$lib/lorivo/Row.svelte';
+	import TopBar from '$lib/lorivo/TopBar.svelte';
 
-	interface LorivoHeroProps {
-		title: string;
-		meta: string;
-		description: string;
-		progressLabel: string;
-		progressPercent: number;
-		runtime: string;
-		backdropUrl: string;
-		posterUrl: string;
-		resumeHref: string;
-		detailsHref: string;
-	}
+	const tmdb = (path: string) => `https://image.tmdb.org/t/p/w500${path}`;
+	const tmdbBg = (path: string) => `https://image.tmdb.org/t/p/original${path}`;
 
-	interface LorivoWideItemProps {
-		title: string;
-		context: string;
-		progressLabel: string;
-		progressPercent: number;
-		imageUrl: string;
-		playHref: string;
-	}
+	// Hero: Dune: Part Two — real poster + matching backdrop
+	const HERO_POSTER = tmdb('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg');
+	const HERO_BACKDROP = tmdbBg('/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg');
 
-	interface LorivoPosterItemProps {
-		title: string;
-		meta: string;
-		imageUrl: string;
-		href: string;
-	}
+	const continueWatching = [
+		{ title: 'Dune: Part Two', sub: '1h 14m left', progress: 55, img: tmdb('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg') },
+		{ title: 'The Last of Us', sub: 'S1 E4 · 24m left', progress: 70, img: tmdb('/uKvVjHNqB5VmOrdxqAt2F7J78ED.jpg') },
+		{ title: 'Foundation', sub: 'S2 E3 · 32m left', progress: 40, img: tmdb('/tg9I5pOY4M9CKj8U0cxVBTsm5eh.jpg') },
+		{ title: 'Oppenheimer', sub: '1h 20m left', progress: 35, img: tmdb('/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg') },
+		{ title: 'The Batman', sub: '40m left', progress: 80, img: tmdb('/b0PlSFdDwbyK0cf5RxwDpaOJQvQ.jpg') },
+		{ title: 'Interstellar', sub: '1h 7m left', progress: 50, img: tmdb('/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg') },
+	];
 
-	const previewMode = resolvePreviewMode(page.url.searchParams);
-	const forceEmpty = resolveForceEmptyMode(page.url.searchParams);
-	const emptyPayload = {};
-	const fallbackBackdrop = svgDataUri(
-		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#050b18"/><stop offset="0.55" stop-color="#111827"/><stop offset="1" stop-color="#33218c"/></linearGradient></defs><rect width="1200" height="675" fill="url(#g)"/><circle cx="885" cy="155" r="260" fill="#7c5cff" opacity="0.18"/><text x="84" y="392" fill="#f6f7ff" font-family="Inter,Arial,sans-serif" font-size="86" font-weight="750">Lorivo Media</text></svg>'
-	);
-	const fallbackPoster = svgDataUri(
-		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#070d1b"/><stop offset="0.62" stop-color="#121a30"/><stop offset="1" stop-color="#4a33c5"/></linearGradient></defs><rect width="600" height="900" fill="url(#g)"/><circle cx="470" cy="150" r="190" fill="#7c5cff" opacity="0.18"/><text x="58" y="486" fill="#f6f7ff" font-family="Inter,Arial,sans-serif" font-size="62" font-weight="750">Lorivo</text></svg>'
-	);
+	const recentMovies = [
+		{ title: 'Mufasa: The Lion King', img: tmdb('/lurEK87kukWNaHd0zYnsi3yzJrs.jpg') },
+		{ title: 'Twisters', img: tmdb('/pjnD08FlMAIXsfOLKQbvmO0f0MD.jpg') },
+		{ title: 'A Quiet Place: Day One', img: tmdb('/hU42CRk14JuPEdqZG3AWmagiPAP.jpg') },
+		{ title: 'The Fall Guy', img: tmdb('/e7olqFmzcIX5c23kX4zSmLPJi8c.jpg') },
+		{ title: 'Kingdom of the Planet of the Apes', img: tmdb('/gKkl37BQuKTanygYQG1pyYgLVgf.jpg') },
+		{ title: 'Civil War', img: tmdb('/dXNAPwY7VrqMAo51EKhhCJfaGb5.jpg') },
+		{ title: 'Dune: Part Two', img: tmdb('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg') },
+		{ title: 'Top Gun: Maverick', img: tmdb('/62HCnUTziyWcpDaBO2i1DX17ljH.jpg') },
+		{ title: 'Deadpool & Wolverine', img: tmdb('/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg') },
+		{ title: 'The Wild Robot', img: tmdb('/9w0Vh9eizfBXrcomiaFWTIPdboo.jpg') },
+	];
 
-	let viewModel = $state<HomeViewModel>(
-		buildHomeViewModel({
-			homePayload: emptyPayload,
-			playbackRecentPayload: emptyPayload,
-			librariesPayload: emptyPayload,
-			sessionPayload: null,
-			previewMode,
-			forceEmpty
-		})
-	);
-
-	const hero = $derived(toHero(viewModel.hero));
-	const continueItems = $derived(viewModel.continueItems.map(toWideItem));
-	const movieItems = $derived(viewModel.movieItems.map(toPosterItem));
-	const tvItems = $derived(viewModel.tvItems.map(toPosterItem));
-
-	onMount(() => {
-		void loadHome();
-	});
-
-	async function loadHome(): Promise<void> {
-		try {
-			const [homePayload, playbackRecentPayload, librariesPayload, sessionPayload] =
-				await Promise.all([
-					getClientHome(apiClient, 24).catch((error: unknown) => fallbackHome(error)),
-					getPlaybackRecent(apiClient, 12).catch((error: unknown) => fallbackRecent(error)),
-					getLibraries(apiClient).catch((error: unknown) => fallbackLibraries(error)),
-					getAuthSession(apiClient).catch((error: unknown) => fallbackSession(error))
-				]);
-
-			viewModel = buildHomeViewModel({
-				homePayload,
-				playbackRecentPayload,
-				librariesPayload,
-				sessionPayload,
-				previewMode,
-				forceEmpty
-			});
-		} catch {
-			viewModel = buildHomeViewModel({
-				homePayload: emptyPayload,
-				playbackRecentPayload: emptyPayload,
-				librariesPayload: emptyPayload,
-				sessionPayload: null,
-				previewMode,
-				forceEmpty: previewMode ? forceEmpty : true
-			});
-		}
-	}
-
-	function fallbackHome(error: unknown): ClientHomeResponse {
-		if (previewMode || isApiStatus(error, 401)) return {};
-		throw error;
-	}
-
-	function fallbackRecent(error: unknown): PlaybackRecentResponse {
-		if (previewMode || isApiStatus(error, 401)) return {};
-		throw error;
-	}
-
-	function fallbackLibraries(error: unknown): LibrariesResponse {
-		if (previewMode || isApiStatus(error, 401)) return { libraries: [] };
-		throw error;
-	}
-
-	function fallbackSession(error: unknown): AuthSessionResponse | null {
-		if (previewMode || isApiStatus(error, 401)) return null;
-		throw error;
-	}
-
-	function toHero(item: HomeDisplayItem): LorivoHeroProps {
-		const detailsHref = detailsHrefFor(item);
-		return {
-			title: item.title || 'Lorivo Media',
-			meta: item.meta || item.subtitle || 'Personal media',
-			description:
-				item.description ||
-				'Your movies and TV shows will appear here once Lorivo has scanned your media folders.',
-			progressLabel: progressLabelFor(item) || 'Ready to watch',
-			progressPercent: item.progressPercent,
-			runtime: item.subtitle || item.meta || 'Local library',
-			backdropUrl: item.backdropUrl || item.posterUrl || fallbackBackdrop,
-			posterUrl: item.posterUrl || item.backdropUrl || fallbackPoster,
-			resumeHref: playbackHrefFor(item, detailsHref),
-			detailsHref
-		};
-	}
-
-	function toWideItem(item: HomeDisplayItem): LorivoWideItemProps {
-		const detailsHref = detailsHrefFor(item);
-		return {
-			title: item.title,
-			context: item.subtitle || item.meta || 'Resume',
-			progressLabel: progressLabelFor(item),
-			progressPercent: item.progressPercent,
-			imageUrl: item.backdropUrl || item.posterUrl || fallbackBackdrop,
-			playHref: playbackHrefFor(item, detailsHref)
-		};
-	}
-
-	function toPosterItem(item: HomeDisplayItem): LorivoPosterItemProps {
-		return {
-			title: item.title,
-			meta: item.meta || item.subtitle || mediaLabelFor(item),
-			imageUrl: item.posterUrl || item.backdropUrl || fallbackPoster,
-			href: detailsHrefFor(item)
-		};
-	}
-
-	function playbackHrefFor(item: HomeDisplayItem, fallbackHref: string): string {
-		const mediaSourceId = item.playMediaSourceId || item.mediaSourceId;
-		if (!mediaSourceId || item.kind === 'empty') return fallbackHref;
-		return `/play/${encodeURIComponent(mediaSourceId)}`;
-	}
-
-	function detailsHrefFor(item: HomeDisplayItem): string {
-		if (!item.id || item.kind === 'empty') return '/settings';
-		if (item.kind === 'series' || item.kind === 'episode') return `/tv/${encodeURIComponent(item.id)}`;
-		return `/movies/${encodeURIComponent(item.id)}`;
-	}
-
-	function progressLabelFor(item: HomeDisplayItem): string {
-		const value = Math.max(0, Math.min(100, Number(item.progressPercent) || 0));
-		return value > 0 ? `Resume from ${Math.round(value)}%` : item.meta;
-	}
-
-	function mediaLabelFor(item: HomeDisplayItem): string {
-		if (item.kind === 'series' || item.kind === 'episode') return 'TV';
-		if (item.kind === 'movie') return 'Movie';
-		return 'Media';
-	}
-
-	function isApiStatus(error: unknown, status: number): boolean {
-		return error instanceof ApiClientError && error.status === status;
-	}
-
-	function svgDataUri(svg: string): string {
-		return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-	}
+	const recentTV = [
+		{ title: 'The Penguin', ep: 'S1 E4', img: tmdb('/vOWcqC4oDQws1doDWLO7d3dh5qc.jpg') },
+		{ title: 'House of the Dragon', ep: 'S2 E2', img: tmdb('/7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg') },
+		{ title: 'The Boys', ep: 'S4 E6', img: tmdb('/2zmTngn1tYC1AvfnrFLhxeD82hz.jpg') },
+		{ title: 'Slow Horses', ep: 'S4 E3', img: tmdb('/dnpatlJrEPiDSn5fzgzvxtiSnMo.jpg') },
+		{ title: 'Reacher', ep: 'S3 E4', img: tmdb('/31GlRQMiDunO8cl3NxTz34U64rf.jpg') },
+		{ title: 'Severance', ep: 'S2 E4', img: tmdb('/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg') },
+		{ title: 'The Night Agent', ep: 'S2 E2', img: tmdb('/4c5yUNcaff4W4aPrkXE6zr7papX.jpg') },
+		{ title: 'Silo', ep: 'S2 E1', img: tmdb('/tlliQuCupf8fpTH7RAor3aKMGy.jpg') },
+		{ title: '3 Body Problem', ep: 'S1 E7', img: tmdb('/ykZ7hlShkdRQaL2aiieXdEMmrLb.jpg') },
+		{ title: 'Monarch: Legacy of Monsters', ep: 'S1 E8', img: tmdb('/7LBbaEaLSbqdviBYaSS1rRPMnrs.jpg') },
+	];
 </script>
 
 <svelte:head>
-	<title>Lorivo Media</title>
-	<meta
-		name="description"
-		content="Lorivo Media is a local-first home for streaming your personal movies and TV library."
-	/>
+	<title>Lorivo — Stream Movies & TV</title>
+	<meta name="description" content="Lorivo: your personal streaming hub for movies and TV." />
 </svelte:head>
 
-<LorivoMediaHome
-	{hero}
-	{continueItems}
-	{movieItems}
-	{tvItems}
-	previewMode={previewMode}
-/>
+<div class="min-h-screen bg-[#0B1120] font-sans text-white antialiased">
+	<TopBar />
+	<Hero heroPoster={HERO_POSTER} heroBackdrop={HERO_BACKDROP} />
+	<Row title="Continue Watching">
+		{#each continueWatching as m (m.title)}
+			<LandscapeCard item={m} />
+		{/each}
+	</Row>
+	<Row title="Recently Added Movies">
+		{#each recentMovies as m (m.title)}
+			<PosterCard img={m.img} title={m.title} />
+		{/each}
+	</Row>
+	<Row title="Recently Added TV">
+		{#each recentTV as m (m.title)}
+			<PosterCard img={m.img} title={m.title} ep={m.ep} />
+		{/each}
+	</Row>
+	<div class="h-16"></div>
+</div>

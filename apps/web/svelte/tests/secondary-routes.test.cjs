@@ -9,7 +9,7 @@ function read(file) {
 	return fs.readFileSync(path.join(appRoot, file), 'utf8');
 }
 
-test('media shell drawer keeps viewer-first navigation and secondary library links', () => {
+test('media shell drawer keeps viewer-first navigation and secondary server links', () => {
 	const source = read('src/lib/components/shell/MediaShell.svelte');
 	assert.match(source, /label:\s*'Home',\s*href:\s*'\/'/);
 	assert.match(source, /label:\s*'Movies',\s*href:\s*'\/movies'/);
@@ -18,8 +18,8 @@ test('media shell drawer keeps viewer-first navigation and secondary library lin
 	assert.match(source, /label:\s*'Recently Added',\s*href:\s*'\/recently-added'/);
 	assert.match(source, /label:\s*'Watchlist',\s*href:\s*'\/watchlist'/);
 	assert.match(source, /label:\s*'Collections',\s*href:\s*'\/collections'/);
-	assert.match(source, /label:\s*'Library Admin',\s*href:\s*'\/admin'/);
-	assert.match(source, /label:\s*'Settings',\s*href:\s*'\/settings'/);
+	assert.match(source, /label:\s*'Manage Server',\s*href:\s*'\/admin'/);
+	assert.match(source, /label:\s*'Server Settings',\s*href:\s*'\/settings'/);
 });
 
 test('watchlist route uses shared secondary loader and explicit unavailable state', () => {
@@ -58,5 +58,5 @@ test('media row hides scrollbars and uses overflow-aware arrow controls', () => 
 	assert.match(source, /canScrollNext/);
 	assert.match(source, /Scroll media row left/);
 	assert.match(source, /Scroll media row right/);
-	assert.match(source, /max-width:\s*620px[\s\S]*width:\s*38px[\s\S]*height:\s*38px/);
+	assert.match(source, /max-width:\s*900px[\s\S]*display:\s*none !important/);
 });

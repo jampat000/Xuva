@@ -14,36 +14,36 @@
 	}>();
 </script>
 
-<div class="l-empty">
-	<div class="l-empty__icon" aria-hidden="true">
+<div class="v-empty">
+	<div class="v-empty__icon" aria-hidden="true">
 		{@render icon?.()}
 	</div>
 	<h3>{title}</h3>
 	<p>{message}</p>
 	{#if action}
-		<div class="l-empty__action">{@render action()}</div>
+		<div class="v-empty__action">{@render action()}</div>
 	{/if}
 </div>
 
 <style>
-	.l-empty {
+	.v-empty {
 		display: grid;
 		justify-items: start;
-		gap: var(--lorivo-space-2);
-		padding: var(--lorivo-space-6);
-		border: 1px dashed var(--lorivo-color-border-strong);
-		border-radius: var(--lorivo-radius-lg);
+		gap: var(--vyrden-space-2);
+		padding: var(--vyrden-space-6);
+		border: 1px dashed var(--vyrden-color-border-strong);
+		border-radius: var(--vyrden-radius-lg);
 		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 1%));
 	}
 
-	.l-empty__icon {
+	.v-empty__icon {
 		display: inline-flex;
 		width: 1.5rem;
 		height: 1.5rem;
-		color: var(--lorivo-color-text-soft);
+		color: var(--vyrden-color-text-soft);
 	}
 
-	.l-empty__icon :global(svg) {
+	.v-empty__icon :global(svg) {
 		width: 100%;
 		height: 100%;
 	}
@@ -56,7 +56,7 @@
 
 	p {
 		margin: 0;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 		font-size: 0.9rem;
 		line-height: 1.42;
 	}

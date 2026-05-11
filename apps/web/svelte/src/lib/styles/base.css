@@ -12,12 +12,12 @@ body {
 }
 
 body {
-	font-family: var(--lorivo-font-sans);
+	font-family: var(--vyrden-font-sans);
 	background:
-		radial-gradient(circle at 18% -12%, rgb(124 92 255 / 16%) 0%, rgb(124 92 255 / 0%) 34%),
-		radial-gradient(circle at 86% 8%, rgb(61 85 142 / 14%) 0%, rgb(61 85 142 / 0%) 28%),
-		linear-gradient(180deg, #0f172a 0%, #0b1120 100%);
-	color: var(--lorivo-color-text);
+		radial-gradient(circle at 20% -10%, rgb(94 132 108 / 14%) 0%, rgb(94 132 108 / 0%) 34%),
+		radial-gradient(circle at 86% 8%, rgb(104 93 79 / 11%) 0%, rgb(104 93 79 / 0%) 28%),
+		linear-gradient(180deg, #121210 0%, #0b0b0a 100%);
+	color: var(--vyrden-color-text);
 	line-height: 1.5;
 }
 
@@ -26,7 +26,7 @@ a {
 }
 
 code {
-	font-family: var(--lorivo-font-mono);
+	font-family: var(--vyrden-font-mono);
 	font-size: 0.92em;
 }
 
@@ -50,12 +50,12 @@ textarea {
 
 *:focus-visible {
 	outline: none;
-	box-shadow: var(--lorivo-focus-ring);
+	box-shadow: var(--vyrden-focus-ring);
 }
 
 * {
 	scrollbar-width: thin;
-	scrollbar-color: rgb(124 92 255 / 42%) rgb(255 255 255 / 5%);
+	scrollbar-color: rgb(191 177 151 / 35%) rgb(255 255 255 / 5%);
 }
 
 *::-webkit-scrollbar {
@@ -65,7 +65,7 @@ textarea {
 
 *::-webkit-scrollbar-thumb {
 	border-radius: 999px;
-	background: rgb(124 92 255 / 34%);
+	background: rgb(191 177 151 / 28%);
 	border: 2px solid transparent;
 	background-clip: content-box;
 }

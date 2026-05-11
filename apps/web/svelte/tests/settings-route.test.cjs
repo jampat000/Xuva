@@ -25,6 +25,7 @@ test('settings route uses existing operator/settings APIs in read-only mode', ()
 	assert.match(source, /createEventStream\(\)/);
 	assert.match(source, /Settings editing is not available yet\./);
 	assert.match(source, /<ServerShell/);
+	assert.doesNotMatch(source, /legacy/i);
 	assert.doesNotMatch(source, /send<.*\/api\/settings/s);
 });
 

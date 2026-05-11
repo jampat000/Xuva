@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { MediaShell, LorivoButton, LorivoEmptyState, LorivoPanel } from '$lib/components';
+	import { MediaShell, VyrdenButton, VyrdenEmptyState, VyrdenPanel } from '$lib/components';
 	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
 	import { ApiClientError } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
@@ -148,22 +148,22 @@
 <MediaShell active="setup" bind:searchValue userInitials={userInitials}>
 	<div class="setup-page">
 		{#if isLoading}
-			<LorivoPanel title="Loading setup" subtitle="Checking account and library status." />
+			<VyrdenPanel title="Loading setup" subtitle="Checking account and library status." />
 		{:else if authRequired}
-			<LorivoPanel title="Sign in required" subtitle="Sign in to set up your first library.">
+			<VyrdenPanel title="Sign in required" subtitle="Sign in to set up your first library.">
 				<div class="actions">
-					<LorivoButton variant="primary" href="/signin">Open Sign In</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<VyrdenButton variant="primary" href="/signin">Open Sign In</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else if loadError}
-			<LorivoPanel title="Setup could not load" subtitle={loadError}>
+			<VyrdenPanel title="Setup could not load" subtitle={loadError}>
 				<div class="actions">
-					<LorivoButton variant="secondary" onclick={initialize}>Retry</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={initialize}>Retry</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else}
-			<LorivoPanel title="First library setup" subtitle="Add a Movies or TV folder to start building your Lorivo home.">
+			<VyrdenPanel title="First library setup" subtitle="Add a Movies or TV folder to start building your Lorivo home.">
 				<form class="setup-form" onsubmit={(event) => { event.preventDefault(); void createLibrary(); }}>
 					<label class="field">
 						<span>Library name</span>
@@ -184,12 +184,12 @@
 					</label>
 
 					<div class="actions">
-						<LorivoButton variant="secondary" type="button" onclick={() => openBrowser()}>
+						<VyrdenButton variant="secondary" type="button" onclick={() => openBrowser()}>
 							{isBrowsing ? 'Loading folders...' : 'Browse folders'}
-						</LorivoButton>
-						<LorivoButton variant="primary" disabled={isSubmitting}>
+						</VyrdenButton>
+						<VyrdenButton variant="primary" disabled={isSubmitting}>
 							{isSubmitting ? 'Saving library...' : 'Save library'}
-						</LorivoButton>
+						</VyrdenButton>
 					</div>
 
 					<label class="check">
@@ -204,19 +204,19 @@
 						<p class="status">{actionMessage}</p>
 					{/if}
 				</form>
-			</LorivoPanel>
+			</VyrdenPanel>
 
 			{#if folderBrowse}
-				<LorivoPanel
+				<VyrdenPanel
 					title="Folder browser"
 					subtitle={folderBrowse.path || 'Select a folder path for your library.'}
 				>
 					<div class="browser-actions">
 						{#if folderBrowse.parent}
-							<LorivoButton variant="ghost" onclick={() => openBrowser(folderBrowse?.parent || '')}>Up one folder</LorivoButton>
+							<VyrdenButton variant="ghost" onclick={() => openBrowser(folderBrowse?.parent || '')}>Up one folder</VyrdenButton>
 						{/if}
 						{#if folderBrowse.path}
-							<LorivoButton variant="secondary" onclick={() => useEntryPath(folderBrowse?.path || '')}>Use this folder</LorivoButton>
+							<VyrdenButton variant="secondary" onclick={() => useEntryPath(folderBrowse?.path || '')}>Use this folder</VyrdenButton>
 						{/if}
 					</div>
 
@@ -238,15 +238,15 @@
 							{/each}
 						</div>
 					{/if}
-				</LorivoPanel>
+				</VyrdenPanel>
 			{/if}
 
 			{#if hasLibraries}
-				<LorivoPanel title="Libraries configured" subtitle="Your server is ready for media browsing.">
-					<LorivoButton variant="primary" href="/">Open Home</LorivoButton>
-				</LorivoPanel>
+				<VyrdenPanel title="Libraries configured" subtitle="Your server is ready for media browsing.">
+					<VyrdenButton variant="primary" href="/">Open Home</VyrdenButton>
+				</VyrdenPanel>
 			{:else}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="No libraries configured yet"
 					message="Add at least one Movies or TV folder to populate your Home route."
 				/>
@@ -259,7 +259,7 @@
 	.setup-page {
 		display: grid;
 		gap: 12px;
-		padding-bottom: var(--lorivo-space-8);
+		padding-bottom: var(--vyrden-space-8);
 	}
 
 	.setup-form {
@@ -275,15 +275,15 @@
 	.field span {
 		font-size: 0.8rem;
 		font-weight: 600;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
 	.field input,
 	.field select {
-		border: 1px solid var(--lorivo-color-border-soft);
-		background: var(--lorivo-color-surface-elevated);
-		color: var(--lorivo-color-text);
-		border-radius: var(--lorivo-radius-md);
+		border: 1px solid var(--vyrden-color-border-soft);
+		background: var(--vyrden-color-surface-elevated);
+		color: var(--vyrden-color-text);
+		border-radius: var(--vyrden-radius-md);
 		min-height: 38px;
 		padding: 0 10px;
 		font: inherit;
@@ -301,24 +301,24 @@
 		gap: 8px;
 		align-items: center;
 		font-size: 0.88rem;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 	}
 
 	.error {
 		margin: 0;
-		color: var(--lorivo-color-danger, #ff9f9f);
+		color: var(--vyrden-color-danger, #ff9f9f);
 		font-size: 0.85rem;
 	}
 
 	.status {
 		margin: 0;
-		color: var(--lorivo-color-accent-teal);
+		color: var(--vyrden-color-accent-teal);
 		font-size: 0.85rem;
 	}
 
 	.muted {
 		margin: 0;
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 		font-size: 0.88rem;
 	}
 
@@ -331,10 +331,10 @@
 	}
 
 	.folder-entry {
-		border: 1px solid var(--lorivo-color-border-soft);
-		background: var(--lorivo-color-surface-elevated);
-		color: var(--lorivo-color-text);
-		border-radius: var(--lorivo-radius-md);
+		border: 1px solid var(--vyrden-color-border-soft);
+		background: var(--vyrden-color-surface-elevated);
+		color: var(--vyrden-color-text);
+		border-radius: var(--vyrden-radius-md);
 		padding: 8px 10px;
 		text-align: left;
 		display: grid;
@@ -343,7 +343,7 @@
 	}
 
 	.folder-entry small {
-		color: var(--lorivo-color-text-muted);
+		color: var(--vyrden-color-text-muted);
 		font-size: 0.75rem;
 	}
 </style>

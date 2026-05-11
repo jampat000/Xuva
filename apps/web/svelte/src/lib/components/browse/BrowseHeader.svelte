@@ -35,7 +35,7 @@
 
 	.browse-head h1 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--vyrden-font-display);
 		font-size: clamp(1.6rem, 1.55vw + 1rem, 2.2rem);
 		letter-spacing: -0.032em;
 		line-height: 1.02;
@@ -43,7 +43,7 @@
 
 	.browse-head p {
 		margin: 8px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 82%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 82%, transparent);
 		font-size: 0.92rem;
 		line-height: 1.4;
 	}

@@ -37,7 +37,7 @@
 		padding: 0 13px;
 		border: 1px solid transparent;
 		border-radius: 11px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 76%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text) 76%, transparent);
 		text-decoration: none;
 		transition:
 			background-color 150ms ease,
@@ -47,24 +47,24 @@
 	}
 
 	.sidebar-item:hover {
-		color: var(--lorivo-color-text);
+		color: var(--vyrden-color-text);
 		background: rgb(255 249 236 / 5%);
 		transform: translateY(-1px);
 	}
 
 	.sidebar-item[data-active='true'] {
-		color: var(--lorivo-color-text);
+		color: var(--vyrden-color-text);
 		border-color: rgb(255 246 229 / 16%);
 		background:
 			linear-gradient(180deg, rgb(255 246 229 / 9%), rgb(255 246 229 / 4%)),
-			color-mix(in srgb, var(--lorivo-color-accent-teal) 10%, transparent);
+			color-mix(in srgb, var(--vyrden-color-accent-teal) 10%, transparent);
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 7%),
 			0 8px 20px rgb(0 0 0 / 20%);
 	}
 
 	.sidebar-item[data-active='true'] .sidebar-item__icon {
-		color: var(--lorivo-color-accent-teal);
+		color: var(--vyrden-color-accent-teal);
 	}
 
 	.sidebar-item__icon {
@@ -73,7 +73,7 @@
 		justify-content: center;
 		width: 21px;
 		height: 21px;
-		color: color-mix(in srgb, var(--lorivo-color-text-soft) 86%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-soft) 86%, transparent);
 	}
 
 	.sidebar-item__icon :global(svg) {
@@ -91,6 +91,6 @@
 
 	.sidebar-item__trailing {
 		font-size: 0.76rem;
-		color: var(--lorivo-color-text-soft);
+		color: var(--vyrden-color-text-soft);
 	}
 </style>

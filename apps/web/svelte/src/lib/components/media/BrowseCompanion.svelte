@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { ViewerQuickAction } from './ViewerQuickActions.svelte';
 	import ViewerQuickActions from './ViewerQuickActions.svelte';
-	import LorivoStat from '../ui/LorivoStat.svelte';
-	import LorivoSurface from '../ui/LorivoSurface.svelte';
+	import VyrdenStat from '../ui/VyrdenStat.svelte';
+	import VyrdenSurface from '../ui/VyrdenSurface.svelte';
 
 	interface CompanionStat {
 		label: string;
@@ -23,14 +23,14 @@
 </script>
 
 <div class="browse-companion">
-	<LorivoSurface tone="elevated" padded={false}>
+	<VyrdenSurface tone="elevated" padded={false}>
 		<section class="companion-section">
 			<header class="companion-heading">
 				<h2>{title}</h2>
 			</header>
 			<div class="companion-stats">
 				{#each stats as stat (stat.label)}
-					<LorivoStat label={stat.label} value={stat.value} />
+					<VyrdenStat label={stat.label} value={stat.value} />
 				{/each}
 			</div>
 			{#if note}
@@ -44,7 +44,7 @@
 			</header>
 			<ViewerQuickActions items={quickActions} />
 		</section>
-	</LorivoSurface>
+	</VyrdenSurface>
 </div>
 
 <style>
@@ -52,7 +52,7 @@
 		align-self: start;
 	}
 
-	.browse-companion :global(.l-surface) {
+	.browse-companion :global(.v-surface) {
 		border-color: rgb(255 255 255 / 7.5%);
 		border-radius: 17px;
 		background:
@@ -85,7 +85,7 @@
 
 	.companion-heading h2 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--vyrden-font-display);
 		font-size: 1rem;
 		font-weight: 670;
 		letter-spacing: -0.02em;
@@ -97,7 +97,7 @@
 		gap: 8px;
 	}
 
-	.companion-stats :global(.l-stat) {
+	.companion-stats :global(.v-stat) {
 		gap: 6px;
 		min-height: 72px;
 		padding: 13px 12px;
@@ -106,15 +106,15 @@
 		background: rgb(255 255 255 / 3%);
 	}
 
-	.companion-stats :global(.l-stat span) {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 80%, transparent);
+	.companion-stats :global(.v-stat span) {
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 80%, transparent);
 		font-size: 0.79rem;
 		font-weight: 700;
 		letter-spacing: 0.01em;
 	}
 
-	.companion-stats :global(.l-stat strong) {
-		color: color-mix(in srgb, var(--lorivo-color-text) 96%, transparent);
+	.companion-stats :global(.v-stat strong) {
+		color: color-mix(in srgb, var(--vyrden-color-text) 96%, transparent);
 		font-size: 1.22rem;
 		font-weight: 800;
 		letter-spacing: -0.03em;
@@ -122,7 +122,7 @@
 
 	.companion-note {
 		margin: 10px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 74%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 74%, transparent);
 		font-size: 0.84rem;
 		line-height: 1.45;
 	}

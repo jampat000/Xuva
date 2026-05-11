@@ -15,9 +15,9 @@ import { previewPoster } from '$lib/preview/artwork';
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel
+		VyrdenButton,
+		VyrdenEmptyState,
+		VyrdenPanel
 	} from '$lib/components';
 	import {
 		buildSeriesCards,
@@ -241,14 +241,14 @@ import { previewPoster } from '$lib/preview/artwork';
 <MediaShell active="tv" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<LorivoPanel title="Loading TV Shows" subtitle="Fetching your TV library from the media APIs." />
+			<VyrdenPanel title="Loading TV Shows" subtitle="Fetching your TV library from the media APIs." />
 		{:else if loadError}
-			<LorivoPanel title="TV Shows could not load" subtitle={loadError}>
+			<VyrdenPanel title="TV Shows could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadSeries}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<VyrdenButton variant="secondary" onclick={loadSeries}>Retry</VyrdenButton>
+					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
 				</div>
-			</LorivoPanel>
+			</VyrdenPanel>
 		{:else}
 			<BrowseHeader title="TV Shows" subtitle="Browse your TV library.">
 				{#snippet chips()}
@@ -313,23 +313,23 @@ import { previewPoster } from '$lib/preview/artwork';
 				{/snippet}
 				{#snippet actions()}
 					{#if !previewMode}
-						<LorivoButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
+						<VyrdenButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
 							{isScanning ? 'Scanning...' : 'Scan TV'}
-						</LorivoButton>
-						<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+						</VyrdenButton>
+						<VyrdenButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
 							{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-						</LorivoButton>
+						</VyrdenButton>
 					{/if}
 				{/snippet}
 			</BrowseToolbar>
 
 			{#if seriesCards.length === 0}
-				<LorivoEmptyState
+				<VyrdenEmptyState
 					title="No TV shows found"
 					message="Try adding a TV library or running a scan."
 				/>
 			{:else if visibleCards.length === 0}
-				<LorivoEmptyState title="No TV shows found" message="Try changing search terms." />
+				<VyrdenEmptyState title="No TV shows found" message="Try changing search terms." />
 			{:else}
 				<BrowseGrid>
 					{#each visibleCards as item (item.id)}
@@ -350,6 +350,6 @@ import { previewPoster } from '$lib/preview/artwork';
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--vyrden-space-2);
 	}
 </style>

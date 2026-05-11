@@ -9,17 +9,16 @@
 
 <style>
 	.progress-wrap {
-		height: 0.42rem;
+		height: 0.32rem;
 		width: 100%;
-		border-radius: var(--lorivo-radius-pill);
-		background: var(--lorivo-track);
+		border-radius: var(--vyrden-radius-pill);
+		background: var(--vyrden-track);
 		overflow: hidden;
 	}
 
 	.progress-wrap span {
 		display: block;
 		height: 100%;
-		background: var(--lorivo-progress);
-		box-shadow: 0 0 12px rgb(124 92 255 / 42%);
+		background: var(--vyrden-progress);
 	}
 </style>

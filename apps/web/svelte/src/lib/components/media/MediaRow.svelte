@@ -65,9 +65,7 @@
 				aria-label="Scroll media row left"
 				onclick={() => scrollTrack('prev')}
 			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="m14.5 6-6 6 6 6" />
-				</svg>
+				&#8249;
 			</button>
 		{/if}
 		<div class="media-row__track" bind:this={trackElement}>
@@ -80,9 +78,7 @@
 				aria-label="Scroll media row right"
 				onclick={() => scrollTrack('next')}
 			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="m9.5 6 6 6-6 6" />
-				</svg>
+				&#8250;
 			</button>
 		{/if}
 	</div>
@@ -91,19 +87,19 @@
 <style>
 	.media-row {
 		display: grid;
-		gap: 14px;
+		gap: 12px;
 	}
 
 	.media-row__header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--lorivo-space-3);
+		gap: var(--vyrden-space-3);
 	}
 
 	h2 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--vyrden-font-display);
 		font-size: 1.12rem;
 		line-height: 1.03;
 		letter-spacing: -0.021em;
@@ -111,7 +107,7 @@
 	}
 
 	a {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 78%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 78%, transparent);
 		font-size: 0.79rem;
 		font-weight: 620;
 		text-decoration: none;
@@ -178,39 +174,18 @@
 		top: 50%;
 		transform: translateY(-50%);
 		z-index: 2;
-		width: 42px;
-		height: 42px;
+		width: 34px;
+		height: 34px;
 		border-radius: 999px;
-		border: 1px solid rgb(255 255 255 / 18%);
-		background:
-			linear-gradient(180deg, rgb(31 41 55 / 90%), rgb(11 17 32 / 82%)),
-			rgb(11 17 32 / 86%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 96%, transparent);
+		border: 1px solid rgb(255 255 255 / 14%);
+		background: rgb(11 17 26 / 78%);
+		color: color-mix(in srgb, var(--vyrden-color-text) 92%, transparent);
+		font-size: 1.2rem;
 		line-height: 1;
-		display: inline-flex;
+		display: none;
 		align-items: center;
 		justify-content: center;
-		box-shadow:
-			0 12px 28px rgb(0 0 0 / 34%),
-			0 0 18px rgb(124 92 255 / 14%);
-		backdrop-filter: blur(8px);
-		opacity: 0.86;
-		transition:
-			transform 180ms ease,
-			opacity 180ms ease,
-			border-color 180ms ease,
-			background 180ms ease,
-			box-shadow 180ms ease;
-	}
-
-	.media-row__arrow svg {
-		width: 24px;
-		height: 24px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2.35;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+		backdrop-filter: blur(4px);
 	}
 
 	.media-row__arrow--prev {
@@ -221,23 +196,16 @@
 		right: 6px;
 	}
 
-	.media-row__arrow:hover,
-	.media-row__arrow:focus-visible {
-		transform: translateY(-50%) scale(1.04);
-		opacity: 1;
-		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 54%, white 10%);
-		background:
-			linear-gradient(180deg, rgb(124 92 255 / 82%), rgb(83 60 202 / 82%)),
-			rgb(11 17 32 / 88%);
-		box-shadow:
-			0 14px 32px rgb(0 0 0 / 38%),
-			0 0 22px rgb(124 92 255 / 28%);
+	@media (hover: hover) and (pointer: fine) {
+		.media-row__track-wrap[data-show-controls='true']:hover .media-row__arrow,
+		.media-row__track-wrap[data-show-controls='true']:focus-within .media-row__arrow {
+			display: inline-flex;
+		}
 	}
 
-	@media (max-width: 620px) {
+	@media (max-width: 900px) {
 		.media-row__arrow {
-			width: 38px;
-			height: 38px;
+			display: none !important;
 		}
 	}
 </style>
