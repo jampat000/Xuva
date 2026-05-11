@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Play } from 'lucide-svelte';
+	import { scanTV } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import {
 		getMediaSourceDetail,
@@ -22,6 +23,7 @@
 	import DetailHero from '$lib/lorivo/DetailHero.svelte';
 	import DetailSection from '$lib/lorivo/DetailSection.svelte';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
 	import {
@@ -75,7 +77,9 @@
 	let { params } = $props<{ params: { id: string } }>();
 
 	let isLoading = $state(true);
+	let isScanning = $state(false);
 	let loadError = $state('');
+	let actionMessage = $state('');
 	let series = $state<SeriesDetailResponse | null>(null);
 	let seasons = $state<SeasonModel[]>([]);
 	let selectedEpisodeId = $state('');
@@ -164,9 +168,28 @@
 				.find((episode) => Boolean(episode.mediaSourceId));
 			selectedEpisodeId = asText(firstPlayableEpisode?.episodeId);
 		} catch (error) {
-			loadError = formatLoadError(error);
+			if (isApiStatus(error, 404)) {
+				series = null;
+				seasons = [];
+				selectedEpisodeId = '';
+			} else {
+				loadError = formatLoadError(error);
+			}
 		} finally {
 			isLoading = false;
+		}
+	}
+
+	async function startTVScan(): Promise<void> {
+		isScanning = true;
+		actionMessage = '';
+		try {
+			await scanTV(apiClient, 50);
+			actionMessage = 'TV scan started.';
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			isScanning = false;
 		}
 	}
 
@@ -309,16 +332,41 @@
 	{#if isLoading}
 		<LorivoPanel title="Loading TV Details" subtitle="Fetching series, seasons, episodes, and playback state." />
 	{:else if loadError}
-		<LorivoPanel title="TV details could not load" subtitle={loadError}>
-			<div class="flex flex-wrap gap-3">
-				<LorivoButton variant="secondary" onclick={loadSeriesDetails}>Retry</LorivoButton>
-				<LorivoButton variant="ghost" href="/tv">Back to TV</LorivoButton>
-			</div>
-		</LorivoPanel>
+		<section class="px-4 pt-9 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="Connection"
+				title="Media library unavailable"
+				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+			>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" onclick={loadSeriesDetails}>Retry</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back Home</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+		</section>
 	{:else if !series}
-		<LorivoPanel title="TV show not found" subtitle="This show is no longer available in your library.">
-			<LorivoButton variant="secondary" href="/tv">Back to TV</LorivoButton>
-		</LorivoPanel>
+		<section class="px-4 pt-9 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="TV"
+				title="TV show not found"
+				description="Lorivo could not find that show. It may have been removed, renamed, or not scanned yet."
+			>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" href="/tv">Back to TV</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" onclick={startTVScan} disabled={isScanning}>
+						{isScanning ? 'Scanning...' : 'Scan TV'}
+					</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+			{#if actionMessage}
+				<p class="mt-3 text-sm text-white/60">{actionMessage}</p>
+			{/if}
+		</section>
 	{:else}
 		<DetailHero
 			title={seriesTitle}
