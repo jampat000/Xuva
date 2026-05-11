@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+	import { Play } from 'lucide-svelte';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import {
 		getMediaSourceDetail,
@@ -19,19 +19,13 @@
 		type SeasonDetail,
 		type SeriesDetailResponse
 	} from '$lib/api/details';
-	import { getLibraries, type LibraryRecord } from '$lib/api/home';
-import { resolvePreviewMode } from '$lib/home/model';
-import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
-	import {
-		DetailHero,
-		DetailPage,
-		DetailSection,
-		DetailTechnicalPanel,
-		MediaShell,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
-	} from '$lib/components';
+	import { resolvePreviewMode } from '$lib/home/model';
+	import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
+	import DetailHero from '$lib/lorivo/DetailHero.svelte';
+	import DetailSection from '$lib/lorivo/DetailSection.svelte';
+	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
+	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
 	import {
 		buildSeriesCardMeta,
 		cleanDescription,
@@ -84,9 +78,6 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	let isLoading = $state(true);
 	let loadError = $state('');
-	let searchValue = $state('');
-	let user = $state<AuthSessionUser | null>(null);
-	let libraries = $state<LibraryRecord[]>([]);
 	let series = $state<SeriesDetailResponse | null>(null);
 	let seasons = $state<SeasonModel[]>([]);
 	let selectedEpisodeId = $state('');
@@ -95,8 +86,6 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	let selectedSourceError = $state('');
 	let previewDetailMode = $state(false);
 
-	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
-	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const seriesID = $derived.by(() => asText(series?.id) || asText(params.id));
 	const seriesTitle = $derived.by(() =>
 		listItemTitle(series?.metadata?.title, series?.title || asText(params.id) || 'TV Show')
@@ -129,6 +118,12 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	const selectedRuntime = $derived.by(() =>
 		formatRuntime(Number(selectedSource?.source?.durationSeconds || 0))
 	);
+	const selectedProgress = $derived.by(() => {
+		const percent = Number(selectedEpisode?.state?.percent ?? 0);
+		if (Number.isFinite(percent) && percent > 1) return Math.round(Math.max(0, Math.min(100, percent)));
+		if (Number.isFinite(percent) && percent > 0) return Math.round(percent * 100);
+		return 0;
+	});
 
 	onMount(() => {
 		void loadSeriesDetails();
@@ -155,8 +150,6 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		previewDetailMode = previewMode && isSeriesPreviewId(routeSeriesId);
 		if (previewDetailMode) {
 			const preview = buildSeriesDetailPreview(routeSeriesId);
-			user = null;
-			libraries = [];
 			series = preview.series;
 			seasons = preview.seasons;
 			selectedEpisodeId = preview.firstEpisodeId;
@@ -165,18 +158,11 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		}
 
 		try {
-			const [sessionPayload, librariesPayload, seriesPayload, mediaSourcePayload] = await Promise.all([
-				getAuthSession(apiClient).catch((error: unknown) => {
-					if (isApiStatus(error, 401)) return { user: null };
-					throw error;
-				}),
-				getLibraries(apiClient),
+			const [seriesPayload, mediaSourcePayload] = await Promise.all([
 				getSeriesDetail(asText(params.id), apiClient),
 				listMediaSources(apiClient, 1500).catch(() => ({ mediaSources: [] }))
 			]);
 
-			user = sessionPayload?.user || null;
-			libraries = librariesPayload.libraries || [];
 			series = seriesPayload;
 
 			const knownSourceIDs = new Set<string>();
@@ -249,7 +235,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	): Promise<void> {
 		selectedSourceLoading = true;
 		selectedSourceError = '';
-		if (mediaSourceId.startsWith('preview-tv-')) {
+		if (mediaSourceId.startsWith('preview-tv-') || mediaSourceId.startsWith('series-')) {
 			selectedSource = {
 				mediaSourceId,
 				source: {
@@ -345,13 +331,6 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		return parts.join(' - ');
 	}
 
-	function initialsForName(name: string): string {
-		const words = asText(name).split(/\s+/).filter(Boolean);
-		if (words.length === 0) return 'V';
-		if (words.length === 1) return words[0].slice(0, 1).toUpperCase();
-		return `${words[0][0] || ''}${words[1][0] || ''}`.toUpperCase();
-	}
-
 	function asText(value: unknown): string {
 		return String(value ?? '').trim();
 	}
@@ -441,532 +420,246 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		if (!raw) return 'TV Preview';
 		return raw.replace(/\b\w/g, (letter) => letter.toUpperCase());
 	}
-
-	// preview artwork comes from shared local preview artwork system
 </script>
 
-<MediaShell active="tv" bind:searchValue {userInitials}>
-	<DetailPage>
-		{#if isLoading}
-			<VyrdenPanel title="Loading TV Details" subtitle="Fetching series, seasons, episodes, and playback state." />
-		{:else if loadError}
-			<VyrdenPanel title="TV details could not load" subtitle={loadError}>
-				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadSeriesDetails}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/tv">Back to TV</VyrdenButton>
-				</div>
-			</VyrdenPanel>
-		{:else if !series}
-			<VyrdenEmptyState title="TV show not found" message="This show is no longer available in your library.">
-				{#snippet action()}
-					<VyrdenButton variant="secondary" href="/tv">Back to TV</VyrdenButton>
-				{/snippet}
-			</VyrdenEmptyState>
-		{:else}
-			<DetailHero
-				title={seriesTitle}
-				meta={seriesMeta}
-				overview={seriesOverview}
-				backHref="/tv"
-				backLabel="Back to TV"
-				backdropUrl={seriesBackdropUrl}
-				posterUrl={seriesPosterUrl}
-			>
-				{#snippet actions()}
-					{#if selectedPlayHref}
-						<VyrdenButton variant="primary" href={selectedPlayHref}>{selectedPlayLabel}</VyrdenButton>
-						<VyrdenButton variant="secondary" href={selectedStartHref}>Start Over</VyrdenButton>
-					{:else}
-						<VyrdenButton variant="primary" disabled>Play</VyrdenButton>
-					{/if}
-				{/snippet}
-			</DetailHero>
+<svelte:head>
+	<title>{seriesTitle} - Lorivo Media</title>
+</svelte:head>
 
-			<DetailSection
-				title="Seasons and Episodes"
-				subtitle="Browse episodes and start playback."
-			>
-				{#if seasons.length === 0}
-					<VyrdenEmptyState
-						title="No seasons found"
-						message="Series metadata does not include season or episode rows yet."
-					/>
+<LorivoShell>
+	{#if isLoading}
+		<LorivoPanel title="Loading TV Details" subtitle="Fetching series, seasons, episodes, and playback state." />
+	{:else if loadError}
+		<LorivoPanel title="TV details could not load" subtitle={loadError}>
+			<div class="flex flex-wrap gap-3">
+				<LorivoButton variant="secondary" onclick={loadSeriesDetails}>Retry</LorivoButton>
+				<LorivoButton variant="ghost" href="/tv">Back to TV</LorivoButton>
+			</div>
+		</LorivoPanel>
+	{:else if !series}
+		<LorivoPanel title="TV show not found" subtitle="This show is no longer available in your library.">
+			<LorivoButton variant="secondary" href="/tv">Back to TV</LorivoButton>
+		</LorivoPanel>
+	{:else}
+		<DetailHero
+			title={seriesTitle}
+			meta={seriesMeta}
+			overview={seriesOverview}
+			backHref="/tv"
+			backLabel="Back to TV"
+			backdropUrl={seriesBackdropUrl}
+			posterUrl={seriesPosterUrl}
+			progress={selectedProgress}
+			progressLabel={selectedProgress > 0 ? `${selectedProgress}% watched` : ''}
+		>
+			{#snippet actions()}
+				{#if selectedPlayHref}
+					<LorivoButton variant="primary" href={selectedPlayHref}>
+						<Play size={18} class="fill-white text-white" />
+						{selectedPlayLabel}
+					</LorivoButton>
+					<LorivoButton variant="secondary" href={selectedStartHref}>Start Over</LorivoButton>
 				{:else}
-					<div class="season-stack">
-						{#each seasons as season (season.seasonId)}
-							<article class="season-card">
-								<header>
-									<h3>Season {season.seasonNumber || 'Unknown'}</h3>
-									<span>{season.episodes.length} episodes</span>
-								</header>
-								{#if season.episodes.length === 0}
-									<p class="season-empty">No episodes were returned for this season.</p>
-								{:else}
-									<div class="episode-list">
-										{#each season.episodes as episode (episode.episodeId)}
-											<div class="episode-row" class:episode-row--selected={isEpisodeSelected(episode.episodeId)}>
-												<button
-													class="episode-row__select"
-													type="button"
-													aria-label={`Open ${episode.title}`}
-													onclick={() => selectEpisode(episode.episodeId)}
-												>
-													<div>
-														<strong>{episode.label}</strong>
-														<span>{episode.title}</span>
-													</div>
-													<em>{episodeSummary(episode)}</em>
-												</button>
-												<div class="episode-row__actions">
-													{#if episode.mediaSourceId}
-														<VyrdenButton
-															variant="primary"
-															size="sm"
-															href={`/play/${encodeURIComponent(episode.mediaSourceId)}`}
-														>
-															{isResumeState(episode.state) ? 'Resume' : 'Play'}
-														</VyrdenButton>
-														<VyrdenButton
-															variant="secondary"
-															size="sm"
-															href={`/play/${encodeURIComponent(episode.mediaSourceId)}?start=0`}
-														>
-															Start Over
-														</VyrdenButton>
-													{:else}
-														<span class="episode-row__missing">No source</span>
-													{/if}
-												</div>
+					<LorivoButton variant="primary" disabled>Play</LorivoButton>
+				{/if}
+			{/snippet}
+		</DetailHero>
+
+		<DetailSection title="Seasons and Episodes" subtitle="Browse episodes and start playback.">
+			{#if seasons.length === 0}
+				<p class="text-sm leading-relaxed text-white/60">
+					Series metadata does not include season or episode rows yet.
+				</p>
+			{:else}
+				<div class="grid gap-4">
+					{#each seasons as season (season.seasonId)}
+						<article class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-lg shadow-black/20">
+							<header class="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+								<h3 class="text-lg font-semibold text-white">Season {season.seasonNumber || 'Unknown'}</h3>
+								<span class="text-sm text-white/50">{season.episodes.length} episodes</span>
+							</header>
+							{#if season.episodes.length === 0}
+								<p class="text-sm text-white/55">No episodes were returned for this season.</p>
+							{:else}
+								<div class="grid gap-3">
+									{#each season.episodes as episode (episode.episodeId)}
+										<div class={`grid gap-3 rounded-2xl border p-4 transition lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${isEpisodeSelected(episode.episodeId) ? 'border-[#7C5CFF]/45 bg-[#7C5CFF]/10' : 'border-white/10 bg-[#111827]/60'}`}>
+											<button
+												class="flex w-full items-start justify-between gap-4 text-left text-white"
+												type="button"
+												aria-label={`Open ${episode.title}`}
+												onclick={() => selectEpisode(episode.episodeId)}
+											>
+												<span>
+													<strong class="block text-sm font-semibold text-white">{episode.label}</strong>
+													<span class="mt-1 block text-base font-medium text-white">{episode.title}</span>
+												</span>
+												<em class="shrink-0 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold not-italic text-white/65">
+													{episodeSummary(episode)}
+												</em>
+											</button>
+											<div class="flex flex-wrap gap-3 lg:justify-end">
+												{#if episode.mediaSourceId}
+													<LorivoButton
+														variant="primary"
+														size="sm"
+														href={`/play/${encodeURIComponent(episode.mediaSourceId)}`}
+													>
+														{isResumeState(episode.state) ? 'Resume' : 'Play'}
+													</LorivoButton>
+													<LorivoButton
+														variant="secondary"
+														size="sm"
+														href={`/play/${encodeURIComponent(episode.mediaSourceId)}?start=0`}
+													>
+														Start Over
+													</LorivoButton>
+												{:else}
+													<span class="text-sm text-white/50">No source</span>
+												{/if}
 											</div>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</article>
+					{/each}
+				</div>
+			{/if}
+		</DetailSection>
+
+		<DetailSection
+			title="Selected Episode Source"
+			subtitle={previewDetailMode
+				? 'Technical source details stay secondary to browsing and playback.'
+				: 'Technical details stay secondary to episode browsing and playback.'}
+		>
+			{#if !selectedEpisode}
+				<p class="text-sm leading-relaxed text-white/60">Choose a playable episode to inspect source, tracks, and subtitles.</p>
+			{:else if selectedSourceLoading}
+				<p class="text-sm leading-relaxed text-white/60">Loading source metadata, track details, and playback decision.</p>
+			{:else if selectedSourceError}
+				<p class="text-sm leading-relaxed text-red-200/80">{selectedSourceError}</p>
+			{:else if !selectedSource}
+				<p class="text-sm leading-relaxed text-white/60">No media source metadata is available for this episode.</p>
+			{:else}
+				<div class="rounded-2xl border border-white/10 bg-[#111827]/70 p-5">
+					<div class="flex flex-wrap items-baseline justify-between gap-3">
+						<div>
+							<h3 class="text-lg font-semibold text-white">{selectedEpisode.title}</h3>
+							<p class="mt-1 text-sm text-white/50">{sourceEpisodeMeta()}</p>
+						</div>
+						<span class="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white/70">
+							{watchedLabel(selectedSource.state)}
+						</span>
+					</div>
+					{#if !previewDetailMode}
+						<p class="mt-5 text-sm font-semibold text-white">{playbackModeLabel(selectedSource.decision)}</p>
+						<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(selectedSource.decision)}</p>
+						<dl class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Quality</dt>
+								<dd class="mt-1 text-sm text-white/75">
+									{sourceQualityLabel(
+										'',
+										formatResolution(
+											Number(selectedSource.source?.width || 0),
+											Number(selectedSource.source?.height || 0)
+										)
+									)}
+								</dd>
+							</div>
+							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Duration</dt>
+								<dd class="mt-1 text-sm text-white/75">{formatDuration(Number(selectedSource.source?.durationSeconds || 0))}</dd>
+							</div>
+							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Bitrate</dt>
+								<dd class="mt-1 text-sm text-white/75">{formatBitrate(Number(selectedSource.source?.bitrate || 0))}</dd>
+							</div>
+							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">File Size</dt>
+								<dd class="mt-1 text-sm text-white/75">{formatBytes(Number(selectedSource.source?.sizeBytes || 0))}</dd>
+							</div>
+						</dl>
+					{/if}
+				</div>
+
+				{#if previewDetailMode}
+					<details class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+						<summary class="cursor-pointer text-sm font-semibold text-white/70">Technical playback details</summary>
+						<div class="mt-4 grid gap-4 lg:grid-cols-2">
+							<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+								<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
+								{#if (selectedSource.tracks.audioTracks || []).length === 0}
+									<p class="mt-3 text-sm text-white/55">No audio track data is available yet.</p>
+								{:else}
+									<ul class="mt-3 grid gap-2">
+										{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
+											<li class="text-sm text-white/70">
+												<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
+												{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+											</li>
 										{/each}
-									</div>
+									</ul>
 								{/if}
 							</article>
-						{/each}
-					</div>
-				{/if}
-			</DetailSection>
-
-			<DetailSection
-				title="Selected Episode Source"
-				subtitle={previewDetailMode
-					? 'Technical source details stay secondary to browsing and playback.'
-					: 'Technical details stay secondary to episode browsing and playback.'}
-			>
-				<div class="technical-wrap" class:technical-wrap--preview={previewDetailMode}>
-				{#if !selectedEpisode}
-					<VyrdenEmptyState
-						title="Select an episode"
-						message="Choose a playable episode to inspect source, tracks, and subtitles."
-					/>
-				{:else if selectedSourceLoading}
-					<VyrdenPanel
-						title={selectedEpisode.title}
-						subtitle="Loading source metadata, track details, and playback decision."
-					/>
-				{:else if selectedSourceError}
-					<VyrdenPanel title="Episode source could not load" subtitle={selectedSourceError} />
-				{:else if !selectedSource}
-					<VyrdenEmptyState
-						title="No source details"
-						message="No media source metadata is available for this episode."
-					/>
-				{:else}
-					<div class="source-panel">
-						<div class="source-panel__header">
-							<div>
-								<h3>{selectedEpisode.title}</h3>
-								<p>{sourceEpisodeMeta()}</p>
-							</div>
-							<span>{watchedLabel(selectedSource.state)}</span>
-						</div>
-						{#if !previewDetailMode}
-							<p class="source-panel__decision">{playbackModeLabel(selectedSource.decision)}</p>
-							<p class="source-panel__reason">{playbackReasonLabel(selectedSource.decision)}</p>
-							<dl class="source-panel__facts">
-								<div>
-									<dt>Quality</dt>
-									<dd>
-										{sourceQualityLabel(
-											'',
-											formatResolution(
-												Number(selectedSource.source?.width || 0),
-												Number(selectedSource.source?.height || 0)
-											)
-										)}
-									</dd>
-								</div>
-								<div>
-									<dt>Duration</dt>
-									<dd>{formatDuration(Number(selectedSource.source?.durationSeconds || 0))}</dd>
-								</div>
-								<div>
-									<dt>Bitrate</dt>
-									<dd>{formatBitrate(Number(selectedSource.source?.bitrate || 0))}</dd>
-								</div>
-								<div>
-									<dt>File Size</dt>
-									<dd>{formatBytes(Number(selectedSource.source?.sizeBytes || 0))}</dd>
-								</div>
-							</dl>
-						{/if}
-						{#if previewDetailMode}
-							<details class="technical-collapse">
-								<summary>Technical playback details</summary>
-								<div class="track-grid">
-									<DetailTechnicalPanel title="Audio Tracks">
-										{#if (selectedSource.tracks.audioTracks || []).length === 0}
-											<p class="track-empty">No audio track data is available yet.</p>
-										{:else}
-											<ul>
-												{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
-													<li>
-														<strong>{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
-														{#if track.default}<span>Default</span>{/if}
-													</li>
-												{/each}
-											</ul>
-										{/if}
-									</DetailTechnicalPanel>
-									<DetailTechnicalPanel title="Subtitle Tracks">
-										{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
-											<p class="track-empty">No embedded subtitle tracks were detected.</p>
-										{:else}
-											<ul>
-												{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
-													<li>
-														<strong>{formatTrackSummary(track.codec, track.language)}</strong>
-														{#if track.forced}<span>Forced</span>{/if}
-														{#if track.default}<span>Default</span>{/if}
-													</li>
-												{/each}
-											</ul>
-										{/if}
-										<p class="track-sidecar">
-											Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}
-										</p>
-									</DetailTechnicalPanel>
-								</div>
-							</details>
-						{:else}
-						<div class="track-grid">
-							<DetailTechnicalPanel title="Audio Tracks">
-								{#if (selectedSource.tracks.audioTracks || []).length === 0}
-									<p class="track-empty">No audio track data is available yet.</p>
-								{:else}
-									<ul>
-										{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
-											<li>
-												<strong>{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
-												{#if track.default}<span>Default</span>{/if}
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							</DetailTechnicalPanel>
-							<DetailTechnicalPanel title="Subtitle Tracks">
+							<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+								<h3 class="text-base font-semibold text-white">Subtitle Tracks</h3>
 								{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
-									<p class="track-empty">No embedded subtitle tracks were detected.</p>
+									<p class="mt-3 text-sm text-white/55">No embedded subtitle tracks were detected.</p>
 								{:else}
-									<ul>
+									<ul class="mt-3 grid gap-2">
 										{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
-											<li>
-												<strong>{formatTrackSummary(track.codec, track.language)}</strong>
-												{#if track.forced}<span>Forced</span>{/if}
-												{#if track.default}<span>Default</span>{/if}
+											<li class="text-sm text-white/70">
+												<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language)}</strong>
+												{#if track.forced}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
+												{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
 											</li>
 										{/each}
 									</ul>
 								{/if}
-								<p class="track-sidecar">
-									Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}
-								</p>
-							</DetailTechnicalPanel>
+								<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
+							</article>
 						</div>
-						{/if}
+					</details>
+				{:else}
+					<div class="mt-4 grid gap-4 lg:grid-cols-2">
+						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+							<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
+							{#if (selectedSource.tracks.audioTracks || []).length === 0}
+								<p class="mt-3 text-sm text-white/55">No audio track data is available yet.</p>
+							{:else}
+								<ul class="mt-3 grid gap-2">
+									{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
+										<li class="text-sm text-white/70">
+											<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
+											{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</article>
+						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+							<h3 class="text-base font-semibold text-white">Subtitle Tracks</h3>
+							{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
+								<p class="mt-3 text-sm text-white/55">No embedded subtitle tracks were detected.</p>
+							{:else}
+								<ul class="mt-3 grid gap-2">
+									{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
+										<li class="text-sm text-white/70">
+											<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language)}</strong>
+											{#if track.forced}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
+											{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+										</li>
+									{/each}
+								</ul>
+							{/if}
+							<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
+						</article>
 					</div>
 				{/if}
-				</div>
-			</DetailSection>
-		{/if}
-	</DetailPage>
-</MediaShell>
-
-<style>
-	.status-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
-	}
-
-	.season-stack {
-		display: grid;
-		gap: 16px;
-	}
-
-	.season-card {
-		padding: 18px;
-		border: 1px solid rgb(255 255 255 / 12%);
-		border-radius: 16px;
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
-			rgb(17 24 39 / 58%);
-		box-shadow: 0 16px 34px rgb(0 0 0 / 20%);
-	}
-
-	.season-card header {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 10px;
-		margin-bottom: 10px;
-	}
-
-	.season-card header h3 {
-		margin: 0;
-		font-size: 1.12rem;
-		font-weight: 680;
-	}
-
-	.season-card header span {
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 86%, transparent);
-		font-size: 0.78rem;
-	}
-
-	.season-empty {
-		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
-		font-size: 0.82rem;
-	}
-
-	.episode-list {
-		display: grid;
-		gap: 10px;
-	}
-
-	.episode-row {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 12px;
-		padding: 12px;
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 13px;
-		background: rgb(255 255 255 / 4%);
-	}
-
-	.episode-row--selected {
-		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 40%, transparent);
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
-			color-mix(in srgb, var(--vyrden-color-accent-teal) 8%, transparent);
-	}
-
-	.episode-row__select {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 0;
-		border: 0;
-		background: none;
-		color: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.episode-row__select strong {
-		display: block;
-		font-size: 0.94rem;
-		font-weight: 700;
-	}
-
-	.episode-row__select span {
-		display: block;
-		margin-top: 3px;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
-		font-size: 0.82rem;
-		line-height: 1.35;
-	}
-
-	.episode-row__select em {
-		flex-shrink: 0;
-		display: inline-flex;
-		align-items: center;
-		min-height: 28px;
-		padding: 0 10px;
-		border-radius: 999px;
-		border: 1px solid rgb(255 255 255 / 14%);
-		background: rgb(255 255 255 / 7%);
-		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
-		font-size: 0.72rem;
-		font-style: normal;
-		font-weight: 620;
-	}
-
-	.episode-row__actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		align-items: center;
-		justify-content: flex-end;
-	}
-
-	.episode-row__missing {
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 80%, transparent);
-		font-size: 0.78rem;
-	}
-
-	.source-panel {
-		display: grid;
-		gap: 14px;
-		padding: 16px;
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 15px;
-		background: rgb(255 255 255 / 4%);
-	}
-
-	.source-panel__header {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 10px;
-	}
-
-	.source-panel__header h3 {
-		margin: 0;
-		font-size: 1rem;
-		font-weight: 690;
-	}
-
-	.source-panel__header p {
-		margin: 4px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 85%, transparent);
-		font-size: 0.81rem;
-	}
-
-	.source-panel__header span {
-		display: inline-flex;
-		align-items: center;
-		min-height: 24px;
-		padding: 0 8px;
-		border-radius: 999px;
-		border: 1px solid rgb(255 255 255 / 14%);
-		background: rgb(255 255 255 / 5%);
-		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
-		font-size: 0.72rem;
-		font-weight: 620;
-	}
-
-	.source-panel__decision {
-		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text) 94%, transparent);
-		font-size: 0.85rem;
-		font-weight: 660;
-	}
-
-	.source-panel__reason {
-		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 82%, transparent);
-		font-size: 0.8rem;
-		line-height: 1.38;
-	}
-
-	.source-panel__facts {
-		display: grid;
-		gap: 8px;
-		margin: 0;
-	}
-
-	.source-panel__facts div {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 10px;
-	}
-
-	.source-panel__facts dt {
-		color: color-mix(in srgb, var(--vyrden-color-text-soft) 90%, transparent);
-		font-size: 0.73rem;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-	}
-
-	.source-panel__facts dd {
-		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text) 90%, transparent);
-		font-size: 0.78rem;
-		font-family: var(--vyrden-font-mono);
-		text-align: right;
-	}
-
-	.track-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 11px;
-	}
-
-	.technical-wrap--preview {
-		opacity: 0.88;
-	}
-
-	.technical-wrap--preview :global(.detail-tech),
-	.technical-wrap--preview .source-panel {
-		border-color: rgb(255 255 255 / 8%);
-		background: linear-gradient(180deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%));
-	}
-
-	.technical-collapse {
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 14px;
-		background: rgb(255 255 255 / 4%);
-		padding: 13px 14px 15px;
-	}
-
-	.technical-collapse summary {
-		cursor: pointer;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
-		font-size: 0.82rem;
-		font-weight: 620;
-		margin-bottom: 10px;
-	}
-
-	.track-empty {
-		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
-		font-size: 0.82rem;
-	}
-
-	.track-sidecar {
-		margin: 10px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 82%, transparent);
-		font-size: 0.78rem;
-	}
-
-	@media (max-width: 980px) {
-		.track-grid {
-			grid-template-columns: minmax(0, 1fr);
-		}
-	}
-
-	@media (max-width: 760px) {
-		.episode-row {
-			grid-template-columns: minmax(0, 1fr);
-		}
-
-		.episode-row__actions {
-			justify-content: flex-start;
-		}
-	}
-
-	@media (max-width: 620px) {
-		.source-panel__facts div {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-
-		.source-panel__facts dd {
-			text-align: left;
-		}
-	}
-
-</style>
+			{/if}
+		</DetailSection>
+	{/if}
+</LorivoShell>
