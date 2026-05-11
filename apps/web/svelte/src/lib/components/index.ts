@@ -4,6 +4,7 @@ export { default as LorivoSidebar } from './shell/LorivoSidebar.svelte';
 export { default as SidebarItem } from './shell/SidebarItem.svelte';
 export { default as SidebarSection } from './shell/SidebarSection.svelte';
 export { default as SidebarUser } from './shell/SidebarUser.svelte';
+export { default as AppDrawer } from './shell/AppDrawer.svelte';
 export { default as AppSidebar } from './shell/AppSidebar.svelte';
 export { default as AppTopbar } from './shell/AppTopbar.svelte';
 export { default as MediaShell } from './shell/MediaShell.svelte';

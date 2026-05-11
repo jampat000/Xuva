@@ -22,9 +22,9 @@
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
 	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
+	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
 	import PosterCard from '$lib/lorivo/PosterCard.svelte';
 	import Row from '$lib/lorivo/Row.svelte';
-	import TopBar from '$lib/lorivo/TopBar.svelte';
 
 	let isLoading = $state(true);
 	let loadNotice = $state('');
@@ -221,8 +221,7 @@
 	<meta name="description" content="Lorivo: your personal streaming hub for movies and TV." />
 </svelte:head>
 
-<div class="min-h-screen bg-[#0B1120] font-sans text-white antialiased">
-	<TopBar />
+<LorivoShell>
 	{#if isLoading}
 		<LorivoPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
 	{:else if loadNotice}
@@ -324,7 +323,7 @@
 		</Row>
 		<div class="h-16"></div>
 	{/if}
-</div>
+</LorivoShell>
 
 <style>
 	.next-step-card {

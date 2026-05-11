@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { X } from 'lucide-svelte';
+	import { Film, Folder, Home, Settings, Tv } from 'lucide-svelte';
+	import AppDrawer from './AppDrawer.svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoSearch from '../ui/LorivoSearch.svelte';
 
@@ -24,12 +25,11 @@
 	const mediaNavItems: NavItem[] = [
 		{ id: 'home', label: 'Home', href: '/' },
 		{ id: 'movies', label: 'Movies', href: '/movies' },
-		{ id: 'tv', label: 'TV', href: '/tv' }
+		{ id: 'tv', label: 'TV', href: '/tv' },
+		{ id: 'setup', label: 'Libraries', href: '/settings#library' }
 	];
 
-	const manageNavItems: NavItem[] = [
-		{ id: 'settings', label: 'Settings', href: '/settings' }
-	];
+	const drawerBottomItems: NavItem[] = [{ id: 'settings', label: 'Settings', href: '/settings' }];
 
 	let {
 		active = 'home',
@@ -66,94 +66,103 @@
 	});
 </script>
 
-<div class="media-shell" data-shell="media">
-	<header class="media-shell__topbar">
-		<div class="media-shell__topbar-left">
-			<button
-				class="menu-button"
-				type="button"
-				data-testid="media-menu-button"
-				aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-				aria-expanded={menuOpen}
-				onclick={() => (menuOpen = !menuOpen)}
-			>
-				<span></span>
-				<span></span>
-				<span></span>
-			</button>
-			<a class="brand-link" href="/" aria-label="Go to Home">
-				<LorivoBrand />
-			</a>
-		</div>
-		<div class="media-shell__topbar-search">
-			<LorivoSearch bind:value={searchValue} />
-		</div>
-		<div class="media-shell__topbar-actions">
-			<button class="profile-button" type="button" aria-label="Open profile menu" onclick={openProfileMenu}>
-				<span class="profile-button__avatar">{userInitials}</span>
-			</button>
-		</div>
-	</header>
-
-	{#if menuOpen}
-		<button
-			type="button"
-			class="media-shell__backdrop"
-			aria-label="Close navigation menu"
-			onclick={closeMenu}
-		></button>
-	{/if}
-
-	<aside
-		class="media-shell__drawer"
-		class:media-shell__drawer--open={menuOpen}
-		aria-label="Media navigation drawer"
-		data-testid="media-menu-drawer"
-	>
-		<div class="media-shell__drawer-brand">
+<div class="media-shell" class:media-shell--drawer-open={menuOpen} data-shell="media">
+	<AppDrawer open={menuOpen} label="Main navigation" testId="media-menu-drawer" onClose={closeMenu}>
+		{#snippet brand()}
 			<LorivoBrand />
-			<button
-				type="button"
-				class="media-shell__drawer-close"
-				aria-label="Close navigation menu"
-				onclick={closeMenu}
-			>
-				<X size={18} />
-			</button>
-		</div>
-		<nav class="media-shell__drawer-nav" aria-label="Media navigation">
+		{/snippet}
+		{#snippet main()}
 			{#each mediaNavItems as item (item.id)}
-				<a href={item.href} class:active={active === item.id} onclick={closeMenu}>{item.label}</a>
+				<a href={item.href} class="app-drawer__link" aria-current={active === item.id ? 'page' : undefined}>
+					{#if item.id === 'home'}
+						<Home size={19} />
+					{:else if item.id === 'movies'}
+						<Film size={19} />
+					{:else if item.id === 'tv'}
+						<Tv size={19} />
+					{:else}
+						<Folder size={19} />
+					{/if}
+					{item.label}
+				</a>
 			{/each}
-		</nav>
-		<nav class="media-shell__drawer-manage" aria-label="Server management">
-			{#each manageNavItems as item (item.id)}
-				<a href={item.href} onclick={closeMenu}>{item.label}</a>
+		{/snippet}
+		{#snippet bottom()}
+			{#each drawerBottomItems as item (item.id)}
+				<a href={item.href} class="app-drawer__link">
+					<Settings size={19} />
+					{item.label}
+				</a>
 			{/each}
-		</nav>
-	</aside>
+		{/snippet}
+	</AppDrawer>
 
-	<div class="media-shell__content" class:media-shell__content--with-companion={Boolean(companion)}>
-		<main class="media-shell__primary">
-			{@render children?.()}
-		</main>
-		{#if companion}
-			<aside class="media-shell__companion">
-				{@render companion()}
-			</aside>
-		{/if}
+	<div class="media-shell__surface" data-testid="media-shell-surface">
+		<header class="media-shell__topbar">
+			<div class="media-shell__topbar-left">
+				<button
+					class="menu-button"
+					type="button"
+					data-testid="media-menu-button"
+					data-lorivo-menu-trigger
+					aria-label="Open menu"
+					aria-expanded={menuOpen}
+					onclick={() => (menuOpen = !menuOpen)}
+				>
+					<span></span>
+					<span></span>
+					<span></span>
+				</button>
+				<a class="brand-link" href="/" aria-label="Go to Home">
+					<LorivoBrand />
+				</a>
+			</div>
+			<div class="media-shell__topbar-search">
+				<LorivoSearch bind:value={searchValue} />
+			</div>
+			<div class="media-shell__topbar-actions">
+				<button class="profile-button" type="button" aria-label="Open profile menu" onclick={openProfileMenu}>
+					<span class="profile-button__avatar">{userInitials}</span>
+				</button>
+			</div>
+		</header>
+
+		<div class="media-shell__content" class:media-shell__content--with-companion={Boolean(companion)}>
+			<main class="media-shell__primary">
+				{@render children?.()}
+			</main>
+			{#if companion}
+				<aside class="media-shell__companion">
+					{@render companion()}
+				</aside>
+			{/if}
+		</div>
 	</div>
 </div>
 
 <style>
 	.media-shell {
 		min-height: 100dvh;
+		overflow-x: hidden;
 		padding: 16px 24px 32px;
 		background:
 			radial-gradient(circle at 22% -18%, rgb(124 92 255 / 16%) 0%, transparent 38%),
 			radial-gradient(circle at 84% 3%, rgb(55 84 150 / 16%) 0%, transparent 32%),
 			linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 24%),
 			var(--lorivo-color-bg-shell);
+	}
+
+	.media-shell__surface {
+		min-height: calc(100dvh - 48px);
+		transform: translateX(0);
+		transition: transform 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
+		will-change: transform;
+	}
+
+	@media (min-width: 768px) {
+		.media-shell--drawer-open .media-shell__surface {
+			transform: translateX(var(--lorivo-drawer-width, 320px));
+		}
 	}
 
 	.media-shell__topbar {
@@ -248,115 +257,6 @@
 		color: #f4f1ea;
 	}
 
-	.media-shell__backdrop {
-		position: fixed;
-		inset: 0;
-		border: 0;
-		background: rgb(0 0 0 / 52%);
-		z-index: 30;
-	}
-
-	.media-shell__drawer {
-		position: fixed;
-		top: 0;
-		left: 0;
-		z-index: 32;
-		width: min(320px, 86vw);
-		height: 100dvh;
-		padding: 16px 12px;
-		display: grid;
-		grid-template-rows: auto 1fr auto;
-		gap: 14px;
-		border-right: 1px solid var(--lorivo-color-border-soft);
-		background:
-			radial-gradient(circle at 14% -18%, rgb(124 92 255 / 16%) 0%, rgb(124 92 255 / 0%) 36%),
-			radial-gradient(circle at 80% 108%, rgb(55 84 150 / 14%) 0%, rgb(55 84 150 / 0%) 42%),
-			var(--lorivo-color-bg-sidebar);
-		box-shadow: 18px 0 36px rgb(0 0 0 / 36%);
-		transform: translateX(-103%);
-		transition: transform 180ms ease;
-	}
-
-	.media-shell__drawer--open {
-		transform: translateX(0);
-	}
-
-	.media-shell__drawer-brand :global(.v-brand) {
-		justify-content: flex-start;
-		padding-left: 6px;
-	}
-
-	.media-shell__drawer-brand {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-
-	.media-shell__drawer-close {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 38px;
-		height: 38px;
-		border-radius: 11px;
-		border: 1px solid rgb(255 255 255 / 13%);
-		background: rgb(255 255 255 / 4%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
-	}
-
-	.media-shell__drawer-close:hover,
-	.media-shell__drawer-close:focus-visible {
-		border-color: rgb(255 255 255 / 24%);
-		background: rgb(255 255 255 / 8%);
-		color: var(--lorivo-color-text);
-		outline: none;
-	}
-
-	.media-shell__drawer-nav,
-	.media-shell__drawer-manage {
-		display: grid;
-		gap: 6px;
-		align-content: start;
-	}
-
-	.media-shell__drawer a {
-		display: inline-flex;
-		align-items: center;
-		min-height: 38px;
-		padding: 0 12px;
-		border-radius: 10px;
-		font-size: 0.92rem;
-		font-weight: 620;
-		color: color-mix(in srgb, var(--lorivo-color-text) 90%, transparent);
-		text-decoration: none;
-		border: 1px solid transparent;
-	}
-
-	.media-shell__drawer-nav a::before {
-		content: '';
-		display: inline-block;
-		width: 5px;
-		height: 5px;
-		margin-right: 8px;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--lorivo-color-text-muted) 60%, transparent);
-	}
-
-	.media-shell__drawer a.active {
-		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 35%, transparent);
-		background: linear-gradient(90deg, rgb(124 92 255 / 18%), rgb(124 92 255 / 3%));
-	}
-
-	.media-shell__drawer a.active::before {
-		background: color-mix(in srgb, var(--lorivo-color-accent-teal) 75%, white 25%);
-	}
-
-	.media-shell__drawer-manage {
-		padding-top: 10px;
-		border-top: 1px solid var(--lorivo-color-border-soft);
-	}
-
 	.media-shell__content {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -421,8 +321,14 @@
 			font-size: 1.08rem;
 		}
 
-		.media-shell__drawer {
-			width: min(320px, 86vw);
+		.media-shell__surface {
+			transition: none;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.media-shell__surface {
+			transition: none;
 		}
 	}
 </style>
