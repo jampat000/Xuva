@@ -30,21 +30,22 @@
 		align-items: flex-end;
 		justify-content: space-between;
 		gap: 20px;
-		padding-top: 4px;
+		padding-top: 6px;
 	}
 
 	.browse-head h1 {
 		margin: 0;
 		font-family: var(--vyrden-font-display);
-		font-size: clamp(1.6rem, 1.55vw + 1rem, 2.2rem);
-		letter-spacing: -0.032em;
+		font-size: clamp(2rem, 2.2vw + 1rem, 3.6rem);
+		letter-spacing: 0;
 		line-height: 1.02;
+		text-shadow: 0 10px 28px rgb(0 0 0 / 48%);
 	}
 
 	.browse-head p {
 		margin: 8px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 82%, transparent);
-		font-size: 0.92rem;
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 86%, transparent);
+		font-size: 1rem;
 		line-height: 1.4;
 	}
 

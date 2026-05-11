@@ -54,7 +54,7 @@
 <style>
 	.poster-card {
 		display: block;
-		width: 180px;
+		width: 190px;
 		padding: 0;
 		border: 0;
 		background: none;
@@ -68,12 +68,12 @@
 		position: relative;
 		aspect-ratio: 2 / 3;
 		overflow: hidden;
-		border: 1px solid rgb(255 246 229 / 12%);
+		border: 1px solid rgb(255 255 255 / 12%);
 		border-radius: 14px;
-		background: rgb(29 30 27 / 84%);
+		background: rgb(17 24 39 / 84%);
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 6%),
-			0 14px 28px rgb(0 0 0 / 22%),
+			0 18px 34px rgb(0 0 0 / 28%),
 			0 0 0 1px rgb(16 19 24 / 34%);
 		transition:
 			transform 180ms ease,
@@ -96,7 +96,7 @@
 		inset: 0;
 		background:
 			linear-gradient(180deg, rgb(8 10 13 / 2%) 0%, rgb(10 13 17 / 12%) 42%, rgb(10 13 17 / 68%) 100%),
-			radial-gradient(circle at 74% 20%, rgb(88 201 176 / 11%), transparent 44%);
+			radial-gradient(circle at 74% 20%, rgb(124 92 255 / 14%), transparent 44%);
 	}
 
 	.poster-card__copy {
@@ -131,6 +131,7 @@
 			box-shadow:
 				inset 0 1px 0 rgb(255 255 255 / 9%),
 				0 24px 42px rgb(0 0 0 / 36%),
+				0 0 26px rgb(124 92 255 / 18%),
 				0 0 0 1px rgb(18 22 28 / 44%);
 		}
 

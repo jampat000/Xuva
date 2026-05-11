@@ -652,24 +652,27 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.version-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-		gap: 12px;
+		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		gap: 16px;
 	}
 
 	.version-card {
 		display: grid;
-		gap: 10px;
-		padding: 12px;
-		border: 1px solid rgb(255 246 229 / 10%);
-		border-radius: 12px;
-		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 2%));
+		gap: 14px;
+		padding: 18px;
+		border: 1px solid rgb(255 255 255 / 12%);
+		border-radius: 16px;
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
+			rgb(17 24 39 / 58%);
+		box-shadow: 0 16px 34px rgb(0 0 0 / 22%);
 	}
 
 	.version-card--selected {
 		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 42%, transparent);
 		background:
-			linear-gradient(180deg, rgb(255 246 229 / 6%), rgb(255 246 229 / 2%)),
-			color-mix(in srgb, var(--vyrden-color-accent-teal) 10%, transparent);
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
+			color-mix(in srgb, var(--vyrden-color-accent-teal) 14%, transparent);
 	}
 
 	.version-card__selector {
@@ -687,7 +690,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.version-card__selector strong {
 		display: block;
-		font-size: 0.96rem;
+		font-size: 1.05rem;
 		font-weight: 690;
 		letter-spacing: 0.005em;
 	}
@@ -704,11 +707,11 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
-		min-height: 26px;
-		padding: 0 9px;
+		min-height: 30px;
+		padding: 0 10px;
 		border-radius: 999px;
-		border: 1px solid rgb(255 246 229 / 14%);
-		background: rgb(255 246 229 / 5%);
+		border: 1px solid rgb(255 255 255 / 14%);
+		background: rgb(255 255 255 / 7%);
 		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
 		font-size: 0.74rem;
 		font-style: normal;
@@ -732,7 +735,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	.version-card__actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: 10px;
 	}
 
 	.route-note {
@@ -785,15 +788,15 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	}
 
 	.technical-wrap--preview :global(.detail-tech) {
-		border-color: rgb(255 246 229 / 8%);
-		background: linear-gradient(180deg, rgb(255 246 229 / 3%), rgb(255 246 229 / 1%));
+		border-color: rgb(255 255 255 / 8%);
+		background: linear-gradient(180deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%));
 	}
 
 	.technical-collapse {
-		border: 1px solid rgb(255 246 229 / 10%);
-		border-radius: 11px;
-		background: rgb(255 246 229 / 2%);
-		padding: 10px 10px 12px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 14px;
+		background: rgb(255 255 255 / 4%);
+		padding: 13px 14px 15px;
 	}
 
 	.technical-collapse summary {

@@ -17,15 +17,15 @@
 
 <style>
 	.track-panel {
-		padding: 12px;
-		border: 1px solid rgb(255 246 229 / 11%);
-		border-radius: 12px;
-		background: rgb(255 246 229 / 3%);
+		padding: 14px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 14px;
+		background: rgb(255 255 255 / 4%);
 	}
 
 	.track-panel h3 {
 		margin: 0 0 10px;
-		font-size: 0.95rem;
+		font-size: 1rem;
 		font-weight: 680;
 	}
 
@@ -54,9 +54,9 @@
 		align-items: center;
 		min-height: 22px;
 		padding: 0 8px;
-		border: 1px solid rgb(255 246 229 / 14%);
+		border: 1px solid rgb(255 255 255 / 14%);
 		border-radius: 999px;
-		background: rgb(255 246 229 / 4%);
+		background: rgb(255 255 255 / 5%);
 		font-size: 0.72rem;
 		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
 	}

@@ -118,7 +118,8 @@ function parsePayload(text: string, path: string, status: number): unknown {
 		throw new ApiClientError('Server returned unreadable data.', {
 			status,
 			path,
-			userMessage: 'Lorivo received a response it could not parse. Refresh and retry.'
+			userMessage:
+				'Lorivo could not read media data from the local server. Check that the server is running and retry.'
 		});
 	}
 }

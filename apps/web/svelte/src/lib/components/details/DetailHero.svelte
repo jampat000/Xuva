@@ -87,12 +87,13 @@
 	.detail-hero {
 		position: relative;
 		overflow: hidden;
-		border: 1px solid rgb(255 246 229 / 11%);
-		border-radius: 16px;
-		background: rgb(24 26 23 / 78%);
+		min-height: clamp(430px, 48vw, 560px);
+		border: 0;
+		border-radius: 24px;
+		background: rgb(11 17 32 / 88%);
 		box-shadow:
-			0 24px 56px rgb(0 0 0 / 32%),
-			0 0 0 1px rgb(16 19 24 / 34%);
+			0 28px 70px rgb(0 0 0 / 42%),
+			0 0 0 1px rgb(255 255 255 / 7%) inset;
 	}
 
 	.detail-hero__art {
@@ -104,34 +105,38 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		filter: saturate(0.56) contrast(0.93) brightness(0.9);
+		filter: saturate(0.82) contrast(1.04) brightness(0.9);
 	}
 
 	.detail-hero__shade {
 		position: absolute;
 		inset: 0;
 		background:
-			linear-gradient(90deg, rgb(16 16 14 / 84%) 0%, rgb(20 21 18 / 54%) 34%, rgb(16 17 15 / 60%) 100%),
-			linear-gradient(180deg, rgb(14 14 12 / 7%), rgb(14 14 12 / 66%));
+			linear-gradient(90deg, rgb(11 17 32 / 92%) 0%, rgb(11 17 32 / 62%) 40%, rgb(11 17 32 / 74%) 100%),
+			linear-gradient(180deg, rgb(11 17 32 / 10%), rgb(11 17 32 / 72%)),
+			radial-gradient(circle at 78% 22%, rgb(124 92 255 / 18%), transparent 38%);
 	}
 
 	.detail-hero__content {
 		position: relative;
 		z-index: 1;
 		display: grid;
-		grid-template-columns: 190px minmax(0, 1fr);
-		align-items: end;
-		gap: 18px;
-		padding: 24px 25px 24px;
+		grid-template-columns: minmax(0, 1fr) 280px;
+		align-items: center;
+		gap: clamp(24px, 5vw, 64px);
+		min-height: inherit;
+		padding: clamp(32px, 4.4vw, 72px);
 	}
 
 	.detail-hero__poster {
+		grid-column: 2;
+		grid-row: 1;
 		aspect-ratio: 2 / 3;
 		overflow: hidden;
-		border: 1px solid rgb(255 246 229 / 16%);
-		border-radius: 13px;
-		background: rgb(24 26 23 / 82%);
-		box-shadow: 0 16px 34px rgb(0 0 0 / 38%);
+		border: 1px solid rgb(255 255 255 / 12%);
+		border-radius: 16px;
+		background: rgb(17 24 39 / 82%);
+		box-shadow: 0 24px 56px rgb(0 0 0 / 48%);
 	}
 
 	.detail-hero__poster img {
@@ -142,24 +147,28 @@
 	}
 
 	.detail-hero__copy {
+		grid-column: 1;
+		grid-row: 1;
 		display: grid;
-		gap: 8px;
-		align-content: end;
+		gap: 12px;
+		align-content: center;
+		max-width: 720px;
 	}
 
 	.detail-hero__copy h1 {
 		margin: 0;
 		font-family: var(--vyrden-font-display);
-		font-size: clamp(1.95rem, 2.45vw, 2.5rem);
-		letter-spacing: -0.04em;
+		font-size: clamp(3rem, 5.6vw, 5.4rem);
+		letter-spacing: 0;
 		line-height: 1.02;
+		text-shadow: 0 14px 34px rgb(0 0 0 / 58%);
 	}
 
 	.detail-hero__back {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 86%, transparent);
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 90%, transparent);
 		text-decoration: none;
 		font-size: 0.82rem;
 		font-weight: 620;
@@ -174,21 +183,21 @@
 
 	.detail-hero__meta {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
-		font-size: 0.95rem;
+		color: color-mix(in srgb, var(--vyrden-color-text-muted) 90%, transparent);
+		font-size: 1rem;
 		font-weight: 580;
 	}
 
 	.detail-hero__overview {
-		margin: 6px 0 0;
-		max-width: 820px;
+		margin: 8px 0 0;
+		max-width: 680px;
 		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
-		font-size: 0.91rem;
-		line-height: 1.46;
+		font-size: 1rem;
+		line-height: 1.58;
 	}
 
 	.detail-hero__actions {
-		margin-top: 8px;
+		margin-top: 16px;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -198,11 +207,11 @@
 	.hero-progress {
 		display: inline-flex;
 		align-items: center;
-		min-height: 31px;
-		padding: 0 11px;
-		border: 1px solid rgb(255 246 229 / 12%);
+		min-height: 34px;
+		padding: 0 13px;
+		border: 1px solid rgb(255 255 255 / 14%);
 		border-radius: 999px;
-		background: rgb(255 246 229 / 5%);
+		background: rgb(255 255 255 / 7%);
 		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
 		font-size: 0.82rem;
 		font-weight: 630;
@@ -210,12 +219,12 @@
 
 	@media (max-width: 920px) {
 		.detail-hero__content {
-			grid-template-columns: 132px minmax(0, 1fr);
-			padding: 18px 18px 16px;
+			grid-template-columns: minmax(0, 1fr) 210px;
+			padding: 28px;
 		}
 
 		.detail-hero__copy h1 {
-			font-size: clamp(1.54rem, 6vw, 2.1rem);
+			font-size: clamp(2.4rem, 6vw, 4rem);
 		}
 	}
 
@@ -223,10 +232,18 @@
 		.detail-hero__content {
 			grid-template-columns: 1fr;
 			gap: 14px;
+			min-height: 0;
 		}
 
 		.detail-hero__poster {
+			grid-column: 1;
+			grid-row: 2;
 			max-width: 168px;
+		}
+
+		.detail-hero__copy {
+			grid-column: 1;
+			grid-row: 1;
 		}
 	}
 </style>
