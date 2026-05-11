@@ -23,18 +23,18 @@
 
 	.v-surface[data-tone='default'] {
 		background:
-			linear-gradient(180deg, rgb(255 246 229 / 3%), transparent 22%),
+			linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 22%),
 			var(--vyrden-color-bg-panel);
 	}
 
 	.v-surface[data-tone='elevated'] {
 		background:
-			linear-gradient(180deg, rgb(255 246 229 / 4%), transparent 24%),
+			linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 24%),
 			var(--vyrden-color-bg-panel-elevated);
 	}
 
 	.v-surface[data-tone='soft'] {
-		background: rgb(255 246 229 / 4%);
+		background: rgb(255 255 255 / 5%);
 	}
 
 	.v-surface[data-padded='true'] {

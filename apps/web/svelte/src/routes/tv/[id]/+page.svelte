@@ -701,14 +701,17 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.season-stack {
 		display: grid;
-		gap: 11px;
+		gap: 16px;
 	}
 
 	.season-card {
-		padding: 12px;
-		border: 1px solid rgb(255 246 229 / 10%);
-		border-radius: 12px;
-		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 2%));
+		padding: 18px;
+		border: 1px solid rgb(255 255 255 / 12%);
+		border-radius: 16px;
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
+			rgb(17 24 39 / 58%);
+		box-shadow: 0 16px 34px rgb(0 0 0 / 20%);
 	}
 
 	.season-card header {
@@ -721,7 +724,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.season-card header h3 {
 		margin: 0;
-		font-size: 1rem;
+		font-size: 1.12rem;
 		font-weight: 680;
 	}
 
@@ -738,23 +741,23 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.episode-list {
 		display: grid;
-		gap: 8px;
+		gap: 10px;
 	}
 
 	.episode-row {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 8px;
-		padding: 8px;
-		border: 1px solid rgb(255 246 229 / 10%);
-		border-radius: 10px;
-		background: rgb(255 246 229 / 3%);
+		gap: 12px;
+		padding: 12px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 13px;
+		background: rgb(255 255 255 / 4%);
 	}
 
 	.episode-row--selected {
 		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 40%, transparent);
 		background:
-			linear-gradient(180deg, rgb(255 246 229 / 6%), rgb(255 246 229 / 2%)),
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
 			color-mix(in srgb, var(--vyrden-color-accent-teal) 8%, transparent);
 	}
 
@@ -773,7 +776,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.episode-row__select strong {
 		display: block;
-		font-size: 0.83rem;
+		font-size: 0.94rem;
 		font-weight: 700;
 	}
 
@@ -789,11 +792,11 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
-		min-height: 24px;
-		padding: 0 8px;
+		min-height: 28px;
+		padding: 0 10px;
 		border-radius: 999px;
-		border: 1px solid rgb(255 246 229 / 14%);
-		background: rgb(255 246 229 / 5%);
+		border: 1px solid rgb(255 255 255 / 14%);
+		background: rgb(255 255 255 / 7%);
 		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
 		font-size: 0.72rem;
 		font-style: normal;
@@ -815,7 +818,11 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.source-panel {
 		display: grid;
-		gap: 10px;
+		gap: 14px;
+		padding: 16px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 15px;
+		background: rgb(255 255 255 / 4%);
 	}
 
 	.source-panel__header {
@@ -843,8 +850,8 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		min-height: 24px;
 		padding: 0 8px;
 		border-radius: 999px;
-		border: 1px solid rgb(255 246 229 / 14%);
-		background: rgb(255 246 229 / 5%);
+		border: 1px solid rgb(255 255 255 / 14%);
+		background: rgb(255 255 255 / 5%);
 		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
 		font-size: 0.72rem;
 		font-weight: 620;
@@ -904,15 +911,15 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.technical-wrap--preview :global(.detail-tech),
 	.technical-wrap--preview .source-panel {
-		border-color: rgb(255 246 229 / 8%);
-		background: linear-gradient(180deg, rgb(255 246 229 / 3%), rgb(255 246 229 / 1%));
+		border-color: rgb(255 255 255 / 8%);
+		background: linear-gradient(180deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%));
 	}
 
 	.technical-collapse {
-		border: 1px solid rgb(255 246 229 / 10%);
-		border-radius: 11px;
-		background: rgb(255 246 229 / 2%);
-		padding: 10px 10px 12px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 14px;
+		background: rgb(255 255 255 / 4%);
+		padding: 13px 14px 15px;
 	}
 
 	.technical-collapse summary {

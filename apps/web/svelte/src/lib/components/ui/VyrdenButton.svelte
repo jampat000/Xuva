@@ -87,21 +87,24 @@
 	}
 
 	.v-button[data-variant='primary'] {
-		background: linear-gradient(180deg, #6fd3ba, #49b59b);
-		color: #f7f3ea;
-		border-color: rgb(111 211 186 / 42%);
-		box-shadow: 0 10px 24px rgb(0 0 0 / 26%);
+		background: linear-gradient(135deg, #8d6cff, #7c5cff 58%, #6a4af0);
+		color: #ffffff;
+		border-color: rgb(155 124 255 / 46%);
+		box-shadow:
+			0 14px 34px rgb(124 92 255 / 28%),
+			0 0 0 1px rgb(255 255 255 / 7%) inset;
 	}
 
 	.v-button[data-variant='secondary'] {
-		background: rgb(255 246 229 / 4%);
-		border-color: var(--vyrden-color-border-soft);
+		background: rgb(255 255 255 / 6%);
+		border-color: rgb(255 255 255 / 18%);
 		color: var(--vyrden-color-text);
+		backdrop-filter: blur(12px);
 	}
 
 	.v-button[data-variant='ghost'] {
 		color: var(--vyrden-color-text-muted);
-		background: rgb(255 246 229 / 2%);
+		background: rgb(255 255 255 / 3%);
 	}
 
 	.v-button[data-variant='danger'] {
@@ -112,7 +115,10 @@
 
 	.v-button:hover:not(:disabled) {
 		transform: translateY(-1px);
-		box-shadow: 0 12px 28px rgb(0 0 0 / 26%);
+		filter: brightness(1.06);
+		box-shadow:
+			0 16px 34px rgb(0 0 0 / 32%),
+			0 0 24px rgb(124 92 255 / 18%);
 	}
 
 	.v-button:disabled {

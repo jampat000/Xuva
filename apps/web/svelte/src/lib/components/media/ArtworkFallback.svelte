@@ -19,7 +19,7 @@
 	const orbX = $derived.by(() => 58 + (seed % 28));
 	const orbY = $derived.by(() => 18 + (seed % 22));
 	const orbR = $derived.by(() => 22 + (seed % 16));
-	const tone = $derived.by(() => ['#58c9b0', '#8eb6ff', '#d7a26d', '#b794de', '#9acb7d'][seed % 5]);
+	const tone = $derived.by(() => ['#7c5cff', '#8eb6ff', '#d79056', '#b794de', '#5fa0e8'][seed % 5]);
 
 	function hashString(value: string): number {
 		let hash = 0;
@@ -62,8 +62,8 @@
 		padding: var(--vyrden-space-3);
 		color: var(--vyrden-color-text);
 		background:
-			linear-gradient(160deg, rgb(255 246 229 / 7%), rgb(255 246 229 / 0%) 58%),
-			linear-gradient(180deg, #23241f, #181914 57%, #12130f 100%);
+			linear-gradient(160deg, rgb(255 255 255 / 8%), rgb(255 255 255 / 0%) 58%),
+			linear-gradient(180deg, #1f2937, #111827 57%, #0b1120 100%);
 	}
 
 	.artwork-fallback__ambient {
@@ -73,14 +73,14 @@
 			radial-gradient(
 				circle at var(--fallback-orb-x) var(--fallback-orb-y),
 				color-mix(in srgb, var(--fallback-tone) 46%, white 8%) 0%,
-				rgb(88 201 176 / 0%) var(--fallback-orb-r)
+				rgb(124 92 255 / 0%) var(--fallback-orb-r)
 			),
-			radial-gradient(circle at 14% 78%, rgb(184 163 123 / 13%) 0%, rgb(184 163 123 / 0%) 42%),
-			linear-gradient(var(--fallback-tilt-a), rgb(255 246 229 / 4%), transparent 50%),
+			radial-gradient(circle at 14% 78%, rgb(124 92 255 / 16%) 0%, rgb(124 92 255 / 0%) 42%),
+			linear-gradient(var(--fallback-tilt-a), rgb(255 255 255 / 4%), transparent 50%),
 			repeating-linear-gradient(
 				var(--fallback-tilt-b),
-				rgb(255 246 229 / 0%) 0 18px,
-				rgb(255 246 229 / 3%) 18px 20px
+				rgb(255 255 255 / 0%) 0 18px,
+				rgb(255 255 255 / 3%) 18px 20px
 			);
 		opacity: 0.52;
 	}
@@ -113,11 +113,11 @@
 		width: 1.5rem;
 		height: 1.5rem;
 		border-radius: 7px;
-		border: 1px solid rgb(88 201 176 / 35%);
+		border: 1px solid rgb(124 92 255 / 42%);
 		background:
 			linear-gradient(
 				145deg,
-				color-mix(in srgb, var(--fallback-tone) 52%, rgb(255 246 229 / 20%)),
+				color-mix(in srgb, var(--fallback-tone) 52%, rgb(255 255 255 / 20%)),
 				color-mix(in srgb, var(--fallback-tone) 30%, rgb(18 21 27 / 20%))
 			),
 			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 0%));

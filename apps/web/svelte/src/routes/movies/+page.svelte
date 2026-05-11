@@ -9,8 +9,8 @@
 	} from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
-import { resolvePreviewMode } from '$lib/home/model';
-import { previewPoster } from '$lib/preview/artwork';
+	import { resolvePreviewMode } from '$lib/home/model';
+	import { previewPoster } from '$lib/preview/artwork';
 	import {
 		BrowseFilterGroup,
 		BrowseGrid,
@@ -78,6 +78,14 @@ import { previewPoster } from '$lib/preview/artwork';
 		isLoading = true;
 		loadError = '';
 		const activePreviewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
+		if (activePreviewMode) {
+			previewMode = true;
+			user = null;
+			libraries = [];
+			movieRows = previewMovieRows();
+			isLoading = false;
+			return;
+		}
 		try {
 			const [sessionPayload, librariesPayload, moviesPayload] = await Promise.all([
 				getAuthSession(apiClient).catch((error: unknown) => {
@@ -171,7 +179,7 @@ import { previewPoster } from '$lib/preview/artwork';
 	function previewMovieRows(): MovieListItem[] {
 		return [
 			{
-				id: 'movie-ember-harbor',
+				id: 'preview-movie-ember-harbor',
 				title: 'Ember Harbor',
 				year: 2025,
 				versionCount: 2,
@@ -184,7 +192,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				}
 			},
 			{
-				id: 'movie-atlas-of-dawn',
+				id: 'preview-movie-atlas-of-dawn',
 				title: 'Atlas of Dawn',
 				year: 2024,
 				versionCount: 2,
@@ -192,7 +200,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Atlas of Dawn', year: 2024, overview: 'Preview movie item.', posterUrl: previewArtwork('Atlas of Dawn') }
 			},
 			{
-				id: 'movie-hinterland',
+				id: 'preview-movie-hinterland',
 				title: 'Hinterland',
 				year: 2023,
 				versionCount: 1,
@@ -200,7 +208,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Hinterland', year: 2023, overview: 'Preview movie item.', posterUrl: previewArtwork('Hinterland') }
 			},
 			{
-				id: 'movie-coastline',
+				id: 'preview-movie-coastline',
 				title: 'Coastline',
 				year: 2022,
 				versionCount: 1,
@@ -208,7 +216,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Coastline', year: 2022, overview: 'Preview movie item.', posterUrl: previewArtwork('Coastline') }
 			},
 			{
-				id: 'movie-polar-night',
+				id: 'preview-movie-polar-night',
 				title: 'Polar Night',
 				year: 2021,
 				versionCount: 3,
@@ -216,7 +224,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Polar Night', year: 2021, overview: 'Preview movie item.', posterUrl: previewArtwork('Polar Night') }
 			},
 			{
-				id: 'movie-night-archive',
+				id: 'preview-movie-night-archive',
 				title: 'Night Archive',
 				year: 2024,
 				versionCount: 1,
@@ -224,7 +232,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Night Archive', year: 2024, overview: 'Preview movie item.', posterUrl: previewArtwork('Night Archive') }
 			},
 			{
-				id: 'movie-return-vector',
+				id: 'preview-movie-return-vector',
 				title: 'Return Vector',
 				year: 2023,
 				versionCount: 2,
@@ -232,7 +240,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Return Vector', year: 2023, overview: 'Preview movie item.', posterUrl: previewArtwork('Return Vector') }
 			},
 			{
-				id: 'movie-last-orchard',
+				id: 'preview-movie-last-orchard',
 				title: 'The Last Orchard',
 				year: 2020,
 				versionCount: 1,
@@ -240,7 +248,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'The Last Orchard', year: 2020, overview: 'Preview movie item.', posterUrl: previewArtwork('The Last Orchard') }
 			},
 			{
-				id: 'movie-violet-signal',
+				id: 'preview-movie-violet-signal',
 				title: 'Violet Signal',
 				year: 2024,
 				versionCount: 1,
@@ -248,7 +256,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Violet Signal', year: 2024, overview: 'Preview movie item.', posterUrl: previewArtwork('Violet Signal') }
 			},
 			{
-				id: 'movie-broken-current',
+				id: 'preview-movie-broken-current',
 				title: 'Broken Current',
 				year: 2021,
 				versionCount: 2,
@@ -256,7 +264,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Broken Current', year: 2021, overview: 'Preview movie item.', posterUrl: previewArtwork('Broken Current') }
 			},
 			{
-				id: 'movie-glass-canyon',
+				id: 'preview-movie-glass-canyon',
 				title: 'Glass Canyon',
 				year: 2019,
 				versionCount: 1,
@@ -264,7 +272,7 @@ import { previewPoster } from '$lib/preview/artwork';
 				metadata: { title: 'Glass Canyon', year: 2019, overview: 'Preview movie item.', posterUrl: previewArtwork('Glass Canyon') }
 			},
 			{
-				id: 'movie-copper-sky',
+				id: 'preview-movie-copper-sky',
 				title: 'Copper Sky',
 				year: 2022,
 				versionCount: 1,
@@ -391,7 +399,7 @@ import { previewPoster } from '$lib/preview/artwork';
 							title={item.title}
 							meta={item.meta}
 							imageUrl={item.posterUrl}
-							href={`/movies/${encodeURIComponent(item.id)}`}
+							href={`/movies/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
 						/>
 					{/each}
 				</BrowseGrid>

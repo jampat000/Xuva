@@ -29,18 +29,20 @@
 		width: min(100%, 468px);
 		height: 38px;
 		padding: 0 13px;
-		border: 1px solid rgb(255 255 255 / 9%);
-		border-radius: 10px;
+		border: 1px solid rgb(255 255 255 / 11%);
+		border-radius: 999px;
 		background:
-			linear-gradient(180deg, rgb(255 246 229 / 3%), rgb(255 246 229 / 1%)),
-			rgb(26 27 25 / 82%);
+			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%)),
+			rgb(17 24 39 / 82%);
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 6%),
-			0 10px 24px rgb(0 0 0 / 14%);
+			0 10px 24px rgb(0 0 0 / 18%);
+		backdrop-filter: blur(14px);
 	}
 
 	.v-search:focus-within {
 		border-color: var(--vyrden-color-border-strong);
+		box-shadow: var(--vyrden-focus-ring);
 	}
 
 	.v-search__icon {
@@ -76,7 +78,7 @@
 		height: 24px;
 		padding: 0 8px;
 		border-radius: 8px;
-		background: rgb(255 246 229 / 6%);
+		background: rgb(255 255 255 / 7%);
 		color: color-mix(in srgb, var(--vyrden-color-text-muted) 72%, transparent);
 		font-size: 0.8rem;
 		font-weight: 600;

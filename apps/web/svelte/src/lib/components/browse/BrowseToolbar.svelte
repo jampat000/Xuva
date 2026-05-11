@@ -35,7 +35,7 @@
 		align-items: center;
 		column-gap: 14px;
 		row-gap: 10px;
-		padding: 8px 0 2px;
+		padding: 2px 0 0;
 		min-height: 44px;
 	}
 

@@ -30,10 +30,10 @@ const TITLE_THEMES: Record<string, ArtworkTheme> = {
 };
 
 const DEFAULT_THEME: ArtworkTheme = {
-	accent: '#58c9b0',
-	glow: '#88d8c9',
-	shape: '#c5ebe3',
-	line: '#a3ddd0',
+	accent: '#7c5cff',
+	glow: '#9b7cff',
+	shape: '#d8ceff',
+	line: '#b8a7ff',
 	recipe: 0
 };
 
@@ -93,9 +93,9 @@ export function previewArtwork(title: string, kind: ArtworkKind): string {
 	const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}'>
 <defs>
 <linearGradient id='bg' x1='0' y1='0' x2='0' y2='1'>
-<stop offset='0%' stop-color='#1f231d'/>
-<stop offset='58%' stop-color='#141710'/>
-<stop offset='100%' stop-color='#0d100a'/>
+<stop offset='0%' stop-color='#1f2937'/>
+<stop offset='58%' stop-color='#111827'/>
+<stop offset='100%' stop-color='#0b1120'/>
 </linearGradient>
 <radialGradient id='glow' cx='${glowX}%' cy='${glowY}%' r='58%'>
 <stop offset='0%' stop-color='${theme.glow}' stop-opacity='0.36'/>
@@ -106,8 +106,8 @@ export function previewArtwork(title: string, kind: ArtworkKind): string {
 <rect width='100%' height='100%' fill='url(#glow)'/>
 <path d='M${Math.round(width * 0.08)} ${topBandY} L${Math.round(width * 0.92)} ${topBandY}' stroke='${theme.line}' stroke-opacity='0.52' stroke-width='3'/>
 ${shapeBlock}
-<text x='${Math.round(width * 0.08)}' y='${lowerY}' fill='rgba(255,246,229,0.96)' font-size='${titleSize}' font-family='Segoe UI, system-ui, -apple-system, sans-serif' font-weight='630' letter-spacing='0.2'>${safeTitle}</text>
-<text x='${Math.round(width * 0.08)}' y='${lowerY + Math.round(titleSize * 0.9)}' fill='rgba(227,216,190,0.78)' font-size='${Math.round(titleSize * 0.42)}' font-family='Segoe UI, system-ui, -apple-system, sans-serif'>Lorivo Fictional Library</text>
+<text x='${Math.round(width * 0.08)}' y='${lowerY}' fill='rgba(248,250,252,0.96)' font-size='${titleSize}' font-family='Segoe UI, system-ui, -apple-system, sans-serif' font-weight='630' letter-spacing='0.2'>${safeTitle}</text>
+<text x='${Math.round(width * 0.08)}' y='${lowerY + Math.round(titleSize * 0.9)}' fill='rgba(203,213,225,0.78)' font-size='${Math.round(titleSize * 0.42)}' font-family='Segoe UI, system-ui, -apple-system, sans-serif'>Lorivo Media</text>
 </svg>`;
 	return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
@@ -128,9 +128,9 @@ export function previewHero(title: string): string {
 	const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}'>
 <defs>
 <linearGradient id='bg' x1='0' y1='0' x2='0' y2='1'>
-<stop offset='0%' stop-color='#191c17'/>
-<stop offset='64%' stop-color='#11140e'/>
-<stop offset='100%' stop-color='#0a0d08'/>
+<stop offset='0%' stop-color='#1f2937'/>
+<stop offset='64%' stop-color='#111827'/>
+<stop offset='100%' stop-color='#0b1120'/>
 </linearGradient>
 <radialGradient id='glow' cx='76%' cy='16%' r='52%'>
 <stop offset='0%' stop-color='${theme.glow}' stop-opacity='0.34'/>

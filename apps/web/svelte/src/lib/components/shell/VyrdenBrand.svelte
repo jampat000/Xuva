@@ -19,11 +19,11 @@
 	.v-brand__wordmark {
 		font-family: var(--vyrden-font-sans);
 		font-size: 1.16rem;
-		font-weight: 680;
-		letter-spacing: 0.009em;
+		font-weight: 800;
+		letter-spacing: 0.26em;
 		line-height: 1;
-		text-transform: none;
-		color: #efe4d4;
+		text-transform: uppercase;
+		color: #ffffff;
 		text-shadow: 0 1px 0 rgb(0 0 0 / 20%);
 		font-variation-settings: 'wght' 680;
 		text-rendering: geometricPrecision;

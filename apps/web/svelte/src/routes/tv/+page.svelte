@@ -4,8 +4,8 @@
 	import { getSeries, refreshMetadataBatch, scanTV, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
-import { resolvePreviewMode } from '$lib/home/model';
-import { previewPoster } from '$lib/preview/artwork';
+	import { resolvePreviewMode } from '$lib/home/model';
+	import { previewPoster } from '$lib/preview/artwork';
 	import {
 		BrowseFilterGroup,
 		BrowseGrid,
@@ -68,6 +68,14 @@ import { previewPoster } from '$lib/preview/artwork';
 		isLoading = true;
 		loadError = '';
 		const activePreviewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
+		if (activePreviewMode) {
+			previewMode = true;
+			user = null;
+			libraries = [];
+			seriesRows = previewSeriesRows();
+			isLoading = false;
+			return;
+		}
 		try {
 			const [sessionPayload, librariesPayload, seriesPayload] = await Promise.all([
 				getAuthSession(apiClient).catch((error: unknown) => {
@@ -161,70 +169,70 @@ import { previewPoster } from '$lib/preview/artwork';
 	function previewSeriesRows(): SeriesListItem[] {
 		return [
 			{
-				id: 'series-coastline',
+				id: 'preview-tv-coastline',
 				title: 'Coastline',
 				seasonCount: 3,
 				episodeCount: 24,
 				metadata: { title: 'Coastline', year: 2024, overview: 'Preview series item.', posterUrl: previewArtwork('Coastline') }
 			},
 			{
-				id: 'series-violet-signal',
+				id: 'preview-tv-violet-signal',
 				title: 'Violet Signal',
 				seasonCount: 2,
 				episodeCount: 18,
 				metadata: { title: 'Violet Signal', year: 2023, overview: 'Preview series item.', posterUrl: previewArtwork('Violet Signal') }
 			},
 			{
-				id: 'series-return-vector',
+				id: 'preview-tv-return-vector',
 				title: 'Return Vector',
 				seasonCount: 1,
 				episodeCount: 8,
 				metadata: { title: 'Return Vector', year: 2022, overview: 'Preview series item.', posterUrl: previewArtwork('Return Vector') }
 			},
 			{
-				id: 'series-low-country',
+				id: 'preview-tv-low-country',
 				title: 'Low Country',
 				seasonCount: 4,
 				episodeCount: 36,
 				metadata: { title: 'Low Country', year: 2021, overview: 'Preview series item.', posterUrl: previewArtwork('Low Country') }
 			},
 			{
-				id: 'series-night-archive',
+				id: 'preview-tv-night-archive',
 				title: 'Night Archive',
 				seasonCount: 2,
 				episodeCount: 20,
 				metadata: { title: 'Night Archive', year: 2022, overview: 'Preview series item.', posterUrl: previewArtwork('Night Archive') }
 			},
 			{
-				id: 'series-orchard-line',
+				id: 'preview-tv-orchard-line',
 				title: 'Orchard Line',
 				seasonCount: 3,
 				episodeCount: 27,
 				metadata: { title: 'Orchard Line', year: 2020, overview: 'Preview series item.', posterUrl: previewArtwork('Orchard Line') }
 			},
 			{
-				id: 'series-atlas-watch',
+				id: 'preview-tv-atlas-watch',
 				title: 'Atlas Watch',
 				seasonCount: 1,
 				episodeCount: 10,
 				metadata: { title: 'Atlas Watch', year: 2024, overview: 'Preview series item.', posterUrl: previewArtwork('Atlas Watch') }
 			},
 			{
-				id: 'series-ember-shore',
+				id: 'preview-tv-ember-shore',
 				title: 'Ember Shore',
 				seasonCount: 2,
 				episodeCount: 16,
 				metadata: { title: 'Ember Shore', year: 2021, overview: 'Preview series item.', posterUrl: previewArtwork('Ember Shore') }
 			},
 			{
-				id: 'series-sunward',
+				id: 'preview-tv-sunward',
 				title: 'Sunward',
 				seasonCount: 4,
 				episodeCount: 40,
 				metadata: { title: 'Sunward', year: 2023, overview: 'Preview series item.', posterUrl: previewArtwork('Sunward') }
 			},
 			{
-				id: 'series-littoral',
+				id: 'preview-tv-littoral',
 				title: 'Littoral',
 				seasonCount: 1,
 				episodeCount: 12,
@@ -337,7 +345,7 @@ import { previewPoster } from '$lib/preview/artwork';
 							title={item.title}
 							meta={item.meta}
 							imageUrl={item.posterUrl}
-							href={`/tv/${encodeURIComponent(item.id)}`}
+							href={`/tv/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
 						/>
 					{/each}
 				</BrowseGrid>

@@ -31,9 +31,11 @@
 		justify-items: start;
 		gap: var(--vyrden-space-2);
 		padding: var(--vyrden-space-6);
-		border: 1px dashed var(--vyrden-color-border-strong);
+		border: 1px solid rgb(255 255 255 / 12%);
 		border-radius: var(--vyrden-radius-lg);
-		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 1%));
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%)),
+			rgb(17 24 39 / 62%);
 	}
 
 	.v-empty__icon {
