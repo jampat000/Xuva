@@ -37,6 +37,7 @@ const (
 )
 
 type Request struct {
+	LibraryID   string `json:"libraryId,omitempty"`
 	Kind        Kind   `json:"kind"`
 	Path        string `json:"path,omitempty"`
 	MoviesPath  string `json:"moviesPath,omitempty"`
@@ -46,6 +47,7 @@ type Request struct {
 
 type Job struct {
 	ID           string         `json:"id"`
+	LibraryID    string         `json:"libraryId,omitempty"`
 	Kind         Kind           `json:"kind"`
 	Status       Status         `json:"status"`
 	Path         string         `json:"path,omitempty"`
@@ -101,6 +103,7 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	}
 	job := Job{
 		ID:         s.nextJobID(),
+		LibraryID:  request.LibraryID,
 		Kind:       request.Kind,
 		Status:     StatusQueued,
 		Path:       request.Path,
@@ -150,15 +153,17 @@ func (s *Service) List() []Job {
 func (s *Service) validate(job Job) error {
 	switch job.Kind {
 	case KindMovies:
-		if firstNonEmpty(job.Path, job.MoviesPath, s.cfg.MovieLibraryPath) == "" {
+		if firstNonEmpty(job.Path, job.MoviesPath, s.cfg.MovieLibraryPath, firstLibraryPathByKind(s.libraries, libraries.KindMovies)) == "" {
 			return errors.New("movie library path is required")
 		}
 	case KindTV:
-		if firstNonEmpty(job.Path, job.TVPath, s.cfg.TVLibraryPath) == "" {
+		if firstNonEmpty(job.Path, job.TVPath, s.cfg.TVLibraryPath, firstLibraryPathByKind(s.libraries, libraries.KindTV)) == "" {
 			return errors.New("tv library path is required")
 		}
 	case KindAll:
-		if len(s.libraries.List()) == 0 && firstNonEmpty(job.MoviesPath, s.cfg.MovieLibraryPath) == "" && firstNonEmpty(job.TVPath, s.cfg.TVLibraryPath) == "" {
+		if len(s.libraries.List()) == 0 &&
+			firstNonEmpty(job.MoviesPath, s.cfg.MovieLibraryPath, firstLibraryPathByKind(s.libraries, libraries.KindMovies)) == "" &&
+			firstNonEmpty(job.TVPath, s.cfg.TVLibraryPath, firstLibraryPathByKind(s.libraries, libraries.KindTV)) == "" {
 			return errors.New("at least one movie or tv library path is required")
 		}
 	default:
@@ -180,9 +185,35 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 
 	switch request.Kind {
 	case KindMovies:
-		s.runMovies(ctx, id, firstNonEmpty(request.Path, request.MoviesPath, s.cfg.MovieLibraryPath))
+		if request.LibraryID != "" {
+			if library, ok := s.libraries.Get(request.LibraryID); ok {
+				s.runMoviesLibrary(ctx, id, library)
+				break
+			}
+		}
+		path := firstNonEmpty(request.Path, request.MoviesPath, s.cfg.MovieLibraryPath)
+		if path == "" {
+			if library, ok := firstLibraryByKind(s.libraries, libraries.KindMovies); ok {
+				s.runMoviesLibrary(ctx, id, library)
+				break
+			}
+		}
+		s.runMovies(ctx, id, path)
 	case KindTV:
-		s.runTV(ctx, id, firstNonEmpty(request.Path, request.TVPath, s.cfg.TVLibraryPath))
+		if request.LibraryID != "" {
+			if library, ok := s.libraries.Get(request.LibraryID); ok {
+				s.runTVLibrary(ctx, id, library)
+				break
+			}
+		}
+		path := firstNonEmpty(request.Path, request.TVPath, s.cfg.TVLibraryPath)
+		if path == "" {
+			if library, ok := firstLibraryByKind(s.libraries, libraries.KindTV); ok {
+				s.runTVLibrary(ctx, id, library)
+				break
+			}
+		}
+		s.runTV(ctx, id, path)
 	case KindAll:
 		ran := false
 		for _, library := range s.libraries.List() {
@@ -415,10 +446,10 @@ func requestMetadataLimit(mediaFiles int) int {
 	if mediaFiles <= 0 {
 		return 0
 	}
-	if mediaFiles < 25 {
+	if mediaFiles < 300 {
 		return mediaFiles
 	}
-	return 25
+	return 300
 }
 
 func (s *Service) fail(id string, err error) {
@@ -454,6 +485,30 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstLibraryPathByKind(service *libraries.Service, kind libraries.Kind) string {
+	if service == nil {
+		return ""
+	}
+	for _, library := range service.List() {
+		if library.Kind == kind {
+			return library.Path
+		}
+	}
+	return ""
+}
+
+func firstLibraryByKind(service *libraries.Service, kind libraries.Kind) (libraries.Library, bool) {
+	if service == nil {
+		return libraries.Library{}, false
+	}
+	for _, library := range service.List() {
+		if library.Kind == kind {
+			return library, true
+		}
+	}
+	return libraries.Library{}, false
 }
 
 func stringID(value uint64) string {

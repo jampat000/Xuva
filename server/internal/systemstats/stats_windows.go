@@ -4,6 +4,7 @@ package systemstats
 
 import (
 	"math"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -15,6 +16,8 @@ var (
 	kernel32                 = syscall.NewLazyDLL("kernel32.dll")
 	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
 	procGetSystemTimes       = kernel32.NewProc("GetSystemTimes")
+	iphlpapi                 = syscall.NewLazyDLL("iphlpapi.dll")
+	procGetIfTable           = iphlpapi.NewProc("GetIfTable")
 )
 
 type memoryStatusEx struct {
@@ -107,4 +110,107 @@ func systemTimes() (cpuTimes, bool) {
 
 func filetimeUint64(value windows.Filetime) uint64 {
 	return uint64(value.HighDateTime)<<32 + uint64(value.LowDateTime)
+}
+
+type mibIfRow struct {
+	Name            [256]uint16
+	Index           uint32
+	Type            uint32
+	MTU             uint32
+	Speed           uint32
+	PhysAddrLen     uint32
+	PhysAddr        [8]byte
+	AdminStatus     uint32
+	OperStatus      uint32
+	LastChange      uint32
+	InOctets        uint32
+	InUcastPkts     uint32
+	InNUcastPkts    uint32
+	InDiscards      uint32
+	InErrors        uint32
+	InUnknownProtos uint32
+	OutOctets       uint32
+	OutUcastPkts    uint32
+	OutNUcastPkts   uint32
+	OutDiscards     uint32
+	OutErrors       uint32
+	OutQLen         uint32
+	DescrLen        uint32
+	Descr           [256]byte
+}
+
+type netCounters struct {
+	name    string
+	rxBytes uint64
+	txBytes uint64
+}
+
+func networkStats() NetworkStats {
+	first, ok := ifTable()
+	if !ok {
+		return NetworkStats{}
+	}
+	time.Sleep(120 * time.Millisecond)
+	second, ok := ifTable()
+	if !ok {
+		return NetworkStats{}
+	}
+	interval := 0.12
+	total := NetworkStats{Interfaces: []NetworkInterfaceStat{}}
+	for index, after := range second {
+		before, exists := first[index]
+		if !exists {
+			continue
+		}
+		rx := rateBps(after.rxBytes, before.rxBytes, interval)
+		tx := rateBps(after.txBytes, before.txBytes, interval)
+		total.ReceiveBps += rx
+		total.TransmitBps += tx
+		total.Interfaces = append(total.Interfaces, NetworkInterfaceStat{
+			Name:        after.name,
+			ReceiveBps:  rx,
+			TransmitBps: tx,
+		})
+	}
+	return total
+}
+
+func ifTable() (map[uint32]netCounters, bool) {
+	size := uint32(0)
+	procGetIfTable.Call(0, uintptr(unsafe.Pointer(&size)), 0)
+	if size == 0 {
+		return nil, false
+	}
+	buffer := make([]byte, size)
+	result, _, _ := procGetIfTable.Call(uintptr(unsafe.Pointer(&buffer[0])), uintptr(unsafe.Pointer(&size)), 0)
+	if result != 0 {
+		return nil, false
+	}
+	count := *(*uint32)(unsafe.Pointer(&buffer[0]))
+	rowSize := unsafe.Sizeof(mibIfRow{})
+	base := uintptr(unsafe.Pointer(&buffer[0])) + unsafe.Sizeof(count)
+	output := map[uint32]netCounters{}
+	for i := uint32(0); i < count; i++ {
+		row := (*mibIfRow)(unsafe.Pointer(base + uintptr(i)*rowSize))
+		if row == nil || row.Type == 24 {
+			continue
+		}
+		name := windows.UTF16ToString(row.Name[:])
+		if name == "" {
+			name = string(row.Descr[:row.DescrLen])
+		}
+		output[row.Index] = netCounters{
+			name:    strings.TrimSpace(name),
+			rxBytes: uint64(row.InOctets),
+			txBytes: uint64(row.OutOctets),
+		}
+	}
+	return output, true
+}
+
+func rateBps(after uint64, before uint64, seconds float64) uint64 {
+	if after < before || seconds <= 0 {
+		return 0
+	}
+	return uint64(float64(after-before) * 8 / seconds)
 }

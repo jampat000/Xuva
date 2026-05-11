@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -73,8 +76,130 @@ func TestRootServesWebApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if !bytes.Contains(body, []byte("Vyrden")) || !bytes.Contains(body, []byte("/app.js")) {
-		t.Fatalf("expected web app html, got %s", string(body))
+	if !bytes.Contains(body, []byte("__sveltekit_")) || !bytes.Contains(body, []byte("/_app/immutable/")) {
+		t.Fatalf("expected svelte root shell, got %s", string(body))
+	}
+}
+
+func TestRootSupportsHistoryFallback(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/future-route", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected history fallback 200, got %d", response.Code)
+	}
+	if contentType := response.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+		t.Fatalf("expected html fallback, got %q", contentType)
+	}
+}
+
+func TestRootSupportsHistoryFallbackForMigratedRoutes(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	paths := []string{
+		"/",
+		"/movies",
+		"/tv",
+		"/movies/placeholder-id",
+		"/tv/placeholder-id",
+		"/settings",
+		"/admin",
+		"/collections",
+		"/watchlist",
+		"/continue-watching",
+		"/recently-added",
+	}
+
+	for _, routePath := range paths {
+		request := httptest.NewRequest(http.MethodGet, routePath, nil)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected %s to return 200, got %d", routePath, response.Code)
+		}
+		if contentType := response.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+			t.Fatalf("expected %s to return html fallback, got %q", routePath, contentType)
+		}
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatalf("read body %s: %v", routePath, err)
+		}
+		if !bytes.Contains(body, []byte("__sveltekit_")) {
+			t.Fatalf("expected %s to return svelte bootstrap shell", routePath)
+		}
+	}
+}
+
+func TestRootMissingStaticAssetReturnsNotFound(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/missing-asset.js", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected missing asset 404, got %d", response.Code)
+	}
+}
+
+func TestRootAssetCacheHeadersAreImmutable(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/README.md", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "immutable") {
+		t.Fatalf("expected immutable cache control for static asset, got %q", cacheControl)
+	}
+}
+
+func TestRootBuildInfoIsServedNoStore(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/build-info.json", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-store") {
+		t.Fatalf("expected no-store cache control for build marker, got %q", cacheControl)
+	}
+	payload := map[string]any{}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode build-info json: %v", err)
+	}
+	if strings.TrimSpace(strings.TrimSpace(anyToString(payload["buildID"]))) == "" {
+		t.Fatalf("expected buildID in build-info payload")
+	}
+}
+
+func TestLegacyAndNextRoutesReturnNotFound(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	paths := []string{
+		"/legacy",
+		"/legacy/settings",
+		"/next",
+		"/next/movies",
+		"/next/settings",
+	}
+
+	for _, routePath := range paths {
+		request := httptest.NewRequest(http.MethodGet, routePath, nil)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected %s 404, got %d", routePath, response.Code)
+		}
 	}
 }
 
@@ -264,10 +389,65 @@ func TestClientBootstrapIsReadableBeforeLogin(t *testing.T) {
 	if authPayload["required"] != true {
 		t.Fatalf("expected auth-enabled bootstrap to report auth required, got %#v", authPayload)
 	}
+	if authPayload["bootstrapAllowed"] != false {
+		t.Fatalf("expected bootstrap to be closed once admin exists, got %#v", authPayload)
+	}
 	client := payload["client"].(map[string]any)
 	profile := client["profile"].(map[string]any)
 	if client["requestedProfile"] != "ios" || profile["id"] != "ios" {
 		t.Fatalf("expected requested ios profile, got %#v", client)
+	}
+}
+
+func TestAuthBootstrapCanCreateFirstAdmin(t *testing.T) {
+	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	before := client.requestJSON(t, router, http.MethodGet, "/api/client/bootstrap", nil)
+	if before.status != http.StatusOK {
+		t.Fatalf("expected bootstrap status 200, got %d: %s", before.status, before.body)
+	}
+	authBefore, _ := before.payload["auth"].(map[string]any)
+	if authBefore["bootstrapAllowed"] != true {
+		t.Fatalf("expected bootstrapAllowed=true before first account, got %#v", authBefore)
+	}
+
+	create := client.requestJSON(t, router, http.MethodPost, "/api/auth/bootstrap", map[string]any{
+		"username":    "owner",
+		"displayName": "Owner",
+		"password":    "owner-password-123!",
+	})
+	if create.status != http.StatusCreated {
+		t.Fatalf("expected bootstrap create 201, got %d: %s", create.status, create.body)
+	}
+	user, _ := create.payload["user"].(map[string]any)
+	if user["username"] != "owner" || user["role"] != "admin" {
+		t.Fatalf("expected bootstrap admin account, got %#v", create.payload)
+	}
+
+	session := client.requestJSON(t, router, http.MethodGet, "/api/auth/session", nil)
+	if session.status != http.StatusOK {
+		t.Fatalf("expected authenticated session after bootstrap, got %d: %s", session.status, session.body)
+	}
+
+	after := client.requestJSON(t, router, http.MethodGet, "/api/client/bootstrap", nil)
+	authAfter, _ := after.payload["auth"].(map[string]any)
+	if authAfter["bootstrapAllowed"] != false {
+		t.Fatalf("expected bootstrapAllowed=false after first account, got %#v", authAfter)
+	}
+}
+
+func TestAuthBootstrapRejectedAfterAccountExists(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	create := client.requestJSON(t, router, http.MethodPost, "/api/auth/bootstrap", map[string]any{
+		"username":    "owner",
+		"displayName": "Owner",
+		"password":    "owner-password-123!",
+	})
+	if create.status != http.StatusConflict {
+		t.Fatalf("expected bootstrap conflict once account exists, got %d: %s", create.status, create.body)
 	}
 }
 
@@ -385,6 +565,9 @@ func TestSystemStatusAndRuntimeFolders(t *testing.T) {
 	if cpu["cores"].(float64) < 1 {
 		t.Fatalf("expected at least one cpu core, got %#v", cpu)
 	}
+	if _, ok := status["network"].(map[string]any); !ok {
+		t.Fatalf("expected network stats in system status, got %#v", status)
+	}
 	disks := status["disks"].([]any)
 	if len(disks) < 5 {
 		t.Fatalf("expected runtime folder disk entries, got %#v", status)
@@ -393,6 +576,17 @@ func TestSystemStatusAndRuntimeFolders(t *testing.T) {
 	paths := settings["runtimePaths"].(map[string]any)
 	if paths["transcode"] == "" || paths["metadata"] == "" {
 		t.Fatalf("expected configurable runtime paths, got %#v", paths)
+	}
+}
+
+func TestMetricsIncludesTimeline(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+	deps.Events.Publish("session.route.changed", map[string]any{"toRoute": "adaptive"})
+	metrics := getJSON(t, router, "/api/metrics")
+	timeline := metrics["timeline"].([]any)
+	if len(timeline) == 0 {
+		t.Fatalf("expected timeline entries, got %#v", metrics)
 	}
 }
 
@@ -767,6 +961,38 @@ func TestTVScanEndpointUsesEpisodeClassifier(t *testing.T) {
 	}
 }
 
+func TestScanEndpointsFallbackToSavedLibraries(t *testing.T) {
+	movieRoot := t.TempDir()
+	tvRoot := t.TempDir()
+	writeTestFile(t, filepath.Join(movieRoot, "Interstellar (2014)", "Interstellar.2014.1080p.BluRay.mkv"))
+	writeTestFile(t, filepath.Join(tvRoot, "Andor", "Season 01", "Andor.S01E01.1080p.WEB-DL.mkv"))
+
+	deps := testDeps(t, time.Now())
+	deps.Config.MovieLibraryPath = ""
+	deps.Config.TVLibraryPath = ""
+	router := NewRouter(deps)
+
+	postJSON(t, router, "/api/libraries", map[string]any{
+		"kind": "movies",
+		"name": "Movies",
+		"path": movieRoot,
+	})
+	postJSON(t, router, "/api/libraries", map[string]any{
+		"kind": "tv",
+		"name": "TV",
+		"path": tvRoot,
+	})
+
+	movieScan := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{})
+	waitForScan(t, router, movieScan["id"].(string))
+	tvScan := postJSON(t, router, "/api/libraries/tv/scan", map[string]any{})
+	waitForScan(t, router, tvScan["id"].(string))
+	scans := getJSON(t, router, "/api/scans")
+	if len(scans["scans"].([]any)) < 2 {
+		t.Fatalf("expected fallback scan jobs to be recorded, got %#v", scans)
+	}
+}
+
 func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	movieRoot := t.TempDir()
 	tvRoot := t.TempDir()
@@ -807,8 +1033,27 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	}
 	metadata := getJSON(t, router, "/api/metadata/movie/"+movieID)
 	records := metadata["records"].([]any)
-	if len(records) != 1 || records[0].(map[string]any)["provider"] != "filename" {
+	if len(records) == 0 {
 		t.Fatalf("expected filename metadata record, got %#v", metadata)
+	}
+	best := metadata["best"].(map[string]any)
+	foundFilename := false
+	for _, raw := range records {
+		record := raw.(map[string]any)
+		if record["provider"] == "filename" {
+			foundFilename = true
+			break
+		}
+	}
+	if !foundFilename {
+		t.Fatalf("expected filename seed metadata to remain available, got %#v", metadata)
+	}
+	if best["title"] != "Heat" {
+		t.Fatalf("expected clean selected title, got %#v", best["title"])
+	}
+	provenance := best["provenance"].(map[string]any)
+	if provenance["fields"].(map[string]any)["title"] == nil {
+		t.Fatalf("expected filename title provenance, got %#v", provenance)
 	}
 	match := requestJSON(t, router, http.MethodPut, "/api/metadata/match", map[string]any{
 		"kind":     "movie",
@@ -818,7 +1063,21 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 		"provider": "manual",
 		"overview": "A professional thief weighs one last score.",
 	})
-	if len(match["records"].([]any)) != 2 {
+	if len(match["records"].([]any)) < 2 {
+		t.Fatalf("expected manual and filename metadata records, got %#v", match)
+	}
+	foundManual := false
+	foundFilename = false
+	for _, raw := range match["records"].([]any) {
+		record := raw.(map[string]any)
+		if record["provider"] == "manual" {
+			foundManual = true
+		}
+		if record["provider"] == "filename" {
+			foundFilename = true
+		}
+	}
+	if !foundManual || !foundFilename {
 		t.Fatalf("expected manual and filename metadata records, got %#v", match)
 	}
 
@@ -855,6 +1114,46 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 	}
 	if decision["reasonCode"] != "probe_required" || decision["decisionTraceId"] == "" {
 		t.Fatalf("expected v2 probe decision fields, got %#v", decision)
+	}
+}
+
+func TestMetadataProvidersEndpointUsesStrictManagedModeHealth(t *testing.T) {
+	t.Setenv("VYRDEN_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	payload := getJSON(t, router, "/api/metadata/providers")
+	if payload["managedMode"] != "strict" {
+		t.Fatalf("expected strict managed mode, got %#v", payload["managedMode"])
+	}
+	items, _ := payload["providers"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("expected metadata providers payload, got %#v", payload)
+	}
+
+	lookup := map[string]map[string]any{}
+	for _, raw := range items {
+		row, _ := raw.(map[string]any)
+		id, _ := row["id"].(string)
+		if id != "" {
+			lookup[id] = row
+		}
+	}
+
+	tmdb := lookup["tmdb"]
+	if tmdb == nil {
+		t.Fatalf("expected tmdb provider row, got %#v", payload)
+	}
+	if tmdb["managedMode"] != "strict" || tmdb["configured"] != true || tmdb["healthy"] != true {
+		t.Fatalf("expected tmdb to be configured and healthy from managed credentials, got %#v", tmdb)
+	}
+
+	tvdb := lookup["tvdb"]
+	if tvdb == nil {
+		t.Fatalf("expected tvdb provider row, got %#v", payload)
+	}
+	if tvdb["configured"] != false || tvdb["healthy"] != false {
+		t.Fatalf("expected tvdb to remain unconfigured in this test, got %#v", tvdb)
 	}
 }
 
@@ -975,17 +1274,24 @@ func TestLibraryManagementRemoteAndArtworkEndpoints(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 
 	library := postJSON(t, router, "/api/libraries", map[string]any{
-		"kind": "movies",
-		"name": "Archive Movies",
-		"path": root,
+		"kind":            "movies",
+		"name":            "Archive Movies",
+		"path":            root,
+		"metadataSources": []string{"wikipedia", "nfo", "filename"},
 	})
 	if library["name"] != "Archive Movies" {
 		t.Fatalf("expected saved library, got %#v", library)
+	}
+	if got := library["metadataSources"].([]any); len(got) != 3 || got[0] != "wikipedia" || got[1] != "nfo" || got[2] != "filename" {
+		t.Fatalf("expected saved metadata source order, got %#v", library)
 	}
 	libraryID := library["id"].(string)
 	librariesPayload := getJSON(t, router, "/api/libraries")
 	if len(librariesPayload["libraries"].([]any)) != 1 {
 		t.Fatalf("expected one saved library, got %#v", librariesPayload)
+	}
+	if librariesPayload["metadataSources"] == nil {
+		t.Fatalf("expected metadata source catalog, got %#v", librariesPayload)
 	}
 	scan := postJSON(t, router, "/api/libraries/"+libraryID+"/scan", map[string]any{})
 	waitForScan(t, router, scan["id"].(string))
@@ -1003,6 +1309,65 @@ func TestLibraryManagementRemoteAndArtworkEndpoints(t *testing.T) {
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("expected svg artwork response, got %d %q", response.Code, response.Header().Get("Content-Type"))
 	}
+}
+
+func TestArtworkQualityGateThresholds(t *testing.T) {
+	posterHiRes := testJPEG(t, 900, 1350)
+	posterLowRes := testJPEG(t, 400, 600)
+	backdropHiRes := testJPEG(t, 1920, 1080)
+	backdropLowRes := testJPEG(t, 960, 540)
+
+	if !artworkPassesQualityGateBytes(posterHiRes, "poster", "https://example.com/poster.jpg", true) {
+		t.Fatalf("expected hi-res poster to pass quality gate")
+	}
+	if artworkPassesQualityGateBytes(posterLowRes, "poster", "https://example.com/poster.jpg", true) {
+		t.Fatalf("expected low-res poster to fail quality gate")
+	}
+	if !artworkPassesQualityGateBytes(backdropHiRes, "backdrop", "https://example.com/backdrop.jpg", true) {
+		t.Fatalf("expected hi-res backdrop to pass quality gate")
+	}
+	if artworkPassesQualityGateBytes(backdropLowRes, "backdrop", "https://example.com/backdrop.jpg", true) {
+		t.Fatalf("expected low-res backdrop to fail quality gate")
+	}
+	if !artworkPassesQualityGateBytes(posterLowRes, "poster", "https://example.com/poster.jpg", false) {
+		t.Fatalf("expected low-res poster to pass relaxed quality gate fallback")
+	}
+	if !artworkPassesQualityGateBytes(backdropLowRes, "backdrop", "https://example.com/backdrop.jpg", false) {
+		t.Fatalf("expected low-res backdrop to pass relaxed quality gate fallback")
+	}
+}
+
+func TestMetadataArtworkCandidatesBackdropFallsBackToPoster(t *testing.T) {
+	records := []catalog.MetadataRecord{
+		{Provider: "tvmaze", PosterURL: "https://img.example/poster-a.jpg"},
+		{Provider: "tmdb", BackdropURL: "https://img.example/backdrop-b.jpg", PosterURL: "https://img.example/poster-b.jpg"},
+	}
+	candidates := metadataArtworkCandidates(records, "backdrop")
+	if len(candidates) < 2 {
+		t.Fatalf("expected backdrop candidates with poster fallback, got %#v", candidates)
+	}
+	if candidates[0] != "https://img.example/backdrop-b.jpg" {
+		t.Fatalf("expected backdrop candidate first, got %#v", candidates)
+	}
+	if candidates[1] != "https://img.example/poster-a.jpg" {
+		t.Fatalf("expected poster fallback after backdrop, got %#v", candidates)
+	}
+}
+
+func testJPEG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
+	fill := color.RGBA{R: 42, G: 92, B: 146, A: 255}
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			canvas.SetRGBA(x, y, fill)
+		}
+	}
+	var output bytes.Buffer
+	if err := jpeg.Encode(&output, canvas, &jpeg.Options{Quality: 88}); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+	return output.Bytes()
 }
 
 func TestRemoteDiagnosticsEndpointRejectsSensitiveURLParts(t *testing.T) {
@@ -1133,6 +1498,82 @@ func TestAuthLoginAndProtectedRouteAccess(t *testing.T) {
 	}
 }
 
+func TestAuthLoginLoopbackWithForwardedHTTPSDoesNotSetSecureCookie(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	body := mustJSON(t, map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8097/api/auth/login", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-Host", "127.0.0.1:8097")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, cookie := range response.Result().Cookies() {
+		if (cookie.Name == auth.SessionCookieName || cookie.Name == auth.CSRFCookieName) && cookie.Secure {
+			t.Fatalf("expected non-secure auth cookies on loopback host, got secure cookie %q", cookie.Name)
+		}
+	}
+}
+
+func TestAuthLoginForwardedHTTPSOnNonLoopbackDoesNotSetSecureCookieWithoutTLS(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	body := mustJSON(t, map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	request := httptest.NewRequest(http.MethodPost, "http://vyrden.test/api/auth/login", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-Host", "vyrden.example")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, cookie := range response.Result().Cookies() {
+		if (cookie.Name == auth.SessionCookieName || cookie.Name == auth.CSRFCookieName) && cookie.Secure {
+			t.Fatalf("expected non-secure auth cookies without TLS transport, got secure cookie %q", cookie.Name)
+		}
+	}
+}
+
+func TestAuthLoginHTTPSRequestSetsSecureCookie(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	body := mustJSON(t, map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	request := httptest.NewRequest(http.MethodPost, "https://vyrden.test/api/auth/login", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", response.Code, response.Body.String())
+	}
+	secureCookies := 0
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == auth.SessionCookieName || cookie.Name == auth.CSRFCookieName {
+			if cookie.Secure {
+				secureCookies++
+			}
+		}
+	}
+	if secureCookies < 2 {
+		t.Fatalf("expected secure auth cookies on TLS request, got %d secure cookies", secureCookies)
+	}
+}
+
 func TestAuthRevokedSessionDenied(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 	client := newAuthTestClient(t)
@@ -1206,6 +1647,91 @@ func TestAuthMutationRejectsMissingCSRF(t *testing.T) {
 	}
 }
 
+func TestAuthHeaderTokenAllowsProtectedRouteWithoutCookies(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+	token, _ := login.payload["sessionToken"].(string)
+	if strings.TrimSpace(token) == "" {
+		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "http://vyrden.test/api/users", nil)
+	request.Header.Set("X-Auth-Token", token)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected header-token users list 200, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAuthHeaderTokenMutationBypassesCSRFRequirement(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+	token, _ := login.payload["sessionToken"].(string)
+	if strings.TrimSpace(token) == "" {
+		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "http://vyrden.test/api/users", bytes.NewReader(mustJSON(t, map[string]any{
+		"username":    "viewer-hdr",
+		"displayName": "Viewer Header",
+		"password":    "viewer-password-123!",
+		"role":        "standard",
+	})))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Auth-Token", token)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected header-token create user 201, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAuthHeaderTokenOverridesStaleCookie(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+	token, _ := login.payload["sessionToken"].(string)
+	if strings.TrimSpace(token) == "" {
+		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://vyrden.test/api/users", nil)
+	req.Header.Set("X-Auth-Token", token)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "stale.invalid.token"})
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected header token to authenticate even with stale cookie, got %d: %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAuthzStandardCannotCallAdminSettingsRoutes(t *testing.T) {
 	deps := testDepsWithAuth(t, time.Now())
 	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {
@@ -1240,6 +1766,92 @@ func TestAuthzAdminCanCallAdminSettingsRoutes(t *testing.T) {
 
 	if response.status != http.StatusOK {
 		t.Fatalf("expected admin settings update 200, got %d: %s", response.status, response.body)
+	}
+}
+
+func TestAuthzAdminCanManageUsers(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	list := client.requestJSON(t, router, http.MethodGet, "/api/users", nil)
+	if list.status != http.StatusOK {
+		t.Fatalf("expected admin users list 200, got %d: %s", list.status, list.body)
+	}
+	if len(list.payload["users"].([]any)) == 0 {
+		t.Fatalf("expected at least one user in list, got %#v", list.payload)
+	}
+
+	created := client.requestJSON(t, router, http.MethodPost, "/api/users", map[string]any{
+		"username":    "viewer",
+		"displayName": "Viewer",
+		"password":    "viewer-password-123!",
+		"role":        "standard",
+	})
+	if created.status != http.StatusCreated {
+		t.Fatalf("expected create user 201, got %d: %s", created.status, created.body)
+	}
+	user := created.payload["user"].(map[string]any)
+	userID, _ := user["id"].(string)
+	if userID == "" {
+		t.Fatalf("expected created user id, got %#v", created.payload)
+	}
+
+	password := client.requestJSON(t, router, http.MethodPost, "/api/users/"+userID+"/password", map[string]any{
+		"password": "viewer-password-456!",
+	})
+	if password.status != http.StatusOK {
+		t.Fatalf("expected password update 200, got %d: %s", password.status, password.body)
+	}
+
+	deleteResp := client.requestJSON(t, router, http.MethodDelete, "/api/users/"+userID, map[string]any{})
+	if deleteResp.status != http.StatusOK {
+		t.Fatalf("expected delete user 200, got %d: %s", deleteResp.status, deleteResp.body)
+	}
+}
+
+func TestAuthzStandardCannotManageUsers(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {
+		t.Fatalf("create standard user: %v", err)
+	}
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "viewer", "viewer-password-123!")
+
+	list := client.requestJSON(t, router, http.MethodGet, "/api/users", nil)
+	if list.status != http.StatusForbidden {
+		t.Fatalf("expected standard user users list 403, got %d: %s", list.status, list.body)
+	}
+	create := client.requestJSON(t, router, http.MethodPost, "/api/users", map[string]any{
+		"username":    "viewer2",
+		"displayName": "Viewer Two",
+		"password":    "viewer-password-123!",
+		"role":        "standard",
+	})
+	if create.status != http.StatusForbidden {
+		t.Fatalf("expected standard user create 403, got %d: %s", create.status, create.body)
+	}
+	password := client.requestJSON(t, router, http.MethodPost, "/api/users/admin/password", map[string]any{
+		"password": "new-password-123!",
+	})
+	if password.status != http.StatusForbidden {
+		t.Fatalf("expected standard user password update 403, got %d: %s", password.status, password.body)
+	}
+	deleteResp := client.requestJSON(t, router, http.MethodDelete, "/api/users/admin", map[string]any{})
+	if deleteResp.status != http.StatusForbidden {
+		t.Fatalf("expected standard user delete 403, got %d: %s", deleteResp.status, deleteResp.body)
+	}
+}
+
+func TestAuthzAdminCannotDeleteLastAdmin(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	response := client.requestJSON(t, router, http.MethodDelete, "/api/users/admin", map[string]any{})
+	if response.status != http.StatusBadRequest && response.status != http.StatusConflict {
+		t.Fatalf("expected delete self guard or last-admin guard, got %d: %s", response.status, response.body)
 	}
 }
 
@@ -1297,6 +1909,53 @@ func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected system status to use saved data dir before restart, got %#v", status)
+	}
+}
+
+func TestSettingsManagedProviderOverridesIgnoreClientKeyInjection(t *testing.T) {
+	t.Setenv("VYRDEN_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	update := requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"tmdbApiKey": "tmdb-test-key",
+		"omdbApiKey": "omdb-test-key",
+	})
+	configPayload, _ := update["config"].(map[string]any)
+	metadataProviders, _ := configPayload["metadataProviders"].(map[string]any)
+	managedOverrides, _ := metadataProviders["managedOverrides"].([]any)
+	configured := map[string]bool{}
+	for _, raw := range managedOverrides {
+		item, _ := raw.(map[string]any)
+		id, _ := item["id"].(string)
+		value, _ := item["configured"].(bool)
+		configured[id] = value
+	}
+	if configured["tmdb"] != true || configured["omdb"] != false || configured["tvdb"] != false {
+		t.Fatalf("expected configured managed overrides after key save, got %#v", managedOverrides)
+	}
+
+	reloaded := getJSON(t, router, "/api/settings")
+	reloadedConfig, _ := reloaded["config"].(map[string]any)
+	reloadedProviders, _ := reloadedConfig["metadataProviders"].(map[string]any)
+	reloadedOverrides, _ := reloadedProviders["managedOverrides"].([]any)
+	reloadedConfigured := map[string]bool{}
+	for _, raw := range reloadedOverrides {
+		item, _ := raw.(map[string]any)
+		id, _ := item["id"].(string)
+		value, _ := item["configured"].(bool)
+		reloadedConfigured[id] = value
+	}
+	if reloadedConfigured["tmdb"] != true || reloadedConfigured["omdb"] != false || reloadedConfigured["tvdb"] != false {
+		t.Fatalf("expected managed override state to persist after reload, got %#v", reloadedOverrides)
+	}
+
+	saved, err := config.LoadFile(deps.Config.DataDir)
+	if err != nil {
+		t.Fatalf("load saved settings file: %v", err)
+	}
+	if saved.TMDBAPIKey != "" || saved.OMDbAPIKey != "" || saved.TVDBAPIKey != "" {
+		t.Fatalf("expected settings API to avoid persisting managed provider keys, got %#v", saved)
 	}
 }
 
@@ -1650,6 +2309,30 @@ func testDepsWithAuth(t *testing.T, startedAt time.Time) Deps {
 	return deps
 }
 
+func testDepsWithAuthNoBootstrap(t *testing.T, startedAt time.Time) Deps {
+	t.Helper()
+
+	deps := testDeps(t, startedAt)
+	deps.Config.AuthDisabled = false
+	db, err := database.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("open auth database: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("close auth database: %v", err)
+		}
+	})
+	deps.Catalog = catalog.NewService(db)
+	deps.Metadata = metaprovider.NewService(deps.Config, deps.Catalog, deps.Events)
+	deps.Scans = scans.NewService(deps.Config, deps.Events, deps.Jobs.Scan, deps.Libraries, deps.Scanner, deps.Catalog, deps.Metadata, deps.Movies, deps.TV)
+	deps.Probes = probes.NewService(deps.Events, deps.Jobs.Probe, deps.Catalog, probe.NewService("ffprobe"))
+	deps.PlayState = playstate.NewService(db, deps.Events)
+	deps.Migration = migration.NewService(db, deps.Events)
+	deps.Auth = auth.NewService(db, false)
+	return deps
+}
+
 type authTestClient struct {
 	jar       http.CookieJar
 	csrfToken string
@@ -1832,4 +2515,18 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatalf("marshal json: %v", err)
 	}
 	return raw
+}
+
+func anyToString(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	if value == nil {
+		return ""
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }

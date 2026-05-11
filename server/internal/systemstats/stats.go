@@ -12,6 +12,7 @@ type Snapshot struct {
 	CPU         CPUStats     `json:"cpu"`
 	Memory      MemoryStats  `json:"memory"`
 	Process     ProcessStats `json:"process"`
+	Network     NetworkStats `json:"network"`
 	Disks       []DiskStats  `json:"disks"`
 }
 
@@ -31,6 +32,18 @@ type ProcessStats struct {
 	GoAllocBytes uint64 `json:"goAllocBytes"`
 	GoSysBytes   uint64 `json:"goSysBytes"`
 	Goroutines   int    `json:"goroutines"`
+}
+
+type NetworkStats struct {
+	ReceiveBps  uint64                 `json:"receiveBps"`
+	TransmitBps uint64                 `json:"transmitBps"`
+	Interfaces  []NetworkInterfaceStat `json:"interfaces"`
+}
+
+type NetworkInterfaceStat struct {
+	Name        string `json:"name"`
+	ReceiveBps  uint64 `json:"receiveBps"`
+	TransmitBps uint64 `json:"transmitBps"`
 }
 
 type DiskStats struct {
@@ -60,7 +73,8 @@ func Collect(paths map[string]string) Snapshot {
 			GoSysBytes:   mem.Sys,
 			Goroutines:   runtime.NumGoroutine(),
 		},
-		Disks: []DiskStats{},
+		Network: networkStats(),
+		Disks:   []DiskStats{},
 	}
 	dataRoot := volumeRoot(paths["data"])
 	for name, path := range paths {

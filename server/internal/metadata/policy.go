@@ -1,0 +1,48 @@
+package metadata
+
+import (
+	"context"
+	"strings"
+
+	"github.com/vyrdenhq/vyrden/server/internal/metasources"
+)
+
+func (s *Service) sourceOrder(ctx context.Context, request RefreshRequest) []string {
+	if s.catalog != nil {
+		if library, ok, err := s.catalog.GetLibraryForItem(ctx, request.Kind, request.ID); err == nil && ok {
+			return metasources.NormalizeSourceOrder(request.Kind, library.MetadataSources, s.cfg)
+		}
+	}
+	return metasources.NormalizeSourceOrder(request.Kind, nil, s.cfg)
+}
+
+func sourceEnabled(order []string, provider string) bool {
+	for _, item := range order {
+		if strings.EqualFold(item, provider) {
+			return true
+		}
+	}
+	return false
+}
+
+func sourceConfidence(order []string, provider string, fallback float64) float64 {
+	index := -1
+	for i, item := range order {
+		if strings.EqualFold(item, provider) {
+			index = i
+			break
+		}
+	}
+	if index < 0 || len(order) == 0 {
+		return fallback
+	}
+	boost := float64(len(order)-index) / float64(len(order)) * 0.06
+	value := fallback + boost
+	if value > 0.99 {
+		return 0.99
+	}
+	if value < 0.1 {
+		return 0.1
+	}
+	return value
+}

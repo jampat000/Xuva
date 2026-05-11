@@ -5,8 +5,10 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/database"
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
+	"github.com/vyrdenhq/vyrden/server/internal/metasources"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/probe"
 	"github.com/vyrdenhq/vyrden/server/internal/scanner"
@@ -44,6 +47,7 @@ type RuntimeSettings struct {
 	TempDir           string `json:"tempDir"`
 	FFmpegPath        string `json:"ffmpegPath"`
 	FFprobePath       string `json:"ffprobePath"`
+	EventBuffer       int    `json:"eventBuffer"`
 	ScanWorkers       int    `json:"scanWorkers"`
 	ProbeWorkers      int    `json:"probeWorkers"`
 	TranscodeWorkers  int    `json:"transcodeWorkers"`
@@ -137,20 +141,27 @@ type ReviewItem struct {
 }
 
 type MetadataRecord struct {
-	Kind        string            `json:"kind"`
-	ItemID      string            `json:"itemId"`
-	Provider    string            `json:"provider"`
-	ExternalID  string            `json:"externalId,omitempty"`
-	Title       string            `json:"title"`
-	Year        int               `json:"year,omitempty"`
-	Overview    string            `json:"overview,omitempty"`
-	PosterURL   string            `json:"posterUrl,omitempty"`
-	BackdropURL string            `json:"backdropUrl,omitempty"`
-	Confidence  float64           `json:"confidence"`
-	RawJSON     string            `json:"rawJson,omitempty"`
-	FetchedAt   string            `json:"fetchedAt"`
-	UpdatedAt   string            `json:"updatedAt"`
-	Ratings     Ratings           `json:"ratings,omitempty"`
+	Kind        string             `json:"kind"`
+	ItemID      string             `json:"itemId"`
+	Provider    string             `json:"provider"`
+	ExternalID  string             `json:"externalId,omitempty"`
+	Title       string             `json:"title"`
+	Year        int                `json:"year,omitempty"`
+	Overview    string             `json:"overview,omitempty"`
+	PosterURL   string             `json:"posterUrl,omitempty"`
+	BackdropURL string             `json:"backdropUrl,omitempty"`
+	Confidence  float64            `json:"confidence"`
+	RawJSON     string             `json:"rawJson,omitempty"`
+	FetchedAt   string             `json:"fetchedAt"`
+	UpdatedAt   string             `json:"updatedAt"`
+	Ratings     Ratings            `json:"ratings,omitempty"`
+	ExternalIDs map[string]string  `json:"externalIds,omitempty"`
+	Provenance  MetadataProvenance `json:"provenance,omitempty"`
+}
+
+type MetadataProvenance struct {
+	Fields      map[string]string `json:"fields,omitempty"`
+	Ratings     map[string]string `json:"ratings,omitempty"`
 	ExternalIDs map[string]string `json:"externalIds,omitempty"`
 }
 
@@ -274,7 +285,7 @@ func (s *Service) ScanState(ctx context.Context, libraryID string) (map[string]s
 
 func (s *Service) ListLibraries(ctx context.Context) ([]libraries.Library, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, kind, name, path, storage_type
+		SELECT id, kind, name, path, storage_type, metadata_sources_json
 		FROM libraries
 		ORDER BY kind, name, path
 	`)
@@ -285,9 +296,11 @@ func (s *Service) ListLibraries(ctx context.Context) ([]libraries.Library, error
 	output := []libraries.Library{}
 	for rows.Next() {
 		var item libraries.Library
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType); err != nil {
+		var rawSources string
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType, &rawSources); err != nil {
 			return nil, err
 		}
+		item.MetadataSources = decodeLibraryMetadataSources(item.Kind, rawSources)
 		output = append(output, item)
 	}
 	return output, rows.Err()
@@ -313,6 +326,7 @@ func (s *Service) SaveLibrary(ctx context.Context, library libraries.Library) (l
 	if library.StorageType == "" {
 		library.StorageType = libraries.DetectStorageType(library.Path)
 	}
+	library.MetadataSources = metasources.NormalizeRequestedSourceOrder(string(library.Kind), library.MetadataSources)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return libraries.Library{}, err
@@ -322,6 +336,44 @@ func (s *Service) SaveLibrary(ctx context.Context, library libraries.Library) (l
 		return libraries.Library{}, err
 	}
 	return library, tx.Commit()
+}
+
+func (s *Service) GetLibraryForItem(ctx context.Context, kind string, itemID string) (libraries.Library, bool, error) {
+	query := ""
+	switch kind {
+	case "movie":
+		query = `
+			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json
+			FROM libraries l
+			JOIN media_sources ms ON ms.library_id = l.id
+			JOIN movie_versions mv ON mv.media_source_id = ms.id
+			WHERE mv.movie_id = ?
+			LIMIT 1
+		`
+	case "series":
+		query = `
+			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json
+			FROM libraries l
+			JOIN media_sources ms ON ms.library_id = l.id
+			JOIN episode_versions ev ON ev.media_source_id = ms.id
+			JOIN tv_episodes e ON e.id = ev.episode_id
+			WHERE e.series_id = ?
+			LIMIT 1
+		`
+	default:
+		return libraries.Library{}, false, nil
+	}
+	var item libraries.Library
+	var rawSources string
+	err := s.db.QueryRowContext(ctx, query, itemID).Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType, &rawSources)
+	if errors.Is(err, sql.ErrNoRows) {
+		return libraries.Library{}, false, nil
+	}
+	if err != nil {
+		return libraries.Library{}, false, err
+	}
+	item.MetadataSources = decodeLibraryMetadataSources(item.Kind, rawSources)
+	return item, true, nil
 }
 
 func (s *Service) DeleteLibrary(ctx context.Context, id string) error {
@@ -341,6 +393,7 @@ func (s *Service) SaveSettings(ctx context.Context, settings RuntimeSettings) er
 		"tempDir":           settings.TempDir,
 		"ffmpegPath":        settings.FFmpegPath,
 		"ffprobePath":       settings.FFprobePath,
+		"eventBuffer":       intString(settings.EventBuffer),
 		"scanWorkers":       intString(settings.ScanWorkers),
 		"probeWorkers":      intString(settings.ProbeWorkers),
 		"transcodeWorkers":  intString(settings.TranscodeWorkers),
@@ -780,8 +833,7 @@ func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID strin
 		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id = ?
-		ORDER BY CASE provider WHEN 'manual' THEN 0 WHEN 'tmdb' THEN 1 WHEN 'tvdb' THEN 2 WHEN 'omdb' THEN 3 ELSE 9 END, confidence DESC, updated_at DESC
-		LIMIT 1
+		ORDER BY updated_at DESC
 	`, kind, itemID)
 	if err != nil {
 		return MetadataRecord{}, false, err
@@ -794,6 +846,8 @@ func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID strin
 	if len(records) == 0 {
 		return MetadataRecord{}, false, nil
 	}
+	order := s.metadataOrderForItem(ctx, kind, itemID)
+	sortMetadataRecords(records, order)
 	if err := s.AttachMetadataSignals(ctx, &records[0]); err != nil {
 		return MetadataRecord{}, false, err
 	}
@@ -805,7 +859,7 @@ func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID s
 		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id = ?
-		ORDER BY CASE provider WHEN 'manual' THEN 0 WHEN 'tmdb' THEN 1 WHEN 'tvdb' THEN 2 WHEN 'omdb' THEN 3 WHEN 'filename' THEN 8 ELSE 9 END, confidence DESC, updated_at DESC
+		ORDER BY updated_at DESC
 	`, kind, itemID)
 	if err != nil {
 		return nil, err
@@ -815,12 +869,111 @@ func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID s
 	if err != nil {
 		return nil, err
 	}
+	order := s.metadataOrderForItem(ctx, kind, itemID)
+	sortMetadataRecords(records, order)
 	for index := range records {
 		if err := s.AttachMetadataSignals(ctx, &records[index]); err != nil {
 			return nil, err
 		}
 	}
 	return records, nil
+}
+
+func (s *Service) metadataOrderForItem(ctx context.Context, kind string, itemID string) []string {
+	if library, ok, err := s.GetLibraryForItem(ctx, kind, itemID); err == nil && ok {
+		if order := metasources.NormalizeRequestedSourceOrder(kind, library.MetadataSources); len(order) > 0 {
+			return order
+		}
+	}
+	return metasources.DefaultSourceOrder(kind)
+}
+
+func sortMetadataRecords(records []MetadataRecord, order []string) {
+	rank := map[string]int{}
+	for index, provider := range order {
+		key := strings.ToLower(strings.TrimSpace(provider))
+		if key == "" {
+			continue
+		}
+		if _, exists := rank[key]; !exists {
+			rank[key] = index
+		}
+	}
+	sort.SliceStable(records, func(i, j int) bool {
+		left := records[i]
+		right := records[j]
+		leftManual := metadataProviderPriority(left.Provider)
+		rightManual := metadataProviderPriority(right.Provider)
+		if leftManual != rightManual {
+			return leftManual < rightManual
+		}
+		leftRank, leftRankOK := rank[strings.ToLower(strings.TrimSpace(left.Provider))]
+		rightRank, rightRankOK := rank[strings.ToLower(strings.TrimSpace(right.Provider))]
+		if leftRankOK || rightRankOK {
+			if leftRankOK && !rightRankOK {
+				return true
+			}
+			if !leftRankOK && rightRankOK {
+				return false
+			}
+			if leftRank != rightRank {
+				return leftRank < rightRank
+			}
+		}
+		if absFloat(left.Confidence-right.Confidence) > 0.01 {
+			return left.Confidence > right.Confidence
+		}
+		leftLocal := metadataLocalPreference(left.Provider)
+		rightLocal := metadataLocalPreference(right.Provider)
+		if leftLocal != rightLocal {
+			return leftLocal < rightLocal
+		}
+		if left.UpdatedAt != right.UpdatedAt {
+			return left.UpdatedAt > right.UpdatedAt
+		}
+		return strings.Compare(left.Provider, right.Provider) < 0
+	})
+}
+
+func metadataProviderPriority(provider string) int {
+	if strings.EqualFold(provider, "manual") {
+		return 0
+	}
+	return 1
+}
+
+func metadataLocalPreference(provider string) int {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "manual":
+		return 0
+	case "nfo":
+		return 1
+	case "artwork":
+		return 2
+	case "filename":
+		return 3
+	case "tvmaze":
+		return 4
+	case "tvdb":
+		return 5
+	case "tmdb":
+		return 6
+	case "wikipedia":
+		return 7
+	case "wikidata":
+		return 8
+	case "omdb":
+		return 9
+	default:
+		return 10
+	}
+}
+
+func absFloat(value float64) float64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func (s *Service) AttachMetadataSignals(ctx context.Context, record *MetadataRecord) error {
@@ -837,8 +990,38 @@ func (s *Service) AttachMetadataSignals(ctx context.Context, record *MetadataRec
 		return err
 	}
 	record.ExternalIDs = map[string]string{}
+	record.Provenance = MetadataProvenance{
+		Fields:      map[string]string{},
+		Ratings:     map[string]string{},
+		ExternalIDs: map[string]string{},
+	}
+	if record.Provider != "" {
+		if strings.TrimSpace(record.Title) != "" {
+			record.Provenance.Fields["title"] = record.Provider
+		}
+		if record.Year > 0 {
+			record.Provenance.Fields["year"] = record.Provider
+		}
+		if strings.TrimSpace(record.Overview) != "" {
+			record.Provenance.Fields["overview"] = record.Provider
+		}
+		if strings.TrimSpace(record.PosterURL) != "" {
+			record.Provenance.Fields["poster"] = record.Provider
+		}
+		if strings.TrimSpace(record.BackdropURL) != "" {
+			record.Provenance.Fields["backdrop"] = record.Provider
+		}
+	}
 	for _, item := range externalIDs {
 		record.ExternalIDs[item.Provider] = item.ExternalID
+		record.Provenance.ExternalIDs[item.Provider] = item.Provider
+	}
+	for _, rating := range ratings {
+		key := rating.Provider
+		if rating.RatingType != "" {
+			key = rating.RatingType
+		}
+		record.Provenance.Ratings[key] = rating.Provider
 	}
 	return nil
 }
@@ -1347,17 +1530,37 @@ func upsertLibrary(ctx context.Context, tx *sql.Tx, library libraries.Library) e
 	if library.StorageType == "" {
 		library.StorageType = libraries.DetectStorageType(library.Path)
 	}
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO libraries(id, kind, name, path, storage_type, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?)
+	var existingID string
+	err := tx.QueryRowContext(ctx, `SELECT id FROM libraries WHERE path = ? LIMIT 1`, library.Path).Scan(&existingID)
+	if err == nil && strings.TrimSpace(existingID) != "" {
+		library.ID = existingID
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	rawSources, err := json.Marshal(library.MetadataSources)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO libraries(id, kind, name, path, storage_type, metadata_sources_json, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			kind = excluded.kind,
 			name = excluded.name,
 			path = excluded.path,
 			storage_type = excluded.storage_type,
+			metadata_sources_json = excluded.metadata_sources_json,
 			updated_at = excluded.updated_at
-	`, library.ID, library.Kind, library.Name, library.Path, library.StorageType, now)
+	`, library.ID, library.Kind, library.Name, library.Path, library.StorageType, string(rawSources), now)
 	return err
+}
+
+func decodeLibraryMetadataSources(kind libraries.Kind, raw string) []string {
+	var values []string
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &values)
+	}
+	return metasources.NormalizeRequestedSourceOrder(string(kind), values)
 }
 
 func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord) error {

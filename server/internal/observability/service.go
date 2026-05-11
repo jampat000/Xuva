@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,10 +42,21 @@ type Alert struct {
 	Action   string `json:"action"`
 }
 
+type TimelineEntry struct {
+	Kind          string `json:"kind"`
+	Type          string `json:"type"`
+	Severity      string `json:"severity"`
+	Message       string `json:"message"`
+	Detail        string `json:"detail,omitempty"`
+	CorrelationID string `json:"correlationId,omitempty"`
+	CreatedAt     string `json:"createdAt"`
+}
+
 type Service struct {
 	mu       sync.RWMutex
 	requests map[string]requestCounter
 	events   map[string]eventCounter
+	timeline []TimelineEntry
 }
 
 type requestCounter struct {
@@ -65,7 +78,7 @@ type eventCounter struct {
 }
 
 func NewService() *Service {
-	return &Service{requests: map[string]requestCounter{}, events: map[string]eventCounter{}}
+	return &Service{requests: map[string]requestCounter{}, events: map[string]eventCounter{}, timeline: []TimelineEntry{}}
 }
 
 func WithCorrelationID(ctx context.Context, id string) context.Context {
@@ -125,9 +138,22 @@ func (s *Service) ObserveRequest(method string, path string, status int, duratio
 	counter.lastCorrelation = correlationID
 	counter.lastSeenAt = time.Now().UTC()
 	s.requests[key] = counter
+	s.appendTimeline(TimelineEntry{
+		Kind:          "request",
+		Type:          key,
+		Severity:      requestSeverity(status),
+		Message:       method + " " + path,
+		Detail:        strings.TrimSpace(formatStatus(status) + " - " + formatLatency(duration)),
+		CorrelationID: correlationID,
+		CreatedAt:     formatTime(counter.lastSeenAt),
+	})
 }
 
 func (s *Service) ObserveEvent(eventType string) {
+	s.observeEventData(eventType, nil, time.Now().UTC())
+}
+
+func (s *Service) observeEventData(eventType string, data any, createdAt time.Time) {
 	if s == nil {
 		return
 	}
@@ -136,8 +162,16 @@ func (s *Service) ObserveEvent(eventType string) {
 	counter := s.events[eventType]
 	counter.eventType = eventType
 	counter.count++
-	counter.lastSeenAt = time.Now().UTC()
+	counter.lastSeenAt = createdAt
 	s.events[eventType] = counter
+	s.appendTimeline(TimelineEntry{
+		Kind:      "event",
+		Type:      eventType,
+		Severity:  eventSeverity(eventType),
+		Message:   eventMessage(eventType),
+		Detail:    eventDetail(data),
+		CreatedAt: formatTime(createdAt),
+	})
 }
 
 func (s *Service) Subscribe(ctx context.Context, bus *events.Bus) {
@@ -155,7 +189,7 @@ func (s *Service) Subscribe(ctx context.Context, bus *events.Bus) {
 				if !ok {
 					return
 				}
-				s.ObserveEvent(event.Type)
+				s.observeEventData(event.Type, event.Data, event.CreatedAt)
 			}
 		}
 	}()
@@ -201,6 +235,28 @@ func (s *Service) Events() []EventMetric {
 			Count:      counter.count,
 			LastSeenAt: formatTime(counter.lastSeenAt),
 		})
+	}
+	return output
+}
+
+func (s *Service) Recent(limit int) []TimelineEntry {
+	if s == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.timeline) == 0 {
+		return nil
+	}
+	if limit > len(s.timeline) {
+		limit = len(s.timeline)
+	}
+	output := make([]TimelineEntry, 0, limit)
+	for i := len(s.timeline) - 1; i >= 0 && len(output) < limit; i-- {
+		output = append(output, s.timeline[i])
 	}
 	return output
 }
@@ -252,4 +308,89 @@ func formatTime(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func (s *Service) appendTimeline(entry TimelineEntry) {
+	s.timeline = append(s.timeline, entry)
+	if len(s.timeline) > 200 {
+		s.timeline = s.timeline[len(s.timeline)-200:]
+	}
+}
+
+func requestSeverity(status int) string {
+	switch {
+	case status >= 500:
+		return "error"
+	case status >= 400:
+		return "warning"
+	default:
+		return "info"
+	}
+}
+
+func formatStatus(status int) string {
+	if status == 0 {
+		status = 200
+	}
+	return "HTTP " + strconv.Itoa(status)
+}
+
+func formatLatency(duration time.Duration) string {
+	return strconv.FormatInt(duration.Milliseconds(), 10) + " ms"
+}
+
+func eventSeverity(eventType string) string {
+	switch {
+	case strings.HasSuffix(eventType, ".failed"), strings.HasPrefix(eventType, "audit.stream.denied"):
+		return "error"
+	case strings.Contains(eventType, "stale"), strings.Contains(eventType, "route.changed"):
+		return "warning"
+	default:
+		return "info"
+	}
+}
+
+func eventMessage(eventType string) string {
+	replacer := strings.NewReplacer(".", " ", "_", " ")
+	title := humanizeWords(replacer.Replace(eventType))
+	switch eventType {
+	case "session.route.changed":
+		return "Playback route changed"
+	case "session.started":
+		return "Playback session started"
+	case "session.stopped":
+		return "Playback session stopped"
+	case "transcode.failed":
+		return "Transcode failed"
+	case "probe.failed":
+		return "Probe failed"
+	case "scan.failed":
+		return "Scan failed"
+	}
+	return title
+}
+
+func eventDetail(data any) string {
+	if data == nil {
+		return ""
+	}
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return ""
+	}
+	if len(bytes) > 220 {
+		bytes = append(bytes[:217], '.', '.', '.')
+	}
+	return string(bytes)
+}
+
+func humanizeWords(value string) string {
+	parts := strings.Fields(value)
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
 }

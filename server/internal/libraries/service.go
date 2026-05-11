@@ -24,11 +24,12 @@ const (
 )
 
 type Library struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Path        string      `json:"path"`
-	Kind        Kind        `json:"kind"`
-	StorageType StorageType `json:"storageType"`
+	ID              string      `json:"id"`
+	Name            string      `json:"name"`
+	Path            string      `json:"path"`
+	Kind            Kind        `json:"kind"`
+	StorageType     StorageType `json:"storageType"`
+	MetadataSources []string    `json:"metadataSources,omitempty"`
 }
 
 type WorkerDefaults struct {
