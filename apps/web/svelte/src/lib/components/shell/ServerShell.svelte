@@ -5,14 +5,14 @@
 	import LorivoShell from './LorivoShell.svelte';
 
 	let {
-		active = 'admin',
+		active = 'library',
 		searchValue = $bindable(''),
 		userDisplayName = 'Local User',
 		userRole = 'Local Account',
 		userInitials = 'U',
 		children
 	} = $props<{
-		active?: 'admin' | 'settings';
+		active?: 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
 		searchValue?: string;
 		userDisplayName?: string;
 		userRole?: string;
@@ -28,7 +28,7 @@
 		{/snippet}
 
 		{#snippet topbar()}
-			<AppTopbar bind:searchValue {userInitials} onProfileClick={() => (window.location.href = '/admin')} />
+			<AppTopbar bind:searchValue {userInitials} onProfileClick={() => (window.location.href = '/settings')} />
 		{/snippet}
 
 		{@render children?.()}
