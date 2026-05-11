@@ -117,14 +117,18 @@
 
 	.server-shell__surface {
 		min-height: 100dvh;
-		transform: translateX(0);
-		transition: transform 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
-		will-change: transform;
+		width: 100%;
+		margin-left: 0;
+		transition:
+			margin-left 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			width 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
+		will-change: margin-left, width;
 	}
 
 	@media (min-width: 768px) {
 		.server-shell--drawer-open .server-shell__surface {
-			transform: translateX(var(--lorivo-drawer-width, 320px));
+			width: calc(100% - var(--lorivo-drawer-width, 320px));
+			margin-left: var(--lorivo-drawer-width, 320px);
 		}
 	}
 
