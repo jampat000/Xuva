@@ -18,7 +18,6 @@
 	import {
 		buildMovieCards,
 		filterAndSortMovieCards,
-		type MovieFilter,
 		type MovieSort
 	} from '$lib/browse/model';
 
@@ -29,13 +28,12 @@
 	let actionMessage = $state('');
 	let searchValue = $state('');
 	let previewMode = $state(false);
-	let movieFilter = $state<MovieFilter>('all');
 	let movieSort = $state<MovieSort>('title');
 	let movieRows = $state<MovieListItem[]>([]);
 
 	const movieCards = $derived.by(() => buildMovieCards(movieRows));
 	const visibleCards = $derived.by(() =>
-		filterAndSortMovieCards(movieCards, searchValue, movieFilter, movieSort)
+		filterAndSortMovieCards(movieCards, searchValue, 'all', movieSort)
 	);
 	const renderedCards = $derived.by(() =>
 		previewMode
@@ -46,9 +44,6 @@
 			: visibleCards
 	);
 	const featuredCards = $derived.by(() => renderedCards.slice(0, 5));
-	const reviewCount = $derived.by(() => movieCards.filter((item) => item.needsReview).length);
-	const metadataPendingCount = $derived.by(() => movieCards.filter((item) => !item.hasMetadata).length);
-	const multiVersionCount = $derived.by(() => movieCards.filter((item) => item.versionCount > 1).length);
 
 	onMount(() => {
 		try {
@@ -121,6 +116,11 @@
 		return new Intl.NumberFormat().format(Math.max(0, Math.round(value)));
 	}
 
+	function formatTitleCount(value: number): string {
+		const label = value === 1 ? 'title' : 'titles';
+		return `${formatCount(value)} visible ${label}`;
+	}
+
 	function isApiStatus(error: unknown, expectedStatus: number): boolean {
 		if (error instanceof ApiClientError) return error.status === expectedStatus;
 		if (typeof error !== 'object' || !error) return false;
@@ -135,11 +135,11 @@
 		return 'Movies could not load.';
 	}
 
-	function filterClass(active: boolean): string {
+	function chipClass(active: boolean): string {
 		const base =
-			'rounded-full border px-4 py-2 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
-		if (active) return `${base} border-[#7C5CFF]/60 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/20`;
-		return `${base} border-white/10 bg-[#111827] text-white/60 hover:border-white/25 hover:bg-white/10 hover:text-white`;
+			'inline-flex min-h-9 items-center rounded-full border px-3.5 py-1.5 text-sm font-semibold transition duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
+		if (active) return `${base} border-[#7C5CFF]/70 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/25`;
+		return `${base} border-white/10 bg-white/[0.04] text-white/65 hover:border-white/25 hover:bg-white/[0.08] hover:text-white`;
 	}
 
 </script>
@@ -156,16 +156,7 @@
 				<h1 class="text-4xl font-bold leading-tight text-white [text-shadow:0_4px_28px_rgba(0,0,0,0.72)] sm:text-5xl xl:text-6xl">Movies</h1>
 				<p class="mt-3 text-base text-white/60">Browse your movie library.</p>
 				<p class="mt-4 text-base leading-relaxed text-white/70">
-					{formatCount(renderedCards.length)} visible titles
-					{#if !previewMode && reviewCount > 0}
-						- {formatCount(reviewCount)} need review
-					{/if}
-					{#if !previewMode && metadataPendingCount > 0}
-						- {formatCount(metadataPendingCount)} metadata pending
-					{/if}
-					{#if !previewMode && multiVersionCount > 0}
-						- {formatCount(multiVersionCount)} multi-version
-					{/if}
+					{formatTitleCount(renderedCards.length)}
 				</p>
 			</div>
 			{#if previewMode && featuredCards.length > 0}
@@ -204,29 +195,24 @@
 		</LorivoPanel>
 	{:else}
 		<section class="relative px-4 pt-7 sm:px-6 lg:px-8">
-			<div class="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
-				<div class="relative w-full lg:max-w-[420px]">
+			<div class="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-lg shadow-black/20 backdrop-blur sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+				<div class="relative w-full lg:max-w-[400px]">
 					<Search size={16} class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
 					<input
 						type="text"
 						placeholder="Search movies"
 						bind:value={searchValue}
-						class="h-10 w-full rounded-full border border-white/5 bg-[#111827] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#7C5CFF]/50"
+						class="h-10 w-full rounded-full border border-white/10 bg-[#111827]/80 pl-11 pr-4 text-sm text-white shadow-inner shadow-black/20 placeholder:text-white/40 transition focus:border-[#7C5CFF]/50 focus:outline-none focus:ring-2 focus:ring-[#7C5CFF]/25"
 					/>
 				</div>
-				<div class="flex flex-wrap gap-2">
-					{#if !previewMode}
-						<button type="button" class={filterClass(movieFilter === 'all')} onclick={() => (movieFilter = 'all')}>All</button>
-						<button type="button" class={filterClass(movieFilter === 'review')} onclick={() => (movieFilter = 'review')}>Needs Review</button>
-						<button type="button" class={filterClass(movieFilter === 'metadata')} onclick={() => (movieFilter = 'metadata')}>Metadata Pending</button>
-						<button type="button" class={filterClass(movieFilter === 'versions')} onclick={() => (movieFilter = 'versions')}>Multiple Versions</button>
-					{/if}
-					<button type="button" class={filterClass(movieSort === 'title')} onclick={() => (movieSort = 'title')}>Title</button>
-					<button type="button" class={filterClass(movieSort === 'year')} onclick={() => (movieSort = 'year')}>Year</button>
-					{#if !previewMode}
-						<button type="button" class={filterClass(movieSort === 'versions')} onclick={() => (movieSort = 'versions')}>Versions</button>
-						<button type="button" class={filterClass(movieSort === 'review')} onclick={() => (movieSort = 'review')}>Review</button>
-					{/if}
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+					<span class="inline-flex min-h-9 items-center rounded-full border border-white/10 bg-[#111827]/70 px-3.5 py-1.5 text-sm font-medium text-white/65">
+						{formatTitleCount(renderedCards.length)}
+					</span>
+					<div class="flex flex-wrap gap-2">
+						<button type="button" class={chipClass(movieSort === 'title')} onclick={() => (movieSort = 'title')}>Title</button>
+						<button type="button" class={chipClass(movieSort === 'year')} onclick={() => (movieSort = 'year')}>Year</button>
+					</div>
 				</div>
 			</div>
 			{#if actionMessage}
@@ -237,9 +223,9 @@
 		{#if movieCards.length === 0}
 			<LorivoPanel title="No movies found" subtitle="Try adding a movie library or running a scan." />
 		{:else if renderedCards.length === 0}
-			<LorivoPanel title="No movies found" subtitle="Try changing filters or search terms." />
+			<LorivoPanel title="No matching movies" subtitle="Try another search term." />
 		{:else}
-			<MediaGrid title="Movies" subtitle={`${formatCount(renderedCards.length)} titles`}>
+			<MediaGrid title="Movies" subtitle={formatTitleCount(renderedCards.length)}>
 				{#each renderedCards as item (item.id)}
 					<LorivoPosterLink
 						title={item.title}
