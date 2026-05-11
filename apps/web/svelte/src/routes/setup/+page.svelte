@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { MediaShell, LorivoButton, LorivoEmptyState, LorivoPanel } from '$lib/components';
+	import { ServerShell, LorivoButton, LorivoEmptyState, LorivoPanel } from '$lib/components';
 	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
 	import { ApiClientError } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
@@ -145,7 +145,7 @@
 	}
 </script>
 
-<MediaShell active="setup" bind:searchValue userInitials={userInitials}>
+<ServerShell active="library" bind:searchValue {userInitials} userDisplayName={userDisplayName}>
 	<div class="setup-page">
 		{#if isLoading}
 			<LorivoPanel title="Loading Library Setup" subtitle="Checking account and library status." />
@@ -253,7 +253,7 @@
 			{/if}
 		{/if}
 	</div>
-</MediaShell>
+</ServerShell>
 
 <style>
 	.setup-page {

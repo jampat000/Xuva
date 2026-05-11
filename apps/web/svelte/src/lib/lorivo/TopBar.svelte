@@ -31,6 +31,7 @@
 	<div class="flex min-w-0 items-center gap-3">
 		<button
 			type="button"
+			data-testid="media-menu-button"
 			class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#111827]/80 text-white/85 shadow-lg shadow-black/20 transition hover:border-white/25 hover:bg-white/10 md:hidden"
 			aria-label={menuOpen ? 'Close menu' : 'Open menu'}
 			aria-expanded={menuOpen}
@@ -95,7 +96,10 @@
 		aria-label="Close menu"
 		onclick={closeMenu}
 	></button>
-	<aside class="fixed left-3 right-3 top-3 z-50 rounded-2xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/45 md:hidden">
+	<aside
+		class="fixed left-3 right-3 top-3 z-50 rounded-2xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/45 md:hidden"
+		data-testid="media-menu-drawer"
+	>
 		<div class="mb-4 flex items-center justify-between gap-3">
 			<Logo />
 			<button
@@ -107,7 +111,7 @@
 				<X size={20} />
 			</button>
 		</div>
-		<nav class="grid gap-2" aria-label="Media navigation">
+		<nav class="grid gap-2" aria-label="Mobile media navigation">
 			{#each mediaNavItems as item (item.id)}
 				<a
 					href={item.href}
