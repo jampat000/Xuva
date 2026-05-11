@@ -40,36 +40,36 @@
 	--vyrden-radius-xl: 1.35rem;
 	--vyrden-radius-pill: 999px;
 
-	--vyrden-shadow-soft: 0 8px 20px rgb(0 0 0 / 24%);
-	--vyrden-shadow-md: 0 18px 40px rgb(0 0 0 / 34%);
-	--vyrden-shadow-lg: 0 30px 68px rgb(0 0 0 / 44%);
+	--vyrden-shadow-soft: 0 10px 24px rgb(0 0 0 / 28%);
+	--vyrden-shadow-md: 0 20px 46px rgb(0 0 0 / 38%);
+	--vyrden-shadow-lg: 0 34px 76px rgb(0 0 0 / 48%);
 
-	--vyrden-color-bg-base: #0b0b0a;
-	--vyrden-color-bg-shell: #111111;
-	--vyrden-color-bg-sidebar: #0f100f;
-	--vyrden-color-bg-panel: #171816;
-	--vyrden-color-bg-panel-elevated: #1d1f1c;
-	--vyrden-color-bg-soft: #242724;
-	--vyrden-color-bg-inverse: #ece8df;
+	--vyrden-color-bg-base: #0b1120;
+	--vyrden-color-bg-shell: #0b1120;
+	--vyrden-color-bg-sidebar: #0d1424;
+	--vyrden-color-bg-panel: #111827;
+	--vyrden-color-bg-panel-elevated: #172033;
+	--vyrden-color-bg-soft: #1f2937;
+	--vyrden-color-bg-inverse: #f6f7fb;
 
-	--vyrden-color-border-soft: rgb(255 247 232 / 8%);
-	--vyrden-color-border-strong: rgb(165 213 202 / 24%);
+	--vyrden-color-border-soft: rgb(255 255 255 / 10%);
+	--vyrden-color-border-strong: rgb(124 92 255 / 36%);
 
-	--vyrden-color-text: #f3eee3;
-	--vyrden-color-text-muted: #c0b8a9;
-	--vyrden-color-text-soft: #968f84;
-	--vyrden-color-text-inverse: #0e141d;
+	--vyrden-color-text: #f8fafc;
+	--vyrden-color-text-muted: #b6c0d4;
+	--vyrden-color-text-soft: #7f8aa3;
+	--vyrden-color-text-inverse: #0b1120;
 
-	--vyrden-color-accent-teal: #58c9b0;
-	--vyrden-color-accent-teal-soft: rgb(88 201 176 / 18%);
-	--vyrden-color-accent-teal-strong: #3fa892;
-	--vyrden-color-good: #7bc892;
-	--vyrden-color-warn: #e2bf73;
-	--vyrden-color-danger: #dc8b83;
+	--vyrden-color-accent-teal: #7c5cff;
+	--vyrden-color-accent-teal-soft: rgb(124 92 255 / 20%);
+	--vyrden-color-accent-teal-strong: #6a4af0;
+	--vyrden-color-good: #5fe1a0;
+	--vyrden-color-warn: #f0c76d;
+	--vyrden-color-danger: #f06e8b;
 
-	--vyrden-track: rgb(255 246 229 / 14%);
-	--vyrden-progress: linear-gradient(90deg, #4cb89f, #7cd5bc);
-	--vyrden-focus-ring: 0 0 0 3px rgb(88 201 176 / 32%);
+	--vyrden-track: rgb(255 255 255 / 14%);
+	--vyrden-progress: linear-gradient(90deg, #7c5cff, #a78bfa);
+	--vyrden-focus-ring: 0 0 0 3px rgb(124 92 255 / 34%);
 }
 
 [data-density='compact'] {

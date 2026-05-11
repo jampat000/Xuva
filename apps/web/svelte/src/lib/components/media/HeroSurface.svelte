@@ -90,10 +90,10 @@
 	.hero-surface {
 		position: relative;
 		min-height: 418px;
-		border: 1px solid rgb(255 246 229 / 10%);
+		border: 1px solid rgb(255 255 255 / 10%);
 		border-radius: 20px;
 		overflow: hidden;
-		background: #181915;
+		background: #111827;
 		box-shadow:
 			0 28px 62px rgb(0 0 0 / 34%),
 			0 0 0 1px rgb(16 19 24 / 34%);
@@ -117,13 +117,13 @@
 		background:
 			linear-gradient(
 				90deg,
-				rgb(12 13 11 / 87%) 0%,
-				rgb(16 16 14 / 64%) 24%,
-				rgb(20 20 18 / 24%) 56%,
-				rgb(15 16 14 / 60%) 100%
+				rgb(11 17 32 / 88%) 0%,
+				rgb(11 17 32 / 66%) 24%,
+				rgb(17 24 39 / 24%) 56%,
+				rgb(11 17 32 / 62%) 100%
 			),
-			radial-gradient(circle at 76% 18%, rgb(88 201 176 / 13%), transparent 42%),
-			linear-gradient(180deg, rgb(16 15 12 / 5%), rgb(16 15 12 / 42%));
+			radial-gradient(circle at 76% 18%, rgb(124 92 255 / 16%), transparent 42%),
+			linear-gradient(180deg, rgb(11 17 32 / 5%), rgb(11 17 32 / 42%));
 	}
 
 	.hero-surface__copy {
@@ -143,9 +143,9 @@
 		width: min(272px, 30%);
 		aspect-ratio: 2 / 3;
 		overflow: hidden;
-		border: 1px solid rgb(255 246 229 / 16%);
+		border: 1px solid rgb(255 255 255 / 16%);
 		border-radius: 14px;
-		background: rgb(22 24 21 / 84%);
+		background: rgb(17 24 39 / 86%);
 		box-shadow: 0 18px 34px rgb(0 0 0 / 38%);
 		z-index: 1;
 	}
@@ -162,7 +162,7 @@
 		inset: 0;
 		background:
 			linear-gradient(180deg, rgb(10 12 15 / 4%) 0%, rgb(10 12 15 / 14%) 48%, rgb(10 12 15 / 62%) 100%),
-			radial-gradient(circle at 70% 18%, rgb(88 201 176 / 10%), transparent 42%);
+			radial-gradient(circle at 70% 18%, rgb(124 92 255 / 12%), transparent 42%);
 	}
 
 	.hero-surface__badge {
@@ -171,11 +171,11 @@
 		justify-content: center;
 		min-height: 24px;
 		padding: 0 11px;
-		border: 1px solid rgb(39 211 189 / 20%);
+		border: 1px solid rgb(124 92 255 / 28%);
 		border-radius: 999px;
-		background: rgb(88 201 176 / 12%);
+		background: rgb(124 92 255 / 16%);
 		box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%);
-		color: #7ad5bf;
+		color: #c4b5fd;
 		font-size: 0.71rem;
 		font-weight: 800;
 		letter-spacing: 0.07em;

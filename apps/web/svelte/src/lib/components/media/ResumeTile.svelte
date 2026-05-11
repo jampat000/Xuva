@@ -107,7 +107,7 @@
 		position: relative;
 		aspect-ratio: 16 / 9;
 		overflow: hidden;
-		border: 1px solid rgb(255 246 229 / 12%);
+		border: 1px solid rgb(255 255 255 / 12%);
 		border-radius: 14px;
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 8%),
@@ -185,7 +185,7 @@
 		.resume-tile:hover .resume-tile__art,
 		.resume-tile:focus-visible .resume-tile__art {
 			transform: translateY(-3px);
-			border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 34%, rgb(255 246 229 / 20%));
+			border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 44%, rgb(255 255 255 / 20%));
 			box-shadow:
 				inset 0 1px 0 rgb(255 255 255 / 10%),
 				0 22px 40px rgb(0 0 0 / 34%),

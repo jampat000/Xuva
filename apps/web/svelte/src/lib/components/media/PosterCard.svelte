@@ -68,9 +68,9 @@
 		position: relative;
 		aspect-ratio: 2 / 3;
 		overflow: hidden;
-		border: 1px solid rgb(255 246 229 / 12%);
+		border: 1px solid rgb(255 255 255 / 12%);
 		border-radius: 14px;
-		background: rgb(29 30 27 / 84%);
+		background: rgb(17 24 39 / 86%);
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 6%),
 			0 14px 28px rgb(0 0 0 / 22%),
@@ -96,7 +96,7 @@
 		inset: 0;
 		background:
 			linear-gradient(180deg, rgb(8 10 13 / 2%) 0%, rgb(10 13 17 / 12%) 42%, rgb(10 13 17 / 68%) 100%),
-			radial-gradient(circle at 74% 20%, rgb(88 201 176 / 11%), transparent 44%);
+			radial-gradient(circle at 74% 20%, rgb(124 92 255 / 12%), transparent 44%);
 	}
 
 	.poster-card__copy {
@@ -127,7 +127,7 @@
 		.poster-card:hover .poster-card__art,
 		.poster-card:focus-visible .poster-card__art {
 			transform: translateY(-3px);
-			border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 36%, rgb(255 246 229 / 22%));
+			border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 44%, rgb(255 255 255 / 22%));
 			box-shadow:
 				inset 0 1px 0 rgb(255 255 255 / 9%),
 				0 24px 42px rgb(0 0 0 / 36%),
