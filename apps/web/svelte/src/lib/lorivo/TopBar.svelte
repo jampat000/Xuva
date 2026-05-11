@@ -89,7 +89,8 @@
 		onclick={closeMenu}
 	></button>
 	<aside
-		class="fixed left-3 top-3 z-50 w-[min(320px,calc(100vw-24px))] rounded-2xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/45"
+		class="fixed left-0 top-0 z-50 flex h-dvh w-[min(320px,86vw)] flex-col border-r border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/45"
+		aria-label="Media navigation drawer"
 		data-testid="media-menu-drawer"
 	>
 		<div class="mb-4 flex items-center justify-between gap-3">
@@ -103,15 +104,15 @@
 				<X size={20} />
 			</button>
 		</div>
-		<nav class="grid gap-2" aria-label="Mobile media navigation">
+		<nav class="grid gap-2" aria-label="Media navigation">
 			{#each mediaNavItems as item (item.id)}
 				<a
 					href={item.href}
 					aria-current={activeRoute === item.id ? 'page' : undefined}
-					class={`rounded-xl border px-4 py-3 text-base font-semibold ${
+					class={`rounded-xl border px-4 py-3 text-base font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/65 ${
 						activeRoute === item.id
 							? 'border-[#7C5CFF]/45 bg-[#7C5CFF]/18 text-white'
-							: 'border-white/10 bg-white/[0.03] text-white/72'
+							: 'border-white/10 bg-white/[0.03] text-white/72 hover:border-white/20 hover:bg-white/[0.06] hover:text-white'
 					}`}
 					onclick={closeMenu}
 				>
@@ -119,10 +120,10 @@
 				</a>
 			{/each}
 		</nav>
-		<div class="mt-3 border-t border-white/10 pt-3">
+		<div class="mt-auto border-t border-white/10 pt-3">
 			<a
 				href="/settings"
-				class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-base font-semibold text-white/80"
+				class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-base font-semibold text-white/80 outline-none transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/65"
 				onclick={closeMenu}
 			>
 				<Settings size={18} />

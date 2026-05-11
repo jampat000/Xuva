@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
+	import { X } from 'lucide-svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoSearch from '../ui/LorivoSearch.svelte';
 
@@ -106,12 +107,21 @@
 	<aside
 		class="media-shell__drawer"
 		class:media-shell__drawer--open={menuOpen}
+		aria-label="Media navigation drawer"
 		data-testid="media-menu-drawer"
 	>
 		<div class="media-shell__drawer-brand">
 			<LorivoBrand />
+			<button
+				type="button"
+				class="media-shell__drawer-close"
+				aria-label="Close navigation menu"
+				onclick={closeMenu}
+			>
+				<X size={18} />
+			</button>
 		</div>
-		<nav class="media-shell__drawer-nav" aria-label="Mobile media navigation">
+		<nav class="media-shell__drawer-nav" aria-label="Media navigation">
 			{#each mediaNavItems as item (item.id)}
 				<a href={item.href} class:active={active === item.id} onclick={closeMenu}>{item.label}</a>
 			{/each}
@@ -251,7 +261,7 @@
 		top: 0;
 		left: 0;
 		z-index: 32;
-		width: min(280px, calc(100vw - 28px));
+		width: min(320px, 86vw);
 		height: 100dvh;
 		padding: 16px 12px;
 		display: grid;
@@ -274,6 +284,33 @@
 	.media-shell__drawer-brand :global(.v-brand) {
 		justify-content: flex-start;
 		padding-left: 6px;
+	}
+
+	.media-shell__drawer-brand {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.media-shell__drawer-close {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 11px;
+		border: 1px solid rgb(255 255 255 / 13%);
+		background: rgb(255 255 255 / 4%);
+		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+	}
+
+	.media-shell__drawer-close:hover,
+	.media-shell__drawer-close:focus-visible {
+		border-color: rgb(255 255 255 / 24%);
+		background: rgb(255 255 255 / 8%);
+		color: var(--lorivo-color-text);
+		outline: none;
 	}
 
 	.media-shell__drawer-nav,
@@ -385,7 +422,7 @@
 		}
 
 		.media-shell__drawer {
-			width: min(300px, calc(100vw - 20px));
+			width: min(320px, 86vw);
 		}
 	}
 </style>

@@ -75,7 +75,19 @@
 			aria-label="Close settings menu"
 			onclick={closeSettingsMenu}
 		></button>
-		<aside class="server-shell__drawer" aria-label="Settings menu" data-testid="settings-menu-drawer">
+		<aside
+			class="server-shell__drawer"
+			aria-label="Settings navigation drawer"
+			data-testid="settings-menu-drawer"
+		>
+			<button
+				type="button"
+				class="server-shell__drawer-close"
+				aria-label="Close settings menu"
+				onclick={closeSettingsMenu}
+			>
+				<X size={18} />
+			</button>
 			<div role="presentation" onclick={closeSettingsMenu}>
 				<ServerSidebar {active} {userDisplayName} {userRole} />
 			</div>
@@ -117,17 +129,40 @@
 
 	.server-shell__drawer {
 		position: fixed;
-		inset: 10px auto 10px 10px;
+		inset: 0 auto 0 0;
 		z-index: 80;
-		width: min(312px, calc(100vw - 20px));
+		width: min(320px, 86vw);
 		overflow: auto;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: 18px;
+		border-right: 1px solid var(--lorivo-color-border-soft);
 		background:
 			radial-gradient(circle at 14% -18%, rgb(88 201 176 / 12%) 0%, rgb(88 201 176 / 0%) 36%),
 			radial-gradient(circle at 80% 108%, rgb(131 119 93 / 12%) 0%, rgb(131 119 93 / 0%) 42%),
 			var(--lorivo-color-bg-sidebar);
 		box-shadow: 22px 0 42px rgb(0 0 0 / 42%);
+	}
+
+	.server-shell__drawer-close {
+		position: absolute;
+		top: 18px;
+		right: 14px;
+		z-index: 2;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 11px;
+		border: 1px solid rgb(255 255 255 / 13%);
+		background: rgb(255 255 255 / 4%);
+		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+	}
+
+	.server-shell__drawer-close:hover,
+	.server-shell__drawer-close:focus-visible {
+		border-color: rgb(255 255 255 / 24%);
+		background: rgb(255 255 255 / 8%);
+		color: var(--lorivo-color-text);
+		outline: none;
 	}
 
 	.server-shell__drawer :global(.v-sidebar) {
