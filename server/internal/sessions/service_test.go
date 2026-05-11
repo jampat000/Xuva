@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/events"
 )
 
 func TestInspectorIncludesRouteReasonTracksAndLoad(t *testing.T) {

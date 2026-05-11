@@ -2,7 +2,7 @@
 
 ## Positioning
 
-Vyrden is a local-first movie and TV server/client platform. It should not try to beat Plex, Emby, and Jellyfin by copying their surface area. It should beat them by making the painful parts of personal media obvious, explainable, and controllable.
+Lorivo is a local-first movie and TV server/client platform. It should not try to beat Plex, Emby, and Jellyfin by copying their surface area. It should beat them by making the painful parts of personal media obvious, explainable, and controllable.
 
 The product promise:
 
@@ -18,14 +18,14 @@ The product promise:
 
 Plex is strongest at polished browsing, client reach, and non-technical setup. Its layout usually centers around home rows, pinned libraries, continue watching, recommendations, player surfaces, account features, and server settings behind a separate admin area.
 
-Vyrden should learn from:
+Lorivo should learn from:
 
 - Strong first-run onboarding.
 - Continue watching as a first-class surface.
 - Familiar poster walls, detail pages, and player controls.
 - Device coverage and simple client discovery.
 
-Vyrden should avoid:
+Lorivo should avoid:
 
 - Personal-library UI competing with streaming-service clutter.
 - Local playback depending on cloud account state.
@@ -36,14 +36,14 @@ Vyrden should avoid:
 
 Emby is closer to a traditional self-hosted media server with commercial polish and paid feature gates. It has server dashboard, libraries, users, devices, metadata tools, live TV, playback/transcoding settings, and client apps.
 
-Vyrden should learn from:
+Lorivo should learn from:
 
 - Clear server administration.
 - Practical metadata management.
 - User/device administration.
 - Feature gating that can support a business.
 
-Vyrden should avoid:
+Lorivo should avoid:
 
 - Dense admin surfaces that feel older than the client experience.
 - Settings spread across too many places.
@@ -53,14 +53,14 @@ Vyrden should avoid:
 
 Jellyfin is strongest on open-source trust, local control, and avoiding vendor lock-in. It is weaker on polish, client consistency, and support expectations.
 
-Vyrden should learn from:
+Lorivo should learn from:
 
 - Local-first trust.
 - No required cloud dependency.
 - Transparent server behavior.
 - Community-friendly file and codec support.
 
-Vyrden should avoid:
+Lorivo should avoid:
 
 - Making users become their own support department.
 - Rough client UX, especially on TV devices.
@@ -84,7 +84,7 @@ These are the complaint themes that should become product requirements:
 - UI can feel cluttered, dated, or not designed for a living room.
 - Paid features can feel like they interrupt a core personal-media workflow.
 
-## Vyrden Responses
+## Lorivo Responses
 
 ### Playback Transparency
 
@@ -132,7 +132,7 @@ Acceptance test: a bad match should be fixable from the item page without leavin
 
 ### Ratings Clarity
 
-Vyrden should show ratings the way users actually talk about movies and TV: multiple trusted signals side by side.
+Lorivo should show ratings the way users actually talk about movies and TV: multiple trusted signals side by side.
 
 Required behavior:
 
@@ -145,7 +145,7 @@ Required behavior:
 - Source attribution and last-updated timestamp.
 - Per-user preference for which ratings appear first.
 
-Acceptance test: a user should be able to compare IMDb, Rotten Tomatoes, and TMDB without guessing which provider Vyrden used.
+Acceptance test: a user should be able to compare IMDb, Rotten Tomatoes, and TMDB without guessing which provider Lorivo used.
 
 ### Library Health Command Centre
 
@@ -164,9 +164,9 @@ Required signals:
 
 Acceptance test: opening the dashboard should tell a user what is healthy, what is busy, and what needs attention.
 
-### Remote Access Without Vyrden Servers
+### Remote Access Without Lorivo Servers
 
-Vyrden should not host relays or maintain user media infrastructure.
+Lorivo should not host relays or maintain user media infrastructure.
 
 Required behavior:
 
@@ -178,7 +178,7 @@ Required behavior:
 - Tailscale/WireGuard/manual tunnel guidance.
 - Clear language that users own remote access.
 
-Acceptance test: Vyrden helps configure and diagnose remote access without becoming a relay provider.
+Acceptance test: Lorivo helps configure and diagnose remote access without becoming a relay provider.
 
 ### Large Library Performance
 
@@ -248,7 +248,7 @@ Acceptance test: users should understand the value of premium without feeling co
 
 ### UI Work
 
-1. Replace the raw `/play/{id}` page with the Vyrden player shell.
+1. Replace the raw `/play/{id}` page with the Lorivo player shell.
 2. Add play/resume/mark watched buttons on movie and episode detail screens.
 3. Add source, audio, and subtitle selectors into item detail.
 4. Add a real review queue screen for metadata.

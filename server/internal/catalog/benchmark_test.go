@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/libraries"
-	"github.com/vyrdenhq/vyrden/server/internal/movies"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/libraries"
+	"github.com/jampat000/Lorivo/server/internal/movies"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
 )
 
 func BenchmarkCatalogMovieBrowse(b *testing.B) {

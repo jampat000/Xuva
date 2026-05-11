@@ -8,15 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/catalog"
-	"github.com/vyrdenhq/vyrden/server/internal/config"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
-	"github.com/vyrdenhq/vyrden/server/internal/jobs"
-	"github.com/vyrdenhq/vyrden/server/internal/libraries"
-	"github.com/vyrdenhq/vyrden/server/internal/metadata"
-	"github.com/vyrdenhq/vyrden/server/internal/movies"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
-	"github.com/vyrdenhq/vyrden/server/internal/tv"
+	"github.com/jampat000/Lorivo/server/internal/catalog"
+	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Lorivo/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/jobs"
+	"github.com/jampat000/Lorivo/server/internal/libraries"
+	"github.com/jampat000/Lorivo/server/internal/metadata"
+	"github.com/jampat000/Lorivo/server/internal/movies"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/tv"
 )
 
 type Kind string

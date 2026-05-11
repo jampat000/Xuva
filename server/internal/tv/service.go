@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vyrdenhq/vyrden/server/internal/media"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/media"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
 )
 
 type Series struct {

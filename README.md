@@ -1,6 +1,6 @@
-# Vyrden
+# Lorivo
 
-Vyrden is a local-first personal media server for private media libraries.
+Lorivo is a local-first personal media server for private media libraries.
 
 The goal is to combine polished TV-first playback with predictable local ownership: no required cloud account, no vendor relay dependency, no ads, and no streaming-service clutter.
 
@@ -8,7 +8,7 @@ Status: pre-alpha product and design foundation.
 
 ## Product Promise
 
-Your media should play beautifully on the devices you own. When Vyrden cannot direct-play a file, it should explain exactly why and choose the lightest possible fallback.
+Your media should play beautifully on the devices you own. When Lorivo cannot direct-play a file, it should explain exactly why and choose the lightest possible fallback.
 
 Playback preference order:
 
@@ -41,7 +41,7 @@ docs/                Product, architecture, and business planning.
 packages/
   client-profiles/   Device capability profiles and playback rules.
   media-probe/       Media probing schema and helpers.
-server/              Vyrden Server.
+server/              Lorivo Server.
 ```
 
 ## Current Focus

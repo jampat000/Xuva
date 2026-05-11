@@ -13,7 +13,7 @@
 		border: 1px solid rgb(255 246 229 / 11%);
 		border-radius: 999px;
 		background: rgb(255 246 229 / 4%);
-		color: color-mix(in srgb, var(--vyrden-color-text) 90%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 90%, transparent);
 		font-size: 0.8rem;
 		font-weight: 650;
 		letter-spacing: 0.008em;

@@ -1,6 +1,6 @@
 # Roadmap
 
-## Phase 0: Foundation
+## Foundation
 
 - Claim brand handles.
 - Create private GitHub organization and repository.
@@ -11,7 +11,7 @@
 - Define lead TV design direction.
 - Prototype core TV playback and setup surfaces.
 
-## Phase 1: Playback Prototype
+## Playback Prototype
 
 - Probe a local media folder with ffprobe.
 - Store media probe results.
@@ -23,9 +23,9 @@
 - Show playback decision explanations.
 - Implement the version/audio/subtitle decision object used by the prototypes.
 
-## Phase 2: Server MVP
+## Server MVP
 
-- Real Vyrden player shell.
+- Real Lorivo player shell.
 - Alpha desktop shell that starts the local server, opens the web UI, restarts the server, and provides native folder picking.
 - Live dashboard updates through SSE.
 - Playback session heartbeat and cleanup.
@@ -43,7 +43,7 @@
 - First-run setup flow.
 - Remote access diagnostics without a vendor relay.
 
-## Phase 3: First Clients
+## First Clients
 
 - Web admin and browser player.
 - Apple TV client as the lead native alpha playback target.
@@ -56,7 +56,7 @@
 - Download selector.
 - Series and episode detail.
 
-## Phase 4: Premium Features
+## Premium Features
 
 - Hardware transcoding.
 - HDR tone mapping.
@@ -65,7 +65,7 @@
 - Intro and credits detection.
 - Migration tools.
 
-## Phase 5: Public Beta
+## Public Beta
 
 - Installer polish.
 - Crash reporting that does not expose media metadata by default.

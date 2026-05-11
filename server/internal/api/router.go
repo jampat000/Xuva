@@ -27,37 +27,37 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/vyrdenhq/vyrden/server/internal/adaptive"
-	"github.com/vyrdenhq/vyrden/server/internal/auth"
-	"github.com/vyrdenhq/vyrden/server/internal/catalog"
-	"github.com/vyrdenhq/vyrden/server/internal/config"
-	"github.com/vyrdenhq/vyrden/server/internal/devices"
-	"github.com/vyrdenhq/vyrden/server/internal/downloads"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
-	"github.com/vyrdenhq/vyrden/server/internal/jobs"
-	"github.com/vyrdenhq/vyrden/server/internal/libraries"
-	"github.com/vyrdenhq/vyrden/server/internal/media"
-	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
-	"github.com/vyrdenhq/vyrden/server/internal/metasources"
-	"github.com/vyrdenhq/vyrden/server/internal/migration"
-	"github.com/vyrdenhq/vyrden/server/internal/movies"
-	"github.com/vyrdenhq/vyrden/server/internal/observability"
-	"github.com/vyrdenhq/vyrden/server/internal/pairing"
-	"github.com/vyrdenhq/vyrden/server/internal/playback"
-	"github.com/vyrdenhq/vyrden/server/internal/playstate"
-	"github.com/vyrdenhq/vyrden/server/internal/probe"
-	"github.com/vyrdenhq/vyrden/server/internal/probes"
-	"github.com/vyrdenhq/vyrden/server/internal/remote"
-	"github.com/vyrdenhq/vyrden/server/internal/resources"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
-	"github.com/vyrdenhq/vyrden/server/internal/scans"
-	"github.com/vyrdenhq/vyrden/server/internal/sessions"
-	"github.com/vyrdenhq/vyrden/server/internal/streaming"
-	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
-	"github.com/vyrdenhq/vyrden/server/internal/systemstats"
-	"github.com/vyrdenhq/vyrden/server/internal/transcode"
-	"github.com/vyrdenhq/vyrden/server/internal/tv"
-	"github.com/vyrdenhq/vyrden/server/internal/webapp"
+	"github.com/jampat000/Lorivo/server/internal/adaptive"
+	"github.com/jampat000/Lorivo/server/internal/auth"
+	"github.com/jampat000/Lorivo/server/internal/catalog"
+	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Lorivo/server/internal/devices"
+	"github.com/jampat000/Lorivo/server/internal/downloads"
+	"github.com/jampat000/Lorivo/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/jobs"
+	"github.com/jampat000/Lorivo/server/internal/libraries"
+	"github.com/jampat000/Lorivo/server/internal/media"
+	metaprovider "github.com/jampat000/Lorivo/server/internal/metadata"
+	"github.com/jampat000/Lorivo/server/internal/metasources"
+	"github.com/jampat000/Lorivo/server/internal/migration"
+	"github.com/jampat000/Lorivo/server/internal/movies"
+	"github.com/jampat000/Lorivo/server/internal/observability"
+	"github.com/jampat000/Lorivo/server/internal/pairing"
+	"github.com/jampat000/Lorivo/server/internal/playback"
+	"github.com/jampat000/Lorivo/server/internal/playstate"
+	"github.com/jampat000/Lorivo/server/internal/probe"
+	"github.com/jampat000/Lorivo/server/internal/probes"
+	"github.com/jampat000/Lorivo/server/internal/remote"
+	"github.com/jampat000/Lorivo/server/internal/resources"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/scans"
+	"github.com/jampat000/Lorivo/server/internal/sessions"
+	"github.com/jampat000/Lorivo/server/internal/streaming"
+	"github.com/jampat000/Lorivo/server/internal/subtitles"
+	"github.com/jampat000/Lorivo/server/internal/systemstats"
+	"github.com/jampat000/Lorivo/server/internal/transcode"
+	"github.com/jampat000/Lorivo/server/internal/tv"
+	"github.com/jampat000/Lorivo/server/internal/webapp"
 )
 
 type Deps struct {
@@ -841,7 +841,7 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"server": map[string]any{
-				"product":      "vyrden",
+				"product":      "lorivo",
 				"name":         firstNonEmpty(strings.TrimSpace(deps.Config.ServerName), "My Server"),
 				"baseUrl":      requestBaseURL(r, deps.Config.HTTPAddr),
 				"httpAddr":     deps.Config.HTTPAddr,
@@ -937,7 +937,7 @@ func healthSnapshot(deps Deps) (map[string]any, bool) {
 	}
 	return map[string]any{
 		"status":    status,
-		"service":   "vyrden-server",
+		"service":   "lorivo-server",
 		"startedAt": startedAt.UTC().Format(time.RFC3339),
 		"httpAddr":  deps.Config.HTTPAddr,
 		"checks":    checks,
@@ -956,7 +956,7 @@ func pathReady(path string) (bool, string) {
 	if !info.IsDir() {
 		return false, "path is not a directory"
 	}
-	testPath, ok := safeChildPath(path, ".vyrden-healthcheck")
+	testPath, ok := safeChildPath(path, ".lorivo-healthcheck")
 	if !ok {
 		return false, "path cannot be checked safely"
 	}
@@ -1765,7 +1765,7 @@ func firstTVHomeItem(rows []map[string]any) map[string]any {
 		"id":       "empty",
 		"kind":     "empty",
 		"title":    "Add your first library",
-		"subtitle": "Open Vyrden Settings to add Movies or TV Shows.",
+		"subtitle": "Open Lorivo Settings to add Movies or TV Shows.",
 		"route":    "Setup",
 	}
 }
@@ -1908,7 +1908,7 @@ func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"suggestions": items,
 			"providers":   metadataProviders(r.Context(), deps),
-			"strategy":    "Vyrden runs strict managed metadata mode: local-first signals and account-free online sources stay active, managed providers auto-run when server credentials are provisioned, and fallback paths continue when limits or provider outages occur.",
+			"strategy":    "Lorivo runs strict managed metadata mode: local-first signals and account-free online sources stay active, managed providers auto-run when server credentials are provisioned, and fallback paths continue when limits or provider outages occur.",
 		})
 	}
 }
@@ -2150,7 +2150,7 @@ func metadataArtworkCandidates(records []catalog.MetadataRecord, artType string)
 func fallbackArtworkSVG(title string, artType string) string {
 	safeTitle := html.EscapeString(truncate(strings.TrimSpace(title), 20))
 	if safeTitle == "" {
-		safeTitle = "Vyrden"
+		safeTitle = "Lorivo"
 	}
 	if strings.EqualFold(artType, "backdrop") {
 		return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
@@ -2240,14 +2240,14 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	}
 	cachedSource := readCachedArtworkSource(sourceMarkerPath)
 	refreshBecauseSourceChanged := cachedSource != "" && !strings.EqualFold(cachedSource, normalizedSource)
-	refreshLegacyTMDBCache := cachedSource == "" && strings.Contains(strings.ToLower(normalizedSource), "image.tmdb.org/t/p/")
+	refreshTMDBCacheWithoutMarker := cachedSource == "" && strings.Contains(strings.ToLower(normalizedSource), "image.tmdb.org/t/p/")
 	for _, ext := range []string{".jpg", ".png", ".webp"} {
 		path, ok := safeChildPath(dir, artType+ext)
 		if !ok {
 			return false
 		}
 		if _, err := os.Stat(path); err == nil {
-			if refreshBecauseSourceChanged || refreshLegacyTMDBCache {
+			if refreshBecauseSourceChanged || refreshTMDBCacheWithoutMarker {
 				_ = os.Remove(path)
 				continue
 			}
@@ -2264,7 +2264,7 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	if err != nil {
 		return false
 	}
-	request.Header.Set("User-Agent", "Vyrden/0.1 (+https://github.com/vyrdenhq/vyrden)")
+	request.Header.Set("User-Agent", "Lorivo/0.1 (+https://github.com/lorivohq/lorivo)")
 	request.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -2788,7 +2788,7 @@ func hardwareAccelerationRecommendation(available bool, gpuWorkers int) string {
 	if gpuWorkers <= 0 {
 		return "FFmpeg exposes hardware encoder support, but GPU worker slots are disabled. Enable one or more slots to reserve GPU conversion capacity."
 	}
-	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Vyrden can use GPU conversion for heavy video routes and subtitle burn-in."
+	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Lorivo can use GPU conversion for heavy video routes and subtitle burn-in."
 }
 
 func playbackPolicyStatus(policy string) map[string]any {
@@ -2800,10 +2800,10 @@ func playbackPolicyStatus(policy string) map[string]any {
 		"cinema":        "Cinema Server",
 	}
 	descriptions := map[string]string{
-		"original_only": "Vyrden plays the original file only. If this device cannot play it as-is, Vyrden shows fallback options instead of converting automatically.",
-		"light":         "Vyrden may repackage while playing or convert audio. Video stays untouched, so quality is preserved.",
-		"full":          "Vyrden may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.",
-		"cinema":        "Vyrden allows heavier live conversion and future automated optimization controls for power users.",
+		"original_only": "Lorivo plays the original file only. If this device cannot play it as-is, Lorivo shows fallback options instead of converting automatically.",
+		"light":         "Lorivo may repackage while playing or convert audio. Video stays untouched, so quality is preserved.",
+		"full":          "Lorivo may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.",
+		"cinema":        "Lorivo allows heavier live conversion and future automated optimization controls for power users.",
 	}
 	return map[string]any{
 		"id":          policy,
@@ -2839,7 +2839,7 @@ func playbackPolicyAllows(policy string, decision playback.Decision) bool {
 func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[string]string {
 	mode := string(decision.Mode)
 	fallbacks := []map[string]string{
-		{"label": "Play on a compatible device", "detail": "Use a player that supports this file as-is so Vyrden does not need to convert anything."},
+		{"label": "Play on a compatible device", "detail": "Use a player that supports this file as-is so Lorivo does not need to convert anything."},
 		{"label": "Allow this session to adapt", "detail": "Switch to a compatibility policy that permits the required playback work: " + mode + "."},
 	}
 	if decision.Mode == playback.Remux {
@@ -2851,7 +2851,7 @@ func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[st
 	if decision.Mode == playback.VideoTranscode || decision.Mode == playback.SubtitleBurn {
 		fallbacks = append(fallbacks, map[string]string{"label": "Allow live video conversion", "detail": "Convert video only while playing. This may use high CPU or GPU if hardware acceleration is unlocked and working."})
 	}
-	fallbacks = append(fallbacks, map[string]string{"label": "Create optimized version", "detail": "Optional stored version for easier future playback. Vyrden should show size, quality, and storage impact first."})
+	fallbacks = append(fallbacks, map[string]string{"label": "Create optimized version", "detail": "Optional stored version for easier future playback. Lorivo should show size, quality, and storage impact first."})
 	return fallbacks
 }
 
@@ -3085,7 +3085,7 @@ func remoteAccessHandler(deps Deps) http.HandlerFunc {
 			"wanLookup":      "available_on_request",
 			"diagnostics":    "available",
 			"failureClasses": []string{remote.ClassNotConfigured, remote.ClassPrivateRoute, remote.ClassDNS, remote.ClassNATFirewall, remote.ClassCertificate, remote.ClassThroughput},
-			"recommendation": "Use your own VPN, reverse proxy, or port-forwarding setup. Vyrden does not require hosted relay servers.",
+			"recommendation": "Use your own VPN, reverse proxy, or port-forwarding setup. Lorivo does not require hosted relay servers.",
 		})
 	}
 }
@@ -3339,7 +3339,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>%s - Vyrden</title>
+  <title>%s - Lorivo</title>
   <style>
     :root {
       color-scheme: dark;
@@ -3665,7 +3665,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
 <body>
   <div class="player-shell">
     <div class="topbar">
-      <div class="brand"><b>V</b> Vyrden Player</div>
+      <div class="brand"><b>V</b> Lorivo Player</div>
       <div class="status-pill" id="sessionState">Starting</div>
     </div>
     <button class="hud-toggle" id="hudToggle" type="button">Controls</button>
@@ -3756,7 +3756,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     let selectedSubtitleTrack = "-1";
 
     function csrfToken() {
-      return document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("vyrden_csrf="))?.split("=").slice(1).join("=") || "";
+      return document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("lorivo_csrf="))?.split("=").slice(1).join("=") || "";
     }
     async function send(path, body, method = "POST", keepalive = false) {
       const token = csrfToken();
@@ -3872,7 +3872,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
         return "direct";
       }
       sessionState.textContent = "Playback unavailable";
-      forecastReason.textContent = "Vyrden could not resolve a playable route for this browser. Check source compatibility and playback policy.";
+      forecastReason.textContent = "Lorivo could not resolve a playable route for this browser. Check source compatibility and playback policy.";
       await updateInspectorRoute("blocked", currentDecision);
       return "blocked";
     }

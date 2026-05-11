@@ -9,9 +9,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
+		LorivoButton,
+		LorivoEmptyState,
+		LorivoPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -83,24 +83,24 @@
 <MediaShell active="watchlist" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<VyrdenPanel
+			<LorivoPanel
 				title="Loading Watchlist"
 				subtitle="Reading watchlist availability from existing backend APIs."
 			/>
 		{:else if loadError}
-			<VyrdenPanel title="Watchlist could not load" subtitle={loadError}>
+			<LorivoPanel title="Watchlist could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadWatchlist}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
+					<LorivoButton variant="secondary" onclick={loadWatchlist}>Retry</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
 				</div>
-			</VyrdenPanel>
+			</LorivoPanel>
 		{:else if authMessage}
-			<VyrdenPanel title="Sign in required" subtitle={authMessage}>
+			<LorivoPanel title="Sign in required" subtitle={authMessage}>
 				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadWatchlist}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/signin">Open Sign In</VyrdenButton>
+					<LorivoButton variant="secondary" onclick={loadWatchlist}>Retry</LorivoButton>
+					<LorivoButton variant="ghost" href="/signin">Open Sign In</LorivoButton>
 				</div>
-			</VyrdenPanel>
+			</LorivoPanel>
 		{:else}
 			<BrowseHeader title="Watchlist" subtitle="Saved titles to watch later.">
 				{#snippet chips()}
@@ -116,21 +116,21 @@
 			<BrowseToolbar />
 
 			{#if !rowAvailable && !usingPreviewData}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="Watchlist is not available yet"
 					message="The current backend home payload does not expose a watchlist row for this route."
 				>
 					{#snippet action()}
-						<VyrdenButton variant="secondary" href="/">Back to Home</VyrdenButton>
+						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
 					{/snippet}
-				</VyrdenEmptyState>
+				</LorivoEmptyState>
 			{:else if items.length === 0}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="No watchlist items yet"
 					message="Save titles to your watchlist and they will appear here."
 				/>
 			{:else if visibleItems.length === 0}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="No watchlist matches"
 					message="Try changing search terms to find a saved title."
 				/>
@@ -154,7 +154,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 </style>
 

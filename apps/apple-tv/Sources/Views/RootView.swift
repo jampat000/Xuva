@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject private var appState: VyrdenAppState
+    @EnvironmentObject private var appState: LorivoAppState
 
     var body: some View {
         ZStack {
-            VyrdenTheme.cinema.ignoresSafeArea()
+            LorivoTheme.cinema.ignoresSafeArea()
             if !appState.isPaired {
                 PairingView()
             } else {

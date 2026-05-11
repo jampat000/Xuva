@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/vyrdenhq/vyrden/server/internal/resources"
+	"github.com/jampat000/Lorivo/server/internal/resources"
 )
 
 type Job func(context.Context)

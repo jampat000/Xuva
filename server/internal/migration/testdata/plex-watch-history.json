@@ -1,5 +1,5 @@
 {
-  "schema": "vyrden.migration.v1",
+  "schema": "lorivo.migration.v1",
   "source": "plex",
   "createdAt": "2026-04-30T09:00:00Z",
   "items": [

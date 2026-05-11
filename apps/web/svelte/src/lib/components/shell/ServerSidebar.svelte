@@ -1,8 +1,8 @@
 <script lang="ts">
 	import SidebarItem from './SidebarItem.svelte';
 	import SidebarUser from './SidebarUser.svelte';
-	import VyrdenBrand from './VyrdenBrand.svelte';
-	import VyrdenSidebar from './VyrdenSidebar.svelte';
+	import LorivoBrand from './LorivoBrand.svelte';
+	import LorivoSidebar from './LorivoSidebar.svelte';
 
 	let {
 		active = 'admin',
@@ -15,9 +15,9 @@
 	}>();
 </script>
 
-<VyrdenSidebar>
+<LorivoSidebar>
 	{#snippet brand()}
-		<VyrdenBrand />
+		<LorivoBrand />
 	{/snippet}
 
 	{#snippet primary()}
@@ -69,4 +69,4 @@
 	{#snippet profile()}
 		<SidebarUser name={userDisplayName} subtitle={userRole} />
 	{/snippet}
-</VyrdenSidebar>
+</LorivoSidebar>

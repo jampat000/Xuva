@@ -25,7 +25,7 @@
 	{#if avatarUrl}
 		<img src={avatarUrl} alt="" loading="lazy" />
 	{:else}
-		<span class="sidebar-user__fallback" aria-hidden="true">{initials || 'V'}</span>
+		<span class="sidebar-user__fallback" aria-hidden="true">{initials || 'L'}</span>
 	{/if}
 	<span class="sidebar-user__copy">
 		<strong>{name}</strong>
@@ -47,7 +47,7 @@
 		width: 100%;
 		margin-top: 8px;
 		padding: 12px 13px 8px;
-		color: color-mix(in srgb, var(--vyrden-color-text) 92%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 92%, transparent);
 		border-radius: 12px;
 		transition: background-color 150ms ease;
 	}
@@ -91,7 +91,7 @@
 
 	.sidebar-user__copy span {
 		font-size: 0.72rem;
-		color: var(--vyrden-color-text-soft);
+		color: var(--lorivo-color-text-soft);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;

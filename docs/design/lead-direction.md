@@ -2,7 +2,7 @@
 
 ## Decision
 
-The current lead direction for Vyrden is the Movie Detail Concept.
+The current lead direction for Lorivo is the Movie Detail Concept.
 
 Signal Deck remains useful as an exploration, but it should not be the primary product interface unless later testing proves it is clearer than the Movie Detail direction.
 
@@ -14,7 +14,7 @@ The Movie Detail Concept is stronger because it makes the core product promise o
 - Versions are visible before playback.
 - Audio and subtitles are visible before playback.
 - Download quality is visible.
-- The playback forecast explains what Vyrden will do before the user presses play.
+- The playback forecast explains what Lorivo will do before the user presses play.
 - The layout feels cinematic without hiding common actions.
 
 This screen better balances premium movie/TV presentation with daily-use clarity.
@@ -26,7 +26,7 @@ Signal Deck still contributes useful ideas:
 - Playback route as a visual object.
 - Codec path displayed as a sequence.
 - Server cost shown in human language.
-- A stronger sense that Vyrden has its own identity.
+- A stronger sense that Lorivo has its own identity.
 - Focus-driven media changes that update the playback route live.
 
 These ideas should be folded into the Movie Detail direction where they improve clarity.

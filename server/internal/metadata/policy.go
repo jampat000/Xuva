@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/vyrdenhq/vyrden/server/internal/metasources"
+	"github.com/jampat000/Lorivo/server/internal/metasources"
 )
 
 func (s *Service) sourceOrder(ctx context.Context, request RefreshRequest) []string {

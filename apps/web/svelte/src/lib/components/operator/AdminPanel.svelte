@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import VyrdenSurface from '../ui/VyrdenSurface.svelte';
+	import LorivoSurface from '../ui/LorivoSurface.svelte';
 	import LiveStatusBadge from './LiveStatusBadge.svelte';
 
 	type Status = 'healthy' | 'warning' | 'critical' | 'idle';
@@ -20,7 +20,7 @@
 	}>();
 </script>
 
-<VyrdenSurface tone="elevated">
+<LorivoSurface tone="elevated">
 	<section class="admin-panel">
 		<header>
 			<div>
@@ -38,19 +38,19 @@
 			{@render children?.()}
 		</div>
 	</section>
-</VyrdenSurface>
+</LorivoSurface>
 
 <style>
 	.admin-panel {
 		display: grid;
-		gap: var(--vyrden-space-4);
+		gap: var(--lorivo-space-4);
 	}
 
 	header {
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: var(--vyrden-space-3);
+		gap: var(--lorivo-space-3);
 	}
 
 	h2 {
@@ -61,14 +61,14 @@
 	}
 
 	p {
-		margin: var(--vyrden-space-1) 0 0;
-		color: var(--vyrden-color-text-muted);
+		margin: var(--lorivo-space-1) 0 0;
+		color: var(--lorivo-color-text-muted);
 		font-size: 0.84rem;
 	}
 
 	.admin-panel__header-right {
 		display: flex;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 		align-items: center;
 	}
 </style>

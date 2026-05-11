@@ -1,4 +1,4 @@
-# Vyrden Web
+# Lorivo Web
 
 The web app covers setup, admin, library management, diagnostics, and browser playback.
 

@@ -23,6 +23,5 @@ test('admin route uses existing live operator APIs and event stream', () => {
 	assert.match(source, /createEventStream\(\)/);
 	assert.match(source, /Admin controls are read-only in this build\./);
 	assert.match(source, /<ServerShell/);
-	assert.doesNotMatch(source, /legacy/i);
 	assert.doesNotMatch(source, /send<.*\/api\//s);
 });

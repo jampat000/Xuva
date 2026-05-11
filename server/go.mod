@@ -1,4 +1,4 @@
-module github.com/vyrdenhq/vyrden/server
+module github.com/jampat000/Lorivo/server
 
 go 1.26
 

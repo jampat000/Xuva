@@ -61,17 +61,17 @@ func BuildPlan(request Request) Plan {
 	}
 	if !request.SupportsHLS {
 		plan.ReasonCode = "client_no_hls"
-		plan.Reason = "This player does not advertise HLS support, so Vyrden should use direct, repackage, or transcode routes instead."
+		plan.Reason = "This player does not advertise HLS support, so Lorivo should use direct, repackage, or transcode routes instead."
 		return plan
 	}
 	if request.MediaSourceID == "" {
 		plan.ReasonCode = "source_required"
-		plan.Reason = "Choose a media source before Vyrden can build an adaptive route."
+		plan.Reason = "Choose a media source before Lorivo can build an adaptive route."
 		return plan
 	}
 	if request.SourceBitrate <= 0 || request.Width <= 0 || request.Height <= 0 {
 		plan.ReasonCode = "media_facts_required"
-		plan.Reason = "Vyrden needs bitrate and resolution from the media check before creating an adaptive ladder."
+		plan.Reason = "Lorivo needs bitrate and resolution from the media check before creating an adaptive ladder."
 		return plan
 	}
 	if !isRemoteLike(request.RouteType) && request.MaxNetworkBitrate <= 0 {
@@ -92,7 +92,7 @@ func BuildPlan(request Request) Plan {
 	}
 	plan.Enabled = true
 	plan.ReasonCode = "adaptive_remote_route"
-	plan.Reason = "Vyrden can use an adaptive HLS ladder so remote playback can step down before buffering stalls."
+	plan.Reason = "Lorivo can use an adaptive HLS ladder so remote playback can step down before buffering stalls."
 	return plan
 }
 
@@ -125,7 +125,7 @@ func MediaPlaylist(plan Plan, variantID string) (string, bool) {
 		"#EXT-X-PLAYLIST-TYPE:EVENT",
 		"#EXT-X-MEDIA-SEQUENCE:0",
 		"#EXT-X-DISCONTINUITY",
-		fmt.Sprintf("# Vyrden adaptive variant %s, %dp, %d bps", selected.ID, selected.Height, selected.Bitrate),
+		fmt.Sprintf("# Lorivo adaptive variant %s, %dp, %d bps", selected.ID, selected.Height, selected.Bitrate),
 		"",
 	}, "\n"), true
 }

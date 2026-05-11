@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    @EnvironmentObject private var appState: VyrdenAppState
+    @EnvironmentObject private var appState: LorivoAppState
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -14,7 +14,7 @@ struct HomeView: View {
                     PosterRow(title: row.title, posters: row.items.map { $0.posterModel() })
                 }
             }
-            .padding(.horizontal, VyrdenTheme.horizontalMargin)
+            .padding(.horizontal, LorivoTheme.horizontalMargin)
             .padding(.top, 54)
             .padding(.bottom, 62)
         }
@@ -33,20 +33,20 @@ struct HomeView: View {
 }
 
 private struct HeaderBar: View {
-    @EnvironmentObject private var appState: VyrdenAppState
+    @EnvironmentObject private var appState: LorivoAppState
 
     var body: some View {
         HStack {
-            Text("Vyrden")
+            Text("Lorivo")
                 .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(VyrdenTheme.text)
+                .foregroundStyle(LorivoTheme.text)
             Text("Movies")
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(VyrdenTheme.soft)
+                .foregroundStyle(LorivoTheme.soft)
                 .padding(.leading, 30)
             Text("TV Shows")
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(VyrdenTheme.quiet)
+                .foregroundStyle(LorivoTheme.quiet)
                 .padding(.leading, 22)
             Spacer()
             RouteBadge(text: appState.bootstrap?.server.name ?? "Local Server")
@@ -59,10 +59,10 @@ private struct HeroBackdrop: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [VyrdenTheme.graphite, VyrdenTheme.carbon, VyrdenTheme.cinema], startPoint: .topTrailing, endPoint: .bottomLeading)
+            LinearGradient(colors: [LorivoTheme.graphite, LorivoTheme.carbon, LorivoTheme.cinema], startPoint: .topTrailing, endPoint: .bottomLeading)
             Text(title.prefix(1))
                 .font(.system(size: 360, weight: .black))
-                .foregroundStyle(VyrdenTheme.text.opacity(0.035))
+                .foregroundStyle(LorivoTheme.text.opacity(0.035))
                 .offset(x: 420, y: -120)
             LinearGradient(colors: [.black.opacity(0.12), .black.opacity(0.86)], startPoint: .top, endPoint: .bottom)
         }
@@ -77,14 +77,14 @@ private struct HeroCopy: View {
             RouteBadge(text: poster.route)
             Text(poster.title)
                 .font(.system(size: 68, weight: .bold))
-                .foregroundStyle(VyrdenTheme.text)
+                .foregroundStyle(LorivoTheme.text)
             Text(poster.subtitle)
                 .font(.system(size: 26, weight: .medium))
-                .foregroundStyle(VyrdenTheme.soft)
+                .foregroundStyle(LorivoTheme.soft)
             HStack(spacing: 18) {
                 Button("Play") {}
                     .buttonStyle(.borderedProminent)
-                    .tint(VyrdenTheme.amber)
+                    .tint(LorivoTheme.amber)
                 Button("Details") {}
                     .buttonStyle(.bordered)
             }
@@ -103,7 +103,7 @@ private struct PosterRow: View {
         VStack(alignment: .leading, spacing: 18) {
             Text(title)
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(VyrdenTheme.text)
+                .foregroundStyle(LorivoTheme.text)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 22) {
                     ForEach(posters) { poster in

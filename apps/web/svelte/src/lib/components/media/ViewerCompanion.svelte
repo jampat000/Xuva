@@ -1,8 +1,8 @@
 <script lang="ts">
 	import ArtworkFallback from './ArtworkFallback.svelte';
 	import ViewerQuickActions, { type ViewerQuickAction } from './ViewerQuickActions.svelte';
-	import VyrdenStat from '../ui/VyrdenStat.svelte';
-	import VyrdenSurface from '../ui/VyrdenSurface.svelte';
+	import LorivoStat from '../ui/LorivoStat.svelte';
+	import LorivoSurface from '../ui/LorivoSurface.svelte';
 
 	interface SummaryModel {
 		libraryCount: number;
@@ -40,16 +40,16 @@
 </script>
 
 <div class="home-companion">
-	<VyrdenSurface tone="elevated" padded={false}>
+	<LorivoSurface tone="elevated" padded={false}>
 		<section class="companion-section">
 			<header class="companion-heading">
 				<h2>Your Library</h2>
 			</header>
 			<div class="companion-stats">
-				<VyrdenStat label="Libraries" value={formatCount(summary.libraryCount)} />
-				<VyrdenStat label="Movies" value={formatCount(summary.movieCount)} />
-				<VyrdenStat label="TV" value={formatCount(summary.tvCount)} />
-				<VyrdenStat label="In Progress" value={formatCount(summary.inProgressCount)} />
+				<LorivoStat label="Libraries" value={formatCount(summary.libraryCount)} />
+				<LorivoStat label="Movies" value={formatCount(summary.movieCount)} />
+				<LorivoStat label="TV" value={formatCount(summary.tvCount)} />
+				<LorivoStat label="In Progress" value={formatCount(summary.inProgressCount)} />
 			</div>
 			{#if trueEmpty}
 				<p class="companion-note">
@@ -102,7 +102,7 @@
 			</header>
 			<ViewerQuickActions items={quickActions} />
 		</section>
-	</VyrdenSurface>
+	</LorivoSurface>
 </div>
 
 <style>
@@ -110,7 +110,7 @@
 		align-self: start;
 	}
 
-	.home-companion :global(.v-surface) {
+	.home-companion :global(.l-surface) {
 		border-color: rgb(255 246 229 / 9%);
 		border-radius: 17px;
 		background:
@@ -143,14 +143,14 @@
 
 	.companion-heading h2 {
 		margin: 0;
-		font-family: var(--vyrden-font-display);
+		font-family: var(--lorivo-font-display);
 		font-size: 1rem;
 		font-weight: 670;
 		letter-spacing: -0.02em;
 	}
 
 	.companion-heading a {
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 78%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 78%, transparent);
 		font-size: 0.82rem;
 		text-decoration: none;
 	}
@@ -161,7 +161,7 @@
 		gap: 8px;
 	}
 
-	.companion-stats :global(.v-stat) {
+	.companion-stats :global(.l-stat) {
 		gap: 6px;
 		min-height: 72px;
 		padding: 13px 12px;
@@ -170,15 +170,15 @@
 		background: rgb(255 246 229 / 4%);
 	}
 
-	.companion-stats :global(.v-stat span) {
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 80%, transparent);
+	.companion-stats :global(.l-stat span) {
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 80%, transparent);
 		font-size: 0.79rem;
 		font-weight: 700;
 		letter-spacing: 0.01em;
 	}
 
-	.companion-stats :global(.v-stat strong) {
-		color: color-mix(in srgb, var(--vyrden-color-text) 96%, transparent);
+	.companion-stats :global(.l-stat strong) {
+		color: color-mix(in srgb, var(--lorivo-color-text) 96%, transparent);
 		font-size: 1.22rem;
 		font-weight: 800;
 		letter-spacing: -0.03em;
@@ -186,7 +186,7 @@
 
 	.companion-note {
 		margin: 10px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 74%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 74%, transparent);
 		font-size: 0.84rem;
 		line-height: 1.45;
 	}
@@ -230,7 +230,7 @@
 
 	.watchlist-copy h3 {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text) 96%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 96%, transparent);
 		font-size: 0.9rem;
 		font-weight: 620;
 	}
@@ -244,14 +244,14 @@
 
 	.watchlist-copy p {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-soft) 82%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-soft) 82%, transparent);
 		font-size: 0.72rem;
 		font-weight: 600;
 	}
 
 	.watchlist-empty {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 74%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 74%, transparent);
 		font-size: 0.84rem;
 		line-height: 1.45;
 	}
