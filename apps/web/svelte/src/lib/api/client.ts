@@ -1,0 +1,260 @@
+import { readAuthToken, writeAuthToken } from './token-store';
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_RETRIES = 0;
+
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+
+export interface ApiErrorShape {
+	error?: string;
+	requestId?: string;
+	[key: string]: unknown;
+}
+
+export class ApiClientError extends Error {
+	readonly status: number;
+	readonly path: string;
+	readonly requestId: string;
+	readonly payload: unknown;
+	readonly userMessage: string;
+
+	constructor(
+		message: string,
+		{
+			status = 0,
+			path = '',
+			requestId = '',
+			payload = null,
+			userMessage = normalizeErrorMessage(status, message)
+		}: {
+			status?: number;
+			path?: string;
+			requestId?: string;
+			payload?: unknown;
+			userMessage?: string;
+		} = {}
+	) {
+		super(message || 'Request failed');
+		this.name = 'ApiClientError';
+		this.status = status;
+		this.path = path;
+		this.requestId = requestId;
+		this.payload = payload;
+		this.userMessage = userMessage;
+	}
+}
+
+export interface ApiClientOptions {
+	fetchImpl?: typeof fetch;
+	timeoutMs?: number;
+	retries?: number;
+}
+
+export interface ApiRequestOptions<TBody> {
+	method?: ApiMethod;
+	headers?: HeadersInit;
+	body?: TBody;
+	timeoutMs?: number;
+	retries?: number;
+	signal?: AbortSignal;
+	authToken?: string;
+	csrfToken?: string;
+}
+
+export interface ApiClient {
+	request<TResponse, TBody = undefined>(path: string, options?: ApiRequestOptions<TBody>): Promise<TResponse>;
+	send<TResponse, TBody = Record<string, unknown>>(
+		path: string,
+		body?: TBody,
+		method?: Extract<ApiMethod, 'POST' | 'PUT' | 'PATCH' | 'DELETE'>,
+		options?: Omit<ApiRequestOptions<TBody>, 'method' | 'body'>
+	): Promise<TResponse>;
+}
+
+export function normalizeErrorMessage(status: number, message = ''): string {
+	if (status === 0) {
+		return 'Lorivo could not reach the local server. Check that the server is running and retry.';
+	}
+	if (status === 401) return 'Your session is no longer active. Sign in again to continue.';
+	if (status === 403) return 'This action requires permission or a valid CSRF token.';
+	if (status === 404) return 'Lorivo could not find that item.';
+	if (status === 409) return 'This action conflicts with current server state. Refresh and retry.';
+	if (status >= 500) return 'The server failed while handling this action. Retry once and inspect Activity if needed.';
+	return message || 'Something went wrong. Retry the action.';
+}
+
+function readCookie(name: string): string {
+	if (typeof document === 'undefined' || !document.cookie) return '';
+	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const match = document.cookie.match(new RegExp(`(?:^|; )${escapedName}=([^;]*)`));
+	return match ? decodeURIComponent(match[1]) : '';
+}
+
+function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): {
+	signal: AbortSignal | undefined;
+	cancel: () => void;
+} {
+	if (!timeoutMs || typeof AbortController === 'undefined') {
+		return { signal, cancel: () => {} };
+	}
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	if (signal) {
+		if (signal.aborted) controller.abort();
+		signal.addEventListener('abort', () => controller.abort(), { once: true });
+	}
+	return {
+		signal: controller.signal,
+		cancel: () => clearTimeout(timeout)
+	};
+}
+
+function parsePayload(text: string, path: string, status: number): unknown {
+	if (!text) return {};
+	try {
+		return JSON.parse(text);
+	} catch {
+		throw new ApiClientError('Server returned unreadable data.', {
+			status,
+			path,
+			userMessage: 'Lorivo received a response it could not parse. Refresh and retry.'
+		});
+	}
+}
+
+function shouldRetry(error: ApiClientError, attempt: number, retries: number): boolean {
+	if (attempt >= retries) return false;
+	return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+function toHeaders(options: ApiRequestOptions<unknown>): Headers {
+	const headers = new Headers(options.headers);
+
+	if (!headers.has('X-Auth-Token') && !headers.has('Authorization')) {
+		const token = options.authToken ? String(options.authToken).trim() : readAuthToken();
+		if (token) headers.set('X-Auth-Token', token);
+	}
+
+	const method = String(options.method || 'GET').toUpperCase();
+	if (!SAFE_METHODS.has(method) && !headers.has('X-CSRF-Token')) {
+		const token = options.csrfToken ? String(options.csrfToken).trim() : readCookie('vyrden_csrf');
+		if (token) headers.set('X-CSRF-Token', token);
+	}
+
+	return headers;
+}
+
+function toRequestInit<TBody>(options: ApiRequestOptions<TBody>): RequestInit {
+	const method = (options.method || 'GET').toUpperCase() as ApiMethod;
+	const headers = toHeaders(options as ApiRequestOptions<unknown>);
+	const init: RequestInit = {
+		method,
+		credentials: 'include',
+		headers,
+		signal: options.signal
+	};
+
+	if (typeof options.body !== 'undefined') {
+		const body = options.body as unknown;
+		if (
+			typeof FormData !== 'undefined' && body instanceof FormData ||
+			typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams ||
+			typeof Blob !== 'undefined' && body instanceof Blob ||
+			typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer
+		) {
+			init.body = body as BodyInit;
+		} else if (typeof body === 'string') {
+			if (!headers.has('Content-Type')) headers.set('Content-Type', 'text/plain;charset=UTF-8');
+			init.body = body;
+		} else {
+			if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+			init.body = JSON.stringify(body ?? {});
+		}
+	}
+
+	return init;
+}
+
+export function createApiClient({
+	fetchImpl = globalThis.fetch,
+	timeoutMs = DEFAULT_TIMEOUT_MS,
+	retries = DEFAULT_RETRIES
+}: ApiClientOptions = {}): ApiClient {
+	if (!fetchImpl) throw new Error('fetch is required');
+
+	async function requestOnce<TResponse, TBody = undefined>(
+		path: string,
+		options: ApiRequestOptions<TBody> = {}
+	): Promise<TResponse> {
+		const requestOptions = toRequestInit(options);
+		const { signal, cancel } = withTimeout(requestOptions.signal ?? options.signal, options.timeoutMs ?? timeoutMs);
+		requestOptions.signal = signal;
+
+		try {
+			const response = await fetchImpl(path, requestOptions);
+			const rotatedToken = response.headers?.get?.('X-Auth-Token') || '';
+			if (rotatedToken) writeAuthToken(rotatedToken);
+
+			const rawText = await response.text();
+			const payload = parsePayload(rawText, path, response.status) as ApiErrorShape;
+
+			if (!response.ok) {
+				throw new ApiClientError(payload?.error || response.statusText, {
+					status: response.status,
+					path,
+					payload,
+					requestId: response.headers?.get?.('X-Request-ID') || String(payload?.requestId || '')
+				});
+			}
+
+			return payload as TResponse;
+		} catch (error) {
+			if (error instanceof ApiClientError) throw error;
+			const aborted = error instanceof Error && error.name === 'AbortError';
+			throw new ApiClientError(aborted ? 'Request timed out.' : String((error as Error)?.message || error), {
+				status: 0,
+				path,
+				userMessage: aborted
+					? 'The server took too long to answer. Retry the action or inspect Activity for long-running jobs.'
+					: normalizeErrorMessage(0)
+			});
+		} finally {
+			cancel();
+		}
+	}
+
+	async function request<TResponse, TBody = undefined>(
+		path: string,
+		options: ApiRequestOptions<TBody> = {}
+	): Promise<TResponse> {
+		const retryCount = Number.isFinite(options.retries) ? Number(options.retries) : retries;
+		let attempt = 0;
+		for (;;) {
+			try {
+				return await requestOnce<TResponse, TBody>(path, options);
+			} catch (error) {
+				const clientError =
+					error instanceof ApiClientError
+						? error
+						: new ApiClientError(String((error as Error)?.message || error), { path, status: 0 });
+				if (!shouldRetry(clientError, attempt, retryCount)) throw clientError;
+				attempt += 1;
+				await new Promise((resolve) => setTimeout(resolve, 120 * attempt));
+			}
+		}
+	}
+
+	function send<TResponse, TBody = Record<string, unknown>>(
+		path: string,
+		body?: TBody,
+		method: Extract<ApiMethod, 'POST' | 'PUT' | 'PATCH' | 'DELETE'> = 'POST',
+		options: Omit<ApiRequestOptions<TBody>, 'method' | 'body'> = {}
+	): Promise<TResponse> {
+		return request<TResponse, TBody>(path, { ...options, method, body });
+	}
+
+	return { request, send };
+}
+
+export const apiClient = createApiClient();
