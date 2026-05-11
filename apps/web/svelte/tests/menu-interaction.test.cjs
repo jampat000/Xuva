@@ -147,22 +147,41 @@ async function assertNoHorizontalOverflow(page) {
 	assert.equal(overflow, false);
 }
 
-async function assertSurfaceShift(page, surface, beforeX, viewport, shouldShift) {
+async function assertSurfaceLayout(page, surface, beforeBox, viewport, shouldShift) {
 	let box = await surface.boundingBox();
 	assert.ok(box, 'app surface should have a bounding box');
 	const startedAt = Date.now();
 	while (Date.now() - startedAt < 1200) {
-		const shift = Math.round(box.x - beforeX);
-		if ((shouldShift && shift >= 300) || (!shouldShift && Math.abs(shift) <= 1)) break;
+		const shift = Math.round(box.x - beforeBox.x);
+		const rightEdge = box.x + box.width;
+		const fitsViewport = rightEdge <= viewport.width + 2;
+		if ((shouldShift && shift >= 300 && fitsViewport) || (!shouldShift && Math.abs(shift) <= 1)) break;
 		await page.waitForTimeout(40);
 		box = await surface.boundingBox();
 		assert.ok(box, 'app surface should have a bounding box');
 	}
-	const shift = Math.round(box.x - beforeX);
+	const shift = Math.round(box.x - beforeBox.x);
+	const rightEdge = box.x + box.width;
 	if (shouldShift) {
 		assert.ok(shift >= 300, `desktop/tablet app surface should shift right, got ${shift}`);
+		assert.ok(
+			rightEdge <= viewport.width + 2,
+			`desktop/tablet app surface should fit within viewport after shifting, got right edge ${rightEdge} in ${viewport.width}px viewport`
+		);
+		assert.ok(
+			box.width <= beforeBox.width - 300 + 4,
+			`desktop/tablet app surface should resize to remaining width, got ${box.width} from ${beforeBox.width}`
+		);
 	} else {
 		assert.ok(Math.abs(shift) <= 1, `mobile app surface should not shift, got ${shift}`);
+		assert.ok(
+			box.width >= beforeBox.width - 2,
+			`mobile/closed app surface should keep its full width, got ${box.width} from ${beforeBox.width}`
+		);
+		assert.ok(
+			rightEdge <= viewport.width + 2,
+			`mobile/closed app surface should fit within viewport, got right edge ${rightEdge} in ${viewport.width}px viewport`
+		);
 	}
 	await assertNoHorizontalOverflow(page);
 	return box.x;
@@ -184,19 +203,19 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	const mediaDrawer = page.getByTestId('media-menu-drawer');
 	await waitForDrawerState(mediaDrawer, 'open');
 	await assertLeftDrawer(page, mediaDrawer, viewport);
-	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, shouldShift);
+	await assertSurfaceLayout(page, surface, beforeSurface, viewport, shouldShift);
 	for (const label of ['Home', 'Movies', 'TV', 'Libraries', 'Settings']) {
 		assert.equal(await mediaDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
 	await page.mouse.click(viewport.width - 12, 12);
 	await waitForDrawerState(mediaDrawer, 'closed');
-	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, false);
+	await assertSurfaceLayout(page, surface, beforeSurface, viewport, false);
 
 	await mediaButton.click();
 	await waitForDrawerState(mediaDrawer, 'open');
 	await page.keyboard.press('Escape');
 	await waitForDrawerState(mediaDrawer, 'closed');
-	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, false);
+	await assertSurfaceLayout(page, surface, beforeSurface, viewport, false);
 
 	await mediaButton.click();
 	await waitForDrawerState(mediaDrawer, 'open');
@@ -220,7 +239,7 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	const settingsDrawer = page.getByTestId('settings-menu-drawer');
 	await waitForDrawerState(settingsDrawer, 'open');
 	await assertLeftDrawer(page, settingsDrawer, viewport);
-	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, shouldShift);
+	await assertSurfaceLayout(page, surface, beforeSurface, viewport, shouldShift);
 	for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
 		assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
