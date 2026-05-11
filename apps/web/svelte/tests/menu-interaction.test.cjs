@@ -99,37 +99,62 @@ async function assertNoPersistentMediaPills(page) {
 	}
 }
 
-async function verifyMediaMenu(page, baseURL) {
+async function assertLeftDrawer(page, drawer, viewport) {
+	const box = await drawer.boundingBox();
+	assert.ok(box, 'drawer should have a bounding box');
+	assert.ok(box.x <= 1, `drawer should be anchored to the left edge, got x=${box.x}`);
+	assert.ok(box.y <= 1, `drawer should start at the top edge, got y=${box.y}`);
+	assert.ok(box.height >= viewport.height - 2, `drawer should span the viewport height, got ${box.height}`);
+	assert.ok(box.width >= 260, `drawer should be sidebar width, got ${box.width}`);
+	assert.ok(box.width <= Math.ceil(viewport.width * 0.9), `drawer should fit viewport width, got ${box.width}`);
+}
+
+async function assertNoHorizontalOverflow(page) {
+	const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+	assert.equal(overflow, false);
+}
+
+async function verifyMediaMenu(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoPersistentMediaPills(page);
+	await assertNoHorizontalOverflow(page);
 
 	const mediaButton = page.getByTestId('media-menu-button');
 	assert.equal(await mediaButton.count(), 1);
 	await mediaButton.click();
 	const mediaDrawer = page.getByTestId('media-menu-drawer');
 	await mediaDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await assertLeftDrawer(page, mediaDrawer, viewport);
 	for (const label of ['Home', 'Movies', 'TV', 'Settings']) {
 		assert.equal(await mediaDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
+	await page.mouse.click(viewport.width - 12, 12);
+	await mediaDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+
+	await mediaButton.click();
+	await mediaDrawer.waitFor({ state: 'visible', timeout: 5000 });
 	await page.keyboard.press('Escape');
 	await mediaDrawer.waitFor({ state: 'hidden', timeout: 5000 });
 
 	await mediaButton.click();
 	await mediaDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await assertLeftDrawer(page, mediaDrawer, viewport);
 	await mediaDrawer.getByRole('link', { name: 'Movies', exact: true }).click();
 	await page.waitForURL(`${baseURL}/movies`, { timeout: 10000 });
 	await mediaDrawer.waitFor({ state: 'hidden', timeout: 5000 });
 }
 
-async function verifySettingsMenu(page, baseURL) {
+async function verifySettingsMenu(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
+	await assertNoHorizontalOverflow(page);
 	const settingsButton = page.getByTestId('settings-menu-button');
 	assert.equal(await settingsButton.count(), 1);
 	await settingsButton.click();
 	const settingsDrawer = page.getByTestId('settings-menu-drawer');
 	await settingsDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await assertLeftDrawer(page, settingsDrawer, viewport);
 	for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
 		assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
@@ -156,8 +181,8 @@ test('hamburger media and settings menus open and navigate across viewports', as
 				hasTouch: viewport.isMobile
 			});
 			await installApiMocks(page);
-			await verifyMediaMenu(page, baseURL);
-			await verifySettingsMenu(page, baseURL);
+			await verifyMediaMenu(page, baseURL, viewport);
+			await verifySettingsMenu(page, baseURL, viewport);
 			await page.close();
 		}
 
