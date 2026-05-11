@@ -16,11 +16,12 @@
 		</div>
 	</div>
 	<div class="flex items-center gap-2">
-		<img
-			src="https://i.pravatar.cc/80?img=12"
-			alt="Profile"
-			class="h-9 w-9 rounded-full object-cover"
-		/>
+		<div
+			aria-label="Profile"
+			class="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-[#22302c] text-xs font-semibold text-white/80"
+		>
+			L
+		</div>
 		<ChevronDown size={16} class="text-white/60" />
 	</div>
 </header>
