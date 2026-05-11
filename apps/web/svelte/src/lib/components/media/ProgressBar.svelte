@@ -9,7 +9,7 @@
 
 <style>
 	.progress-wrap {
-		height: 0.32rem;
+		height: 0.42rem;
 		width: 100%;
 		border-radius: var(--vyrden-radius-pill);
 		background: var(--vyrden-track);
@@ -20,5 +20,6 @@
 		display: block;
 		height: 100%;
 		background: var(--vyrden-progress);
+		box-shadow: 0 0 12px rgb(124 92 255 / 42%);
 	}
 </style>

@@ -30,8 +30,8 @@
 	];
 
 	const manageNavItems: NavItem[] = [
-		{ id: 'admin', label: 'Manage Server', href: '/admin' },
-		{ id: 'settings', label: 'Server Settings', href: '/settings' }
+		{ id: 'admin', label: 'Library Admin', href: '/admin' },
+		{ id: 'settings', label: 'Settings', href: '/settings' }
 	];
 
 	let {
@@ -105,7 +105,7 @@
 				<a href={item.href} class:active={active === item.id} onclick={closeMenu}>{item.label}</a>
 			{/each}
 		</nav>
-		<nav class="media-shell__drawer-manage" aria-label="Server management">
+		<nav class="media-shell__drawer-manage" aria-label="Library management">
 			{#each manageNavItems as item (item.id)}
 				<a href={item.href} onclick={closeMenu}>{item.label}</a>
 			{/each}
@@ -129,8 +129,8 @@
 		min-height: 100dvh;
 		padding: 14px 18px 24px;
 		background:
-			radial-gradient(circle at 50% -24%, rgb(128 195 219 / 10%) 0%, transparent 42%),
-			linear-gradient(180deg, rgb(255 246 229 / 3%), transparent 24%),
+			radial-gradient(circle at 50% -24%, rgb(124 92 255 / 16%) 0%, transparent 42%),
+			linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 24%),
 			var(--vyrden-color-bg-shell);
 	}
 
@@ -247,8 +247,8 @@
 		gap: 14px;
 		border-right: 1px solid var(--vyrden-color-border-soft);
 		background:
-			radial-gradient(circle at 14% -18%, rgb(88 201 176 / 10%) 0%, rgb(88 201 176 / 0%) 36%),
-			radial-gradient(circle at 80% 108%, rgb(131 119 93 / 10%) 0%, rgb(131 119 93 / 0%) 42%),
+			radial-gradient(circle at 14% -18%, rgb(124 92 255 / 16%) 0%, rgb(124 92 255 / 0%) 36%),
+			radial-gradient(circle at 80% 108%, rgb(59 130 246 / 10%) 0%, rgb(59 130 246 / 0%) 42%),
 			var(--vyrden-color-bg-sidebar);
 		box-shadow: 18px 0 36px rgb(0 0 0 / 36%);
 		transform: translateX(-103%);
@@ -296,7 +296,7 @@
 
 	.media-shell__drawer a.active {
 		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 35%, transparent);
-		background: linear-gradient(90deg, rgb(92 205 180 / 14%), rgb(92 205 180 / 2%));
+		background: linear-gradient(90deg, rgb(124 92 255 / 20%), rgb(124 92 255 / 4%));
 	}
 
 	.media-shell__drawer a.active::before {
