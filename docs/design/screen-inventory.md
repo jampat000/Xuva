@@ -19,17 +19,10 @@ First design set:
 - User profile picker.
 - Settings.
 
-Completed prototype passes:
+Implementation source:
 
-- Movie Detail Concept: `apps/web/prototypes/lorivo-movie-detail/index.html`
-- Signal Deck Concept: `apps/web/prototypes/lorivo-signal-deck/index.html`
-- Playback Overlay Concept: `apps/web/prototypes/lorivo-playback-overlay/index.html`
-- Audio + Subtitle Selector Concept: `apps/web/prototypes/lorivo-track-selector/index.html`
-- Version Selector Concept: `apps/web/prototypes/lorivo-version-selector/index.html`
-- Series Detail Concept: `apps/web/prototypes/lorivo-series-detail/index.html`
-- Download Selector Concept: `apps/web/prototypes/lorivo-download-selector/index.html`
-- Server Setup Concept: `apps/web/prototypes/lorivo-server-setup/index.html`
-- Playback Inspector Concept: `apps/web/prototypes/lorivo-playback-inspector/index.html`
+- Web product UI: `apps/web/svelte`
+- Go-served web build: `server/internal/webapp/static-next`
 
 ## Web Admin
 

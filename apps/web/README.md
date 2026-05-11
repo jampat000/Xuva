@@ -15,7 +15,7 @@ Primary screens:
 
 Frontend runtime notes:
 
-- The production web UI is served from `server/internal/webapp/static`.
-- Shared browser modules live in `server/internal/webapp/static/modules`.
+- Source for the production web UI lives in `apps/web/svelte`.
+- The Go server serves the published Svelte build from `server/internal/webapp/static-next`.
 - Critical frontend tests live in `server/internal/webapp/frontend_tests` and run with `node --test`.
 - Architecture and contribution conventions are documented in `docs/frontend-architecture.md`.

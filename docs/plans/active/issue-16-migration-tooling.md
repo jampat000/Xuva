@@ -40,7 +40,7 @@ Ship a real migration path for watched state, resume position, and core metadata
 - `go test ./internal/migration ./internal/api`
 - `go test ./...`
 - `node --test server/internal/webapp/frontend_tests/*.test.cjs`
-- `node --check server/internal/webapp/static/app.js`
+- `npm --prefix apps/web/svelte run check`
 - `git diff --check`
 
 ## Risks And Rollback

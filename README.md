@@ -4,7 +4,7 @@ Lorivo is a local-first personal media server for private media libraries.
 
 The goal is to combine polished TV-first playback with predictable local ownership: no required cloud account, no vendor relay dependency, no ads, and no streaming-service clutter.
 
-Status: pre-alpha product and design foundation.
+Status: pre-alpha product and implementation foundation.
 
 ## Product Promise
 
@@ -46,16 +46,9 @@ server/              Lorivo Server.
 
 ## Current Focus
 
-The current design foundation covers:
-
-- Movie detail.
-- Series detail.
-- Playback overlay.
-- Version selector.
-- Audio and subtitle selector.
-- Download selector.
-- Playback inspector.
-- First-run server setup.
+The current web foundation is the SvelteKit Lorivo app in `apps/web/svelte`.
+It is the only production web UI and is served by the Go server from
+`server/internal/webapp/static-next`.
 
 The first technical milestone is a playback decision prototype:
 
@@ -72,7 +65,6 @@ The first technical milestone is a playback decision prototype:
 - [Docs Index](docs/index.md)
 - [Agent Harness](docs/agent-harness.md)
 - [Quality Scorecard](docs/quality-score.md)
-- [Open Design Prototypes](designs.html)
 - [Branding](docs/branding.md)
 - [Product Principles](docs/product-principles.md)
 - [MVP Scope](docs/mvp-scope.md)
