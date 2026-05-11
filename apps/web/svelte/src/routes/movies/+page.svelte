@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+	import { Search } from 'lucide-svelte';
 	import {
 		getMovies,
 		refreshMetadataBatch,
@@ -8,22 +8,13 @@
 		type MovieListItem
 	} from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
-	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import { resolvePreviewMode } from '$lib/home/model';
 	import { previewPoster } from '$lib/preview/artwork';
-	import {
-		BrowseFilterGroup,
-		BrowseGrid,
-		BrowseHeader,
-		MediaShell,
-		BrowsePage,
-		BrowseStatChip,
-		BrowseToolbar,
-		PosterCard,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
-	} from '$lib/components';
+	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
+	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
+	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
+	import MediaGrid from '$lib/lorivo/MediaGrid.svelte';
 	import {
 		buildMovieCards,
 		filterAndSortMovieCards,
@@ -40,8 +31,6 @@
 	let previewMode = $state(false);
 	let movieFilter = $state<MovieFilter>('all');
 	let movieSort = $state<MovieSort>('title');
-	let user = $state<AuthSessionUser | null>(null);
-	let libraries = $state<LibraryRecord[]>([]);
 	let movieRows = $state<MovieListItem[]>([]);
 
 	const movieCards = $derived.by(() => buildMovieCards(movieRows));
@@ -52,12 +41,10 @@
 		previewMode
 			? visibleCards.map((item) => ({
 					...item,
-					meta: item.year > 0 ? `${item.year} · Movie` : 'Movie'
+					meta: item.year > 0 ? `${item.year} - Movie` : 'Movie'
 				}))
 			: visibleCards
 	);
-	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
-	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const reviewCount = $derived.by(() => movieCards.filter((item) => item.needsReview).length);
 	const metadataPendingCount = $derived.by(() => movieCards.filter((item) => !item.hasMetadata).length);
 	const multiVersionCount = $derived.by(() => movieCards.filter((item) => item.versionCount > 1).length);
@@ -69,7 +56,7 @@
 			const q = params.get('q');
 			if (q) searchValue = q;
 		} catch {
-			// Ignore URL parsing errors and use default search state.
+			// Keep the page usable if URL parsing fails.
 		}
 		void loadMovies();
 	});
@@ -80,35 +67,17 @@
 		const activePreviewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
 		if (activePreviewMode) {
 			previewMode = true;
-			user = null;
-			libraries = [];
 			movieRows = previewMovieRows();
 			isLoading = false;
 			return;
 		}
+
 		try {
-			const [sessionPayload, librariesPayload, moviesPayload] = await Promise.all([
-				getAuthSession(apiClient).catch((error: unknown) => {
-					if (isApiStatus(error, 401)) return { user: null };
-					throw error;
-				}),
-				getLibraries(apiClient),
-				getMovies(apiClient, 500)
-			]);
-			user = sessionPayload?.user || null;
-			libraries = librariesPayload.libraries || [];
+			const moviesPayload = await getMovies(apiClient, 500);
+			previewMode = false;
 			movieRows = moviesPayload.movies || [];
-			if (activePreviewMode && movieRows.length === 0) {
-				movieRows = previewMovieRows();
-			}
 		} catch (error) {
-			if (activePreviewMode && isApiStatus(error, 401)) {
-				user = null;
-				movieRows = previewMovieRows();
-				loadError = '';
-			} else {
-				loadError = formatLoadError(error);
-			}
+			loadError = formatLoadError(error);
 		} finally {
 			isLoading = false;
 		}
@@ -151,17 +120,6 @@
 		return new Intl.NumberFormat().format(Math.max(0, Math.round(value)));
 	}
 
-	function initialsForName(name: string): string {
-		const words = asText(name).split(/\s+/).filter(Boolean);
-		if (words.length === 0) return 'V';
-		if (words.length === 1) return words[0].slice(0, 1).toUpperCase();
-		return `${words[0][0] || ''}${words[1][0] || ''}`.toUpperCase();
-	}
-
-	function asText(value: unknown): string {
-		return String(value ?? '').trim();
-	}
-
 	function isApiStatus(error: unknown, expectedStatus: number): boolean {
 		if (error instanceof ApiClientError) return error.status === expectedStatus;
 		if (typeof error !== 'object' || !error) return false;
@@ -174,6 +132,13 @@
 		if (isApiStatus(error, 401)) return 'Your session is no longer active. Sign in again to continue.';
 		if (error instanceof Error) return error.message;
 		return 'Movies could not load.';
+	}
+
+	function filterClass(active: boolean): string {
+		const base =
+			'rounded-full border px-4 py-2 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
+		if (active) return `${base} border-[#7C5CFF]/60 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/20`;
+		return `${base} border-white/10 bg-[#111827] text-white/60 hover:border-white/25 hover:bg-white/10 hover:text-white`;
 	}
 
 	function previewMovieRows(): MovieListItem[] {
@@ -287,131 +252,99 @@
 	}
 </script>
 
-<MediaShell active="movies" bind:searchValue {userInitials}>
-	<BrowsePage>
-		{#if isLoading}
-			<VyrdenPanel title="Loading Movies" subtitle="Fetching your movie library from the media APIs." />
-		{:else if loadError}
-			<VyrdenPanel title="Movies could not load" subtitle={loadError}>
-				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadMovies}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
-				</div>
-			</VyrdenPanel>
-		{:else}
-			<BrowseHeader title="Movies" subtitle="Browse your movie library.">
-				{#snippet chips()}
-					<BrowseStatChip label={`${formatCount(renderedCards.length)} visible`} />
+<svelte:head>
+	<title>Movies - Lorivo Media</title>
+</svelte:head>
+
+<LorivoShell>
+	<section class="relative mx-4 mt-4 overflow-hidden rounded-2xl bg-[#111827] px-6 py-10 sm:mx-6 sm:px-10 lg:mx-8 lg:px-12 xl:px-16">
+		<div class="absolute inset-0 bg-gradient-to-r from-[#0B1120] via-[#0B1120]/70 to-[#0B1120]/30"></div>
+		<div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+			<div class="max-w-[600px]">
+				<h1 class="text-5xl font-bold leading-tight text-white [text-shadow:0_4px_28px_rgba(0,0,0,0.72)] sm:text-6xl xl:text-7xl">Movies</h1>
+				<p class="mt-4 text-base text-white/60">Browse your movie library.</p>
+				<p class="mt-5 text-base leading-relaxed text-white/70">
+					{formatCount(renderedCards.length)} visible titles
 					{#if !previewMode && reviewCount > 0}
-						<BrowseStatChip label={`${formatCount(reviewCount)} review`} />
+						- {formatCount(reviewCount)} need review
 					{/if}
 					{#if !previewMode && metadataPendingCount > 0}
-						<BrowseStatChip label={`${formatCount(metadataPendingCount)} metadata pending`} />
+						- {formatCount(metadataPendingCount)} metadata pending
 					{/if}
 					{#if !previewMode && multiVersionCount > 0}
-						<BrowseStatChip label={`${formatCount(multiVersionCount)} multi-version`} />
+						- {formatCount(multiVersionCount)} multi-version
 					{/if}
-				{/snippet}
-			</BrowseHeader>
-
-			<BrowseToolbar message={actionMessage}>
-				{#snippet controls()}
-					{#if !previewMode}
-						<BrowseFilterGroup ariaLabel="Movie filters">
-							<button
-								type="button"
-								class:selected={movieFilter === 'all'}
-								onclick={() => (movieFilter = 'all')}
-							>
-								All
-							</button>
-							<button
-								type="button"
-								class:selected={movieFilter === 'review'}
-								onclick={() => (movieFilter = 'review')}
-							>
-								Needs Review
-							</button>
-							<button
-								type="button"
-								class:selected={movieFilter === 'metadata'}
-								onclick={() => (movieFilter = 'metadata')}
-							>
-								Metadata Pending
-							</button>
-							<button
-								type="button"
-								class:selected={movieFilter === 'versions'}
-								onclick={() => (movieFilter = 'versions')}
-							>
-								Multiple Versions
-							</button>
-						</BrowseFilterGroup>
-					{/if}
-					<BrowseFilterGroup segmented ariaLabel="Movie sorting">
-						<button type="button" class:selected={movieSort === 'title'} onclick={() => (movieSort = 'title')}>
-							Title
-						</button>
-						<button type="button" class:selected={movieSort === 'year'} onclick={() => (movieSort = 'year')}>
-							Year
-						</button>
-						{#if !previewMode}
-							<button
-								type="button"
-								class:selected={movieSort === 'versions'}
-								onclick={() => (movieSort = 'versions')}
-							>
-								Versions
-							</button>
-							<button
-								type="button"
-								class:selected={movieSort === 'review'}
-								onclick={() => (movieSort = 'review')}
-							>
-								Review
-							</button>
-						{/if}
-					</BrowseFilterGroup>
-				{/snippet}
-				{#snippet actions()}
-					{#if !previewMode}
-						<VyrdenButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
-							{isScanning ? 'Scanning...' : 'Scan Movies'}
-						</VyrdenButton>
-						<VyrdenButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
-							{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-						</VyrdenButton>
-					{/if}
-				{/snippet}
-			</BrowseToolbar>
-
-			{#if movieCards.length === 0}
-				<VyrdenEmptyState
-					title="No movies found"
-					message="Try adding a movie library or running a scan."
-				/>
-			{:else if renderedCards.length === 0}
-				<VyrdenEmptyState title="No movies found" message="Try changing filters or search terms." />
-			{:else}
-				<BrowseGrid>
-					{#each renderedCards as item (item.id)}
-						<PosterCard
-							title={item.title}
-							meta={item.meta}
-							imageUrl={item.posterUrl}
-							href={`/movies/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
-						/>
-					{/each}
-				</BrowseGrid>
+				</p>
+			</div>
+			{#if !previewMode}
+				<div class="flex flex-wrap gap-3">
+					<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
+						{isScanning ? 'Scanning...' : 'Scan Movies'}
+					</LorivoButton>
+					<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+						{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
+					</LorivoButton>
+				</div>
 			{/if}
-		{/if}
-	</BrowsePage>
-</MediaShell>
+		</div>
+	</section>
 
-<style>
-	.status-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
-	}
-</style>
+	{#if isLoading}
+		<LorivoPanel title="Loading Movies" subtitle="Fetching your movie library from the media APIs." />
+	{:else if loadError}
+		<LorivoPanel title="Movies could not load" subtitle={loadError}>
+			<div class="flex flex-wrap gap-3">
+				<LorivoButton variant="secondary" onclick={loadMovies}>Retry</LorivoButton>
+				<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+			</div>
+		</LorivoPanel>
+	{:else}
+		<section class="relative px-4 pt-9 sm:px-6 sm:pt-10 lg:px-8 lg:pt-11">
+			<div class="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-lg shadow-black/20 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+				<div class="relative w-full lg:max-w-[420px]">
+					<Search size={16} class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+					<input
+						type="text"
+						placeholder="Search movies"
+						bind:value={searchValue}
+						class="h-10 w-full rounded-full border border-white/5 bg-[#111827] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#7C5CFF]/50"
+					/>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					{#if !previewMode}
+						<button type="button" class={filterClass(movieFilter === 'all')} onclick={() => (movieFilter = 'all')}>All</button>
+						<button type="button" class={filterClass(movieFilter === 'review')} onclick={() => (movieFilter = 'review')}>Needs Review</button>
+						<button type="button" class={filterClass(movieFilter === 'metadata')} onclick={() => (movieFilter = 'metadata')}>Metadata Pending</button>
+						<button type="button" class={filterClass(movieFilter === 'versions')} onclick={() => (movieFilter = 'versions')}>Multiple Versions</button>
+					{/if}
+					<button type="button" class={filterClass(movieSort === 'title')} onclick={() => (movieSort = 'title')}>Title</button>
+					<button type="button" class={filterClass(movieSort === 'year')} onclick={() => (movieSort = 'year')}>Year</button>
+					{#if !previewMode}
+						<button type="button" class={filterClass(movieSort === 'versions')} onclick={() => (movieSort = 'versions')}>Versions</button>
+						<button type="button" class={filterClass(movieSort === 'review')} onclick={() => (movieSort = 'review')}>Review</button>
+					{/if}
+				</div>
+			</div>
+			{#if actionMessage}
+				<p class="mt-3 text-sm text-white/60">{actionMessage}</p>
+			{/if}
+		</section>
+
+		{#if movieCards.length === 0}
+			<LorivoPanel title="No movies found" subtitle="Try adding a movie library or running a scan." />
+		{:else if renderedCards.length === 0}
+			<LorivoPanel title="No movies found" subtitle="Try changing filters or search terms." />
+		{:else}
+			<MediaGrid title="Movies" subtitle={`${formatCount(renderedCards.length)} titles`}>
+				{#each renderedCards as item (item.id)}
+					<LorivoPosterLink
+						title={item.title}
+						meta={item.meta}
+						img={item.posterUrl}
+						href={`/movies/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
+					/>
+				{/each}
+			</MediaGrid>
+		{/if}
+	{/if}
+</LorivoShell>

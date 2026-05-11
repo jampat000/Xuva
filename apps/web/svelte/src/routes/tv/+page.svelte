@@ -1,24 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+	import { Search } from 'lucide-svelte';
 	import { getSeries, refreshMetadataBatch, scanTV, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
-	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import { resolvePreviewMode } from '$lib/home/model';
 	import { previewPoster } from '$lib/preview/artwork';
-	import {
-		BrowseFilterGroup,
-		BrowseGrid,
-		BrowseHeader,
-		MediaShell,
-		BrowsePage,
-		BrowseStatChip,
-		BrowseToolbar,
-		PosterCard,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
-	} from '$lib/components';
+	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
+	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
+	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
+	import MediaGrid from '$lib/lorivo/MediaGrid.svelte';
 	import {
 		buildSeriesCards,
 		filterAndSortSeriesCards,
@@ -35,16 +26,12 @@
 	let previewMode = $state(false);
 	let seriesFilter = $state<SeriesFilter>('all');
 	let seriesSort = $state<SeriesSort>('title');
-	let user = $state<AuthSessionUser | null>(null);
-	let libraries = $state<LibraryRecord[]>([]);
 	let seriesRows = $state<SeriesListItem[]>([]);
 
 	const seriesCards = $derived.by(() => buildSeriesCards(seriesRows));
 	const visibleCards = $derived.by(() =>
 		filterAndSortSeriesCards(seriesCards, searchValue, seriesFilter, seriesSort)
 	);
-	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
-	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const totalEpisodes = $derived.by(() =>
 		seriesCards.reduce((total, item) => total + item.episodeCount, 0)
 	);
@@ -59,7 +46,7 @@
 			const q = params.get('q');
 			if (q) searchValue = q;
 		} catch {
-			// Ignore URL parsing errors and use default search state.
+			// Keep the page usable if URL parsing fails.
 		}
 		void loadSeries();
 	});
@@ -70,35 +57,17 @@
 		const activePreviewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
 		if (activePreviewMode) {
 			previewMode = true;
-			user = null;
-			libraries = [];
 			seriesRows = previewSeriesRows();
 			isLoading = false;
 			return;
 		}
+
 		try {
-			const [sessionPayload, librariesPayload, seriesPayload] = await Promise.all([
-				getAuthSession(apiClient).catch((error: unknown) => {
-					if (isApiStatus(error, 401)) return { user: null };
-					throw error;
-				}),
-				getLibraries(apiClient),
-				getSeries(apiClient, 500)
-			]);
-			user = sessionPayload?.user || null;
-			libraries = librariesPayload.libraries || [];
+			const seriesPayload = await getSeries(apiClient, 500);
+			previewMode = false;
 			seriesRows = seriesPayload.series || [];
-			if (activePreviewMode && seriesRows.length === 0) {
-				seriesRows = previewSeriesRows();
-			}
 		} catch (error) {
-			if (activePreviewMode && isApiStatus(error, 401)) {
-				user = null;
-				seriesRows = previewSeriesRows();
-				loadError = '';
-			} else {
-				loadError = formatLoadError(error);
-			}
+			loadError = formatLoadError(error);
 		} finally {
 			isLoading = false;
 		}
@@ -141,17 +110,6 @@
 		return new Intl.NumberFormat().format(Math.max(0, Math.round(value)));
 	}
 
-	function initialsForName(name: string): string {
-		const words = asText(name).split(/\s+/).filter(Boolean);
-		if (words.length === 0) return 'V';
-		if (words.length === 1) return words[0].slice(0, 1).toUpperCase();
-		return `${words[0][0] || ''}${words[1][0] || ''}`.toUpperCase();
-	}
-
-	function asText(value: unknown): string {
-		return String(value ?? '').trim();
-	}
-
 	function isApiStatus(error: unknown, expectedStatus: number): boolean {
 		if (error instanceof ApiClientError) return error.status === expectedStatus;
 		if (typeof error !== 'object' || !error) return false;
@@ -164,6 +122,13 @@
 		if (isApiStatus(error, 401)) return 'Your session is no longer active. Sign in again to continue.';
 		if (error instanceof Error) return error.message;
 		return 'TV could not load.';
+	}
+
+	function filterClass(active: boolean): string {
+		const base =
+			'rounded-full border px-4 py-2 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
+		if (active) return `${base} border-[#7C5CFF]/60 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/20`;
+		return `${base} border-white/10 bg-[#111827] text-white/60 hover:border-white/25 hover:bg-white/10 hover:text-white`;
 	}
 
 	function previewSeriesRows(): SeriesListItem[] {
@@ -246,118 +211,88 @@
 	}
 </script>
 
-<MediaShell active="tv" bind:searchValue {userInitials}>
-	<BrowsePage>
-		{#if isLoading}
-			<VyrdenPanel title="Loading TV Shows" subtitle="Fetching your TV library from the media APIs." />
-		{:else if loadError}
-			<VyrdenPanel title="TV Shows could not load" subtitle={loadError}>
-				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadSeries}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
+<svelte:head>
+	<title>TV - Lorivo Media</title>
+</svelte:head>
+
+<LorivoShell>
+	<section class="relative mx-4 mt-4 overflow-hidden rounded-2xl bg-[#111827] px-6 py-10 sm:mx-6 sm:px-10 lg:mx-8 lg:px-12 xl:px-16">
+		<div class="absolute inset-0 bg-gradient-to-r from-[#0B1120] via-[#0B1120]/70 to-[#0B1120]/30"></div>
+		<div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+			<div class="max-w-[600px]">
+				<h1 class="text-5xl font-bold leading-tight text-white [text-shadow:0_4px_28px_rgba(0,0,0,0.72)] sm:text-6xl xl:text-7xl">TV Shows</h1>
+				<p class="mt-4 text-base text-white/60">Browse your TV library.</p>
+				<p class="mt-5 text-base leading-relaxed text-white/70">
+					{formatCount(visibleCards.length)} visible shows - {formatCount(totalSeasons)} seasons - {formatCount(totalEpisodes)} episodes
+				</p>
+			</div>
+			{#if !previewMode}
+				<div class="flex flex-wrap gap-3">
+					<LorivoButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
+						{isScanning ? 'Scanning...' : 'Scan TV'}
+					</LorivoButton>
+					<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+						{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
+					</LorivoButton>
 				</div>
-			</VyrdenPanel>
-		{:else}
-			<BrowseHeader title="TV Shows" subtitle="Browse your TV library.">
-				{#snippet chips()}
-					<BrowseStatChip label={`${formatCount(visibleCards.length)} visible`} />
-					<BrowseStatChip label={`${formatCount(totalSeasons)} seasons`} />
-					<BrowseStatChip label={`${formatCount(totalEpisodes)} episodes`} />
-				{/snippet}
-			</BrowseHeader>
-
-			<BrowseToolbar message={actionMessage}>
-				{#snippet controls()}
-					{#if !previewMode}
-						<BrowseFilterGroup ariaLabel="TV filters">
-							<button type="button" class:selected={seriesFilter === 'all'} onclick={() => (seriesFilter = 'all')}>
-								All
-							</button>
-							<button
-								type="button"
-								class:selected={seriesFilter === 'multi-season'}
-								onclick={() => (seriesFilter = 'multi-season')}
-							>
-								Multi-Season
-							</button>
-							<button
-								type="button"
-								class:selected={seriesFilter === 'with-episodes'}
-								onclick={() => (seriesFilter = 'with-episodes')}
-							>
-								With Episodes
-							</button>
-							<button
-								type="button"
-								class:selected={seriesFilter === 'unknown-year'}
-								onclick={() => (seriesFilter = 'unknown-year')}
-							>
-								Unknown Year
-							</button>
-						</BrowseFilterGroup>
-					{/if}
-					<BrowseFilterGroup segmented ariaLabel="TV sorting">
-						<button type="button" class:selected={seriesSort === 'title'} onclick={() => (seriesSort = 'title')}>
-							Title
-						</button>
-						<button type="button" class:selected={seriesSort === 'year'} onclick={() => (seriesSort = 'year')}>
-							Year
-						</button>
-						<button
-							type="button"
-							class:selected={seriesSort === 'seasons'}
-							onclick={() => (seriesSort = 'seasons')}
-						>
-							Seasons
-						</button>
-						<button
-							type="button"
-							class:selected={seriesSort === 'episodes'}
-							onclick={() => (seriesSort = 'episodes')}
-						>
-							Episodes
-						</button>
-					</BrowseFilterGroup>
-				{/snippet}
-				{#snippet actions()}
-					{#if !previewMode}
-						<VyrdenButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
-							{isScanning ? 'Scanning...' : 'Scan TV'}
-						</VyrdenButton>
-						<VyrdenButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
-							{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-						</VyrdenButton>
-					{/if}
-				{/snippet}
-			</BrowseToolbar>
-
-			{#if seriesCards.length === 0}
-				<VyrdenEmptyState
-					title="No TV shows found"
-					message="Try adding a TV library or running a scan."
-				/>
-			{:else if visibleCards.length === 0}
-				<VyrdenEmptyState title="No TV shows found" message="Try changing search terms." />
-			{:else}
-				<BrowseGrid>
-					{#each visibleCards as item (item.id)}
-						<PosterCard
-							title={item.title}
-							meta={item.meta}
-							imageUrl={item.posterUrl}
-							href={`/tv/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
-						/>
-					{/each}
-				</BrowseGrid>
 			{/if}
-		{/if}
-	</BrowsePage>
-</MediaShell>
+		</div>
+	</section>
 
-<style>
-	.status-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
-	}
-</style>
+	{#if isLoading}
+		<LorivoPanel title="Loading TV Shows" subtitle="Fetching your TV library from the media APIs." />
+	{:else if loadError}
+		<LorivoPanel title="TV Shows could not load" subtitle={loadError}>
+			<div class="flex flex-wrap gap-3">
+				<LorivoButton variant="secondary" onclick={loadSeries}>Retry</LorivoButton>
+				<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+			</div>
+		</LorivoPanel>
+	{:else}
+		<section class="relative px-4 pt-9 sm:px-6 sm:pt-10 lg:px-8 lg:pt-11">
+			<div class="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-lg shadow-black/20 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+				<div class="relative w-full lg:max-w-[420px]">
+					<Search size={16} class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+					<input
+						type="text"
+						placeholder="Search TV"
+						bind:value={searchValue}
+						class="h-10 w-full rounded-full border border-white/5 bg-[#111827] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#7C5CFF]/50"
+					/>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					{#if !previewMode}
+						<button type="button" class={filterClass(seriesFilter === 'all')} onclick={() => (seriesFilter = 'all')}>All</button>
+						<button type="button" class={filterClass(seriesFilter === 'multi-season')} onclick={() => (seriesFilter = 'multi-season')}>Multi-Season</button>
+						<button type="button" class={filterClass(seriesFilter === 'with-episodes')} onclick={() => (seriesFilter = 'with-episodes')}>With Episodes</button>
+						<button type="button" class={filterClass(seriesFilter === 'unknown-year')} onclick={() => (seriesFilter = 'unknown-year')}>Unknown Year</button>
+					{/if}
+					<button type="button" class={filterClass(seriesSort === 'title')} onclick={() => (seriesSort = 'title')}>Title</button>
+					<button type="button" class={filterClass(seriesSort === 'year')} onclick={() => (seriesSort = 'year')}>Year</button>
+					<button type="button" class={filterClass(seriesSort === 'seasons')} onclick={() => (seriesSort = 'seasons')}>Seasons</button>
+					<button type="button" class={filterClass(seriesSort === 'episodes')} onclick={() => (seriesSort = 'episodes')}>Episodes</button>
+				</div>
+			</div>
+			{#if actionMessage}
+				<p class="mt-3 text-sm text-white/60">{actionMessage}</p>
+			{/if}
+		</section>
+
+		{#if seriesCards.length === 0}
+			<LorivoPanel title="No TV shows found" subtitle="Try adding a TV library or running a scan." />
+		{:else if visibleCards.length === 0}
+			<LorivoPanel title="No TV shows found" subtitle="Try changing search terms." />
+		{:else}
+			<MediaGrid title="TV Shows" subtitle={`${formatCount(visibleCards.length)} shows`}>
+				{#each visibleCards as item (item.id)}
+					<LorivoPosterLink
+						title={item.title}
+						meta={item.meta}
+						img={item.posterUrl}
+						href={`/tv/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
+					/>
+				{/each}
+			</MediaGrid>
+		{/if}
+	{/if}
+</LorivoShell>
