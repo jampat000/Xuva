@@ -60,6 +60,7 @@
 			<button
 				class="menu-button"
 				type="button"
+				data-testid="media-menu-button"
 				aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
 				aria-expanded={menuOpen}
 				onclick={() => (menuOpen = !menuOpen)}
@@ -91,11 +92,15 @@
 		></button>
 	{/if}
 
-	<aside class="media-shell__drawer" class:media-shell__drawer--open={menuOpen}>
+	<aside
+		class="media-shell__drawer"
+		class:media-shell__drawer--open={menuOpen}
+		data-testid="media-menu-drawer"
+	>
 		<div class="media-shell__drawer-brand">
 			<LorivoBrand />
 		</div>
-		<nav class="media-shell__drawer-nav" aria-label="Media navigation">
+		<nav class="media-shell__drawer-nav" aria-label="Mobile media navigation">
 			{#each mediaNavItems as item (item.id)}
 				<a href={item.href} class:active={active === item.id} onclick={closeMenu}>{item.label}</a>
 			{/each}

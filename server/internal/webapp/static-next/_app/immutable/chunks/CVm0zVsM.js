@@ -1,0 +1,1 @@
+import{a as e}from"./Cfa7eKkj.js";function t(t=e,n=24){return t.request(`/api/client/home?limit=${encodeURIComponent(String(n))}`)}function n(t=e,n=12){return t.request(`/api/playback/recent?limit=${encodeURIComponent(String(n))}`)}function r(t=e){return t.request(`/api/libraries`)}export{r as n,n as r,t};
