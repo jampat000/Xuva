@@ -4,7 +4,7 @@
 	import { getSeries, refreshMetadataBatch, scanTV, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { resolvePreviewMode } from '$lib/home/model';
-	import { previewPoster } from '$lib/preview/artwork';
+	import { previewSeriesRows } from '$lib/preview/media-library';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
@@ -32,6 +32,7 @@
 	const visibleCards = $derived.by(() =>
 		filterAndSortSeriesCards(seriesCards, searchValue, seriesFilter, seriesSort)
 	);
+	const featuredCards = $derived.by(() => visibleCards.slice(0, 5));
 	const totalEpisodes = $derived.by(() =>
 		seriesCards.reduce((total, item) => total + item.episodeCount, 0)
 	);
@@ -131,84 +132,6 @@
 		return `${base} border-white/10 bg-[#111827] text-white/60 hover:border-white/25 hover:bg-white/10 hover:text-white`;
 	}
 
-	function previewSeriesRows(): SeriesListItem[] {
-		return [
-			{
-				id: 'preview-tv-coastline',
-				title: 'Coastline',
-				seasonCount: 3,
-				episodeCount: 24,
-				metadata: { title: 'Coastline', year: 2024, overview: 'Preview series item.', posterUrl: previewArtwork('Coastline') }
-			},
-			{
-				id: 'preview-tv-violet-signal',
-				title: 'Violet Signal',
-				seasonCount: 2,
-				episodeCount: 18,
-				metadata: { title: 'Violet Signal', year: 2023, overview: 'Preview series item.', posterUrl: previewArtwork('Violet Signal') }
-			},
-			{
-				id: 'preview-tv-return-vector',
-				title: 'Return Vector',
-				seasonCount: 1,
-				episodeCount: 8,
-				metadata: { title: 'Return Vector', year: 2022, overview: 'Preview series item.', posterUrl: previewArtwork('Return Vector') }
-			},
-			{
-				id: 'preview-tv-low-country',
-				title: 'Low Country',
-				seasonCount: 4,
-				episodeCount: 36,
-				metadata: { title: 'Low Country', year: 2021, overview: 'Preview series item.', posterUrl: previewArtwork('Low Country') }
-			},
-			{
-				id: 'preview-tv-night-archive',
-				title: 'Night Archive',
-				seasonCount: 2,
-				episodeCount: 20,
-				metadata: { title: 'Night Archive', year: 2022, overview: 'Preview series item.', posterUrl: previewArtwork('Night Archive') }
-			},
-			{
-				id: 'preview-tv-orchard-line',
-				title: 'Orchard Line',
-				seasonCount: 3,
-				episodeCount: 27,
-				metadata: { title: 'Orchard Line', year: 2020, overview: 'Preview series item.', posterUrl: previewArtwork('Orchard Line') }
-			},
-			{
-				id: 'preview-tv-atlas-watch',
-				title: 'Atlas Watch',
-				seasonCount: 1,
-				episodeCount: 10,
-				metadata: { title: 'Atlas Watch', year: 2024, overview: 'Preview series item.', posterUrl: previewArtwork('Atlas Watch') }
-			},
-			{
-				id: 'preview-tv-ember-shore',
-				title: 'Ember Shore',
-				seasonCount: 2,
-				episodeCount: 16,
-				metadata: { title: 'Ember Shore', year: 2021, overview: 'Preview series item.', posterUrl: previewArtwork('Ember Shore') }
-			},
-			{
-				id: 'preview-tv-sunward',
-				title: 'Sunward',
-				seasonCount: 4,
-				episodeCount: 40,
-				metadata: { title: 'Sunward', year: 2023, overview: 'Preview series item.', posterUrl: previewArtwork('Sunward') }
-			},
-			{
-				id: 'preview-tv-littoral',
-				title: 'Littoral',
-				seasonCount: 1,
-				episodeCount: 12,
-				metadata: { title: 'Littoral', year: 2024, overview: 'Preview series item.', posterUrl: previewArtwork('Littoral') }
-			}
-		];
-	}
-
-	function previewArtwork(title: string): string {
-		return previewPoster(title);
-	}
 </script>
 
 <svelte:head>
@@ -216,17 +139,29 @@
 </svelte:head>
 
 <LorivoShell>
-	<section class="relative mx-4 mt-4 overflow-hidden rounded-2xl bg-[#111827] px-6 py-10 sm:mx-6 sm:px-10 lg:mx-8 lg:px-12 xl:px-16">
+	<section class="relative mx-4 mt-4 overflow-hidden rounded-2xl bg-[#111827] px-6 py-7 sm:mx-6 sm:px-10 sm:py-8 lg:mx-8 lg:px-12 xl:px-16">
 		<div class="absolute inset-0 bg-gradient-to-r from-[#0B1120] via-[#0B1120]/70 to-[#0B1120]/30"></div>
 		<div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
 			<div class="max-w-[600px]">
-				<h1 class="text-5xl font-bold leading-tight text-white [text-shadow:0_4px_28px_rgba(0,0,0,0.72)] sm:text-6xl xl:text-7xl">TV Shows</h1>
-				<p class="mt-4 text-base text-white/60">Browse your TV library.</p>
-				<p class="mt-5 text-base leading-relaxed text-white/70">
+				<h1 class="text-4xl font-bold leading-tight text-white [text-shadow:0_4px_28px_rgba(0,0,0,0.72)] sm:text-5xl xl:text-6xl">TV Shows</h1>
+				<p class="mt-3 text-base text-white/60">Browse your TV library.</p>
+				<p class="mt-4 text-base leading-relaxed text-white/70">
 					{formatCount(visibleCards.length)} visible shows - {formatCount(totalSeasons)} seasons - {formatCount(totalEpisodes)} episodes
 				</p>
 			</div>
-			{#if !previewMode}
+			{#if previewMode && featuredCards.length > 0}
+				<div class="hidden items-end -space-x-8 pr-4 lg:flex">
+					{#each featuredCards as item, index (item.id)}
+						<img
+							src={item.posterUrl}
+							alt=""
+							aria-hidden="true"
+							class="h-36 w-24 rounded-lg object-cover shadow-2xl shadow-black/50 ring-1 ring-white/10 transition"
+							style={`transform: translateY(${index % 2 === 0 ? '0' : '12px'});`}
+						/>
+					{/each}
+				</div>
+			{:else if !previewMode}
 				<div class="flex flex-wrap gap-3">
 					<LorivoButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
 						{isScanning ? 'Scanning...' : 'Scan TV'}
@@ -249,8 +184,8 @@
 			</div>
 		</LorivoPanel>
 	{:else}
-		<section class="relative px-4 pt-9 sm:px-6 sm:pt-10 lg:px-8 lg:pt-11">
-			<div class="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-lg shadow-black/20 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+		<section class="relative px-4 pt-7 sm:px-6 lg:px-8">
+			<div class="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
 				<div class="relative w-full lg:max-w-[420px]">
 					<Search size={16} class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
 					<input

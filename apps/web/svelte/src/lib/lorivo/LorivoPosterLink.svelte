@@ -13,7 +13,7 @@
 </script>
 
 <a {href} class="group block min-w-0 cursor-pointer transition duration-200 hover:-translate-y-1">
-	<div class="aspect-[2/3] overflow-hidden rounded-md bg-[#1F2937]">
+	<div class="aspect-[2/3] overflow-hidden rounded-md bg-[#1F2937] shadow-lg shadow-black/20">
 		<img
 			src={img}
 			alt={title}
