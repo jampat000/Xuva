@@ -1,0 +1,1 @@
+import{D as e,Y as t,k as n,ot as r,q as i,st as a,x as o}from"./E0FqsGVa.js";import"./t62M88qj.js";import{t as s}from"./CNHYWyej.js";var c=n(`<div class="min-h-screen bg-[#0B1120] font-sans text-white antialiased"><!> <!> <div class="h-16"></div></div>`);function l(n,l){var u=c(),d=i(u);s(d,{}),o(t(d,2),()=>l.children),r(2),a(u),e(n,u)}export{l as t};

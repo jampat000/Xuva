@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { Menu, X } from 'lucide-svelte';
 	import AppTopbar from './AppTopbar.svelte';
@@ -26,6 +27,16 @@
 	function closeSettingsMenu(): void {
 		settingsMenuOpen = false;
 	}
+
+	onMount(() => {
+		const handleKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				closeSettingsMenu();
+			}
+		};
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
+	});
 </script>
 
 <div data-shell="server">
@@ -82,7 +93,7 @@
 	}
 
 	.server-shell__menu-button {
-		display: none;
+		display: inline-flex;
 		width: 40px;
 		height: 40px;
 		border-radius: 12px;
@@ -141,22 +152,26 @@
 		display: block;
 	}
 
+	:global([data-shell='server'] .v-shell) {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	:global([data-shell='server'] .v-shell__sidebar) {
+		display: none;
+	}
+
+	:global([data-shell='server'] .v-shell__topbar) {
+		position: sticky;
+		top: 0;
+		z-index: 30;
+		background:
+			linear-gradient(180deg, rgb(11 17 32 / 94%), rgb(11 17 32 / 82%) 72%, transparent),
+			transparent;
+	}
+
 	@media (max-width: 980px) {
-		.server-shell__menu-button {
-			display: inline-flex;
-		}
-
-		:global([data-shell='server'] .v-shell__sidebar) {
-			display: none;
-		}
-
-		:global([data-shell='server'] .v-shell__topbar) {
-			position: sticky;
-			top: 0;
-			z-index: 30;
-			background:
-				linear-gradient(180deg, rgb(11 17 32 / 94%), rgb(11 17 32 / 82%) 72%, transparent),
-				transparent;
+		:global([data-shell='server'] .v-shell__main) {
+			padding: 14px 14px 20px;
 		}
 	}
 </style>
