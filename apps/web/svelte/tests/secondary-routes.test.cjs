@@ -25,7 +25,8 @@ test('media shell drawer keeps viewer-first navigation and secondary server link
 test('watchlist route uses shared secondary loader and explicit unavailable state', () => {
 	const source = read('src/routes/watchlist/+page.svelte');
 	assert.match(source, /loadSecondaryRouteContext/);
-	assert.match(source, /resolvePreviewMode/);
+	assert.doesNotMatch(source, /resolvePreviewMode/);
+	assert.doesNotMatch(source, /Preview mode/);
 	assert.match(source, /Watchlist is not available yet/);
 });
 

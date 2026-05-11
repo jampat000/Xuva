@@ -9,58 +9,47 @@ function read(file) {
 	return fs.readFileSync(path.join(appRoot, file), 'utf8');
 }
 
-test('movies route is wired to browse API and controls', () => {
+test('movies route uses real browse API and Lorivo controls without product preview mode', () => {
 	const source = read('src/routes/movies/+page.svelte');
 	assert.match(source, /getMovies\(apiClient,\s*500\)/);
 	assert.match(source, /scanMovies\(apiClient,\s*50\)/);
 	assert.match(source, /refreshMetadataBatch\('movie'/);
-	assert.match(source, /<BrowseHeader title="Movies"/);
-	assert.match(source, /Browse your movie library\./);
-	assert.match(source, /Needs Review/);
-	assert.match(source, /Metadata Pending/);
-	assert.match(source, /<MediaShell active="movies"/);
-	assert.match(source, /resolvePreviewMode\(new URL\(window\.location\.href\)\.searchParams\)/);
-	assert.match(source, /if \((previewMode|activePreviewMode) && movieRows\.length === 0\)/);
+	assert.match(source, /Search movies/);
+	assert.match(source, /Scan Movies/);
+	assert.match(source, /Refresh Metadata/);
+	assert.match(source, /<LorivoShell>/);
+	assert.doesNotMatch(source, /resolvePreviewMode/);
+	assert.doesNotMatch(source, /previewMovieRows/);
+	assert.doesNotMatch(source, /preview=1/);
 });
 
-test('tv route is wired to browse API and controls', () => {
+test('tv route uses real browse API and Lorivo controls without product preview mode', () => {
 	const source = read('src/routes/tv/+page.svelte');
 	assert.match(source, /getSeries\(apiClient,\s*500\)/);
 	assert.match(source, /scanTV\(apiClient,\s*50\)/);
 	assert.match(source, /refreshMetadataBatch\('series'/);
-	assert.match(source, /<BrowseHeader title="TV Shows"/);
-	assert.match(source, /Browse your TV library\./);
-	assert.match(source, /Multi-Season/);
-	assert.match(source, /With Episodes/);
-	assert.match(source, /Unknown Year/);
+	assert.match(source, /Search TV/);
+	assert.match(source, /Scan TV/);
+	assert.match(source, /Refresh Metadata/);
 	assert.match(source, /Title/);
 	assert.match(source, /Year/);
 	assert.match(source, /Seasons/);
 	assert.match(source, /Episodes/);
-	assert.match(source, /<MediaShell active="tv"/);
-	assert.match(source, /resolvePreviewMode\(new URL\(window\.location\.href\)\.searchParams\)/);
-	assert.match(source, /if \((previewMode|activePreviewMode) && seriesRows\.length === 0\)/);
+	assert.match(source, /<LorivoShell>/);
+	assert.doesNotMatch(source, /resolvePreviewMode/);
+	assert.doesNotMatch(source, /previewSeriesRows/);
+	assert.doesNotMatch(source, /preview=1/);
 });
 
-test('home route remains media-first and excludes operator telemetry labels', () => {
+test('home route uses backend data and keeps media-first Lorivo sections', () => {
 	const routeSource = read('src/routes/+page.svelte');
-	const componentSource = read('src/lib/components/home/LorivoMediaHome.svelte');
-	assert.match(routeSource, /resolvePreviewMode\(page\.url\.searchParams\)/);
-	assert.match(routeSource, /<LorivoMediaHome/);
-	assert.match(componentSource, /Continue Watching/);
-	assert.match(componentSource, /Recently Added Movies/);
-	assert.match(componentSource, /Recently Added TV/);
-	assert.doesNotMatch(componentSource, /Server Status/);
-	assert.doesNotMatch(componentSource, /Recent Activity/);
-	assert.doesNotMatch(componentSource, /CPU|RAM|Network|Transcoding/);
-	assert.doesNotMatch(routeSource, /<MediaShell active="home"/);
-});
-
-test('home preview fallback remains explicit for 401 responses', () => {
-	const source = read('src/routes/+page.svelte');
-	assert.match(source, /<LorivoMediaHome[\s\S]*previewMode=\{previewMode\}/);
-	assert.doesNotMatch(source, /Add your first library/);
-	assert.doesNotMatch(source, /Open Vyrden Settings/);
-	assert.doesNotMatch(source, /effectivePreviewMode\s*=\s*true/);
-	assert.doesNotMatch(source, /hasTruthyFlagInHref\(/);
+	assert.match(routeSource, /getClientHome\(apiClient,\s*24\)/);
+	assert.match(routeSource, /getPlaybackRecent\(apiClient,\s*12\)/);
+	assert.match(routeSource, /buildHomeViewModel/);
+	assert.match(routeSource, /Continue Watching/);
+	assert.match(routeSource, /Recently Added Movies/);
+	assert.match(routeSource, /Recently Added TV/);
+	assert.doesNotMatch(routeSource, /resolvePreviewMode/);
+	assert.doesNotMatch(routeSource, /LorivoMediaHome/);
+	assert.doesNotMatch(routeSource, /preview=1/);
 });

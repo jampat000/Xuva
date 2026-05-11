@@ -8,8 +8,6 @@
 		type MovieListItem
 	} from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
-	import { resolvePreviewMode } from '$lib/home/model';
-	import { previewMovieRows } from '$lib/preview/media-library';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
@@ -27,7 +25,6 @@
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let searchValue = $state('');
-	let previewMode = $state(false);
 	let movieSort = $state<MovieSort>('title');
 	let movieRows = $state<MovieListItem[]>([]);
 
@@ -35,20 +32,11 @@
 	const visibleCards = $derived.by(() =>
 		filterAndSortMovieCards(movieCards, searchValue, 'all', movieSort)
 	);
-	const renderedCards = $derived.by(() =>
-		previewMode
-			? visibleCards.map((item) => ({
-					...item,
-					meta: item.year > 0 ? `${item.year} - Movie` : 'Movie'
-				}))
-			: visibleCards
-	);
-	const featuredCards = $derived.by(() => renderedCards.slice(0, 5));
+	const renderedCards = $derived.by(() => visibleCards);
 
 	onMount(() => {
 		try {
 			const params = new URL(window.location.href).searchParams;
-			previewMode = resolvePreviewMode(params);
 			const q = params.get('q');
 			if (q) searchValue = q;
 		} catch {
@@ -60,17 +48,9 @@
 	async function loadMovies(): Promise<void> {
 		isLoading = true;
 		loadError = '';
-		const activePreviewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
-		if (activePreviewMode) {
-			previewMode = true;
-			movieRows = previewMovieRows();
-			isLoading = false;
-			return;
-		}
 
 		try {
 			const moviesPayload = await getMovies(apiClient, 500);
-			previewMode = false;
 			movieRows = moviesPayload.movies || [];
 		} catch (error) {
 			loadError = formatLoadError(error);
@@ -159,28 +139,14 @@
 					{formatTitleCount(renderedCards.length)}
 				</p>
 			</div>
-			{#if previewMode && featuredCards.length > 0}
-				<div class="hidden items-end -space-x-8 pr-4 lg:flex">
-					{#each featuredCards as item, index (item.id)}
-						<img
-							src={item.posterUrl}
-							alt=""
-							aria-hidden="true"
-							class="h-36 w-24 rounded-lg object-cover shadow-2xl shadow-black/50 ring-1 ring-white/10 transition"
-							style={`transform: translateY(${index % 2 === 0 ? '0' : '12px'});`}
-						/>
-					{/each}
-				</div>
-			{:else if !previewMode}
-				<div class="flex flex-wrap gap-3">
-					<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
-						{isScanning ? 'Scanning...' : 'Scan Movies'}
-					</LorivoButton>
-					<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
-						{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-					</LorivoButton>
-				</div>
-			{/if}
+			<div class="flex flex-wrap gap-3">
+				<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
+					{isScanning ? 'Scanning...' : 'Scan Movies'}
+				</LorivoButton>
+				<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+					{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
+				</LorivoButton>
+			</div>
 		</div>
 	</section>
 
@@ -231,7 +197,7 @@
 						title={item.title}
 						meta={item.meta}
 						img={item.posterUrl}
-						href={`/movies/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
+						href={`/movies/${encodeURIComponent(item.id)}`}
 					/>
 				{/each}
 			</MediaGrid>

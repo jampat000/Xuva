@@ -20,8 +20,6 @@
 		type PlaybackRouteResponse,
 		type PlaybackStateResponse
 	} from '$lib/api/details';
-	import { resolvePreviewMode } from '$lib/home/model';
-	import { getPreviewMovieFixture } from '$lib/preview/media-library';
 	import DetailHero from '$lib/lorivo/DetailHero.svelte';
 	import DetailSection from '$lib/lorivo/DetailSection.svelte';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
@@ -74,7 +72,6 @@
 	let sourceModels = $state<MovieSourceModel[]>([]);
 	let selectedSourceId = $state('');
 	let routeResolution = $state<Record<string, RouteResolutionState>>({});
-	let previewDetailMode = $state(false);
 
 	const movieID = $derived.by(() => asText(movie?.id) || asText(params.id));
 	const movieTitle = $derived.by(() =>
@@ -124,17 +121,6 @@
 		isLoading = true;
 		loadError = '';
 		routeResolution = {};
-		const previewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
-		const routeMovieId = asText(params.id);
-		previewDetailMode = previewMode && isMoviePreviewId(routeMovieId);
-		if (previewDetailMode) {
-			const preview = buildMovieDetailPreview(routeMovieId);
-			movie = preview.movie;
-			sourceModels = preview.sources;
-			selectedSourceId = preview.sources[0]?.mediaSourceId || '';
-			isLoading = false;
-			return;
-		}
 
 		try {
 			const [moviePayload, mediaSourcesPayload] = await Promise.all([
@@ -277,106 +263,6 @@
 		return 'Movie details could not load.';
 	}
 
-	function isMoviePreviewId(id: string): boolean {
-		return id === 'preview' || id.startsWith('preview-movie-');
-	}
-
-	function buildMovieDetailPreview(id: string): { movie: MovieDetailResponse; sources: MovieSourceModel[] } {
-		const fixture = getPreviewMovieFixture(id);
-		const movieId = fixture.id;
-		const movieTitle = fixture.title;
-		const movie: MovieDetailResponse = {
-			id: movieId,
-			title: movieTitle,
-			year: fixture.year,
-			needsReview: Boolean(fixture.needsReview),
-			versionCount: fixture.versionCount,
-			metadata: {
-				title: movieTitle,
-				year: fixture.year,
-				posterUrl: fixture.posterUrl,
-				backdropUrl: fixture.backdropUrl,
-				overview: fixture.overview
-			},
-			versions: [
-				{
-					mediaSourceId: `${movieId}-src-1080`,
-					qualityLabel: '1080p',
-					edition: 'Theatrical',
-					relPath: `Library/Movies/${movieTitle}`,
-					sizeBytes: 7_600_000_000,
-					modifiedAt: '2026-04-20T13:00:00Z'
-				},
-				{
-					mediaSourceId: `${movieId}-src-4k`,
-					qualityLabel: '2160p',
-					edition: 'Cinema',
-					relPath: `Library/Movies/${movieTitle}`,
-					sizeBytes: 14_200_000_000,
-					modifiedAt: '2026-04-28T08:00:00Z'
-				}
-			].slice(0, Math.max(1, fixture.versionCount))
-		};
-
-		const sources: MovieSourceModel[] = [
-			buildPreviewSource(`${movieId}-src-1080`, '1080p', 'Theatrical', 6_840, 8_500_000, 1920, 1080),
-			buildPreviewSource(`${movieId}-src-4k`, '2160p', 'Cinema', 6_840, 16_500_000, 3840, 2160)
-		].slice(0, Math.max(1, fixture.versionCount));
-		return { movie, sources };
-	}
-
-	function buildPreviewSource(
-		mediaSourceId: string,
-		qualityLabel: string,
-		edition: string,
-		durationSeconds: number,
-		bitrate: number,
-		width: number,
-		height: number
-	): MovieSourceModel {
-		return {
-			mediaSourceId,
-			qualityLabel,
-			edition,
-			relPath: 'Preview source',
-			sizeBytes: Math.round((durationSeconds * bitrate) / 8),
-			modifiedAt: '2026-05-01T09:00:00Z',
-			source: {
-				id: mediaSourceId,
-				kind: 'movie',
-				durationSeconds,
-				bitrate,
-				width,
-				height,
-				sizeBytes: Math.round((durationSeconds * bitrate) / 8),
-				container: 'mkv'
-			},
-			tracks: {
-				audioTracks: [
-					{ codec: 'eac3', language: 'en', channels: 6, default: true },
-					{ codec: 'aac', language: 'es', channels: 2 }
-				],
-				subtitleTracks: [
-					{ codec: 'srt', language: 'en', default: true },
-					{ codec: 'srt', language: 'fr' }
-				]
-			},
-			subtitles: {
-				sidecars: [{ relPath: 'preview/en.srt', format: 'srt', language: 'en' }]
-			},
-			state: { mediaSourceId, watched: false, progressSeconds: 1_420, durationSeconds, percent: 20.8 },
-			decision: {
-				mode: 'directplay',
-				reasonText: 'Browser profile supports this source.',
-				estimatedNetworkBitrate: bitrate,
-				containerAction: 'copy',
-				videoAction: 'copy',
-				audioAction: 'copy',
-				subtitleAction: 'copy'
-			}
-		};
-	}
-
 </script>
 
 <svelte:head>
@@ -423,8 +309,8 @@
 		</DetailHero>
 
 		<DetailSection
-			title={previewDetailMode ? 'Playback Options' : 'Versions'}
-			subtitle={previewDetailMode ? 'Pick how you want to watch this title.' : 'Choose a source and start playback.'}
+			title="Versions"
+			subtitle="Choose a source and start playback."
 		>
 			{#if sourceModels.length === 0}
 				<p class="text-sm leading-relaxed text-white/60">
@@ -453,10 +339,8 @@
 									{watchedLabel(source.state)}
 								</em>
 							</button>
-							{#if !previewDetailMode}
-								<p class="mt-4 text-sm font-semibold text-white">{playbackModeLabel(source.decision)}</p>
-								<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(source.decision)}</p>
-							{/if}
+							<p class="mt-4 text-sm font-semibold text-white">{playbackModeLabel(source.decision)}</p>
+							<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(source.decision)}</p>
 							<div class="mt-5 flex flex-wrap gap-3">
 								<LorivoButton variant="primary" size="sm" href={`/play/${encodeURIComponent(source.mediaSourceId)}`}>
 									{isResumeState(source.state) ? 'Resume' : 'Play'}
@@ -468,41 +352,37 @@
 								>
 									Start Over
 								</LorivoButton>
-								{#if !previewDetailMode}
-									<LorivoButton
-										variant="ghost"
-										size="sm"
-										onclick={() => resolvePlaybackRoute(source.mediaSourceId)}
-										disabled={routeStateFor(source.mediaSourceId).status === 'loading'}
-									>
-										{routeStateFor(source.mediaSourceId).status === 'loading' ? 'Checking Route...' : 'Check Route'}
-									</LorivoButton>
-								{/if}
+								<LorivoButton
+									variant="ghost"
+									size="sm"
+									onclick={() => resolvePlaybackRoute(source.mediaSourceId)}
+									disabled={routeStateFor(source.mediaSourceId).status === 'loading'}
+								>
+									{routeStateFor(source.mediaSourceId).status === 'loading' ? 'Checking Route...' : 'Check Route'}
+								</LorivoButton>
 							</div>
-							{#if !previewDetailMode && routeStateFor(source.mediaSourceId).status === 'loaded' && routeStateFor(source.mediaSourceId).payload}
+							{#if routeStateFor(source.mediaSourceId).status === 'loaded' && routeStateFor(source.mediaSourceId).payload}
 								<p class="mt-4 text-sm text-white/55">
 									Route: {asText(routeStateFor(source.mediaSourceId).payload?.route) || 'pending'} -
 									{asText(routeStateFor(source.mediaSourceId).payload?.status) || 'pending'}
 								</p>
-							{:else if !previewDetailMode && routeStateFor(source.mediaSourceId).status === 'error'}
+							{:else if routeStateFor(source.mediaSourceId).status === 'error'}
 								<p class="mt-4 text-sm text-red-200/80">{routeStateFor(source.mediaSourceId).error}</p>
 							{/if}
-							{#if !previewDetailMode}
-								<dl class="mt-5 grid gap-2 text-sm">
-									<div class="flex items-baseline justify-between gap-3">
-										<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Duration</dt>
-										<dd class="text-right text-white/70">{formatDuration(Number(source.source?.durationSeconds || 0))}</dd>
-									</div>
-									<div class="flex items-baseline justify-between gap-3">
-										<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Bitrate</dt>
-										<dd class="text-right text-white/70">{formatBitrate(Number(source.source?.bitrate || 0))}</dd>
-									</div>
-									<div class="flex items-baseline justify-between gap-3">
-										<dt class="text-xs uppercase tracking-[0.08em] text-white/40">File Size</dt>
-										<dd class="text-right text-white/70">{formatBytes(source.sizeBytes)}</dd>
-									</div>
-								</dl>
-							{/if}
+							<dl class="mt-5 grid gap-2 text-sm">
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Duration</dt>
+									<dd class="text-right text-white/70">{formatDuration(Number(source.source?.durationSeconds || 0))}</dd>
+								</div>
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Bitrate</dt>
+									<dd class="text-right text-white/70">{formatBitrate(Number(source.source?.bitrate || 0))}</dd>
+								</div>
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="text-xs uppercase tracking-[0.08em] text-white/40">File Size</dt>
+									<dd class="text-right text-white/70">{formatBytes(source.sizeBytes)}</dd>
+								</div>
+							</dl>
 						</article>
 					{/each}
 				</div>
@@ -510,56 +390,13 @@
 		</DetailSection>
 
 		<DetailSection
-			title={previewDetailMode ? 'Source Details' : 'Audio and Subtitles'}
-			subtitle={previewDetailMode
-				? 'Technical source details are available when needed.'
-				: 'Technical stream details remain secondary and tied to the selected source.'}
+			title="Audio and Subtitles"
+			subtitle="Technical stream details remain secondary and tied to the selected source."
 		>
 			{#if !selectedSource}
 				<p class="text-sm leading-relaxed text-white/60">Select a source version to view track and subtitle details.</p>
 			{:else}
-				{#if previewDetailMode}
-					<details class="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-						<summary class="cursor-pointer text-sm font-semibold text-white/70">Technical playback details</summary>
-						<div class="mt-4 grid gap-4 lg:grid-cols-2">
-							<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
-								<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
-								{#if (selectedSource.tracks.audioTracks || []).length === 0}
-									<p class="mt-3 text-sm text-white/55">No audio track data is available yet.</p>
-								{:else}
-									<ul class="mt-3 grid gap-2">
-										{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
-											<li class="flex flex-wrap items-center justify-between gap-2 text-sm text-white/70">
-												<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
-												{#if track.default}<span class="rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							</article>
-							<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
-								<h3 class="text-base font-semibold text-white">Subtitle Tracks</h3>
-								{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
-									<p class="mt-3 text-sm text-white/55">No embedded subtitle tracks were detected.</p>
-								{:else}
-									<ul class="mt-3 grid gap-2">
-										{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
-											<li class="flex flex-wrap items-center justify-between gap-2 text-sm text-white/70">
-												<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language)}</strong>
-												<span class="flex gap-2">
-													{#if track.forced}<span class="rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
-													{#if track.default}<span class="rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
-												</span>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-								<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
-							</article>
-						</div>
-					</details>
-				{:else}
-					<div class="grid gap-4 lg:grid-cols-3">
+				<div class="grid gap-4 lg:grid-cols-3">
 						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
 							<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
 							{#if (selectedSource.tracks.audioTracks || []).length === 0}
@@ -605,8 +442,7 @@
 								</div>
 							</dl>
 						</article>
-					</div>
-				{/if}
+				</div>
 			{/if}
 		</DetailSection>
 	{/if}

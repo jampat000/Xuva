@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { resolvePreviewMode } from '$lib/home/model';
 	import {
 		BrowseGrid,
 		BrowseHeader,
@@ -47,9 +46,7 @@
 		loadError = '';
 		unavailable = false;
 		try {
-			const url = new URL(window.location.href);
-			const previewMode = resolvePreviewMode(url.searchParams);
-			const context = await loadSecondaryRouteContext({ previewMode, limit: 60 });
+			const context = await loadSecondaryRouteContext({ limit: 60 });
 			userDisplayName =
 				context.user?.displayName || context.user?.username || userDisplayName;
 			userRole = context.user?.role || 'Local Account';
