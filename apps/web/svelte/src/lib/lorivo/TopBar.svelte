@@ -20,6 +20,13 @@
 
 	onMount(() => {
 		currentPath = window.location.pathname || '/';
+		const handleKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				closeMenu();
+			}
+		};
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 
 	function closeMenu(): void {
@@ -32,7 +39,7 @@
 		<button
 			type="button"
 			data-testid="media-menu-button"
-			class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#111827]/80 text-white/85 shadow-lg shadow-black/20 transition hover:border-white/25 hover:bg-white/10 md:hidden"
+			class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#111827]/80 text-white/85 shadow-lg shadow-black/20 transition hover:border-white/25 hover:bg-white/10"
 			aria-label={menuOpen ? 'Close menu' : 'Open menu'}
 			aria-expanded={menuOpen}
 			onclick={() => (menuOpen = !menuOpen)}
@@ -46,21 +53,6 @@
 		<a href="/" class="shrink-0" aria-label="Go to Home" onclick={closeMenu}>
 			<Logo />
 		</a>
-		<nav class="hidden items-center gap-1 md:flex" aria-label="Media navigation">
-			{#each mediaNavItems as item (item.id)}
-				<a
-					href={item.href}
-					aria-current={activeRoute === item.id ? 'page' : undefined}
-					class={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-						activeRoute === item.id
-							? 'bg-white/10 text-white shadow-inner shadow-black/20'
-							: 'text-white/58 hover:bg-white/[0.06] hover:text-white'
-					}`}
-				>
-					{item.label}
-				</a>
-			{/each}
-		</nav>
 	</div>
 	<div class="flex max-w-2xl flex-1 justify-center">
 		<div class="relative w-full max-w-[640px]">
@@ -92,12 +84,12 @@
 {#if menuOpen}
 	<button
 		type="button"
-		class="fixed inset-0 z-40 bg-black/55 md:hidden"
+		class="fixed inset-0 z-40 bg-black/55"
 		aria-label="Close menu"
 		onclick={closeMenu}
 	></button>
 	<aside
-		class="fixed left-3 right-3 top-3 z-50 rounded-2xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/45 md:hidden"
+		class="fixed left-3 top-3 z-50 w-[min(320px,calc(100vw-24px))] rounded-2xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/45"
 		data-testid="media-menu-drawer"
 	>
 		<div class="mb-4 flex items-center justify-between gap-3">

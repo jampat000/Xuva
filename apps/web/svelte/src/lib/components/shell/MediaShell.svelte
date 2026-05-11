@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoSearch from '../ui/LorivoSearch.svelte';
@@ -52,6 +53,16 @@
 	function openProfileMenu(): void {
 		menuOpen = true;
 	}
+
+	onMount(() => {
+		const handleKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				closeMenu();
+			}
+		};
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
+	});
 </script>
 
 <div class="media-shell" data-shell="media">
