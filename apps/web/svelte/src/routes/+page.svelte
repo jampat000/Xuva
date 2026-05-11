@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { getMovies, getSeries, type MovieListItem, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
-	import { getClientHome, getLibraries, getPlaybackRecent } from '$lib/api/home';
+	import {
+		getClientHome,
+		getLibraries,
+		getPlaybackRecent,
+		type ClientHomeItem,
+		type ClientHomeResponse,
+		type LibrariesResponse,
+		type PlaybackRecentResponse
+	} from '$lib/api/home';
 	import {
 		buildHomeViewModel,
 		createEmptyHomeViewModel,
@@ -16,7 +25,7 @@
 	import TopBar from '$lib/lorivo/TopBar.svelte';
 
 	let isLoading = $state(true);
-	let loadError = $state('');
+	let loadNotice = $state('');
 	let model = $state<HomeViewModel>(createEmptyHomeViewModel());
 
 	const hero = $derived(model.hero);
@@ -32,13 +41,9 @@
 
 	async function loadHome(): Promise<void> {
 		isLoading = true;
-		loadError = '';
+		loadNotice = '';
 		try {
-			const [homePayload, playbackRecentPayload, librariesPayload] = await Promise.all([
-				getClientHome(apiClient, 24),
-				getPlaybackRecent(apiClient, 12),
-				getLibraries(apiClient)
-			]);
+			const { homePayload, playbackRecentPayload, librariesPayload } = await loadHomeData();
 			model = buildHomeViewModel({
 				homePayload,
 				playbackRecentPayload,
@@ -48,10 +53,113 @@
 			});
 		} catch (error) {
 			model = createEmptyHomeViewModel();
-			loadError = formatLoadError(error);
+			loadNotice = formatLoadError(error);
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	async function loadHomeData(): Promise<{
+		homePayload: ClientHomeResponse;
+		playbackRecentPayload: PlaybackRecentResponse;
+		librariesPayload: LibrariesResponse;
+	}> {
+		const [homeResult, playbackRecentResult, librariesResult] = await Promise.allSettled([
+			getClientHome(apiClient, 24),
+			getPlaybackRecent(apiClient, 12),
+			getLibraries(apiClient)
+		]);
+
+		const playbackRecentPayload =
+			playbackRecentResult.status === 'fulfilled' ? playbackRecentResult.value : { recent: [] };
+		const librariesPayload =
+			librariesResult.status === 'fulfilled' ? librariesResult.value : { libraries: [] };
+
+		if (homeResult.status === 'fulfilled') {
+			return {
+				homePayload: homeResult.value,
+				playbackRecentPayload,
+				librariesPayload
+			};
+		}
+
+		const fallbackHomePayload = await loadCatalogHomeFallback();
+		if (fallbackHomePayload) {
+			return {
+				homePayload: fallbackHomePayload,
+				playbackRecentPayload,
+				librariesPayload
+			};
+		}
+
+		throw homeResult.reason;
+	}
+
+	async function loadCatalogHomeFallback(): Promise<ClientHomeResponse | null> {
+		const [moviesResult, seriesResult] = await Promise.allSettled([
+			getMovies(apiClient, 24),
+			getSeries(apiClient, 24)
+		]);
+
+		const movies = moviesResult.status === 'fulfilled' ? moviesResult.value.movies || [] : [];
+		const series = seriesResult.status === 'fulfilled' ? seriesResult.value.series || [] : [];
+		if (movies.length === 0 && series.length === 0) {
+			if (moviesResult.status === 'rejected' && seriesResult.status === 'rejected') return null;
+		}
+
+		const movieItems = movies.map(movieToHomeItem).filter(hasHomeIdentity);
+		const seriesItems = series.map(seriesToHomeItem).filter(hasHomeIdentity);
+		const recentlyAddedItems = [...movieItems, ...seriesItems].slice(0, 24);
+
+		return {
+			profile: 'lorivo',
+			hero: movieItems[0] || seriesItems[0],
+			rows: [
+				{ id: 'continue', title: 'Continue Watching', items: [] },
+				{ id: 'movies', title: 'Movies', items: movieItems },
+				{ id: 'tv', title: 'TV Shows', items: seriesItems },
+				{ id: 'recently-added', title: 'Recently Added', items: recentlyAddedItems }
+			]
+		};
+	}
+
+	function movieToHomeItem(item: MovieListItem): ClientHomeItem {
+		const id = asText(item.id);
+		const title = asText(item.metadata?.title) || asText(item.title) || 'Untitled';
+		const year = Number(item.metadata?.year || item.year || 0);
+		return {
+			id,
+			kind: 'movie',
+			title,
+			subtitle: year > 0 ? String(year) : '',
+			description: asText(item.metadata?.overview),
+			posterUrl: asText(item.metadata?.posterUrl),
+			backdropUrl: asText(item.metadata?.backdropUrl)
+		};
+	}
+
+	function seriesToHomeItem(item: SeriesListItem): ClientHomeItem {
+		const id = asText(item.id);
+		const title = asText(item.metadata?.title) || asText(item.title) || 'Untitled';
+		const seasonCount = Number(item.seasonCount || 0);
+		const episodeCount = Number(item.episodeCount || 0);
+		const subtitle =
+			seasonCount > 0 || episodeCount > 0
+				? `${seasonCount} season${seasonCount === 1 ? '' : 's'} - ${episodeCount} episode${episodeCount === 1 ? '' : 's'}`
+				: '';
+		return {
+			id,
+			kind: 'series',
+			title,
+			subtitle,
+			description: asText(item.metadata?.overview),
+			posterUrl: asText(item.metadata?.posterUrl),
+			backdropUrl: asText(item.metadata?.backdropUrl)
+		};
+	}
+
+	function hasHomeIdentity(item: ClientHomeItem): boolean {
+		return Boolean(asText(item.id) || asText(item.title));
 	}
 
 	function toContinueCard(item: HomeDisplayItem): {
@@ -100,6 +208,10 @@
 		if (error instanceof Error) return error.message;
 		return 'Home could not load.';
 	}
+
+	function asText(value: unknown): string {
+		return String(value ?? '').trim();
+	}
 </script>
 
 <svelte:head>
@@ -111,18 +223,6 @@
 	<TopBar />
 	{#if isLoading}
 		<LorivoPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
-	{:else if loadError}
-		<LorivoPanel title="Home could not load" subtitle={loadError}>
-			<div class="flex flex-wrap gap-3">
-				<button
-					type="button"
-					class="inline-flex min-h-11 items-center rounded-xl !bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#7C5CFF]/30 transition hover:!bg-[#6a4af0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]"
-					onclick={loadHome}
-				>
-					Retry
-				</button>
-			</div>
-		</LorivoPanel>
 	{:else}
 		<Hero
 			heroPoster={hero.posterUrl}
@@ -156,7 +256,19 @@
 				{/each}
 			</Row>
 		{/if}
-		{#if model.trueEmpty}
+		{#if loadNotice}
+			<LorivoPanel title="Media library unavailable" subtitle={loadNotice}>
+				<div class="flex flex-wrap gap-3">
+					<button
+						type="button"
+						class="inline-flex min-h-11 items-center rounded-xl !bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#7C5CFF]/30 transition hover:!bg-[#6a4af0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]"
+						onclick={loadHome}
+					>
+						Retry
+					</button>
+				</div>
+			</LorivoPanel>
+		{:else if model.trueEmpty}
 			<LorivoPanel
 				title="No media library yet"
 				subtitle="Add a Movies or TV folder, then scan your library to populate Lorivo."
