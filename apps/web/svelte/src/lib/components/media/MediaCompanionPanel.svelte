@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import VyrdenSurface from '../ui/VyrdenSurface.svelte';
+	import LorivoSurface from '../ui/LorivoSurface.svelte';
 
 	let {
 		title,
@@ -15,7 +15,7 @@
 	}>();
 </script>
 
-<VyrdenSurface tone="elevated">
+<LorivoSurface tone="elevated">
 	<section class="media-companion">
 		<header>
 			<h3>{title}</h3>
@@ -27,19 +27,19 @@
 			{@render children?.()}
 		</div>
 	</section>
-</VyrdenSurface>
+</LorivoSurface>
 
 <style>
 	.media-companion {
 		display: grid;
-		gap: var(--vyrden-space-3);
+		gap: var(--lorivo-space-3);
 	}
 
 	header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 
 	h3 {
@@ -49,13 +49,13 @@
 	}
 
 	a {
-		color: var(--vyrden-color-text-muted);
+		color: var(--lorivo-color-text-muted);
 		font-size: 0.82rem;
 		text-decoration: none;
 	}
 
 	.media-companion__body {
 		display: grid;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 </style>

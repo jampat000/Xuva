@@ -22,27 +22,27 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 
 	li a {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		min-height: var(--vyrden-control-height-md);
-		padding: 0 var(--vyrden-space-3);
-		border: 1px solid var(--vyrden-color-border-soft);
-		border-radius: var(--vyrden-radius-md);
+		min-height: var(--lorivo-control-height-md);
+		padding: 0 var(--lorivo-space-3);
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
 		background: rgb(255 246 229 / 3%);
 		font-size: 0.88rem;
 		font-weight: 630;
-		color: var(--vyrden-color-text);
+		color: var(--lorivo-color-text);
 		text-decoration: none;
 	}
 
 	li a::after {
 		content: '>';
-		color: var(--vyrden-color-text-soft);
+		color: var(--lorivo-color-text-soft);
 	}
 
 	li a:hover {

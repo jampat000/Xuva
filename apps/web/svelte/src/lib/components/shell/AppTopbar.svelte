@@ -1,5 +1,5 @@
 <script lang="ts">
-	import VyrdenSearch from '../ui/VyrdenSearch.svelte';
+	import LorivoSearch from '../ui/LorivoSearch.svelte';
 
 	let {
 		searchValue = $bindable(''),
@@ -14,7 +14,7 @@
 
 <div class="home-topbar">
 	<div class="home-topbar__main">
-		<VyrdenSearch bind:value={searchValue} />
+		<LorivoSearch bind:value={searchValue} />
 	</div>
 	<div class="home-topbar__actions">
 		<button class="profile-button" type="button" aria-label="Open profile settings" onclick={onProfileClick}>
@@ -65,7 +65,7 @@
 		border: 1px solid rgb(255 255 255 / 9%);
 		border-radius: 999px;
 		background: rgb(28 29 27 / 74%);
-		color: color-mix(in srgb, var(--vyrden-color-text) 94%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 94%, transparent);
 		font-weight: 700;
 		line-height: 1;
 		box-shadow:

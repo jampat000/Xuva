@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import AppTopbar from './AppTopbar.svelte';
 	import ServerSidebar from './ServerSidebar.svelte';
-	import VyrdenShell from './VyrdenShell.svelte';
+	import LorivoShell from './LorivoShell.svelte';
 
 	let {
 		active = 'admin',
@@ -22,7 +22,7 @@
 </script>
 
 <div data-shell="server">
-	<VyrdenShell density="default">
+	<LorivoShell density="default">
 		{#snippet sidebar()}
 			<ServerSidebar {active} {userDisplayName} {userRole} />
 		{/snippet}
@@ -32,5 +32,5 @@
 		{/snippet}
 
 		{@render children?.()}
-	</VyrdenShell>
+	</LorivoShell>
 </div>

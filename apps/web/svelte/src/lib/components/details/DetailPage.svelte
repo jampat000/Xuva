@@ -12,7 +12,7 @@
 	.detail-page {
 		display: grid;
 		gap: 18px;
-		padding-bottom: var(--vyrden-space-8);
+		padding-bottom: var(--lorivo-space-8);
 		min-width: 0;
 	}
 </style>

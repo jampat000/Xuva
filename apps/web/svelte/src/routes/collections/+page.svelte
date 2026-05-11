@@ -8,9 +8,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
+		LorivoButton,
+		LorivoEmptyState,
+		LorivoPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -97,17 +97,17 @@
 <MediaShell active="collections" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<VyrdenPanel
+			<LorivoPanel
 				title="Loading Collections"
 				subtitle="Checking existing backend APIs for collection data."
 			/>
 		{:else if loadError}
-			<VyrdenPanel title="Collections could not load" subtitle={loadError}>
+			<LorivoPanel title="Collections could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadCollections}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
+					<LorivoButton variant="secondary" onclick={loadCollections}>Retry</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
 				</div>
-			</VyrdenPanel>
+			</LorivoPanel>
 		{:else}
 			<BrowseHeader title="Collections" subtitle="Curated groups from your library.">
 				{#snippet chips()}
@@ -121,21 +121,21 @@
 			<BrowseToolbar />
 
 			{#if unavailable}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="Collections are not available yet"
 					message="The current backend APIs do not expose a dedicated collections feed for this route yet."
 				>
 					{#snippet action()}
-						<VyrdenButton variant="secondary" href="/">Back to Home</VyrdenButton>
+						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
 					{/snippet}
-				</VyrdenEmptyState>
+				</LorivoEmptyState>
 			{:else if cards.length === 0}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="No collections found"
 					message="Collections are enabled, but no collection items are currently available."
 				/>
 			{:else if visibleCards.length === 0}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="No collections match"
 					message="Try changing search terms to find a collection."
 				/>
@@ -159,6 +159,6 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 </style>
