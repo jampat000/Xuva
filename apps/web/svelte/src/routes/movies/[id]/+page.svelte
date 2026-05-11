@@ -21,7 +21,7 @@
 		type PlaybackStateResponse
 	} from '$lib/api/details';
 	import { resolvePreviewMode } from '$lib/home/model';
-	import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
+	import { getPreviewMovieFixture } from '$lib/preview/media-library';
 	import DetailHero from '$lib/lorivo/DetailHero.svelte';
 	import DetailSection from '$lib/lorivo/DetailSection.svelte';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
@@ -282,28 +282,28 @@
 	}
 
 	function buildMovieDetailPreview(id: string): { movie: MovieDetailResponse; sources: MovieSourceModel[] } {
-		const movieId = id === 'preview' ? 'movie-ember-harbor' : id;
-		const movieTitle = id === 'preview' ? 'Ember Harbor' : cleanIdTitle(id);
+		const fixture = getPreviewMovieFixture(id);
+		const movieId = fixture.id;
+		const movieTitle = fixture.title;
 		const movie: MovieDetailResponse = {
 			id: movieId,
 			title: movieTitle,
-			year: 2025,
-			needsReview: false,
-			versionCount: 2,
+			year: fixture.year,
+			needsReview: Boolean(fixture.needsReview),
+			versionCount: fixture.versionCount,
 			metadata: {
 				title: movieTitle,
-				year: 2025,
-				posterUrl: previewPoster(movieTitle),
-				backdropUrl: previewBackdrop(movieTitle),
-				overview:
-					'When long-range navigation lights flicker across the bay, one captain is forced to choose between silence and a broadcast that could reshape the coast.'
+				year: fixture.year,
+				posterUrl: fixture.posterUrl,
+				backdropUrl: fixture.backdropUrl,
+				overview: fixture.overview
 			},
 			versions: [
 				{
 					mediaSourceId: `${movieId}-src-1080`,
 					qualityLabel: '1080p',
 					edition: 'Theatrical',
-					relPath: 'Library/Movies/Feature Film Preview',
+					relPath: `Library/Movies/${movieTitle}`,
 					sizeBytes: 7_600_000_000,
 					modifiedAt: '2026-04-20T13:00:00Z'
 				},
@@ -311,17 +311,17 @@
 					mediaSourceId: `${movieId}-src-4k`,
 					qualityLabel: '2160p',
 					edition: 'Cinema',
-					relPath: 'Library/Movies/Feature Film Preview',
+					relPath: `Library/Movies/${movieTitle}`,
 					sizeBytes: 14_200_000_000,
 					modifiedAt: '2026-04-28T08:00:00Z'
 				}
-			]
+			].slice(0, Math.max(1, fixture.versionCount))
 		};
 
 		const sources: MovieSourceModel[] = [
 			buildPreviewSource(`${movieId}-src-1080`, '1080p', 'Theatrical', 6_840, 8_500_000, 1920, 1080),
 			buildPreviewSource(`${movieId}-src-4k`, '2160p', 'Cinema', 6_840, 16_500_000, 3840, 2160)
-		];
+		].slice(0, Math.max(1, fixture.versionCount));
 		return { movie, sources };
 	}
 
@@ -377,11 +377,6 @@
 		};
 	}
 
-	function cleanIdTitle(value: string): string {
-		const raw = asText(value).replace(/^preview-movie-/, '').replace(/-/g, ' ');
-		if (!raw) return 'Movie Preview';
-		return raw.replace(/\b\w/g, (letter) => letter.toUpperCase());
-	}
 </script>
 
 <svelte:head>

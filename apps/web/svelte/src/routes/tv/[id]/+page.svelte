@@ -20,7 +20,7 @@
 		type SeriesDetailResponse
 	} from '$lib/api/details';
 	import { resolvePreviewMode } from '$lib/home/model';
-	import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
+	import { getPreviewSeriesFixture } from '$lib/preview/media-library';
 	import DetailHero from '$lib/lorivo/DetailHero.svelte';
 	import DetailSection from '$lib/lorivo/DetailSection.svelte';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
@@ -358,8 +358,9 @@
 		seasons: SeasonModel[];
 		firstEpisodeId: string;
 	} {
-		const seriesId = id === 'preview' ? 'series-violet-signal' : id;
-		const title = id === 'preview' ? 'Violet Signal' : cleanIdTitle(id, 'preview-tv-');
+		const fixture = getPreviewSeriesFixture(id);
+		const seriesId = fixture.id;
+		const title = fixture.title;
 		const episodesSeason1: EpisodeItemModel[] = [
 			previewEpisode(seriesId, 1, 1, 'Pilot', true),
 			previewEpisode(seriesId, 1, 2, 'Second Signal', false),
@@ -376,15 +377,14 @@
 		const series: SeriesDetailResponse = {
 			id: seriesId,
 			title,
-			seasonCount: 2,
-			episodeCount: 5,
+			seasonCount: fixture.seasonCount,
+			episodeCount: fixture.episodeCount,
 			metadata: {
 				title,
-				year: 2025,
-				posterUrl: previewPoster(title),
-				backdropUrl: previewBackdrop(title),
-				overview:
-					'A late-night observatory feed reveals repeating anomalies, and a fragmented crew races to decode what returns with every tide.'
+				year: fixture.year,
+				posterUrl: fixture.posterUrl,
+				backdropUrl: fixture.backdropUrl,
+				overview: fixture.overview
 			}
 		};
 		return { series, seasons, firstEpisodeId: episodesSeason1[0]?.episodeId || '' };
@@ -415,11 +415,6 @@
 		};
 	}
 
-	function cleanIdTitle(value: string, prefix: string): string {
-		const raw = asText(value).replace(prefix, '').replace(/-/g, ' ');
-		if (!raw) return 'TV Preview';
-		return raw.replace(/\b\w/g, (letter) => letter.toUpperCase());
-	}
 </script>
 
 <svelte:head>
