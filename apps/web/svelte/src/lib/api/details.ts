@@ -1,0 +1,268 @@
+import { apiClient, type ApiClient } from './client';
+import type { MetadataRecord } from './browse';
+
+export interface MovieVersion {
+	mediaSourceId?: string;
+	path?: string;
+	relPath?: string;
+	edition?: string;
+	qualityLabel?: string;
+	sizeBytes?: number;
+	modifiedAt?: string;
+}
+
+export interface MovieDetailResponse {
+	id?: string;
+	title?: string;
+	year?: number;
+	sortTitle?: string;
+	needsReview?: boolean;
+	versionCount?: number;
+	metadata?: MetadataRecord;
+	versions?: MovieVersion[];
+}
+
+export interface EpisodeBrief {
+	id?: string;
+	seasonNumber?: number;
+	episodeNumber?: number;
+	episodeEnd?: number;
+	title?: string;
+	needsReview?: boolean;
+	versionCount?: number;
+	versions?: MovieVersion[];
+}
+
+export interface SeasonDetail {
+	id?: string;
+	seasonNumber?: number;
+	episodes?: EpisodeBrief[];
+}
+
+export interface SeriesDetailResponse {
+	id?: string;
+	title?: string;
+	sortTitle?: string;
+	seasonCount?: number;
+	episodeCount?: number;
+	metadata?: MetadataRecord;
+	seasons?: SeasonDetail[];
+}
+
+export interface MediaSourceItem {
+	id?: string;
+	libraryId?: string;
+	kind?: string;
+	path?: string;
+	relPath?: string;
+	name?: string;
+	extension?: string;
+	sizeBytes?: number;
+	modifiedAt?: string;
+	probed?: boolean;
+	container?: string;
+	durationSeconds?: number;
+	bitrate?: number;
+	videoCodec?: string;
+	width?: number;
+	height?: number;
+	audioStreams?: number;
+	subtitleStreams?: number;
+}
+
+export interface MediaSourcesResponse {
+	mediaSources?: MediaSourceItem[];
+}
+
+export interface ProbeTrack {
+	index?: number;
+	codec?: string;
+	language?: string;
+	title?: string;
+	channels?: number;
+	forced?: boolean;
+	default?: boolean;
+}
+
+export interface MediaSourceTracksResponse {
+	audioTracks?: ProbeTrack[];
+	subtitleTracks?: ProbeTrack[];
+}
+
+export interface SubtitleSidecar {
+	path?: string;
+	relPath?: string;
+	format?: string;
+	language?: string;
+	forced?: boolean;
+	hearingImpaired?: boolean;
+	requiresVideoBurn?: boolean;
+}
+
+export interface MediaSourceSubtitlesResponse {
+	sidecars?: SubtitleSidecar[];
+}
+
+export interface PlaybackStateResponse {
+	userId?: string;
+	mediaSourceId?: string;
+	watched?: boolean;
+	progressSeconds?: number;
+	durationSeconds?: number;
+	percent?: number;
+	lastPlayedAt?: string;
+	updatedAt?: string;
+}
+
+export interface PlaybackDecisionResponse {
+	mode?: string;
+	reason?: string;
+	reasonCode?: string;
+	reasonText?: string;
+	decisionTraceId?: string;
+	mediaSourceId?: string;
+	clientProfile?: string;
+	containerAction?: string;
+	videoAction?: string;
+	audioAction?: string;
+	subtitleAction?: string;
+	subtitleClass?: string;
+	estimatedCpuCost?: string;
+	estimatedGpuCost?: string;
+	estimatedNetworkBitrate?: number;
+	selected?: Record<string, string>;
+	suggestedFixes?: string[];
+}
+
+export interface PlaybackRouteResponse {
+	route?: string;
+	status?: string;
+	url?: string;
+	manifestUrl?: string;
+	protocol?: string;
+	policy?: string;
+	decision?: PlaybackDecisionResponse;
+	fallbackOptions?: string[];
+}
+
+export interface PlaybackQueryOptions {
+	clientProfile?: string;
+	routeType?: string;
+	maxNetworkBitrate?: number;
+	audioTrackIndex?: number;
+	audioCodec?: string;
+	audioChannels?: number;
+	subtitleTrackIndex?: number;
+	subtitleCodec?: string;
+	subtitleMode?: string;
+	subtitleTrackActive?: boolean;
+	supportsAdaptive?: boolean;
+}
+
+export function getMovieDetail(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MovieDetailResponse> {
+	return client.request<MovieDetailResponse>(`/api/movies/${encodeURIComponent(id)}`);
+}
+
+export function getSeriesDetail(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<SeriesDetailResponse> {
+	return client.request<SeriesDetailResponse>(`/api/series/${encodeURIComponent(id)}`);
+}
+
+export function listMediaSources(
+	client: ApiClient = apiClient,
+	limit = 500
+): Promise<MediaSourcesResponse> {
+	return client.request<MediaSourcesResponse>(`/api/media-sources?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function getMediaSourceDetail(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MediaSourceItem> {
+	return client.request<MediaSourceItem>(`/api/media-sources/${encodeURIComponent(id)}`);
+}
+
+export function getMediaSourceTracks(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MediaSourceTracksResponse> {
+	return client.request<MediaSourceTracksResponse>(`/api/media-sources/${encodeURIComponent(id)}/tracks`);
+}
+
+export function getMediaSourceSubtitles(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MediaSourceSubtitlesResponse> {
+	return client.request<MediaSourceSubtitlesResponse>(
+		`/api/media-sources/${encodeURIComponent(id)}/subtitles`
+	);
+}
+
+export function getPlaybackState(
+	mediaSourceId: string,
+	client: ApiClient = apiClient
+): Promise<PlaybackStateResponse> {
+	return client.request<PlaybackStateResponse>(
+		`/api/playback/state/${encodeURIComponent(mediaSourceId)}`
+	);
+}
+
+export function getPlaybackDecision(
+	mediaSourceId: string,
+	options: PlaybackQueryOptions = {},
+	client: ApiClient = apiClient
+): Promise<PlaybackDecisionResponse> {
+	const query = playbackQueryString(mediaSourceId, options);
+	return client.request<PlaybackDecisionResponse>(`/api/playback/decision?${query}`);
+}
+
+export function getPlaybackRoute(
+	mediaSourceId: string,
+	options: PlaybackQueryOptions = {},
+	client: ApiClient = apiClient
+): Promise<PlaybackRouteResponse> {
+	const query = playbackQueryString(mediaSourceId, options);
+	return client.request<PlaybackRouteResponse>(`/api/playback/route?${query}`);
+}
+
+function playbackQueryString(mediaSourceId: string, options: PlaybackQueryOptions): string {
+	const params = new URLSearchParams();
+	params.set('mediaSourceId', mediaSourceId);
+	const clientProfile = asText(options.clientProfile) || 'web';
+	params.set('clientProfile', clientProfile);
+	if (asText(options.routeType)) params.set('routeType', asText(options.routeType));
+	if (Number.isFinite(options.maxNetworkBitrate)) {
+		params.set('maxNetworkBitrate', String(Math.max(0, Math.round(Number(options.maxNetworkBitrate)))));
+	}
+	if (Number.isFinite(options.audioTrackIndex)) {
+		params.set('audioTrackIndex', String(Math.max(0, Math.round(Number(options.audioTrackIndex)))));
+	}
+	if (asText(options.audioCodec)) params.set('audioCodec', asText(options.audioCodec));
+	if (Number.isFinite(options.audioChannels)) {
+		params.set('audioChannels', String(Math.max(0, Math.round(Number(options.audioChannels)))));
+	}
+	if (Number.isFinite(options.subtitleTrackIndex)) {
+		params.set(
+			'subtitleTrackIndex',
+			String(Math.max(0, Math.round(Number(options.subtitleTrackIndex))))
+		);
+	}
+	if (asText(options.subtitleCodec)) params.set('subtitleCodec', asText(options.subtitleCodec));
+	if (asText(options.subtitleMode)) params.set('subtitleMode', asText(options.subtitleMode));
+	if (typeof options.subtitleTrackActive === 'boolean') {
+		params.set('subtitleTrackActive', options.subtitleTrackActive ? 'true' : 'false');
+	}
+	if (typeof options.supportsAdaptive === 'boolean') {
+		params.set('supportsAdaptive', options.supportsAdaptive ? 'true' : 'false');
+	}
+	return params.toString();
+}
+
+function asText(value: unknown): string {
+	return String(value ?? '').trim();
+}
