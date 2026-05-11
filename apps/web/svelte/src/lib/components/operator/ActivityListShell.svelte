@@ -29,14 +29,14 @@
 <style>
 	.activity-shell {
 		display: grid;
-		gap: var(--vyrden-space-3);
+		gap: var(--lorivo-space-3);
 	}
 
 	header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 
 	h3 {
@@ -47,11 +47,11 @@
 
 	a {
 		font-size: 0.82rem;
-		color: var(--vyrden-color-text-muted);
+		color: var(--lorivo-color-text-muted);
 	}
 
 	.activity-shell__body {
 		display: grid;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 </style>

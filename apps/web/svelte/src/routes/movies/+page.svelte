@@ -20,9 +20,9 @@ import { previewPoster } from '$lib/preview/artwork';
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
+		LorivoButton,
+		LorivoEmptyState,
+		LorivoPanel
 	} from '$lib/components';
 	import {
 		buildMovieCards,
@@ -282,14 +282,14 @@ import { previewPoster } from '$lib/preview/artwork';
 <MediaShell active="movies" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<VyrdenPanel title="Loading Movies" subtitle="Fetching your movie library from the media APIs." />
+			<LorivoPanel title="Loading Movies" subtitle="Fetching your movie library from the media APIs." />
 		{:else if loadError}
-			<VyrdenPanel title="Movies could not load" subtitle={loadError}>
+			<LorivoPanel title="Movies could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadMovies}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
+					<LorivoButton variant="secondary" onclick={loadMovies}>Retry</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
 				</div>
-			</VyrdenPanel>
+			</LorivoPanel>
 		{:else}
 			<BrowseHeader title="Movies" subtitle="Browse your movie library.">
 				{#snippet chips()}
@@ -367,23 +367,23 @@ import { previewPoster } from '$lib/preview/artwork';
 				{/snippet}
 				{#snippet actions()}
 					{#if !previewMode}
-						<VyrdenButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
+						<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
 							{isScanning ? 'Scanning...' : 'Scan Movies'}
-						</VyrdenButton>
-						<VyrdenButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+						</LorivoButton>
+						<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
 							{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-						</VyrdenButton>
+						</LorivoButton>
 					{/if}
 				{/snippet}
 			</BrowseToolbar>
 
 			{#if movieCards.length === 0}
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="No movies found"
 					message="Try adding a movie library or running a scan."
 				/>
 			{:else if renderedCards.length === 0}
-				<VyrdenEmptyState title="No movies found" message="Try changing filters or search terms." />
+				<LorivoEmptyState title="No movies found" message="Try changing filters or search terms." />
 			{:else}
 				<BrowseGrid>
 					{#each renderedCards as item (item.id)}
@@ -404,6 +404,6 @@ import { previewPoster } from '$lib/preview/artwork';
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 </style>

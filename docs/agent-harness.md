@@ -1,6 +1,6 @@
 # Agent Harness
 
-Vyrden should be optimized for agent-assisted development. The goal is not process for its own sake; the goal is to make product intent, architecture, UI behavior, tests, logs, and quality constraints directly legible from the repository.
+Lorivo should be optimized for agent-assisted development. The goal is not process for its own sake; the goal is to make product intent, architecture, UI behavior, tests, logs, and quality constraints directly legible from the repository.
 
 This alignment is based on the harness-engineering model described by OpenAI: humans steer, agents execute, repository knowledge is the source of truth, and mechanical checks enforce architecture and taste.
 

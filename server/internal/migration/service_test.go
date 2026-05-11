@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/events"
 )
 
 func TestDryRunIdentifiesConflictsBeforeChanges(t *testing.T) {

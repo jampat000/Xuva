@@ -22,7 +22,7 @@ test('movie details route is wired to existing movie/media/playback APIs', () =>
 	assert.match(source, /\/play\/\$\{encodeURIComponent\(source\.mediaSourceId\)\}/);
 	assert.match(source, /previewMode && isMoviePreviewId\(routeMovieId\)/);
 	assert.match(source, /buildMovieDetailPreview/);
-	assert.doesNotMatch(source, /arrive in Phase 5/i);
+	assert.doesNotMatch(source, /arrive in a future milestone/i);
 });
 
 test('tv details route is wired to existing series/media/playback APIs', () => {
@@ -37,5 +37,5 @@ test('tv details route is wired to existing series/media/playback APIs', () => {
 	assert.match(source, /\/play\/\$\{encodeURIComponent\(episode\.mediaSourceId\)\}/);
 	assert.match(source, /previewMode && isSeriesPreviewId\(routeSeriesId\)/);
 	assert.match(source, /buildSeriesDetailPreview/);
-	assert.doesNotMatch(source, /arrive in Phase 5/i);
+	assert.doesNotMatch(source, /arrive in a future milestone/i);
 });

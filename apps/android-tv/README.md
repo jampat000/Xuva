@@ -1,4 +1,4 @@
-# Vyrden Android TV
+# Lorivo Android TV
 
 Native Android TV client.
 

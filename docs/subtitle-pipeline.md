@@ -1,12 +1,12 @@
 # Subtitle Pipeline
 
-Vyrden treats subtitles as part of the playback route, not as a hidden afterthought.
+Lorivo treats subtitles as part of the playback route, not as a hidden afterthought.
 
 ## Subtitle Classes
 
 - `text`: SRT, SubRip, WebVTT, ASS/SSA, mov_text.
 - `image`: PGS, DVD subtitle, DVB subtitle.
-- `unknown`: formats that require inspection before Vyrden can safely choose a route.
+- `unknown`: formats that require inspection before Lorivo can safely choose a route.
 
 ## Compatibility Rules
 
@@ -18,8 +18,8 @@ Text subtitles should avoid video conversion whenever possible:
 
 Image subtitles are burn-in only as a last resort:
 
-- if the client profile supports the image subtitle, Vyrden can keep video unchanged.
-- if the client profile does not support it, Vyrden returns `subtitle_burn_required` with high server impact.
+- if the client profile supports the image subtitle, Lorivo can keep video unchanged.
+- if the client profile does not support it, Lorivo returns `subtitle_burn_required` with high server impact.
 
 ## Forecast Contract
 
@@ -35,7 +35,7 @@ Playback decisions include subtitle-specific fields:
     "codec": "ass",
     "serverLoad": "low",
     "output": "webvtt sidecar",
-    "userMessage": "Vyrden can convert this text subtitle to WebVTT without video conversion."
+    "userMessage": "Lorivo can convert this text subtitle to WebVTT without video conversion."
   }
 }
 ```

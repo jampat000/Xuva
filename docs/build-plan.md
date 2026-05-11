@@ -2,7 +2,7 @@
 
 ## Current Definition Of Complete
 
-The current planning/design phase is complete when Vyrden has:
+The current planning/design work is complete when Lorivo has:
 
 - A clear local-first product stance.
 - A credible monetization boundary.
@@ -89,7 +89,7 @@ Do not move to public beta until:
 
 The design shell is now good enough to shift attention from polish to product behavior. Build the next slice in this order:
 
-1. Replace `/play/{id}` with a real Vyrden player surface.
+1. Replace `/play/{id}` with a real Lorivo player surface.
 2. Add play/resume/mark-watched controls to movie and episode details.
 3. Wire player sessions into the dashboard through SSE.
 4. Extend playback decisions to include selected audio and subtitle tracks.

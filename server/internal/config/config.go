@@ -42,72 +42,72 @@ type Config struct {
 }
 
 func FromEnv() Config {
-	dataDir := envString("VYRDEN_DATA_DIR", "data")
+	dataDir := envString("LORIVO_DATA_DIR", "data")
 	cfg := Config{
-		ServerName:        envString("VYRDEN_SERVER_NAME", "My Server"),
-		HTTPAddr:          envString("VYRDEN_HTTP_ADDR", "127.0.0.1:8097"),
+		ServerName:        envString("LORIVO_SERVER_NAME", "My Server"),
+		HTTPAddr:          envString("LORIVO_HTTP_ADDR", "127.0.0.1:8097"),
 		DataDir:           dataDir,
-		TranscodeDir:      envString("VYRDEN_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
-		DownloadsDir:      envString("VYRDEN_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
-		MetadataDir:       envString("VYRDEN_METADATA_DIR", filepath.Join(dataDir, "metadata")),
-		CacheDir:          envString("VYRDEN_CACHE_DIR", filepath.Join(dataDir, "cache")),
-		TempDir:           envString("VYRDEN_TEMP_DIR", filepath.Join(dataDir, "temp")),
-		MovieLibraryPath:  envString("VYRDEN_MOVIES_PATH", ""),
-		TVLibraryPath:     envString("VYRDEN_TV_PATH", ""),
-		FFprobePath:       envString("VYRDEN_FFPROBE_PATH", "ffprobe"),
-		FFmpegPath:        envString("VYRDEN_FFMPEG_PATH", "ffmpeg"),
-		OMDbAPIKey:        envString("VYRDEN_OMDB_API_KEY", ""),
-		TMDBAPIKey:        envString("VYRDEN_TMDB_API_KEY", ""),
-		TVDBAPIKey:        envString("VYRDEN_TVDB_API_KEY", ""),
-		EventBuffer:       envInt("VYRDEN_EVENT_BUFFER", 128),
-		ScanWorkers:       envInt("VYRDEN_SCAN_WORKERS", 1),
-		ProbeWorkers:      envInt("VYRDEN_PROBE_WORKERS", 2),
-		TranscodeWorkers:  envInt("VYRDEN_TRANSCODE_WORKERS", 1),
-		GPUWorkers:        envInt("VYRDEN_GPU_WORKERS", 1),
-		HardwareUnlocked:  envBool("VYRDEN_HARDWARE_UNLOCKED", false),
-		PlaybackPolicy:    envString("VYRDEN_PLAYBACK_POLICY", "original_only"),
-		LibrarySyncMode:   envString("VYRDEN_LIBRARY_SYNC_MODE", "daily"),
-		SyncIntervalMins:  envInt("VYRDEN_SYNC_INTERVAL_MINS", 1440),
-		WatchDebounceSecs: envInt("VYRDEN_WATCH_DEBOUNCE_SECS", 30),
-		ProbeBatchLimit:   envInt("VYRDEN_PROBE_BATCH_LIMIT", 50),
-		AllowedOrigins:    envCSV("VYRDEN_ALLOWED_ORIGINS", nil),
-		AuthDisabled:      envBool("VYRDEN_AUTH_DISABLED", false),
-		AdminUsername:     envString("VYRDEN_ADMIN_USERNAME", "admin"),
-		AdminPassword:     envString("VYRDEN_ADMIN_PASSWORD", ""),
+		TranscodeDir:      envString("LORIVO_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
+		DownloadsDir:      envString("LORIVO_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
+		MetadataDir:       envString("LORIVO_METADATA_DIR", filepath.Join(dataDir, "metadata")),
+		CacheDir:          envString("LORIVO_CACHE_DIR", filepath.Join(dataDir, "cache")),
+		TempDir:           envString("LORIVO_TEMP_DIR", filepath.Join(dataDir, "temp")),
+		MovieLibraryPath:  envString("LORIVO_MOVIES_PATH", ""),
+		TVLibraryPath:     envString("LORIVO_TV_PATH", ""),
+		FFprobePath:       envString("LORIVO_FFPROBE_PATH", "ffprobe"),
+		FFmpegPath:        envString("LORIVO_FFMPEG_PATH", "ffmpeg"),
+		OMDbAPIKey:        envString("LORIVO_OMDB_API_KEY", ""),
+		TMDBAPIKey:        envString("LORIVO_TMDB_API_KEY", ""),
+		TVDBAPIKey:        envString("LORIVO_TVDB_API_KEY", ""),
+		EventBuffer:       envInt("LORIVO_EVENT_BUFFER", 128),
+		ScanWorkers:       envInt("LORIVO_SCAN_WORKERS", 1),
+		ProbeWorkers:      envInt("LORIVO_PROBE_WORKERS", 2),
+		TranscodeWorkers:  envInt("LORIVO_TRANSCODE_WORKERS", 1),
+		GPUWorkers:        envInt("LORIVO_GPU_WORKERS", 1),
+		HardwareUnlocked:  envBool("LORIVO_HARDWARE_UNLOCKED", false),
+		PlaybackPolicy:    envString("LORIVO_PLAYBACK_POLICY", "original_only"),
+		LibrarySyncMode:   envString("LORIVO_LIBRARY_SYNC_MODE", "daily"),
+		SyncIntervalMins:  envInt("LORIVO_SYNC_INTERVAL_MINS", 1440),
+		WatchDebounceSecs: envInt("LORIVO_WATCH_DEBOUNCE_SECS", 30),
+		ProbeBatchLimit:   envInt("LORIVO_PROBE_BATCH_LIMIT", 50),
+		AllowedOrigins:    envCSV("LORIVO_ALLOWED_ORIGINS", nil),
+		AuthDisabled:      envBool("LORIVO_AUTH_DISABLED", false),
+		AdminUsername:     envString("LORIVO_ADMIN_USERNAME", "admin"),
+		AdminPassword:     envString("LORIVO_ADMIN_PASSWORD", ""),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
 	}
-	cfg.HTTPAddr = envString("VYRDEN_HTTP_ADDR", cfg.HTTPAddr)
-	cfg.ServerName = envString("VYRDEN_SERVER_NAME", defaultServerName(cfg.ServerName))
-	cfg.DataDir = envString("VYRDEN_DATA_DIR", cfg.DataDir)
-	cfg.TranscodeDir = envString("VYRDEN_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
-	cfg.DownloadsDir = envString("VYRDEN_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
-	cfg.MetadataDir = envString("VYRDEN_METADATA_DIR", defaultDir(cfg.MetadataDir, cfg.DataDir, "metadata"))
-	cfg.CacheDir = envString("VYRDEN_CACHE_DIR", defaultDir(cfg.CacheDir, cfg.DataDir, "cache"))
-	cfg.TempDir = envString("VYRDEN_TEMP_DIR", defaultDir(cfg.TempDir, cfg.DataDir, "temp"))
-	cfg.MovieLibraryPath = envString("VYRDEN_MOVIES_PATH", cfg.MovieLibraryPath)
-	cfg.TVLibraryPath = envString("VYRDEN_TV_PATH", cfg.TVLibraryPath)
-	cfg.FFprobePath = envString("VYRDEN_FFPROBE_PATH", cfg.FFprobePath)
-	cfg.FFmpegPath = envString("VYRDEN_FFMPEG_PATH", cfg.FFmpegPath)
-	cfg.OMDbAPIKey = envString("VYRDEN_OMDB_API_KEY", cfg.OMDbAPIKey)
-	cfg.TMDBAPIKey = envString("VYRDEN_TMDB_API_KEY", cfg.TMDBAPIKey)
-	cfg.TVDBAPIKey = envString("VYRDEN_TVDB_API_KEY", cfg.TVDBAPIKey)
-	cfg.EventBuffer = envInt("VYRDEN_EVENT_BUFFER", cfg.EventBuffer)
-	cfg.ScanWorkers = envInt("VYRDEN_SCAN_WORKERS", cfg.ScanWorkers)
-	cfg.ProbeWorkers = envInt("VYRDEN_PROBE_WORKERS", cfg.ProbeWorkers)
-	cfg.TranscodeWorkers = envInt("VYRDEN_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
-	cfg.GPUWorkers = envInt("VYRDEN_GPU_WORKERS", cfg.GPUWorkers)
-	cfg.HardwareUnlocked = envBool("VYRDEN_HARDWARE_UNLOCKED", cfg.HardwareUnlocked)
-	cfg.PlaybackPolicy = envString("VYRDEN_PLAYBACK_POLICY", defaultPlaybackPolicy(cfg.PlaybackPolicy))
-	cfg.LibrarySyncMode = envString("VYRDEN_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
-	cfg.SyncIntervalMins = envInt("VYRDEN_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
-	cfg.WatchDebounceSecs = envInt("VYRDEN_WATCH_DEBOUNCE_SECS", defaultInt(cfg.WatchDebounceSecs, 30))
-	cfg.ProbeBatchLimit = envInt("VYRDEN_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
-	cfg.AllowedOrigins = envCSV("VYRDEN_ALLOWED_ORIGINS", cfg.AllowedOrigins)
-	cfg.AuthDisabled = envBool("VYRDEN_AUTH_DISABLED", cfg.AuthDisabled)
-	cfg.AdminUsername = envString("VYRDEN_ADMIN_USERNAME", cfg.AdminUsername)
-	cfg.AdminPassword = envString("VYRDEN_ADMIN_PASSWORD", cfg.AdminPassword)
+	cfg.HTTPAddr = envString("LORIVO_HTTP_ADDR", cfg.HTTPAddr)
+	cfg.ServerName = envString("LORIVO_SERVER_NAME", defaultServerName(cfg.ServerName))
+	cfg.DataDir = envString("LORIVO_DATA_DIR", cfg.DataDir)
+	cfg.TranscodeDir = envString("LORIVO_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
+	cfg.DownloadsDir = envString("LORIVO_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
+	cfg.MetadataDir = envString("LORIVO_METADATA_DIR", defaultDir(cfg.MetadataDir, cfg.DataDir, "metadata"))
+	cfg.CacheDir = envString("LORIVO_CACHE_DIR", defaultDir(cfg.CacheDir, cfg.DataDir, "cache"))
+	cfg.TempDir = envString("LORIVO_TEMP_DIR", defaultDir(cfg.TempDir, cfg.DataDir, "temp"))
+	cfg.MovieLibraryPath = envString("LORIVO_MOVIES_PATH", cfg.MovieLibraryPath)
+	cfg.TVLibraryPath = envString("LORIVO_TV_PATH", cfg.TVLibraryPath)
+	cfg.FFprobePath = envString("LORIVO_FFPROBE_PATH", cfg.FFprobePath)
+	cfg.FFmpegPath = envString("LORIVO_FFMPEG_PATH", cfg.FFmpegPath)
+	cfg.OMDbAPIKey = envString("LORIVO_OMDB_API_KEY", cfg.OMDbAPIKey)
+	cfg.TMDBAPIKey = envString("LORIVO_TMDB_API_KEY", cfg.TMDBAPIKey)
+	cfg.TVDBAPIKey = envString("LORIVO_TVDB_API_KEY", cfg.TVDBAPIKey)
+	cfg.EventBuffer = envInt("LORIVO_EVENT_BUFFER", cfg.EventBuffer)
+	cfg.ScanWorkers = envInt("LORIVO_SCAN_WORKERS", cfg.ScanWorkers)
+	cfg.ProbeWorkers = envInt("LORIVO_PROBE_WORKERS", cfg.ProbeWorkers)
+	cfg.TranscodeWorkers = envInt("LORIVO_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
+	cfg.GPUWorkers = envInt("LORIVO_GPU_WORKERS", cfg.GPUWorkers)
+	cfg.HardwareUnlocked = envBool("LORIVO_HARDWARE_UNLOCKED", cfg.HardwareUnlocked)
+	cfg.PlaybackPolicy = envString("LORIVO_PLAYBACK_POLICY", defaultPlaybackPolicy(cfg.PlaybackPolicy))
+	cfg.LibrarySyncMode = envString("LORIVO_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
+	cfg.SyncIntervalMins = envInt("LORIVO_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
+	cfg.WatchDebounceSecs = envInt("LORIVO_WATCH_DEBOUNCE_SECS", defaultInt(cfg.WatchDebounceSecs, 30))
+	cfg.ProbeBatchLimit = envInt("LORIVO_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
+	cfg.AllowedOrigins = envCSV("LORIVO_ALLOWED_ORIGINS", cfg.AllowedOrigins)
+	cfg.AuthDisabled = envBool("LORIVO_AUTH_DISABLED", cfg.AuthDisabled)
+	cfg.AdminUsername = envString("LORIVO_ADMIN_USERNAME", cfg.AdminUsername)
+	cfg.AdminPassword = envString("LORIVO_ADMIN_PASSWORD", cfg.AdminPassword)
 	return cfg
 }
 

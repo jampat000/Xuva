@@ -2,7 +2,7 @@
 
 ## Business Constraint
 
-Vyrden should avoid recurring infrastructure cost wherever possible. The product should make money from software value, not from carrying user media traffic.
+Lorivo should avoid recurring infrastructure cost wherever possible. The product should make money from software value, not from carrying user media traffic.
 
 ## Free Tier
 
@@ -19,8 +19,8 @@ Vyrden should avoid recurring infrastructure cost wherever possible. The product
 
 Candidate names:
 
-- Vyrden Pass.
-- Vyrden Pro.
+- Lorivo Pass.
+- Lorivo Pro.
 
 Candidate features:
 
@@ -48,5 +48,5 @@ The lifetime pass should not include unlimited company-hosted bandwidth or infra
 
 ## Positioning
 
-Vyrden should be paid because it is polished, dependable, and private. It should not charge users for avoiding artificial pain.
+Lorivo should be paid because it is polished, dependable, and private. It should not charge users for avoiding artificial pain.
 

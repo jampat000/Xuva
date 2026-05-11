@@ -1,6 +1,6 @@
-# Vyrden Design Tokens
+# Lorivo Design Tokens
 
-These tokens define the first visual direction for Vyrden. They are intentionally small until the first real UI implementation creates pressure for more.
+These tokens define the first visual direction for Lorivo. They are intentionally small until the first real UI implementation creates pressure for more.
 
 ## Color
 

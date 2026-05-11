@@ -59,7 +59,7 @@ func (s *Service) PlanConversion(sidecar Sidecar, clientProfile string) Conversi
 			OutputBehavior: "Do not convert automatically until the subtitle type is known.",
 			ServerImpact:   "unknown",
 			ReasonCode:     "subtitle_type_unknown",
-			ReasonText:     "This subtitle extension can contain different formats, so Vyrden needs inspection before conversion.",
+			ReasonText:     "This subtitle extension can contain different formats, so Lorivo needs inspection before conversion.",
 		}
 	default:
 		return ConversionPlan{
@@ -68,7 +68,7 @@ func (s *Service) PlanConversion(sidecar Sidecar, clientProfile string) Conversi
 			OutputBehavior: "No automatic conversion path is available.",
 			ServerImpact:   "unknown",
 			ReasonCode:     "subtitle_conversion_unsupported",
-			ReasonText:     "Vyrden does not have a safe conversion path for this subtitle format yet.",
+			ReasonText:     "Lorivo does not have a safe conversion path for this subtitle format yet.",
 		}
 	}
 }

@@ -1,7 +1,7 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.VyrdenHome = api;
+  root.LorivoHome = api;
 })(typeof globalThis !== "undefined" ? globalThis : window, function () {
   const RELEASE_TOKENS = [
     "webrip",
@@ -452,7 +452,7 @@
   }
 
   function visualSeed(value = "") {
-    return Math.abs(hashString(value || "vyrden-home"));
+    return Math.abs(hashString(value || "lorivo-home"));
   }
 
   function hashString(value = "") {

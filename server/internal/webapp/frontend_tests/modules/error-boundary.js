@@ -1,7 +1,7 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.VyrdenErrors = api;
+  root.LorivoErrors = api;
 })(typeof globalThis !== "undefined" ? globalThis : window, function () {
   function escapeHTML(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char]));

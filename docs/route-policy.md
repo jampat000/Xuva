@@ -1,4 +1,4 @@
-# Vyrden Route Policy
+# Lorivo Route Policy
 
 This table documents the protected route policy introduced for local authorization.
 
@@ -16,6 +16,10 @@ Public client bootstrap routes:
 | --- | --- | --- | --- |
 | `GET /api/auth/session` | auth | `session.read` | admin, standard |
 | `POST /api/auth/logout` | auth | `session.logout` | admin, standard |
+| `GET /api/users` | auth | `users.list` | admin |
+| `POST /api/users` | auth | `user.create` | admin |
+| `DELETE /api/users/{id}` | auth | `user.delete` | admin |
+| `POST /api/users/{id}/password` | auth | `user.password.update` | admin |
 | `POST /api/libraries` | libraries | `library.save` | admin |
 | `DELETE /api/libraries/{id}` | libraries | `library.delete` | admin |
 | `POST /api/libraries/{id}/scan` | libraries | `library.scan` | admin |

@@ -97,7 +97,7 @@ func (c Checker) Diagnose(ctx context.Context, request Request, lanAddresses []s
 		Privacy: []string{
 			"Diagnostics only return scheme, host, and port.",
 			"URL paths, query strings, usernames, passwords, and tokens are not stored or returned.",
-			"Vyrden does not use a vendor relay for this check.",
+			"Lorivo does not use a vendor relay for this check.",
 		},
 	}
 	if strings.TrimSpace(request.PublicURL) == "" {
@@ -153,7 +153,7 @@ func (c Checker) Diagnose(ctx context.Context, request Request, lanAddresses []s
 	address := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 	if err := c.dial(checkCtx, "tcp", address); err != nil {
 		result.FailureClass = ClassNATFirewall
-		result.Summary = "Vyrden could not open a TCP connection to the remote address."
+		result.Summary = "Lorivo could not open a TCP connection to the remote address."
 		result.NextActions = Guidance(ClassNATFirewall)
 		result.Checks = append(result.Checks, Check{Name: "Port reachability", Status: "fail", Code: ClassNATFirewall, Message: "Check port forwarding, router firewall, ISP CGNAT, and host firewall rules."})
 		return result
@@ -228,11 +228,11 @@ func Guidance(class string) []string {
 	case ClassReady:
 		return []string{"Use this URL when pairing a remote player.", "Keep HTTPS enabled for public internet access.", "If playback buffers, lower the remote quality limit or use optimized versions."}
 	case ClassPrivateRoute:
-		return []string{"Use this address only on LAN, VPN, or a mesh network.", "For public internet access, configure a reverse proxy or port forward with HTTPS.", "Do not expose Vyrden directly without authentication and TLS."}
+		return []string{"Use this address only on LAN, VPN, or a mesh network.", "For public internet access, configure a reverse proxy or port forward with HTTPS.", "Do not expose Lorivo directly without authentication and TLS."}
 	case ClassDNS:
 		return []string{"Create an A/AAAA or CNAME record for the hostname.", "If your public IP changes, configure dynamic DNS.", "Wait for DNS propagation, then run diagnostics again."}
 	case ClassNATFirewall:
-		return []string{"Forward the chosen external port to the Vyrden server or reverse proxy.", "Allow the port through the Windows/Linux firewall.", "If your ISP uses CGNAT, use a VPN/mesh network or reverse proxy tunnel you control."}
+		return []string{"Forward the chosen external port to the Lorivo server or reverse proxy.", "Allow the port through the Windows/Linux firewall.", "If your ISP uses CGNAT, use a VPN/mesh network or reverse proxy tunnel you control."}
 	case ClassCertificate:
 		return []string{"Install a valid certificate for the hostname.", "Check reverse proxy TLS settings and certificate renewal.", "Avoid self-signed certificates for TV/mobile clients unless the device explicitly trusts them."}
 	case ClassThroughput:

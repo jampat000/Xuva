@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/database"
 )
 
 func TestStoreCleanupTerminal(t *testing.T) {

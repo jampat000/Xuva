@@ -2,11 +2,11 @@
 
 ## Goal
 
-Ship Vyrden as a user-launched desktop/tray app that supervises the local Go server, opens the web UI, provides native folder picking, and supports restart controls.
+Ship Lorivo as a user-launched desktop/tray app that supervises the local Go server, opens the web UI, provides native folder picking, and supports restart controls.
 
 ## Context
 
-- Vyrden should not default to a system service.
+- Lorivo should not default to a system service.
 - Runtime and library folder selection should use the signed-in user's local, mapped, and NAS/UNC access.
 - Web fallback remains necessary for dev/headless/remote-admin use.
 
@@ -28,7 +28,7 @@ Ship Vyrden as a user-launched desktop/tray app that supervises the local Go ser
 ## Steps
 
 - [x] Add browser fallback folder browse API.
-- [x] Add web bridge contract: `window.vyrdenDesktop.pickFolder`.
+- [x] Add web bridge contract: `window.lorivoDesktop.pickFolder`.
 - [x] Move Libraries into Settings and add Folders/Devices tabs.
 - [ ] Choose desktop shell implementation.
 - [ ] Implement native folder picker.

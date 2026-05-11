@@ -29,9 +29,9 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		DetailSection,
 		DetailTechnicalPanel,
 		MediaShell,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel
+		LorivoButton,
+		LorivoEmptyState,
+		LorivoPanel
 	} from '$lib/components';
 	import {
 		cleanDescription,
@@ -417,20 +417,20 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 <MediaShell active="movies" bind:searchValue {userInitials}>
 	<DetailPage>
 		{#if isLoading}
-			<VyrdenPanel title="Loading Movie Details" subtitle="Fetching movie metadata, versions, and playback state." />
+			<LorivoPanel title="Loading Movie Details" subtitle="Fetching movie metadata, versions, and playback state." />
 		{:else if loadError}
-			<VyrdenPanel title="Movie details could not load" subtitle={loadError}>
+			<LorivoPanel title="Movie details could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={loadMovieDetails}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/movies">Back to Movies</VyrdenButton>
+					<LorivoButton variant="secondary" onclick={loadMovieDetails}>Retry</LorivoButton>
+					<LorivoButton variant="ghost" href="/movies">Back to Movies</LorivoButton>
 				</div>
-			</VyrdenPanel>
+			</LorivoPanel>
 		{:else if !movie}
-			<VyrdenEmptyState title="Movie not found" message="This movie is no longer available in your library.">
+			<LorivoEmptyState title="Movie not found" message="This movie is no longer available in your library.">
 				{#snippet action()}
-					<VyrdenButton variant="secondary" href="/movies">Back to Movies</VyrdenButton>
+					<LorivoButton variant="secondary" href="/movies">Back to Movies</LorivoButton>
 				{/snippet}
-			</VyrdenEmptyState>
+			</LorivoEmptyState>
 		{:else}
 			<DetailHero
 				title={movieTitle}
@@ -444,10 +444,10 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 			>
 				{#snippet actions()}
 					{#if primaryPlayHref}
-						<VyrdenButton variant="primary" href={primaryPlayHref}>{primaryPlayLabel}</VyrdenButton>
-						<VyrdenButton variant="secondary" href={primaryStartHref}>Play From Start</VyrdenButton>
+						<LorivoButton variant="primary" href={primaryPlayHref}>{primaryPlayLabel}</LorivoButton>
+						<LorivoButton variant="secondary" href={primaryStartHref}>Play From Start</LorivoButton>
 					{:else}
-						<VyrdenButton variant="primary" disabled>Play</VyrdenButton>
+						<LorivoButton variant="primary" disabled>Play</LorivoButton>
 					{/if}
 				{/snippet}
 			</DetailHero>
@@ -457,7 +457,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 				subtitle={previewDetailMode ? 'Pick how you want to watch this title.' : 'Choose a source and start playback.'}
 			>
 				{#if sourceModels.length === 0}
-					<VyrdenEmptyState
+					<LorivoEmptyState
 						title="No playable versions"
 						message="This movie has no registered media sources yet. Run a library scan to refresh sources."
 					/>
@@ -487,17 +487,17 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 									<p class="version-card__reason">{playbackReasonLabel(source.decision)}</p>
 								{/if}
 								<div class="version-card__actions">
-									<VyrdenButton variant="primary" href={`/play/${encodeURIComponent(source.mediaSourceId)}`}>
+									<LorivoButton variant="primary" href={`/play/${encodeURIComponent(source.mediaSourceId)}`}>
 										{isResumeState(source.state) ? 'Resume' : 'Play'}
-									</VyrdenButton>
-									<VyrdenButton
+									</LorivoButton>
+									<LorivoButton
 										variant="secondary"
 										href={`/play/${encodeURIComponent(source.mediaSourceId)}?start=0`}
 									>
 										Start Over
-									</VyrdenButton>
+									</LorivoButton>
 									{#if !previewDetailMode}
-										<VyrdenButton
+										<LorivoButton
 											variant="ghost"
 											onclick={() => resolvePlaybackRoute(source.mediaSourceId)}
 											disabled={routeStateFor(source.mediaSourceId).status === 'loading'}
@@ -505,7 +505,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 											{routeStateFor(source.mediaSourceId).status === 'loading'
 												? 'Checking route...'
 												: 'Check Route'}
-										</VyrdenButton>
+										</LorivoButton>
 									{/if}
 								</div>
 								{#if !previewDetailMode && routeStateFor(source.mediaSourceId).status === 'loaded' && routeStateFor(source.mediaSourceId).payload}
@@ -546,7 +546,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 			>
 				<div class="technical-wrap" class:technical-wrap--preview={previewDetailMode}>
 				{#if !selectedSource}
-					<VyrdenEmptyState
+					<LorivoEmptyState
 						title="No source selected"
 						message="Select a source version to view track and subtitle details."
 					/>
@@ -647,7 +647,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 
 	.version-grid {
@@ -666,10 +666,10 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	}
 
 	.version-card--selected {
-		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 42%, transparent);
+		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 42%, transparent);
 		background:
 			linear-gradient(180deg, rgb(255 246 229 / 6%), rgb(255 246 229 / 2%)),
-			color-mix(in srgb, var(--vyrden-color-accent-teal) 10%, transparent);
+			color-mix(in srgb, var(--lorivo-color-accent-teal) 10%, transparent);
 	}
 
 	.version-card__selector {
@@ -695,7 +695,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	.version-card__selector span {
 		display: block;
 		margin-top: 3px;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
 		font-size: 0.8rem;
 		line-height: 1.33;
 	}
@@ -709,7 +709,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 		border-radius: 999px;
 		border: 1px solid rgb(255 246 229 / 14%);
 		background: rgb(255 246 229 / 5%);
-		color: color-mix(in srgb, var(--vyrden-color-text) 88%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
 		font-size: 0.74rem;
 		font-style: normal;
 		font-weight: 630;
@@ -717,14 +717,14 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.version-card__decision {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text) 94%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 94%, transparent);
 		font-size: 0.85rem;
 		font-weight: 660;
 	}
 
 	.version-card__reason {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 82%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 82%, transparent);
 		font-size: 0.8rem;
 		line-height: 1.38;
 	}
@@ -738,11 +738,11 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	.route-note {
 		margin: 0;
 		font-size: 0.78rem;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 88%, transparent);
 	}
 
 	.route-note--error {
-		color: color-mix(in srgb, var(--vyrden-color-danger) 84%, white 16%);
+		color: color-mix(in srgb, var(--lorivo-color-danger) 84%, white 16%);
 	}
 
 	.version-card__facts {
@@ -759,7 +759,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 	}
 
 	.version-card__facts dt {
-		color: color-mix(in srgb, var(--vyrden-color-text-soft) 90%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-soft) 90%, transparent);
 		font-size: 0.73rem;
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
@@ -767,9 +767,9 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.version-card__facts dd {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text) 90%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 90%, transparent);
 		font-size: 0.78rem;
-		font-family: var(--vyrden-font-mono);
+		font-family: var(--lorivo-font-mono);
 		text-align: right;
 		word-break: break-word;
 	}
@@ -798,7 +798,7 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.technical-collapse summary {
 		cursor: pointer;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 88%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 88%, transparent);
 		font-size: 0.82rem;
 		font-weight: 620;
 		margin-bottom: 10px;
@@ -806,13 +806,13 @@ import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
 
 	.track-empty {
 		margin: 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
 		font-size: 0.82rem;
 	}
 
 	.track-sidecar {
 		margin: 10px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 82%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 82%, transparent);
 		font-size: 0.78rem;
 	}
 

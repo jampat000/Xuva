@@ -25,29 +25,29 @@
 <style>
 	.form-row {
 		display: grid;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 
 	.form-row__label {
 		font-size: 0.86rem;
 		font-weight: 620;
-		color: var(--vyrden-color-text);
+		color: var(--lorivo-color-text);
 	}
 
 	.form-row__description {
 		font-size: 0.78rem;
-		color: var(--vyrden-color-text-soft);
+		color: var(--lorivo-color-text-soft);
 	}
 
 	.form-row__control :global(input),
 	.form-row__control :global(select),
 	.form-row__control :global(textarea) {
 		width: 100%;
-		min-height: var(--vyrden-control-height-md);
-		padding: 0 var(--vyrden-space-3);
-		border: 1px solid var(--vyrden-color-border-soft);
-		border-radius: var(--vyrden-radius-sm);
+		min-height: var(--lorivo-control-height-md);
+		padding: 0 var(--lorivo-space-3);
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-sm);
 		background: rgb(255 255 255 / 3%);
-		color: var(--vyrden-color-text);
+		color: var(--lorivo-color-text);
 	}
 </style>

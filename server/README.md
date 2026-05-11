@@ -1,4 +1,4 @@
-# Vyrden Server
+# Lorivo Server
 
 The server owns libraries, users, playback decisions, streaming, and media processing.
 
@@ -13,7 +13,7 @@ Preferred starting stack:
 
 Structure:
 
-- `cmd/vyrden`: process entrypoint.
+- `cmd/lorivo`: process entrypoint.
 - `internal/api`: HTTP/JSON and SSE.
 - `internal/app`: service wiring and lifecycle.
 - `internal/database`: SQLite connection, pragmas, and migrations.
@@ -41,7 +41,7 @@ Initial scan endpoints:
 
 Scan requests return a background scan job with HTTP 202. Progress is emitted through `GET /api/events` as `scan.queued`, `scan.started`, `scan.progress`, `scan.completed`, and `scan.failed`.
 
-Scan requests can pass `path`, or use `VYRDEN_MOVIES_PATH` and `VYRDEN_TV_PATH` when those environment variables are configured.
+Scan requests can pass `path`, or use `LORIVO_MOVIES_PATH` and `LORIVO_TV_PATH` when those environment variables are configured.
 
 Library paths are not NAS-specific. The scanner accepts any OS-visible folder, including local disks, removable USB drives, network shares, and mounted volumes. Library records include a `storageType` field so future scan/probe behavior can tune itself per storage class.
 
@@ -73,18 +73,18 @@ First milestone:
 
 ## Authentication and Session Security
 
-Vyrden now supports local credential authentication with server-side sessions.
+Lorivo now supports local credential authentication with server-side sessions.
 
 Environment variables:
 
-- `VYRDEN_AUTH_DISABLED=false`
-- `VYRDEN_ADMIN_USERNAME=admin`
-- `VYRDEN_ADMIN_PASSWORD=...`
+- `LORIVO_AUTH_DISABLED=false`
+- `LORIVO_ADMIN_USERNAME=admin`
+- `LORIVO_ADMIN_PASSWORD=...`
 
 Bootstrap behavior:
 
-- If auth is enabled and no credentialed user exists yet, Vyrden creates the initial local admin user on startup.
-- If `VYRDEN_ADMIN_PASSWORD` is omitted for first boot, Vyrden generates a random bootstrap password and logs it once to the server log.
+- If auth is enabled and no credentialed user exists yet, Lorivo creates the initial local admin user on startup.
+- If `LORIVO_ADMIN_PASSWORD` is omitted for first boot, Lorivo generates a random bootstrap password and logs it once to the server log.
 - Auth bootstrap settings are environment-only and are not written back into `settings.json`.
 
 Session behavior:
@@ -96,7 +96,7 @@ Session behavior:
 - Logout revokes the current session immediately.
 - Invalid login bursts trigger a temporary lockout window.
 
-Protected routes in this phase:
+Protected routes in this release:
 
 - browser write operations
 - playback session management

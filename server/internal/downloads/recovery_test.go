@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
-	"github.com/vyrdenhq/vyrden/server/internal/jobs"
-	"github.com/vyrdenhq/vyrden/server/internal/resources"
-	runtimestore "github.com/vyrdenhq/vyrden/server/internal/runtime"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/jobs"
+	"github.com/jampat000/Lorivo/server/internal/resources"
+	runtimestore "github.com/jampat000/Lorivo/server/internal/runtime"
 )
 
 func TestPersistentServiceFailsInterruptedDownloadJob(t *testing.T) {

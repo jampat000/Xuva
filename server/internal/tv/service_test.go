@@ -3,7 +3,7 @@ package tv
 import (
 	"testing"
 
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
 )
 
 func TestClassifyEpisodeUsesSeriesSeasonEpisode(t *testing.T) {

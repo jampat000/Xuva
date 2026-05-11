@@ -98,12 +98,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--vyrden-space-3);
+		gap: var(--lorivo-space-3);
 	}
 
 	h2 {
 		margin: 0;
-		font-family: var(--vyrden-font-display);
+		font-family: var(--lorivo-font-display);
 		font-size: 1.12rem;
 		line-height: 1.03;
 		letter-spacing: -0.021em;
@@ -111,7 +111,7 @@
 	}
 
 	a {
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 78%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 78%, transparent);
 		font-size: 0.79rem;
 		font-weight: 620;
 		text-decoration: none;
@@ -185,7 +185,7 @@
 		background:
 			linear-gradient(180deg, rgb(31 41 55 / 90%), rgb(11 17 32 / 82%)),
 			rgb(11 17 32 / 86%);
-		color: color-mix(in srgb, var(--vyrden-color-text) 96%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 96%, transparent);
 		line-height: 1;
 		display: inline-flex;
 		align-items: center;
@@ -225,7 +225,7 @@
 	.media-row__arrow:focus-visible {
 		transform: translateY(-50%) scale(1.04);
 		opacity: 1;
-		border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 54%, white 10%);
+		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 54%, white 10%);
 		background:
 			linear-gradient(180deg, rgb(124 92 255 / 82%), rgb(83 60 202 / 82%)),
 			rgb(11 17 32 / 88%);

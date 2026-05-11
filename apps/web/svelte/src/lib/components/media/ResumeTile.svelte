@@ -99,7 +99,7 @@
 		background: none;
 		text-align: left;
 		line-height: 1;
-		color: var(--vyrden-color-text);
+		color: var(--lorivo-color-text);
 		text-decoration: none;
 	}
 
@@ -138,9 +138,9 @@
 
 	.resume-tile__copy {
 		position: absolute;
-		left: var(--vyrden-space-3);
-		right: var(--vyrden-space-3);
-		bottom: calc(var(--vyrden-space-2) + 0.9rem);
+		left: var(--lorivo-space-3);
+		right: var(--lorivo-space-3);
+		bottom: calc(var(--lorivo-space-2) + 0.9rem);
 		z-index: 1;
 	}
 
@@ -158,7 +158,7 @@
 	p {
 		margin: 0;
 		font-size: 0.75rem;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 92%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 92%, transparent);
 		margin-top: 4px;
 		display: -webkit-box;
 		-webkit-line-clamp: 1;
@@ -170,14 +170,14 @@
 		margin: 4px 0 0;
 		font-size: 0.72rem;
 		font-weight: 560;
-		color: color-mix(in srgb, var(--vyrden-color-text) 82%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text) 82%, transparent);
 	}
 
 	.resume-tile__progress {
 		position: absolute;
-		left: var(--vyrden-space-3);
-		right: var(--vyrden-space-3);
-		bottom: var(--vyrden-space-2);
+		left: var(--lorivo-space-3);
+		right: var(--lorivo-space-3);
+		bottom: var(--lorivo-space-2);
 		z-index: 1;
 	}
 
@@ -185,7 +185,7 @@
 		.resume-tile:hover .resume-tile__art,
 		.resume-tile:focus-visible .resume-tile__art {
 			transform: translateY(-3px);
-			border-color: color-mix(in srgb, var(--vyrden-color-accent-teal) 44%, rgb(255 255 255 / 20%));
+			border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 44%, rgb(255 255 255 / 20%));
 			box-shadow:
 				inset 0 1px 0 rgb(255 255 255 / 10%),
 				0 22px 40px rgb(0 0 0 / 34%),

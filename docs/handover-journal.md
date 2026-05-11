@@ -1,6 +1,6 @@
-# Vyrden Handover Journal
+# Lorivo Handover Journal
 
-Operational handover for building Vyrden into a production-grade media server competitor.
+Operational handover for building Lorivo into a production-grade media server competitor.
 
 Use this as the single source of truth for execution, delivery tracking, and acceptance.
 
@@ -110,8 +110,8 @@ Add these under each task’s **Completion Notes** subsection when done.
   - auth bootstrap logs initial admin creation.
   - auth logs login success, invalid credentials, and lockout window activation.
 - Risks/rollback:
-  - this phase protects write operations and sensitive stream/file routes, but role-based `403` authorization is intentionally deferred to `P0.2`.
-  - rollback is to disable auth with `VYRDEN_AUTH_DISABLED=true` or revert auth/session middleware and `auth_sessions` migration in a follow-up DB migration.
+  - this work protects write operations and sensitive stream/file routes, but role-based `403` authorization is intentionally deferred to `P0.2`.
+  - rollback is to disable auth with `LORIVO_AUTH_DISABLED=true` or revert auth/session middleware and `auth_sessions` migration in a follow-up DB migration.
 
 ---
 
@@ -182,7 +182,7 @@ Add these under each task’s **Completion Notes** subsection when done.
 - Metrics/log evidence:
   - denied stream attempts emit `audit.stream.denied` with actor, media source, session, path, and reason.
 - Risks/rollback:
-  - Signing keys are runtime-generated in this phase; persistent key storage belongs with installer/runtime hardening.
+  - Signing keys are runtime-generated for now; persistent key storage belongs with installer/runtime hardening.
   - Rollback is to bypass token validation in stream handlers while keeping P0.1/P0.2 auth and route policy intact.
 
 ---
@@ -222,7 +222,7 @@ Add these under each task’s **Completion Notes** subsection when done.
   - `audit.library` records library save/delete/scan actions with actor and library identifiers.
   - `audit.stream.denied` remains active for rejected stream attempts.
 - Risks/rollback:
-  - CORS starts strict with local-safe defaults plus `VYRDEN_ALLOWED_ORIGINS`; unusual browser origins must be explicitly configured.
+  - CORS starts strict with local-safe defaults plus `LORIVO_ALLOWED_ORIGINS`; unusual browser origins must be explicitly configured.
   - CSP allows inline script/style until the web UI is bundled with nonces or external assets.
   - Rollback is to remove `withSecurity` from router construction and disable the security CI workflow while preserving route/auth audit behavior.
 

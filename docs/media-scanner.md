@@ -1,6 +1,6 @@
 # Media Scanner Prototype
 
-The first practical Vyrden engineering step is a local media scanner/prober that can run against a real library without moving or modifying files.
+The first practical Lorivo engineering step is a local media scanner/prober that can run against a real library without moving or modifying files.
 
 ## Goal
 
@@ -28,13 +28,13 @@ Use real local media as a compatibility corpus:
 ## Current Tool
 
 ```text
-tools/vyrden_scan.py
+tools/lorivo_scan.py
 ```
 
 Inventory mode works without FFmpeg:
 
 ```powershell
-python tools/vyrden_scan.py X:\ --no-probe --limit 100
+python tools/lorivo_scan.py X:\ --no-probe --limit 100
 ```
 
 Deep probe mode requires `ffprobe`:
@@ -44,7 +44,7 @@ winget install --id Gyan.FFmpeg -e --source winget --accept-source-agreements --
 ```
 
 ```powershell
-python tools/vyrden_scan.py X:\ --ffprobe "C:\ffmpeg\bin\ffprobe.exe" --workers 2
+python tools/lorivo_scan.py X:\ --ffprobe "C:\ffmpeg\bin\ffprobe.exe" --workers 2
 ```
 
 If FFmpeg was installed through winget, the scanner also checks winget's local alias path automatically.
@@ -63,14 +63,14 @@ The JSONL file contains one record per media file. The summary file contains agg
 Generate the local dashboard:
 
 ```powershell
-python tools/vyrden_dashboard.py data/probe-results.jsonl --out data/compatibility-dashboard.html
+python tools/lorivo_dashboard.py data/probe-results.jsonl --out data/compatibility-dashboard.html
 ```
 
 The dashboard is static HTML and stays local in `data/`.
 
 ## Why This Matters
 
-The scanner turns a media library into a local compatibility test suite. Before Vyrden has a full server, it can already identify:
+The scanner turns a media library into a local compatibility test suite. Before Lorivo has a full server, it can already identify:
 
 - Direct-play candidates.
 - Audio transcode candidates.

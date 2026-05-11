@@ -18,33 +18,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/auth"
-	"github.com/vyrdenhq/vyrden/server/internal/catalog"
-	"github.com/vyrdenhq/vyrden/server/internal/config"
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/devices"
-	"github.com/vyrdenhq/vyrden/server/internal/downloads"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
-	"github.com/vyrdenhq/vyrden/server/internal/jobs"
-	"github.com/vyrdenhq/vyrden/server/internal/libraries"
-	"github.com/vyrdenhq/vyrden/server/internal/media"
-	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
-	"github.com/vyrdenhq/vyrden/server/internal/migration"
-	"github.com/vyrdenhq/vyrden/server/internal/movies"
-	"github.com/vyrdenhq/vyrden/server/internal/observability"
-	"github.com/vyrdenhq/vyrden/server/internal/pairing"
-	"github.com/vyrdenhq/vyrden/server/internal/playback"
-	"github.com/vyrdenhq/vyrden/server/internal/playstate"
-	"github.com/vyrdenhq/vyrden/server/internal/probe"
-	"github.com/vyrdenhq/vyrden/server/internal/probes"
-	"github.com/vyrdenhq/vyrden/server/internal/resources"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
-	"github.com/vyrdenhq/vyrden/server/internal/scans"
-	"github.com/vyrdenhq/vyrden/server/internal/sessions"
-	"github.com/vyrdenhq/vyrden/server/internal/streaming"
-	"github.com/vyrdenhq/vyrden/server/internal/subtitles"
-	"github.com/vyrdenhq/vyrden/server/internal/transcode"
-	"github.com/vyrdenhq/vyrden/server/internal/tv"
+	"github.com/jampat000/Lorivo/server/internal/auth"
+	"github.com/jampat000/Lorivo/server/internal/catalog"
+	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/devices"
+	"github.com/jampat000/Lorivo/server/internal/downloads"
+	"github.com/jampat000/Lorivo/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/jobs"
+	"github.com/jampat000/Lorivo/server/internal/libraries"
+	"github.com/jampat000/Lorivo/server/internal/media"
+	metaprovider "github.com/jampat000/Lorivo/server/internal/metadata"
+	"github.com/jampat000/Lorivo/server/internal/migration"
+	"github.com/jampat000/Lorivo/server/internal/movies"
+	"github.com/jampat000/Lorivo/server/internal/observability"
+	"github.com/jampat000/Lorivo/server/internal/pairing"
+	"github.com/jampat000/Lorivo/server/internal/playback"
+	"github.com/jampat000/Lorivo/server/internal/playstate"
+	"github.com/jampat000/Lorivo/server/internal/probe"
+	"github.com/jampat000/Lorivo/server/internal/probes"
+	"github.com/jampat000/Lorivo/server/internal/resources"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/scans"
+	"github.com/jampat000/Lorivo/server/internal/sessions"
+	"github.com/jampat000/Lorivo/server/internal/streaming"
+	"github.com/jampat000/Lorivo/server/internal/subtitles"
+	"github.com/jampat000/Lorivo/server/internal/transcode"
+	"github.com/jampat000/Lorivo/server/internal/tv"
 )
 
 func TestHealthUsesStableStartedAt(t *testing.T) {
@@ -102,8 +102,8 @@ func TestRootSupportsHistoryFallbackForMigratedRoutes(t *testing.T) {
 		"/",
 		"/movies",
 		"/tv",
-		"/movies/placeholder-id",
-		"/tv/placeholder-id",
+		"/movies/movie-route-id",
+		"/tv/series-route-id",
 		"/settings",
 		"/admin",
 		"/collections",
@@ -182,7 +182,7 @@ func TestRootBuildInfoIsServedNoStore(t *testing.T) {
 	}
 }
 
-func TestLegacyAndNextRoutesReturnNotFound(t *testing.T) {
+func TestRetiredRootRoutesReturnNotFound(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	paths := []string{
 		"/legacy",
@@ -245,7 +245,7 @@ func TestDisallowedOriginBlockedByCORS(t *testing.T) {
 	}
 }
 
-func TestLocalOriginAllowedByCORS(t *testing.T) {
+func TestTrustedOriginAllowedByCORS(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
 	request.Header.Set("Origin", "http://localhost:8097")
@@ -336,7 +336,7 @@ func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
 	startedAt := time.Date(2026, 4, 30, 4, 5, 6, 0, time.UTC)
 	router := NewRouter(testDeps(t, startedAt))
 	request := httptest.NewRequest(http.MethodGet, "/api/client/bootstrap", nil)
-	request.Host = "vyrden.local:8097"
+	request.Host = "lorivo.local:8097"
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -349,7 +349,7 @@ func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
 		t.Fatalf("decode bootstrap: %v", err)
 	}
 	server := payload["server"].(map[string]any)
-	if server["baseUrl"] != "http://vyrden.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
+	if server["baseUrl"] != "http://lorivo.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
 		t.Fatalf("expected server identity, got %#v", server)
 	}
 	client := payload["client"].(map[string]any)
@@ -1118,7 +1118,7 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 }
 
 func TestMetadataProvidersEndpointUsesStrictManagedModeHealth(t *testing.T) {
-	t.Setenv("VYRDEN_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+	t.Setenv("LORIVO_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 
@@ -1528,10 +1528,10 @@ func TestAuthLoginForwardedHTTPSOnNonLoopbackDoesNotSetSecureCookieWithoutTLS(t 
 		"username": "admin",
 		"password": "test-password-123!",
 	})
-	request := httptest.NewRequest(http.MethodPost, "http://vyrden.test/api/auth/login", bytes.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "http://lorivo.test/api/auth/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Forwarded-Proto", "https")
-	request.Header.Set("X-Forwarded-Host", "vyrden.example")
+	request.Header.Set("X-Forwarded-Host", "lorivo.example")
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -1552,7 +1552,7 @@ func TestAuthLoginHTTPSRequestSetsSecureCookie(t *testing.T) {
 		"username": "admin",
 		"password": "test-password-123!",
 	})
-	request := httptest.NewRequest(http.MethodPost, "https://vyrden.test/api/auth/login", bytes.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "https://lorivo.test/api/auth/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 
@@ -1634,7 +1634,7 @@ func TestAuthMutationRejectsMissingCSRF(t *testing.T) {
 		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
 	}
 
-	request := httptest.NewRequest(http.MethodPut, "http://vyrden.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+	request := httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
 		"httpAddr": "127.0.0.1:8097",
 	})))
 	request.Header.Set("Content-Type", "application/json")
@@ -1663,7 +1663,7 @@ func TestAuthHeaderTokenAllowsProtectedRouteWithoutCookies(t *testing.T) {
 		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "http://vyrden.test/api/users", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://lorivo.test/api/users", nil)
 	request.Header.Set("X-Auth-Token", token)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -1689,7 +1689,7 @@ func TestAuthHeaderTokenMutationBypassesCSRFRequirement(t *testing.T) {
 		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
 	}
 
-	request := httptest.NewRequest(http.MethodPost, "http://vyrden.test/api/users", bytes.NewReader(mustJSON(t, map[string]any{
+	request := httptest.NewRequest(http.MethodPost, "http://lorivo.test/api/users", bytes.NewReader(mustJSON(t, map[string]any{
 		"username":    "viewer-hdr",
 		"displayName": "Viewer Header",
 		"password":    "viewer-password-123!",
@@ -1721,7 +1721,7 @@ func TestAuthHeaderTokenOverridesStaleCookie(t *testing.T) {
 		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "http://vyrden.test/api/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://lorivo.test/api/users", nil)
 	req.Header.Set("X-Auth-Token", token)
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "stale.invalid.token"})
 	res := httptest.NewRecorder()
@@ -1913,7 +1913,7 @@ func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
 }
 
 func TestSettingsManagedProviderOverridesIgnoreClientKeyInjection(t *testing.T) {
-	t.Setenv("VYRDEN_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+	t.Setenv("LORIVO_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 
@@ -2360,7 +2360,7 @@ func (c *authTestClient) requestJSON(t *testing.T, router http.Handler, method s
 	if body != nil {
 		reader = bytes.NewReader(mustJSON(t, body))
 	}
-	request := httptest.NewRequest(method, "http://vyrden.test"+path, reader)
+	request := httptest.NewRequest(method, "http://lorivo.test"+path, reader)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

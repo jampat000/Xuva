@@ -11,6 +11,6 @@ test('preview route is hard-gated by ?preview=1 and bypasses normal home states'
 	assert.match(source, /<LorivoMediaHome[\s\S]*previewMode=\{previewMode\}/);
 	assert.doesNotMatch(source, /Preview mode is currently unavailable/);
 	assert.doesNotMatch(source, /Add your first library/i);
-	assert.doesNotMatch(source, /Open Vyrden Settings/i);
-	assert.doesNotMatch(source, /Calo/i);
+	assert.doesNotMatch(source, /Open Lorivo Settings/i);
+	assert.doesNotMatch(source, /tmdb\(/i);
 });

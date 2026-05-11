@@ -1,6 +1,6 @@
 # Signed Streaming URLs
 
-Vyrden direct media streams require a short-lived signed token when local authentication is enabled.
+Lorivo direct media streams require a short-lived signed token when local authentication is enabled.
 
 Token claims:
 
@@ -47,5 +47,5 @@ The streaming service supports key IDs and a rotation entry point. Current produ
 
 Rollback path:
 
-- Temporarily set `VYRDEN_AUTH_DISABLED=true` in local development.
+- Temporarily set `LORIVO_AUTH_DISABLED=true` in local development.
 - Or restore direct stream handlers to bypass token validation while keeping auth/session middleware intact.

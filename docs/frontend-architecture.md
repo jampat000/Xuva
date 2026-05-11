@@ -1,6 +1,6 @@
 # Frontend Architecture
 
-Vyrden's web UI remains a lightweight server-rendered static app: no framework runtime, no build step, and no client bundle pipeline. The app is split into browser-safe modules that also run under Node tests.
+Lorivo's web UI remains a lightweight server-rendered static app: no framework runtime, no build step, and no client bundle pipeline. The app is split into browser-safe modules that also run under Node tests.
 
 ## Module Boundaries
 
@@ -23,10 +23,10 @@ const payload = await api("/api/sessions");
 For critical lists, validate the expected shape before rendering:
 
 ```js
-const sessions = VyrdenApi.validateArrayPayload(payload, "sessions");
+const sessions = LorivoApi.validateArrayPayload(payload, "sessions");
 ```
 
-Errors should surface through `VyrdenErrors.renderErrorBoundary` for full views or `VyrdenErrors.renderInlineError` for live patches. Avoid raw `error.message` in user-facing UI.
+Errors should surface through `LorivoErrors.renderErrorBoundary` for full views or `LorivoErrors.renderInlineError` for live patches. Avoid raw `error.message` in user-facing UI.
 
 ## Critical Tests
 

@@ -2,7 +2,7 @@
 
 ## High-Level Shape
 
-Vyrden is a local server with native and web clients.
+Lorivo is a local server with native and web clients.
 
 ```text
 Client app
@@ -42,15 +42,15 @@ Core server services:
 
 The first implementation should be one installable server process with separated internal services. This keeps installation light while preventing unrelated workloads from sharing uncontrolled queues.
 
-Desktop installs should run as a user-launched tray/taskbar app by default, not as an always-on system service. Runtime folder browsing and selection should therefore use the signed-in user's permissions: local drives, mapped drives, and reachable NAS/UNC paths are available when that user can access them. Vyrden should not require elevated service permissions just to choose media, metadata, cache, download, or transcode folders. Packaged desktop builds should expose a small web bridge for native folder picking and server restart controls; the browser-only folder API remains the fallback for dev, headless, and remote-admin use.
+Desktop installs should run as a user-launched tray/taskbar app by default, not as an always-on system service. Runtime folder browsing and selection should therefore use the signed-in user's permissions: local drives, mapped drives, and reachable NAS/UNC paths are available when that user can access them. Lorivo should not require elevated service permissions just to choose media, metadata, cache, download, or transcode folders. Packaged desktop builds should expose a small web bridge for native folder picking and server restart controls; the browser-only folder API remains the fallback for dev, headless, and remote-admin use.
 
-Storage must be library-path agnostic. Vyrden should support local internal disks, removable USB disks, NAS/SMB/NFS/network shares, and mounted volumes. NAS safety is one tuning profile, not the only target.
+Storage must be library-path agnostic. Lorivo should support local internal disks, removable USB disks, NAS/SMB/NFS/network shares, and mounted volumes. NAS safety is one tuning profile, not the only target.
 
 Initial package layout:
 
 ```text
 server/
-  cmd/vyrden/        Process entrypoint.
+  cmd/lorivo/        Process entrypoint.
   internal/api/      HTTP routes, JSON, SSE.
   internal/app/      Dependency wiring and lifecycle.
   internal/config/   Runtime configuration.

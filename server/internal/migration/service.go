@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/events"
 )
 
 const (
-	SchemaV1      = "vyrden.migration.v1"
+	SchemaV1      = "lorivo.migration.v1"
 	ScopePlayback = "playback"
 	ScopeMetadata = "metadata"
 )
@@ -157,9 +157,9 @@ func Formats() []FormatSpec {
 			Sources:     []string{"plex", "emby", "jellyfin", "generic"},
 			Schema:      SchemaV1,
 			ValidationRules: []string{
-				"Payload must be JSON with schema `vyrden.migration.v1`.",
+				"Payload must be JSON with schema `lorivo.migration.v1`.",
 				"Each item must target a movie or episode.",
-				"Each item needs a path hint, external ID, or title locator that Vyrden can match safely.",
+				"Each item needs a path hint, external ID, or title locator that Lorivo can match safely.",
 				"Playback imports write watched/resume against exactly one local media source version.",
 				"Metadata imports write external identifiers only for matched local items.",
 			},
@@ -548,7 +548,7 @@ func (s *Service) analyzeItem(ctx context.Context, item Item, scopes []string) (
 	if item.Kind != "movie" && item.Kind != "episode" {
 		report.Outcome = "conflict"
 		report.ReasonCode = "unsupported_kind"
-		report.ReasonText = "Vyrden can import only movie and episode history in this migration format."
+		report.ReasonText = "Lorivo can import only movie and episode history in this migration format."
 		return report, nil
 	}
 	changes := plannedChanges(item, scopes)
@@ -628,7 +628,7 @@ func (s *Service) matchMovie(ctx context.Context, item Item, changes []string) (
 		}
 		return pickSingleTarget(targets, "conflict", "movie_title_year_not_found", "No local movie matched the imported title and year.", changes, item.Kind)
 	}
-	return Target{}, "conflict", "movie_locator_missing", "Add a path, external ID, or title and year so Vyrden can find the local movie safely.", nil
+	return Target{}, "conflict", "movie_locator_missing", "Add a path, external ID, or title and year so Lorivo can find the local movie safely.", nil
 }
 
 func (s *Service) matchEpisode(ctx context.Context, item Item, changes []string) (Target, string, string, string, error) {
@@ -663,7 +663,7 @@ func (s *Service) matchEpisode(ctx context.Context, item Item, changes []string)
 		}
 		return pickSingleTarget(targets, "conflict", "episode_locator_not_found", "No local episode matched the imported series title, season, and episode numbers.", changes, item.Kind)
 	}
-	return Target{}, "conflict", "episode_locator_missing", "Add a path or series locator so Vyrden can find the local episode safely.", nil
+	return Target{}, "conflict", "episode_locator_missing", "Add a path or series locator so Lorivo can find the local episode safely.", nil
 }
 
 func pickSingleTarget(targets []Target, notFoundOutcome string, notFoundCode string, notFoundText string, changes []string, kind string) (Target, string, string, string, error) {

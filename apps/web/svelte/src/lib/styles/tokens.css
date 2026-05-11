@@ -1,7 +1,7 @@
 :root {
 	color-scheme: dark;
 
-	--vyrden-font-sans:
+	--lorivo-font-sans:
 		'Segoe UI Variable Text',
 		'Aptos',
 		'Inter',
@@ -9,7 +9,7 @@
 		'Segoe UI',
 		system-ui,
 		sans-serif;
-	--vyrden-font-display:
+	--lorivo-font-display:
 		'Segoe UI Variable Display',
 		'Aptos Display',
 		'Inter',
@@ -17,73 +17,73 @@
 		'Segoe UI',
 		system-ui,
 		sans-serif;
-	--vyrden-font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+	--lorivo-font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
-	--vyrden-density-factor: 1;
-	--vyrden-space-1: calc(0.25rem * var(--vyrden-density-factor));
-	--vyrden-space-2: calc(0.5rem * var(--vyrden-density-factor));
-	--vyrden-space-3: calc(0.75rem * var(--vyrden-density-factor));
-	--vyrden-space-4: calc(1rem * var(--vyrden-density-factor));
-	--vyrden-space-5: calc(1.25rem * var(--vyrden-density-factor));
-	--vyrden-space-6: calc(1.5rem * var(--vyrden-density-factor));
-	--vyrden-space-8: calc(2rem * var(--vyrden-density-factor));
-	--vyrden-space-10: calc(2.5rem * var(--vyrden-density-factor));
-	--vyrden-space-12: calc(3rem * var(--vyrden-density-factor));
+	--lorivo-density-factor: 1;
+	--lorivo-space-1: calc(0.25rem * var(--lorivo-density-factor));
+	--lorivo-space-2: calc(0.5rem * var(--lorivo-density-factor));
+	--lorivo-space-3: calc(0.75rem * var(--lorivo-density-factor));
+	--lorivo-space-4: calc(1rem * var(--lorivo-density-factor));
+	--lorivo-space-5: calc(1.25rem * var(--lorivo-density-factor));
+	--lorivo-space-6: calc(1.5rem * var(--lorivo-density-factor));
+	--lorivo-space-8: calc(2rem * var(--lorivo-density-factor));
+	--lorivo-space-10: calc(2.5rem * var(--lorivo-density-factor));
+	--lorivo-space-12: calc(3rem * var(--lorivo-density-factor));
 
-	--vyrden-control-height-sm: calc(2rem * var(--vyrden-density-factor));
-	--vyrden-control-height-md: calc(2.4rem * var(--vyrden-density-factor));
-	--vyrden-control-height-lg: calc(2.9rem * var(--vyrden-density-factor));
+	--lorivo-control-height-sm: calc(2rem * var(--lorivo-density-factor));
+	--lorivo-control-height-md: calc(2.4rem * var(--lorivo-density-factor));
+	--lorivo-control-height-lg: calc(2.9rem * var(--lorivo-density-factor));
 
-	--vyrden-radius-sm: 0.55rem;
-	--vyrden-radius-md: 0.8rem;
-	--vyrden-radius-lg: 1.05rem;
-	--vyrden-radius-xl: 1.35rem;
-	--vyrden-radius-pill: 999px;
+	--lorivo-radius-sm: 0.55rem;
+	--lorivo-radius-md: 0.8rem;
+	--lorivo-radius-lg: 1.05rem;
+	--lorivo-radius-xl: 1.35rem;
+	--lorivo-radius-pill: 999px;
 
-	--vyrden-shadow-soft: 0 10px 24px rgb(0 0 0 / 28%);
-	--vyrden-shadow-md: 0 20px 46px rgb(0 0 0 / 38%);
-	--vyrden-shadow-lg: 0 34px 76px rgb(0 0 0 / 48%);
+	--lorivo-shadow-soft: 0 10px 24px rgb(0 0 0 / 28%);
+	--lorivo-shadow-md: 0 20px 46px rgb(0 0 0 / 38%);
+	--lorivo-shadow-lg: 0 34px 76px rgb(0 0 0 / 48%);
 
-	--vyrden-color-bg-base: #0b1120;
-	--vyrden-color-bg-shell: #0b1120;
-	--vyrden-color-bg-sidebar: #0d1424;
-	--vyrden-color-bg-panel: #111827;
-	--vyrden-color-bg-panel-elevated: #172033;
-	--vyrden-color-bg-soft: #1f2937;
-	--vyrden-color-bg-inverse: #f6f7fb;
+	--lorivo-color-bg-base: #0b1120;
+	--lorivo-color-bg-shell: #0b1120;
+	--lorivo-color-bg-sidebar: #0d1424;
+	--lorivo-color-bg-panel: #111827;
+	--lorivo-color-bg-panel-elevated: #172033;
+	--lorivo-color-bg-soft: #1f2937;
+	--lorivo-color-bg-inverse: #f6f7fb;
 
-	--vyrden-color-border-soft: rgb(255 255 255 / 10%);
-	--vyrden-color-border-strong: rgb(124 92 255 / 36%);
+	--lorivo-color-border-soft: rgb(255 255 255 / 10%);
+	--lorivo-color-border-strong: rgb(124 92 255 / 36%);
 
-	--vyrden-color-text: #f8fafc;
-	--vyrden-color-text-muted: #b6c0d4;
-	--vyrden-color-text-soft: #7f8aa3;
-	--vyrden-color-text-inverse: #0b1120;
+	--lorivo-color-text: #f8fafc;
+	--lorivo-color-text-muted: #b6c0d4;
+	--lorivo-color-text-soft: #7f8aa3;
+	--lorivo-color-text-inverse: #0b1120;
 
-	--vyrden-color-accent-teal: #7c5cff;
-	--vyrden-color-accent-teal-soft: rgb(124 92 255 / 20%);
-	--vyrden-color-accent-teal-strong: #6a4af0;
-	--vyrden-color-good: #5fe1a0;
-	--vyrden-color-warn: #f0c76d;
-	--vyrden-color-danger: #f06e8b;
+	--lorivo-color-accent-teal: #7c5cff;
+	--lorivo-color-accent-teal-soft: rgb(124 92 255 / 20%);
+	--lorivo-color-accent-teal-strong: #6a4af0;
+	--lorivo-color-good: #5fe1a0;
+	--lorivo-color-warn: #f0c76d;
+	--lorivo-color-danger: #f06e8b;
 
-	--vyrden-track: rgb(255 255 255 / 14%);
-	--vyrden-progress: linear-gradient(90deg, #7c5cff, #a78bfa);
-	--vyrden-focus-ring: 0 0 0 3px rgb(124 92 255 / 34%);
+	--lorivo-track: rgb(255 255 255 / 14%);
+	--lorivo-progress: linear-gradient(90deg, #7c5cff, #a78bfa);
+	--lorivo-focus-ring: 0 0 0 3px rgb(124 92 255 / 34%);
 }
 
 [data-density='compact'] {
-	--vyrden-density-factor: 0.88;
+	--lorivo-density-factor: 0.88;
 }
 
 [data-density='default'] {
-	--vyrden-density-factor: 1;
+	--lorivo-density-factor: 1;
 }
 
 [data-density='comfortable'] {
-	--vyrden-density-factor: 1.08;
+	--lorivo-density-factor: 1.08;
 }
 
 [data-density='expanded'] {
-	--vyrden-density-factor: 1.18;
+	--lorivo-density-factor: 1.18;
 }

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Vyrden should choose the cheapest playback path that works for the current client and network conditions.
+Lorivo should choose the cheapest playback path that works for the current client and network conditions.
 
 ## Inputs
 

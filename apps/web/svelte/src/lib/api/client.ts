@@ -138,7 +138,7 @@ function toHeaders(options: ApiRequestOptions<unknown>): Headers {
 
 	const method = String(options.method || 'GET').toUpperCase();
 	if (!SAFE_METHODS.has(method) && !headers.has('X-CSRF-Token')) {
-		const token = options.csrfToken ? String(options.csrfToken).trim() : readCookie('vyrden_csrf');
+		const token = options.csrfToken ? String(options.csrfToken).trim() : readCookie('lorivo_csrf');
 		if (token) headers.set('X-CSRF-Token', token);
 	}
 

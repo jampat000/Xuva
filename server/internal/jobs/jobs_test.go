@@ -3,7 +3,7 @@ package jobs
 import (
 	"testing"
 
-	"github.com/vyrdenhq/vyrden/server/internal/resources"
+	"github.com/jampat000/Lorivo/server/internal/resources"
 )
 
 func TestRegistryUsesSeparateQueues(t *testing.T) {

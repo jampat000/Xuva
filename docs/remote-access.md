@@ -2,9 +2,9 @@
 
 ## Principle
 
-Vyrden should help users configure remote access, but it should not require Vyrden-owned infrastructure.
+Lorivo should help users configure remote access, but it should not require Lorivo-owned infrastructure.
 
-The setup experience should be honest: Vyrden can test, explain, and generate guidance, but the user controls the route.
+The setup experience should be honest: Lorivo can test, explain, and generate guidance, but the user controls the route.
 
 ## Supported Paths
 
@@ -16,7 +16,7 @@ The default experience. Discovery and pairing should work without an internet co
 
 The user exposes their server through router port forwarding or a reverse proxy.
 
-Vyrden should provide:
+Lorivo should provide:
 
 - Reachability checks.
 - HTTPS checks.
@@ -28,7 +28,7 @@ The UI should prefer a tested HTTPS URL and show whether the route is LAN-only, 
 
 ### User-Managed Reverse Proxy
 
-Vyrden should document and generate config examples for:
+Lorivo should document and generate config examples for:
 
 - Caddy.
 - Nginx.
@@ -36,7 +36,7 @@ Vyrden should document and generate config examples for:
 
 ### User-Managed Private Network
 
-Vyrden should work cleanly over:
+Lorivo should work cleanly over:
 
 - WireGuard.
 - Tailscale.
@@ -65,7 +65,7 @@ Download features should include:
 - LAN pairing must work without internet.
 - Manual server URL entry must always exist.
 - Remote access diagnostics must say what failed in plain language.
-- Vyrden must not imply that unsupported NAT or ISP setups are the user's fault.
+- Lorivo must not imply that unsupported NAT or ISP setups are the user's fault.
 - Paid features can improve diagnostics and download preparation, but core local access must not depend on vendor infrastructure.
 
 ## Explicit Non-Goals

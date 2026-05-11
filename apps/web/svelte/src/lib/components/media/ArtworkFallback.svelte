@@ -59,8 +59,8 @@
 		overflow: hidden;
 		width: 100%;
 		height: 100%;
-		padding: var(--vyrden-space-3);
-		color: var(--vyrden-color-text);
+		padding: var(--lorivo-space-3);
+		color: var(--lorivo-color-text);
 		background:
 			linear-gradient(160deg, rgb(255 246 229 / 7%), rgb(255 246 229 / 0%) 58%),
 			linear-gradient(180deg, #23241f, #181914 57%, #12130f 100%);
@@ -87,9 +87,9 @@
 
 	.artwork-fallback__line {
 		position: absolute;
-		left: var(--vyrden-space-3);
-		right: var(--vyrden-space-3);
-		top: var(--vyrden-space-3);
+		left: var(--lorivo-space-3);
+		right: var(--lorivo-space-3);
+		top: var(--lorivo-space-3);
 		height: 2px;
 		background: linear-gradient(
 			90deg,
@@ -103,7 +103,7 @@
 		position: relative;
 		z-index: 1;
 		display: grid;
-		gap: var(--vyrden-space-1);
+		gap: var(--lorivo-space-1);
 	}
 
 	.artwork-fallback__mark {
@@ -138,8 +138,8 @@
 
 	.artwork-fallback__mark--solo {
 		position: absolute;
-		left: var(--vyrden-space-3);
-		bottom: var(--vyrden-space-3);
+		left: var(--lorivo-space-3);
+		bottom: var(--lorivo-space-3);
 		z-index: 1;
 	}
 
@@ -151,7 +151,7 @@
 
 	p {
 		margin: 0;
-		color: var(--vyrden-color-text-muted);
+		color: var(--lorivo-color-text-muted);
 		font-size: 0.74rem;
 	}
 

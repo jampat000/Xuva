@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/events"
-	"github.com/vyrdenhq/vyrden/server/internal/jobs"
-	"github.com/vyrdenhq/vyrden/server/internal/resources"
+	"github.com/jampat000/Lorivo/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/jobs"
+	"github.com/jampat000/Lorivo/server/internal/resources"
 )
 
 func TestClassifyFailureKnownErrors(t *testing.T) {
@@ -164,8 +164,8 @@ import (
 	"time"
 )
 func main() {
-	mode := os.Getenv("VYRDEN_FAKE_FFMPEG_MODE")
-	counter := os.Getenv("VYRDEN_FAKE_FFMPEG_COUNTER")
+	mode := os.Getenv("LORIVO_FAKE_FFMPEG_MODE")
+	counter := os.Getenv("LORIVO_FAKE_FFMPEG_COUNTER")
 	if mode == "sleep" {
 		time.Sleep(5 * time.Second)
 		return
@@ -191,11 +191,11 @@ func main() {
 		t.Fatalf("write fake ffmpeg source: %v", err)
 	}
 	cmd := exec.Command("go", "build", "-o", binary, source)
-	cmd.Env = append(os.Environ(), "VYRDEN_FAKE_FFMPEG_MODE="+mode, "VYRDEN_FAKE_FFMPEG_COUNTER="+counter)
+	cmd.Env = append(os.Environ(), "LORIVO_FAKE_FFMPEG_MODE="+mode, "LORIVO_FAKE_FFMPEG_COUNTER="+counter)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build fake ffmpeg: %v\n%s", err, string(output))
 	}
-	t.Setenv("VYRDEN_FAKE_FFMPEG_MODE", mode)
-	t.Setenv("VYRDEN_FAKE_FFMPEG_COUNTER", counter)
+	t.Setenv("LORIVO_FAKE_FFMPEG_MODE", mode)
+	t.Setenv("LORIVO_FAKE_FFMPEG_COUNTER", counter)
 	return binary
 }

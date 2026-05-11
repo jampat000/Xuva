@@ -95,7 +95,7 @@ func writable(path string) bool {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return false
 	}
-	file, err := os.CreateTemp(path, ".vyrden-write-*")
+	file, err := os.CreateTemp(path, ".lorivo-write-*")
 	if err != nil {
 		return false
 	}

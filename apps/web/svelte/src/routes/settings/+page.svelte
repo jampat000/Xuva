@@ -30,11 +30,11 @@
 		ActivityListShell,
 		AdminPanel,
 		ServerShell,
-		VyrdenActionList,
-		VyrdenButton,
-		VyrdenEmptyState,
-		VyrdenPanel,
-		VyrdenStat
+		LorivoActionList,
+		LorivoButton,
+		LorivoEmptyState,
+		LorivoPanel,
+		LorivoStat
 	} from '$lib/components';
 
 	let isLoading = $state(true);
@@ -286,7 +286,7 @@
 	}
 
 	function displayText(value: unknown): string {
-		return asText(value).replace(/\bVyrden\b/g, 'Lorivo');
+		return asText(value).replace(/\bLorivo\b/g, 'Lorivo');
 	}
 
 	function cryptoSafeId(prefix: string): string {
@@ -317,14 +317,14 @@
 >
 	<div class="settings-page">
 		{#if isLoading}
-			<VyrdenPanel title="Loading Settings" subtitle="Reading server configuration and operator runtime data." />
+			<LorivoPanel title="Loading Settings" subtitle="Reading server configuration and operator runtime data." />
 		{:else if loadError}
-			<VyrdenPanel title="Settings could not load" subtitle={loadError}>
+			<LorivoPanel title="Settings could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<VyrdenButton variant="secondary" onclick={() => loadSettingsSurface(false)}>Retry</VyrdenButton>
-					<VyrdenButton variant="ghost" href="/">Back to Home</VyrdenButton>
+					<LorivoButton variant="secondary" onclick={() => loadSettingsSurface(false)}>Retry</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
 				</div>
-			</VyrdenPanel>
+			</LorivoPanel>
 		{:else}
 			<header class="settings-head">
 				<div>
@@ -343,12 +343,12 @@
 				status={serverStatus}
 			>
 				<div class="stat-grid">
-					<VyrdenStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Requires authenticated session API access.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
-					<VyrdenStat label="Queue Jobs" value={asCount(activeQueueCount)} meta="Scans, probes, work, and downloads in progress." tone={activeQueueCount > 0 ? 'warn' : 'good'} />
-					<VyrdenStat label="CPU" value={asPercent(system.cpu?.percent)} meta={`${asCount(system.cpu?.cores)} cores`} tone={Number(system.cpu?.percent || 0) >= 75 ? 'warn' : 'neutral'} />
-					<VyrdenStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={`${formatBytes(system.memory?.usedBytes)} used`} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
-					<VyrdenStat label="Catalog" value={`${asCount(summary.movies)} movies`} meta={`${asCount(summary.series)} shows / ${asCount(summary.episodes)} episodes`} />
-					<VyrdenStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} unprobed`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
+					<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Requires authenticated session API access.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
+					<LorivoStat label="Queue Jobs" value={asCount(activeQueueCount)} meta="Scans, probes, work, and downloads in progress." tone={activeQueueCount > 0 ? 'warn' : 'good'} />
+					<LorivoStat label="CPU" value={asPercent(system.cpu?.percent)} meta={`${asCount(system.cpu?.cores)} cores`} tone={Number(system.cpu?.percent || 0) >= 75 ? 'warn' : 'neutral'} />
+					<LorivoStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={`${formatBytes(system.memory?.usedBytes)} used`} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
+					<LorivoStat label="Catalog" value={`${asCount(summary.movies)} movies`} meta={`${asCount(summary.series)} shows / ${asCount(summary.episodes)} episodes`} />
+					<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} unprobed`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
 				</div>
 			</AdminPanel>
 			</section>
@@ -356,23 +356,23 @@
 			<div class="operator-grid">
 				<AdminPanel title="Queue Activity" description="Read-only queue stream. Controls are read-only in this build." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
 					<ActivityListShell title="Scans / Probes / Work / Downloads">
-						<VyrdenActionList items={queueItems.slice(0, 16)} emptyLabel="No queue activity right now." />
+						<LorivoActionList items={queueItems.slice(0, 16)} emptyLabel="No queue activity right now." />
 					</ActivityListShell>
 				</AdminPanel>
 
 				<AdminPanel title="Configuration Snapshot" description="Current runtime profile and playback policy." status="healthy">
 					<div class="stat-grid stat-grid--compact">
-						<VyrdenStat label="Server Name" value={asText(settings.config?.serverName) || 'My Server'} />
-						<VyrdenStat label="Sync Mode" value={asText(settings.config?.librarySyncMode) || 'unknown'} meta={`Every ${asCount(settings.config?.syncIntervalMins)} minutes`} />
-						<VyrdenStat
+						<LorivoStat label="Server Name" value={asText(settings.config?.serverName) || 'My Server'} />
+						<LorivoStat label="Sync Mode" value={asText(settings.config?.librarySyncMode) || 'unknown'} meta={`Every ${asCount(settings.config?.syncIntervalMins)} minutes`} />
+						<LorivoStat
 							label="Playback Policy"
 							value={displayText(performance.playbackPolicy?.label) || displayText(settings.config?.playbackPolicy) || 'unknown'}
 							meta={displayText(performance.playbackPolicy?.description)}
 						/>
-						<VyrdenStat label="Hardware" value={asText(performance.hardwareAcceleration?.status) || 'unknown'} meta={`GPU workers: ${asCount(settings.config?.gpuWorkers)}`} />
+						<LorivoStat label="Hardware" value={asText(performance.hardwareAcceleration?.status) || 'unknown'} meta={`GPU workers: ${asCount(settings.config?.gpuWorkers)}`} />
 					</div>
 					<ActivityListShell title="Libraries">
-						<VyrdenActionList
+						<LorivoActionList
 							items={libraryRows.map((item) => ({
 								id: item.id,
 								label: item.label,
@@ -383,7 +383,7 @@
 						/>
 					</ActivityListShell>
 					<ActivityListShell title="Metadata Providers">
-						<VyrdenActionList
+						<LorivoActionList
 							items={providerStates.map((provider) => ({
 								id: provider.id,
 								label: provider.name,
@@ -397,10 +397,10 @@
 
 			<AdminPanel title="Write Controls" description="This page is read-only in this build." status="idle">
 				<div class="status-actions">
-					<VyrdenButton variant="primary" href="/">Back to Home</VyrdenButton>
-					<VyrdenButton variant="secondary" disabled>Settings editing is not available yet.</VyrdenButton>
+					<LorivoButton variant="primary" href="/">Back to Home</LorivoButton>
+					<LorivoButton variant="secondary" disabled>Settings editing is not available yet.</LorivoButton>
 				</div>
-				<VyrdenEmptyState
+				<LorivoEmptyState
 					title="Read-only operator surface"
 					message="This settings surface is intentionally read-only in this build. Existing backend APIs and settings contracts remain unchanged."
 				/>
@@ -413,7 +413,7 @@
 	.settings-page {
 		display: grid;
 		gap: 18px;
-		padding-bottom: var(--vyrden-space-8);
+		padding-bottom: var(--lorivo-space-8);
 		min-width: 0;
 	}
 
@@ -426,21 +426,21 @@
 
 	.settings-head h1 {
 		margin: 0;
-		font-family: var(--vyrden-font-display);
+		font-family: var(--lorivo-font-display);
 		font-size: clamp(1.5rem, 1.4vw + 1rem, 2rem);
 		letter-spacing: -0.03em;
 	}
 
 	.settings-head p {
 		margin: 6px 0 0;
-		color: color-mix(in srgb, var(--vyrden-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
 		font-size: 0.9rem;
 		line-height: 1.42;
 		max-width: 860px;
 	}
 
 	.settings-head__meta {
-		color: color-mix(in srgb, var(--vyrden-color-text-soft) 90%, transparent);
+		color: color-mix(in srgb, var(--lorivo-color-text-soft) 90%, transparent);
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
@@ -464,7 +464,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--vyrden-space-2);
+		gap: var(--lorivo-space-2);
 	}
 
 	@media (max-width: 1120px) {

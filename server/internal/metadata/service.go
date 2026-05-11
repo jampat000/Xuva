@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/catalog"
-	"github.com/vyrdenhq/vyrden/server/internal/config"
-	"github.com/vyrdenhq/vyrden/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/catalog"
+	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Lorivo/server/internal/events"
 )
 
 type Service struct {
@@ -413,7 +413,7 @@ func (s *Service) getJSONHeaders(ctx context.Context, endpoint string, headers m
 		}
 	}
 	if request.Header.Get("User-Agent") == "" {
-		request.Header.Set("User-Agent", "Vyrden/0.1 (+https://github.com/vyrdenhq/vyrden)")
+		request.Header.Set("User-Agent", "Lorivo/0.1 (+https://github.com/lorivohq/lorivo)")
 	}
 	if request.Header.Get("Accept") == "" {
 		request.Header.Set("Accept", "application/json")
@@ -445,7 +445,7 @@ func (s *Service) postJSON(ctx context.Context, endpoint string, body any, heade
 		}
 	}
 	if request.Header.Get("User-Agent") == "" {
-		request.Header.Set("User-Agent", "Vyrden/0.1 (+https://github.com/vyrdenhq/vyrden)")
+		request.Header.Set("User-Agent", "Lorivo/0.1 (+https://github.com/lorivohq/lorivo)")
 	}
 	if request.Header.Get("Accept") == "" {
 		request.Header.Set("Accept", "application/json")

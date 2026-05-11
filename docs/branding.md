@@ -2,28 +2,28 @@
 
 ## Name
 
-Product name: Vyrden
+Product name: Lorivo
 
-Primary project namespace: vyrdenhq
+Primary project namespace: lorivohq
 
 Suggested public handles:
 
-- GitHub: `vyrdenhq`
-- Social: `@vyrdenhq`
-- Product domain preference: `vyrden.app`, `vyrden.tv`, or `getvyrden.com`
+- GitHub: `lorivohq`
+- Social: `@lorivohq`
+- Product domain preference: `lorivo.app`, `lorivo.tv`, or `getlorivo.com`
 
 ## Product Names
 
-- Vyrden Server
-- Vyrden Web
-- Vyrden TV
-- Vyrden Mobile
-- Vyrden Pass
-- Vyrden Pro
+- Lorivo Server
+- Lorivo Web
+- Lorivo TV
+- Lorivo Mobile
+- Lorivo Pass
+- Lorivo Pro
 
 ## Positioning
 
-Vyrden is a premium, private, local-first media server for people who want their personal media library to feel fast, beautiful, and dependable across every screen.
+Lorivo is a premium, private, local-first media server for people who want their personal media library to feel fast, beautiful, and dependable across every screen.
 
 ## Tone
 

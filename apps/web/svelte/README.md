@@ -1,4 +1,4 @@
-# calo web frontend
+# lorivo web frontend
 
 This app is the SvelteKit + TypeScript product frontend.
 

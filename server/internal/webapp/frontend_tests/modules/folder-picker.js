@@ -1,10 +1,10 @@
 (function (root, factory) {
   const api = factory(root);
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.VyrdenFolderPicker = api;
+  root.LorivoFolderPicker = api;
 })(typeof globalThis !== "undefined" ? globalThis : window, function (root) {
   function desktopBridge() {
-    const bridge = root.vyrdenDesktop || root.VyrdenDesktop;
+    const bridge = root.lorivoDesktop || root.LorivoDesktop;
     if (!bridge || typeof bridge.pickFolder !== "function") return null;
     return bridge;
   }

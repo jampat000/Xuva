@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/events"
+	"github.com/jampat000/Lorivo/server/internal/events"
 )
 
 type contextKey string

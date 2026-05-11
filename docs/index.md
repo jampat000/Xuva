@@ -1,4 +1,4 @@
-# Vyrden Docs Index
+# Lorivo Docs Index
 
 This index is the repository map for humans and agents. Keep it short, current, and linked.
 

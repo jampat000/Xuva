@@ -13,14 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/libraries"
-	"github.com/vyrdenhq/vyrden/server/internal/media"
-	"github.com/vyrdenhq/vyrden/server/internal/metasources"
-	"github.com/vyrdenhq/vyrden/server/internal/movies"
-	"github.com/vyrdenhq/vyrden/server/internal/probe"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
-	"github.com/vyrdenhq/vyrden/server/internal/tv"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/libraries"
+	"github.com/jampat000/Lorivo/server/internal/media"
+	"github.com/jampat000/Lorivo/server/internal/metasources"
+	"github.com/jampat000/Lorivo/server/internal/movies"
+	"github.com/jampat000/Lorivo/server/internal/probe"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/tv"
 )
 
 type Service struct {

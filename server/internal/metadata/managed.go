@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/config"
+	"github.com/jampat000/Lorivo/server/internal/config"
 )
 
 type ProviderHealth struct {
@@ -269,20 +269,20 @@ func managedProviderCredential(provider string, cfg config.Config) string {
 	switch normalizeProviderID(provider) {
 	case "tmdb":
 		return firstNonEmptyTrimmed(
-			os.Getenv("VYRDEN_MANAGED_TMDB_API_KEY"),
-			os.Getenv("VYRDEN_TMDB_API_KEY"),
+			os.Getenv("LORIVO_MANAGED_TMDB_API_KEY"),
+			os.Getenv("LORIVO_TMDB_API_KEY"),
 			cfg.TMDBAPIKey,
 		)
 	case "tvdb":
 		return firstNonEmptyTrimmed(
-			os.Getenv("VYRDEN_MANAGED_TVDB_API_KEY"),
-			os.Getenv("VYRDEN_TVDB_API_KEY"),
+			os.Getenv("LORIVO_MANAGED_TVDB_API_KEY"),
+			os.Getenv("LORIVO_TVDB_API_KEY"),
 			cfg.TVDBAPIKey,
 		)
 	case "omdb":
 		return firstNonEmptyTrimmed(
-			os.Getenv("VYRDEN_MANAGED_OMDB_API_KEY"),
-			os.Getenv("VYRDEN_OMDB_API_KEY"),
+			os.Getenv("LORIVO_MANAGED_OMDB_API_KEY"),
+			os.Getenv("LORIVO_OMDB_API_KEY"),
 			cfg.OMDbAPIKey,
 		)
 	default:

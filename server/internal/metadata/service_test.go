@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vyrdenhq/vyrden/server/internal/catalog"
-	"github.com/vyrdenhq/vyrden/server/internal/config"
-	"github.com/vyrdenhq/vyrden/server/internal/database"
-	"github.com/vyrdenhq/vyrden/server/internal/libraries"
-	"github.com/vyrdenhq/vyrden/server/internal/movies"
-	"github.com/vyrdenhq/vyrden/server/internal/scanner"
-	"github.com/vyrdenhq/vyrden/server/internal/tv"
+	"github.com/jampat000/Lorivo/server/internal/catalog"
+	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Lorivo/server/internal/libraries"
+	"github.com/jampat000/Lorivo/server/internal/movies"
+	"github.com/jampat000/Lorivo/server/internal/scanner"
+	"github.com/jampat000/Lorivo/server/internal/tv"
 )
 
 func TestRefreshUsesLocalNFOAndArtworkWithoutUserKeys(t *testing.T) {

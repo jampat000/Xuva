@@ -80,8 +80,8 @@ test("auth token falls back when localStorage is unavailable", () => {
     };
 
     writeAuthToken("token-123");
-    assert.equal(sessionStore.get("vyrden-auth-token"), "token-123");
-    assert.match(global.window.name, /vyrdenAuthToken=token-123/);
+    assert.equal(sessionStore.get("lorivo-auth-token"), "token-123");
+    assert.match(global.window.name, /lorivoAuthToken=token-123/);
     assert.equal(readAuthToken(), "token-123");
   } finally {
     global.window = originalWindow;
