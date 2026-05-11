@@ -4,6 +4,7 @@
 	import { getSeries, refreshMetadataBatch, scanTV, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
 	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
@@ -155,12 +156,21 @@
 	{#if isLoading}
 		<LorivoPanel title="Loading TV Shows" subtitle="Fetching your TV library from the media APIs." />
 	{:else if loadError}
-		<LorivoPanel title="TV Shows could not load" subtitle={loadError}>
-			<div class="flex flex-wrap gap-3">
-				<LorivoButton variant="secondary" onclick={loadSeries}>Retry</LorivoButton>
-				<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
-			</div>
-		</LorivoPanel>
+		<section class="px-4 pt-9 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="Connection"
+				title="Media library unavailable"
+				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+			>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" onclick={loadSeries}>Retry</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back Home</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+		</section>
 	{:else}
 		<section class="relative px-4 pt-7 sm:px-6 lg:px-8">
 			<div class="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-lg shadow-black/20 backdrop-blur sm:p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -191,9 +201,37 @@
 		</section>
 
 		{#if seriesCards.length === 0}
-			<LorivoPanel title="No TV shows found" subtitle="Try adding a TV library or running a scan." />
+			<section class="px-4 pt-7 sm:px-6 lg:px-8">
+				<LorivoEmptyState
+					eyebrow="TV"
+					title="No TV shows found yet"
+					description="Add a TV library or run a scan, and your shows will appear here."
+				>
+					{#snippet primaryAction()}
+						<LorivoButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
+							{isScanning ? 'Scanning...' : 'Scan TV'}
+						</LorivoButton>
+					{/snippet}
+					{#snippet secondaryAction()}
+						<LorivoButton variant="secondary" href="/setup">Add Library</LorivoButton>
+					{/snippet}
+				</LorivoEmptyState>
+			</section>
 		{:else if visibleCards.length === 0}
-			<LorivoPanel title="No matching TV shows" subtitle="Try another search term." />
+			<section class="px-4 pt-7 sm:px-6 lg:px-8">
+				<LorivoEmptyState
+					compact
+					title="No shows match that search"
+					description="Try a different search or reset the sort."
+				>
+					{#snippet primaryAction()}
+						<LorivoButton variant="secondary" size="sm" onclick={() => (searchValue = '')}>Clear search</LorivoButton>
+					{/snippet}
+					{#snippet secondaryAction()}
+						<LorivoButton variant="ghost" size="sm" onclick={() => (seriesSort = 'title')}>Reset sort</LorivoButton>
+					{/snippet}
+				</LorivoEmptyState>
+			</section>
 		{:else}
 			<MediaGrid title="TV Shows" subtitle={formatVisibleCount(visibleCards.length, visibleSeasons, visibleEpisodes)}>
 				{#each visibleCards as item (item.id)}

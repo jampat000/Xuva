@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Play } from 'lucide-svelte';
+	import { scanMovies } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import {
 		getMediaSourceDetail,
@@ -23,6 +24,7 @@
 	import DetailHero from '$lib/lorivo/DetailHero.svelte';
 	import DetailSection from '$lib/lorivo/DetailSection.svelte';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
 	import {
@@ -67,7 +69,9 @@
 	let { params } = $props<{ params: { id: string } }>();
 
 	let isLoading = $state(true);
+	let isScanning = $state(false);
 	let loadError = $state('');
+	let actionMessage = $state('');
 	let movie = $state<MovieDetailResponse | null>(null);
 	let sourceModels = $state<MovieSourceModel[]>([]);
 	let selectedSourceId = $state('');
@@ -144,9 +148,28 @@
 			sourceModels = loaded.filter((item): item is MovieSourceModel => Boolean(item));
 			selectedSourceId = sourceModels[0]?.mediaSourceId || '';
 		} catch (error) {
-			loadError = formatLoadError(error);
+			if (isApiStatus(error, 404)) {
+				movie = null;
+				sourceModels = [];
+				selectedSourceId = '';
+			} else {
+				loadError = formatLoadError(error);
+			}
 		} finally {
 			isLoading = false;
+		}
+	}
+
+	async function startMovieScan(): Promise<void> {
+		isScanning = true;
+		actionMessage = '';
+		try {
+			await scanMovies(apiClient, 50);
+			actionMessage = 'Movie scan started.';
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			isScanning = false;
 		}
 	}
 
@@ -273,16 +296,41 @@
 	{#if isLoading}
 		<LorivoPanel title="Loading Movie Details" subtitle="Fetching movie metadata, versions, and playback state." />
 	{:else if loadError}
-		<LorivoPanel title="Movie details could not load" subtitle={loadError}>
-			<div class="flex flex-wrap gap-3">
-				<LorivoButton variant="secondary" onclick={loadMovieDetails}>Retry</LorivoButton>
-				<LorivoButton variant="ghost" href="/movies">Back to Movies</LorivoButton>
-			</div>
-		</LorivoPanel>
+		<section class="px-4 pt-9 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="Connection"
+				title="Media library unavailable"
+				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+			>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" onclick={loadMovieDetails}>Retry</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+					<LorivoButton variant="ghost" href="/">Back Home</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+		</section>
 	{:else if !movie}
-		<LorivoPanel title="Movie not found" subtitle="This movie is no longer available in your library.">
-			<LorivoButton variant="secondary" href="/movies">Back to Movies</LorivoButton>
-		</LorivoPanel>
+		<section class="px-4 pt-9 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="Movies"
+				title="Movie not found"
+				description="Lorivo could not find that movie. It may have been removed, renamed, or not scanned yet."
+			>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" href="/movies">Back to Movies</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" onclick={startMovieScan} disabled={isScanning}>
+						{isScanning ? 'Scanning...' : 'Scan Movies'}
+					</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+			{#if actionMessage}
+				<p class="mt-3 text-sm text-white/60">{actionMessage}</p>
+			{/if}
+		</section>
 	{:else}
 		<DetailHero
 			title={movieTitle}

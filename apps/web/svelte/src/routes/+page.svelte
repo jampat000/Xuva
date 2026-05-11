@@ -19,6 +19,8 @@
 	} from '$lib/home/model';
 	import Hero from '$lib/lorivo/Hero.svelte';
 	import LandscapeCard from '$lib/lorivo/LandscapeCard.svelte';
+	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
+	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import PosterCard from '$lib/lorivo/PosterCard.svelte';
 	import Row from '$lib/lorivo/Row.svelte';
@@ -223,6 +225,54 @@
 	<TopBar />
 	{#if isLoading}
 		<LorivoPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
+	{:else if loadNotice}
+		<section class="px-4 pt-9 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="Connection"
+				title="Media library unavailable"
+				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+			>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" onclick={loadHome}>Retry</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+		</section>
+	{:else if model.trueEmpty}
+		<section class="px-4 pt-6 sm:px-6 lg:px-8">
+			<LorivoEmptyState
+				eyebrow="First run"
+				title="Build your Lorivo library"
+				description="Add your media folders, scan your library, and Lorivo will fill this home screen with what you're watching and what's new."
+			>
+				<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+					<a class="next-step-card" href="/setup">
+						<strong>Add a library</strong>
+						<span>Choose your Movies or TV folder so Lorivo knows where to look.</span>
+					</a>
+					<a class="next-step-card" href="/movies">
+						<strong>Review Movies</strong>
+						<span>Use Scan Movies once a movie folder has been added.</span>
+					</a>
+					<a class="next-step-card" href="/tv">
+						<strong>Review TV</strong>
+						<span>Use Scan TV once a TV folder has been added.</span>
+					</a>
+					<a class="next-step-card" href="/settings">
+						<strong>Check settings</strong>
+						<span>Review configured libraries, providers, and server status.</span>
+					</a>
+				</div>
+				{#snippet primaryAction()}
+					<LorivoButton variant="primary" href="/setup">Add a library</LorivoButton>
+				{/snippet}
+				{#snippet secondaryAction()}
+					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+				{/snippet}
+			</LorivoEmptyState>
+		</section>
 	{:else}
 		<Hero
 			heroPoster={hero.posterUrl}
@@ -235,45 +285,78 @@
 			playHref={heroPlayHref}
 			detailHref={heroDetailHref}
 		/>
-		{#if continueWatching.length > 0}
-			<Row title="Continue Watching">
+		<Row title="Continue Watching">
+			{#if continueWatching.length > 0}
 				{#each continueWatching as m (m.title)}
 					<LandscapeCard item={m} />
 				{/each}
-			</Row>
-		{/if}
-		{#if recentMovies.length > 0}
-			<Row title="Recently Added Movies">
+			{:else}
+				<div class="min-w-[280px] flex-1">
+					<LorivoEmptyState
+						compact
+						title="Nothing in progress yet."
+						description="Start a movie or episode and it will appear here."
+					/>
+				</div>
+			{/if}
+		</Row>
+		<Row title="Recently Added Movies">
+			{#if recentMovies.length > 0}
 				{#each recentMovies as m (m.title)}
 					<PosterCard img={m.img} title={m.title} />
 				{/each}
-			</Row>
-		{/if}
-		{#if recentTV.length > 0}
-			<Row title="Recently Added TV">
+			{:else}
+				<div class="min-w-[280px] flex-1">
+					<LorivoEmptyState compact title="No movies have been added yet." description="Add a movie library or run Scan Movies." />
+				</div>
+			{/if}
+		</Row>
+		<Row title="Recently Added TV">
+			{#if recentTV.length > 0}
 				{#each recentTV as m (m.title)}
 					<PosterCard img={m.img} title={m.title} ep={m.ep} />
 				{/each}
-			</Row>
-		{/if}
-		{#if loadNotice}
-			<LorivoPanel title="Media library unavailable" subtitle={loadNotice}>
-				<div class="flex flex-wrap gap-3">
-					<button
-						type="button"
-						class="inline-flex min-h-11 items-center rounded-xl !bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#7C5CFF]/30 transition hover:!bg-[#6a4af0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]"
-						onclick={loadHome}
-					>
-						Retry
-					</button>
+			{:else}
+				<div class="min-w-[280px] flex-1">
+					<LorivoEmptyState compact title="No TV shows have been added yet." description="Add a TV library or run Scan TV." />
 				</div>
-			</LorivoPanel>
-		{:else if model.trueEmpty}
-			<LorivoPanel
-				title="No media library yet"
-				subtitle="Add a Movies or TV folder, then scan your library to populate Lorivo."
-			/>
-		{/if}
+			{/if}
+		</Row>
 		<div class="h-16"></div>
 	{/if}
 </div>
+
+<style>
+	.next-step-card {
+		display: grid;
+		gap: 0.45rem;
+		min-height: 9rem;
+		align-content: start;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 1rem;
+		background: rgb(11 17 32 / 58%);
+		padding: 1rem;
+		text-decoration: none;
+		transition:
+			transform 0.2s ease,
+			border-color 0.2s ease,
+			background 0.2s ease;
+	}
+
+	.next-step-card:hover {
+		transform: translateY(-2px);
+		border-color: rgb(124 92 255 / 45%);
+		background: rgb(124 92 255 / 10%);
+	}
+
+	.next-step-card strong {
+		color: white;
+		font-size: 1rem;
+	}
+
+	.next-step-card span {
+		color: rgb(255 255 255 / 58%);
+		font-size: 0.9rem;
+		line-height: 1.45;
+	}
+</style>
