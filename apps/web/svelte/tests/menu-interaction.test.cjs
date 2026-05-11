@@ -100,13 +100,46 @@ async function assertNoPersistentMediaPills(page) {
 }
 
 async function assertLeftDrawer(page, drawer, viewport) {
-	const box = await drawer.boundingBox();
+	let box = await drawer.boundingBox();
 	assert.ok(box, 'drawer should have a bounding box');
-	assert.ok(box.x <= 1, `drawer should be anchored to the left edge, got x=${box.x}`);
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < 1200) {
+		if (box.x >= -1 && box.x <= 1) break;
+		await page.waitForTimeout(40);
+		box = await drawer.boundingBox();
+		assert.ok(box, 'drawer should have a bounding box');
+	}
+	assert.ok(box.x >= -1 && box.x <= 1, `drawer should be anchored to the left edge, got x=${box.x}`);
 	assert.ok(box.y <= 1, `drawer should start at the top edge, got y=${box.y}`);
 	assert.ok(box.height >= viewport.height - 2, `drawer should span the viewport height, got ${box.height}`);
 	assert.ok(box.width >= 260, `drawer should be sidebar width, got ${box.width}`);
 	assert.ok(box.width <= Math.ceil(viewport.width * 0.9), `drawer should fit viewport width, got ${box.width}`);
+}
+
+async function waitForDrawerState(drawer, state) {
+	await drawer.waitFor({ state: 'attached', timeout: 5000 });
+	await drawer.evaluate(
+		(element, expectedState) =>
+			new Promise((resolve, reject) => {
+				if (element.getAttribute('data-state') === expectedState) {
+					resolve(true);
+					return;
+				}
+				const timeout = setTimeout(() => {
+					observer.disconnect();
+					reject(new Error(`drawer did not reach ${expectedState}`));
+				}, 5000);
+				const observer = new MutationObserver(() => {
+					if (element.getAttribute('data-state') === expectedState) {
+						clearTimeout(timeout);
+						observer.disconnect();
+						resolve(true);
+					}
+				});
+				observer.observe(element, { attributes: true, attributeFilter: ['data-state'] });
+			}),
+		state
+	);
 }
 
 async function assertNoHorizontalOverflow(page) {
@@ -114,53 +147,86 @@ async function assertNoHorizontalOverflow(page) {
 	assert.equal(overflow, false);
 }
 
+async function assertSurfaceShift(page, surface, beforeX, viewport, shouldShift) {
+	let box = await surface.boundingBox();
+	assert.ok(box, 'app surface should have a bounding box');
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < 1200) {
+		const shift = Math.round(box.x - beforeX);
+		if ((shouldShift && shift >= 300) || (!shouldShift && Math.abs(shift) <= 1)) break;
+		await page.waitForTimeout(40);
+		box = await surface.boundingBox();
+		assert.ok(box, 'app surface should have a bounding box');
+	}
+	const shift = Math.round(box.x - beforeX);
+	if (shouldShift) {
+		assert.ok(shift >= 300, `desktop/tablet app surface should shift right, got ${shift}`);
+	} else {
+		assert.ok(Math.abs(shift) <= 1, `mobile app surface should not shift, got ${shift}`);
+	}
+	await assertNoHorizontalOverflow(page);
+	return box.x;
+}
+
 async function verifyMediaMenu(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoPersistentMediaPills(page);
 	await assertNoHorizontalOverflow(page);
+	const shouldShift = viewport.width >= 768;
+	const surface = page.getByTestId('lorivo-app-surface');
+	const beforeSurface = await surface.boundingBox();
+	assert.ok(beforeSurface, 'media app surface should exist');
 
 	const mediaButton = page.getByTestId('media-menu-button');
 	assert.equal(await mediaButton.count(), 1);
 	await mediaButton.click();
 	const mediaDrawer = page.getByTestId('media-menu-drawer');
-	await mediaDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await waitForDrawerState(mediaDrawer, 'open');
 	await assertLeftDrawer(page, mediaDrawer, viewport);
-	for (const label of ['Home', 'Movies', 'TV', 'Settings']) {
+	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, shouldShift);
+	for (const label of ['Home', 'Movies', 'TV', 'Libraries', 'Settings']) {
 		assert.equal(await mediaDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
 	await page.mouse.click(viewport.width - 12, 12);
-	await mediaDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+	await waitForDrawerState(mediaDrawer, 'closed');
+	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, false);
 
 	await mediaButton.click();
-	await mediaDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await waitForDrawerState(mediaDrawer, 'open');
 	await page.keyboard.press('Escape');
-	await mediaDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+	await waitForDrawerState(mediaDrawer, 'closed');
+	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, false);
 
 	await mediaButton.click();
-	await mediaDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await waitForDrawerState(mediaDrawer, 'open');
 	await assertLeftDrawer(page, mediaDrawer, viewport);
 	await mediaDrawer.getByRole('link', { name: 'Movies', exact: true }).click();
 	await page.waitForURL(`${baseURL}/movies`, { timeout: 10000 });
-	await mediaDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+	await waitForDrawerState(mediaDrawer, 'closed');
 }
 
 async function verifySettingsMenu(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoHorizontalOverflow(page);
+	const shouldShift = viewport.width >= 768;
+	const surface = page.getByTestId('settings-shell-surface');
+	const beforeSurface = await surface.boundingBox();
+	assert.ok(beforeSurface, 'settings app surface should exist');
 	const settingsButton = page.getByTestId('settings-menu-button');
 	assert.equal(await settingsButton.count(), 1);
 	await settingsButton.click();
 	const settingsDrawer = page.getByTestId('settings-menu-drawer');
-	await settingsDrawer.waitFor({ state: 'visible', timeout: 5000 });
+	await waitForDrawerState(settingsDrawer, 'open');
 	await assertLeftDrawer(page, settingsDrawer, viewport);
+	await assertSurfaceShift(page, surface, beforeSurface.x, viewport, shouldShift);
 	for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
 		assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
 	await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
 	await page.waitForURL(`${baseURL}/`, { timeout: 10000 });
-	await settingsDrawer.waitFor({ state: 'hidden', timeout: 5000 });
+	assert.equal(await page.getByTestId('settings-menu-drawer').count(), 0);
 }
 
 test('hamburger media and settings menus open and navigate across viewports', async () => {
