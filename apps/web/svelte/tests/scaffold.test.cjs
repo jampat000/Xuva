@@ -79,13 +79,12 @@ test('design-system component exports include phase 2 primitives', () => {
 
 test('root home route no longer includes phase 2 showroom copy', () => {
 	const pagePath = path.join(appRoot, 'src/routes/+page.svelte');
-	const homeComponentPath = path.join(appRoot, 'src/lib/components/home/LorivoMediaHome.svelte');
 	const pageSource = fs.readFileSync(pagePath, 'utf8');
-	const homeComponentSource = fs.readFileSync(homeComponentPath, 'utf8');
 
 	assert.doesNotMatch(pageSource, /Design System Preview/);
 	assert.doesNotMatch(pageSource, /Operator and Dashboard Primitives/);
-	assert.match(pageSource, /<LorivoMediaHome/);
-	assert.match(homeComponentSource, /Continue Watching/);
-	assert.match(homeComponentSource, /Recently Added Movies/);
+	assert.match(pageSource, /<Hero/);
+	assert.match(pageSource, /Continue Watching/);
+	assert.match(pageSource, /Recently Added Movies/);
+	assert.doesNotMatch(pageSource, /LorivoMediaHome/);
 });

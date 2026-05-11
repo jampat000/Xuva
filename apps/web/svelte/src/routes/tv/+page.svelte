@@ -3,8 +3,6 @@
 	import { Search } from 'lucide-svelte';
 	import { getSeries, refreshMetadataBatch, scanTV, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
-	import { resolvePreviewMode } from '$lib/home/model';
-	import { previewSeriesRows } from '$lib/preview/media-library';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
 	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
@@ -22,7 +20,6 @@
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let searchValue = $state('');
-	let previewMode = $state(false);
 	let seriesSort = $state<SeriesSort>('title');
 	let seriesRows = $state<SeriesListItem[]>([]);
 
@@ -30,7 +27,6 @@
 	const visibleCards = $derived.by(() =>
 		filterAndSortSeriesCards(seriesCards, searchValue, 'all', seriesSort)
 	);
-	const featuredCards = $derived.by(() => visibleCards.slice(0, 5));
 	const visibleEpisodes = $derived.by(() =>
 		visibleCards.reduce((total, item) => total + item.episodeCount, 0)
 	);
@@ -41,7 +37,6 @@
 	onMount(() => {
 		try {
 			const params = new URL(window.location.href).searchParams;
-			previewMode = resolvePreviewMode(params);
 			const q = params.get('q');
 			if (q) searchValue = q;
 		} catch {
@@ -53,17 +48,9 @@
 	async function loadSeries(): Promise<void> {
 		isLoading = true;
 		loadError = '';
-		const activePreviewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
-		if (activePreviewMode) {
-			previewMode = true;
-			seriesRows = previewSeriesRows();
-			isLoading = false;
-			return;
-		}
 
 		try {
 			const seriesPayload = await getSeries(apiClient, 500);
-			previewMode = false;
 			seriesRows = seriesPayload.series || [];
 		} catch (error) {
 			loadError = formatLoadError(error);
@@ -154,28 +141,14 @@
 					{formatVisibleCount(visibleCards.length, visibleSeasons, visibleEpisodes)}
 				</p>
 			</div>
-			{#if previewMode && featuredCards.length > 0}
-				<div class="hidden items-end -space-x-8 pr-4 lg:flex">
-					{#each featuredCards as item, index (item.id)}
-						<img
-							src={item.posterUrl}
-							alt=""
-							aria-hidden="true"
-							class="h-36 w-24 rounded-lg object-cover shadow-2xl shadow-black/50 ring-1 ring-white/10 transition"
-							style={`transform: translateY(${index % 2 === 0 ? '0' : '12px'});`}
-						/>
-					{/each}
-				</div>
-			{:else if !previewMode}
-				<div class="flex flex-wrap gap-3">
-					<LorivoButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
-						{isScanning ? 'Scanning...' : 'Scan TV'}
-					</LorivoButton>
-					<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
-						{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-					</LorivoButton>
-				</div>
-			{/if}
+			<div class="flex flex-wrap gap-3">
+				<LorivoButton variant="primary" onclick={startTVScan} disabled={isScanning || isRefreshing}>
+					{isScanning ? 'Scanning...' : 'Scan TV'}
+				</LorivoButton>
+				<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+					{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
+				</LorivoButton>
+			</div>
 		</div>
 	</section>
 
@@ -228,7 +201,7 @@
 						title={item.title}
 						meta={item.meta}
 						img={item.posterUrl}
-						href={`/tv/${encodeURIComponent(item.id)}${previewMode ? '?preview=1' : ''}`}
+						href={`/tv/${encodeURIComponent(item.id)}`}
 					/>
 				{/each}
 			</MediaGrid>

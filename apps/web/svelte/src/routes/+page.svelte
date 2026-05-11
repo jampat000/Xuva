@@ -1,75 +1,167 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { ApiClientError, apiClient } from '$lib/api/client';
+	import { getClientHome, getLibraries, getPlaybackRecent } from '$lib/api/home';
+	import {
+		buildHomeViewModel,
+		createEmptyHomeViewModel,
+		type HomeDisplayItem,
+		type HomeViewModel
+	} from '$lib/home/model';
 	import Hero from '$lib/lorivo/Hero.svelte';
 	import LandscapeCard from '$lib/lorivo/LandscapeCard.svelte';
+	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
 	import PosterCard from '$lib/lorivo/PosterCard.svelte';
 	import Row from '$lib/lorivo/Row.svelte';
 	import TopBar from '$lib/lorivo/TopBar.svelte';
 
-	const tmdb = (path: string) => `https://image.tmdb.org/t/p/w500${path}`;
-	const tmdbBg = (path: string) => `https://image.tmdb.org/t/p/original${path}`;
+	let isLoading = $state(true);
+	let loadError = $state('');
+	let model = $state<HomeViewModel>(createEmptyHomeViewModel());
 
-	// Hero: Dune: Part Two — real poster + matching backdrop
-	const HERO_POSTER = tmdb('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg');
-	const HERO_BACKDROP = tmdbBg('/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg');
+	const hero = $derived(model.hero);
+	const heroPlayHref = $derived(playHref(hero));
+	const heroDetailHref = $derived(detailHref(hero));
+	const continueWatching = $derived.by(() => model.continueItems.map(toContinueCard));
+	const recentMovies = $derived.by(() => model.movieItems.map(toPosterCard));
+	const recentTV = $derived.by(() => model.tvItems.map(toTVPosterCard));
 
-	const continueWatching = [
-		{ title: 'Dune: Part Two', sub: '1h 14m left', progress: 55, img: tmdb('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg') },
-		{ title: 'The Last of Us', sub: 'S1 E4 · 24m left', progress: 70, img: tmdb('/uKvVjHNqB5VmOrdxqAt2F7J78ED.jpg') },
-		{ title: 'Foundation', sub: 'S2 E3 · 32m left', progress: 40, img: tmdb('/tg9I5pOY4M9CKj8U0cxVBTsm5eh.jpg') },
-		{ title: 'Oppenheimer', sub: '1h 20m left', progress: 35, img: tmdb('/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg') },
-		{ title: 'The Batman', sub: '40m left', progress: 80, img: tmdb('/b0PlSFdDwbyK0cf5RxwDpaOJQvQ.jpg') },
-		{ title: 'Interstellar', sub: '1h 7m left', progress: 50, img: tmdb('/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg') },
-	];
+	onMount(() => {
+		void loadHome();
+	});
 
-	const recentMovies = [
-		{ title: 'Mufasa: The Lion King', img: tmdb('/lurEK87kukWNaHd0zYnsi3yzJrs.jpg') },
-		{ title: 'Twisters', img: tmdb('/pjnD08FlMAIXsfOLKQbvmO0f0MD.jpg') },
-		{ title: 'A Quiet Place: Day One', img: tmdb('/hU42CRk14JuPEdqZG3AWmagiPAP.jpg') },
-		{ title: 'The Fall Guy', img: tmdb('/e7olqFmzcIX5c23kX4zSmLPJi8c.jpg') },
-		{ title: 'Kingdom of the Planet of the Apes', img: tmdb('/gKkl37BQuKTanygYQG1pyYgLVgf.jpg') },
-		{ title: 'Civil War', img: tmdb('/dXNAPwY7VrqMAo51EKhhCJfaGb5.jpg') },
-		{ title: 'Dune: Part Two', img: tmdb('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg') },
-		{ title: 'Top Gun: Maverick', img: tmdb('/62HCnUTziyWcpDaBO2i1DX17ljH.jpg') },
-		{ title: 'Deadpool & Wolverine', img: tmdb('/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg') },
-		{ title: 'The Wild Robot', img: tmdb('/9w0Vh9eizfBXrcomiaFWTIPdboo.jpg') },
-	];
+	async function loadHome(): Promise<void> {
+		isLoading = true;
+		loadError = '';
+		try {
+			const [homePayload, playbackRecentPayload, librariesPayload] = await Promise.all([
+				getClientHome(apiClient, 24),
+				getPlaybackRecent(apiClient, 12),
+				getLibraries(apiClient)
+			]);
+			model = buildHomeViewModel({
+				homePayload,
+				playbackRecentPayload,
+				librariesPayload,
+				sessionPayload: null,
+				forceEmpty: false
+			});
+		} catch (error) {
+			model = createEmptyHomeViewModel();
+			loadError = formatLoadError(error);
+		} finally {
+			isLoading = false;
+		}
+	}
 
-	const recentTV = [
-		{ title: 'The Penguin', ep: 'S1 E4', img: tmdb('/vOWcqC4oDQws1doDWLO7d3dh5qc.jpg') },
-		{ title: 'House of the Dragon', ep: 'S2 E2', img: tmdb('/7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg') },
-		{ title: 'The Boys', ep: 'S4 E6', img: tmdb('/2zmTngn1tYC1AvfnrFLhxeD82hz.jpg') },
-		{ title: 'Slow Horses', ep: 'S4 E3', img: tmdb('/dnpatlJrEPiDSn5fzgzvxtiSnMo.jpg') },
-		{ title: 'Reacher', ep: 'S3 E4', img: tmdb('/31GlRQMiDunO8cl3NxTz34U64rf.jpg') },
-		{ title: 'Severance', ep: 'S2 E4', img: tmdb('/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg') },
-		{ title: 'The Night Agent', ep: 'S2 E2', img: tmdb('/4c5yUNcaff4W4aPrkXE6zr7papX.jpg') },
-		{ title: 'Silo', ep: 'S2 E1', img: tmdb('/tlliQuCupf8fpTH7RAor3aKMGy.jpg') },
-		{ title: '3 Body Problem', ep: 'S1 E7', img: tmdb('/ykZ7hlShkdRQaL2aiieXdEMmrLb.jpg') },
-		{ title: 'Monarch: Legacy of Monsters', ep: 'S1 E8', img: tmdb('/7LBbaEaLSbqdviBYaSS1rRPMnrs.jpg') },
-	];
+	function toContinueCard(item: HomeDisplayItem): {
+		title: string;
+		sub: string;
+		progress: number;
+		img?: string;
+	} {
+		return {
+			title: item.title,
+			sub: item.meta || item.subtitle || 'Resume playback',
+			progress: item.progressPercent,
+			img: item.backdropUrl || item.posterUrl
+		};
+	}
+
+	function toPosterCard(item: HomeDisplayItem): { title: string; img?: string } {
+		return {
+			title: item.title,
+			img: item.posterUrl || item.backdropUrl
+		};
+	}
+
+	function toTVPosterCard(item: HomeDisplayItem): { title: string; img?: string; ep?: string } {
+		return {
+			title: item.title,
+			img: item.posterUrl || item.backdropUrl,
+			ep: item.subtitle || item.meta
+		};
+	}
+
+	function detailHref(item: HomeDisplayItem): string {
+		if (!item.id) return '';
+		if (item.kind === 'movie') return `/movies/${encodeURIComponent(item.id)}`;
+		if (item.kind === 'series') return `/tv/${encodeURIComponent(item.id)}`;
+		return '';
+	}
+
+	function playHref(item: HomeDisplayItem): string {
+		const mediaSourceId = item.playMediaSourceId || item.mediaSourceId;
+		return mediaSourceId ? `/play/${encodeURIComponent(mediaSourceId)}` : '';
+	}
+
+	function formatLoadError(error: unknown): string {
+		if (error instanceof ApiClientError) return error.userMessage || error.message;
+		if (error instanceof Error) return error.message;
+		return 'Home could not load.';
+	}
 </script>
 
 <svelte:head>
-	<title>Lorivo — Stream Movies & TV</title>
+	<title>Lorivo - Stream Movies & TV</title>
 	<meta name="description" content="Lorivo: your personal streaming hub for movies and TV." />
 </svelte:head>
 
 <div class="min-h-screen bg-[#0B1120] font-sans text-white antialiased">
 	<TopBar />
-	<Hero heroPoster={HERO_POSTER} heroBackdrop={HERO_BACKDROP} />
-	<Row title="Continue Watching">
-		{#each continueWatching as m (m.title)}
-			<LandscapeCard item={m} />
-		{/each}
-	</Row>
-	<Row title="Recently Added Movies">
-		{#each recentMovies as m (m.title)}
-			<PosterCard img={m.img} title={m.title} />
-		{/each}
-	</Row>
-	<Row title="Recently Added TV">
-		{#each recentTV as m (m.title)}
-			<PosterCard img={m.img} title={m.title} ep={m.ep} />
-		{/each}
-	</Row>
-	<div class="h-16"></div>
+	{#if isLoading}
+		<LorivoPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
+	{:else if loadError}
+		<LorivoPanel title="Home could not load" subtitle={loadError}>
+			<div class="flex flex-wrap gap-3">
+				<button
+					type="button"
+					class="inline-flex min-h-11 items-center rounded-xl !bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#7C5CFF]/30 transition hover:!bg-[#6a4af0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]"
+					onclick={loadHome}
+				>
+					Retry
+				</button>
+			</div>
+		</LorivoPanel>
+	{:else}
+		<Hero
+			heroPoster={hero.posterUrl}
+			heroBackdrop={hero.backdropUrl || hero.posterUrl}
+			title={hero.title}
+			meta={hero.meta}
+			description={hero.description}
+			progress={hero.progressPercent}
+			progressLabel={hero.progressPercent > 0 ? `${hero.progressPercent}% watched` : ''}
+			playHref={heroPlayHref}
+			detailHref={heroDetailHref}
+		/>
+		{#if continueWatching.length > 0}
+			<Row title="Continue Watching">
+				{#each continueWatching as m (m.title)}
+					<LandscapeCard item={m} />
+				{/each}
+			</Row>
+		{/if}
+		{#if recentMovies.length > 0}
+			<Row title="Recently Added Movies">
+				{#each recentMovies as m (m.title)}
+					<PosterCard img={m.img} title={m.title} />
+				{/each}
+			</Row>
+		{/if}
+		{#if recentTV.length > 0}
+			<Row title="Recently Added TV">
+				{#each recentTV as m (m.title)}
+					<PosterCard img={m.img} title={m.title} ep={m.ep} />
+				{/each}
+			</Row>
+		{/if}
+		{#if model.trueEmpty}
+			<LorivoPanel
+				title="No media library yet"
+				subtitle="Add a Movies or TV folder, then scan your library to populate Lorivo."
+			/>
+		{/if}
+		<div class="h-16"></div>
+	{/if}
 </div>

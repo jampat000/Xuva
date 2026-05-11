@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { resolvePreviewMode } from '$lib/home/model';
 	import {
 		BrowseHeader,
 		MediaRow,
@@ -28,7 +27,6 @@
 	let authMessage = $state('');
 	let searchValue = $state('');
 	let rowAvailable = $state(false);
-	let usingPreviewData = $state(false);
 	let userDisplayName = $state('Local User');
 	let userRole = $state('Local Account');
 	let userInitials = $state('V');
@@ -59,11 +57,8 @@
 		loadError = '';
 		authMessage = '';
 		rowAvailable = false;
-		usingPreviewData = false;
 		try {
-			const url = new URL(window.location.href);
-			const previewMode = resolvePreviewMode(url.searchParams);
-			const outcome = await loadSecondaryRouteContextSafe({ previewMode, limit: 60 });
+			const outcome = await loadSecondaryRouteContextSafe({ limit: 60 });
 			if (outcome.kind === 'auth') {
 				authMessage = outcome.message;
 				movieItems = [];
@@ -79,7 +74,6 @@
 			userRole = context.user?.role || 'Local Account';
 			userInitials = initialsForName(userDisplayName);
 			libraries = context.libraries || [];
-			usingPreviewData = context.model.usingPreviewData;
 
 			const row = findRow(context.homePayload, 'recently-added');
 			rowAvailable = Boolean(row);
@@ -135,17 +129,15 @@
 					<BrowseStatChip label={`${totalVisible} visible`} />
 					<BrowseStatChip label={`${visibleMovies.length} movies`} />
 					<BrowseStatChip label={`${visibleTV.length} shows`} />
-					{#if !rowAvailable && !usingPreviewData}
+					{#if !rowAvailable}
 						<BrowseStatChip label="Not available yet" />
-					{:else if usingPreviewData}
-						<BrowseStatChip label="Preview mode" />
 					{/if}
 				{/snippet}
 			</BrowseHeader>
 
 			<BrowseToolbar />
 
-			{#if !rowAvailable && !usingPreviewData}
+			{#if !rowAvailable}
 				<VyrdenEmptyState
 					title="Recently Added is not available yet"
 					message="The current backend payload does not expose a recently added row for this route."

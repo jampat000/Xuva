@@ -7,17 +7,9 @@ import type {
 	PlaybackRecentItem,
 	PlaybackRecentResponse
 } from '$lib/api/home';
-import { previewBackdrop, previewPoster } from '$lib/preview/artwork';
-import {
-	homePreviewBackdrop,
-	homePreviewContinueBackdrop,
-	homePreviewHeroBackdrop,
-	homePreviewHeroPoster,
-	homePreviewPoster
-} from '$lib/preview/home-artwork';
 
-const PREVIEW_TRUE_VALUES = new Set(['1', 'true', 'on', 'yes']);
-const PREVIEW_FALSE_VALUES = new Set(['0', 'false', 'off', 'no']);
+const BOOLEAN_TRUE_VALUES = new Set(['1', 'true', 'on', 'yes']);
+const BOOLEAN_FALSE_VALUES = new Set(['0', 'false', 'off', 'no']);
 
 const RELEASE_TOKENS = [
 	'webrip',
@@ -67,7 +59,6 @@ export interface HomeDisplayItem {
 	progressPercent: number;
 	searchText: string;
 	playMediaSourceId: string;
-	isPreview: boolean;
 }
 
 export interface HomeSummary {
@@ -81,8 +72,6 @@ export interface HomeSummary {
 type LibraryList = NonNullable<LibrariesResponse['libraries']>;
 
 export interface HomeViewModel {
-	previewMode: boolean;
-	usingPreviewData: boolean;
 	trueEmpty: boolean;
 	user: AuthSessionResponse['user'] | null;
 	libraries: LibraryList;
@@ -99,7 +88,6 @@ export interface BuildHomeViewModelInput {
 	playbackRecentPayload: PlaybackRecentResponse;
 	librariesPayload: LibrariesResponse;
 	sessionPayload: AuthSessionResponse | null;
-	previewMode: boolean;
 	forceEmpty: boolean;
 }
 
@@ -114,8 +102,6 @@ interface ParsedHomeRows {
 
 export function createEmptyHomeViewModel(): HomeViewModel {
 	return {
-		previewMode: false,
-		usingPreviewData: false,
 		trueEmpty: true,
 		user: null,
 		libraries: [],
@@ -134,18 +120,12 @@ export function createEmptyHomeViewModel(): HomeViewModel {
 	};
 }
 
-export function resolvePreviewMode(searchParams: URLSearchParams): boolean {
-	const preview = parseBooleanFlag(searchParams.get('preview'));
-	return preview ?? false;
-}
-
 export function resolveForceEmptyMode(searchParams: URLSearchParams): boolean {
 	const forceEmpty = parseBooleanFlag(searchParams.get('forceEmpty'));
 	return forceEmpty ?? false;
 }
 
 export function buildHomeViewModel(input: BuildHomeViewModelInput): HomeViewModel {
-	const previewBundle = buildPreviewBundle();
 	const parsedRows = parseHomeRows(input.homePayload.rows || []);
 	const recentItems = mapRecentPlaybackItems(
 		input.playbackRecentPayload.recent || [],
@@ -171,37 +151,19 @@ export function buildHomeViewModel(input: BuildHomeViewModelInput): HomeViewMode
 	);
 	const realWatchlist = uniqueLimit(parsedRows.watchlistItems, 6);
 
-	const usePreviewContinue = input.previewMode && realContinue.length === 0;
-	const usePreviewMovies = input.previewMode && realMovies.length === 0;
-	const usePreviewTV = input.previewMode && realTV.length === 0;
-	const usePreviewWatchlist = input.previewMode && realWatchlist.length === 0;
-
-	const continueItems = usePreviewContinue ? previewBundle.continueItems : realContinue;
-	const movieItems = usePreviewMovies ? previewBundle.movieItems : realMovies;
-	const tvItems = usePreviewTV ? previewBundle.tvItems : realTV;
-	const watchlistItems = usePreviewWatchlist ? previewBundle.watchlistItems : realWatchlist;
-
 	const realLibraries = input.librariesPayload.libraries || [];
 	const hasRealMedia = realContinue.length > 0 || realMovies.length > 0 || realTV.length > 0;
 	const shouldForceEmpty = input.forceEmpty;
-	const trueEmpty = shouldForceEmpty || (!input.previewMode && realLibraries.length === 0 && !hasRealMedia);
-
-	const usingPreviewData =
-		!trueEmpty && (usePreviewContinue || usePreviewMovies || usePreviewTV || usePreviewWatchlist);
+	const trueEmpty = shouldForceEmpty || (realLibraries.length === 0 && !hasRealMedia);
 
 	let hero = trueEmpty
 		? buildEmptyHero()
 		: selectHero({
 				hero: input.homePayload.hero,
-				movies: movieItems,
-				tv: tvItems,
-				continueItems,
-				previewHero: previewBundle.hero
+				movies: realMovies,
+				tv: realTV,
+				continueItems: realContinue
 			});
-
-	if (!hero.id && !trueEmpty && input.previewMode) {
-		hero = previewBundle.hero;
-	}
 
 	const realSummary: HomeSummary = {
 		libraryCount: realLibraries.length,
@@ -219,27 +181,17 @@ export function buildHomeViewModel(input: BuildHomeViewModelInput): HomeViewMode
 				inProgressCount: 0,
 				watchlistCount: 0
 			}
-		: usingPreviewData
-			? {
-					libraryCount: Math.max(realSummary.libraryCount, 2),
-					movieCount: Math.max(realSummary.movieCount, movieItems.length),
-					tvCount: Math.max(realSummary.tvCount, tvItems.length),
-					inProgressCount: Math.max(realSummary.inProgressCount, continueItems.length),
-					watchlistCount: Math.max(realSummary.watchlistCount, watchlistItems.length)
-				}
-			: realSummary;
+		: realSummary;
 
 	return {
-		previewMode: input.previewMode,
-		usingPreviewData,
 		trueEmpty,
 		user: input.sessionPayload?.user || null,
 		libraries: realLibraries,
 		hero,
-		continueItems,
-		movieItems,
-		tvItems,
-		watchlistItems,
+		continueItems: realContinue,
+		movieItems: realMovies,
+		tvItems: realTV,
+		watchlistItems: realWatchlist,
 		summary
 	};
 }
@@ -316,8 +268,7 @@ function mapClientHomeItem(item: ClientHomeItem): HomeDisplayItem {
 		backdropUrl,
 		progressPercent,
 		searchText,
-		playMediaSourceId: mediaSourceId,
-		isPreview: false
+		playMediaSourceId: mediaSourceId
 	};
 }
 
@@ -354,8 +305,7 @@ function mapRecentPlaybackItems(
 				backdropUrl: matched?.backdropUrl || matched?.posterUrl || '',
 				progressPercent,
 				searchText,
-				playMediaSourceId: id,
-				isPreview: false
+				playMediaSourceId: id
 			};
 		})
 		.filter((item) => Boolean(item.id));
@@ -388,14 +338,12 @@ function selectHero({
 	hero,
 	movies,
 	tv,
-	continueItems,
-	previewHero
+	continueItems
 }: {
 	hero?: ClientHomeItem;
 	movies: HomeDisplayItem[];
 	tv: HomeDisplayItem[];
 	continueItems: HomeDisplayItem[];
-	previewHero: HomeDisplayItem;
 }): HomeDisplayItem {
 	const mappedHero = hero ? mapClientHomeItem(hero) : null;
 	if (mappedHero && (mappedHero.id || mappedHero.title)) {
@@ -412,196 +360,7 @@ function selectHero({
 	const heroFromContinue = continueItems[0] || null;
 	if (heroFromContinue) return heroFromContinue;
 
-	return previewHero;
-}
-
-function buildPreviewBundle(): {
-	hero: HomeDisplayItem;
-	continueItems: HomeDisplayItem[];
-	movieItems: HomeDisplayItem[];
-	tvItems: HomeDisplayItem[];
-	watchlistItems: HomeDisplayItem[];
-} {
-	const hero = previewItem({
-		id: 'hero-feature-ember-harbor',
-		kind: 'movie',
-		title: 'Ember Harbor',
-		subtitle: '2025',
-		meta: '2025 • Movie • 1h 54m',
-		description:
-			'When long-range navigation lights flicker across the bay, one captain is forced to choose between silence and a broadcast that could reshape the coast.',
-		progressPercent: 64
-	});
-	hero.backdropUrl = homePreviewHeroBackdrop();
-	hero.posterUrl = homePreviewHeroPoster();
-	hero.playMediaSourceId = 'preview-ember-harbor';
-
-	const continueItems = [
-		previewItem({
-			id: 'continue-atlas-of-dawn',
-			kind: 'series',
-			title: 'Atlas of Dawn',
-			subtitle: 'S2 E4',
-			meta: 'Resume from 68%',
-			progressPercent: 68
-		}),
-		previewItem({
-			id: 'continue-the-last-orchard',
-			kind: 'movie',
-			title: 'The Last Orchard',
-			subtitle: '2023',
-			meta: 'Resume from 42%',
-			progressPercent: 42
-		}),
-		previewItem({
-			id: 'continue-violet-signal',
-			kind: 'series',
-			title: 'Violet Signal',
-			subtitle: 'S1 E7',
-			meta: 'Resume from 58%',
-			progressPercent: 58
-		}),
-		previewItem({
-			id: 'continue-coastline',
-			kind: 'series',
-			title: 'Coastline',
-			subtitle: 'S1 E3',
-			meta: 'Resume from 52%',
-			progressPercent: 52
-		}),
-		previewItem({
-			id: 'continue-polar-night',
-			kind: 'movie',
-			title: 'Polar Night',
-			subtitle: '2024',
-			meta: 'Resume from 35%',
-			progressPercent: 35
-		}),
-		previewItem({
-			id: 'continue-return-vector',
-			kind: 'series',
-			title: 'Return Vector',
-			subtitle: 'S3 E2',
-			meta: 'Resume from 21%',
-			progressPercent: 21
-		})
-	];
-	for (const item of continueItems) {
-		item.backdropUrl = homePreviewContinueBackdrop(item.title);
-	}
-
-	const movieItems = [
-		previewItem({ id: 'movie-ember-harbor', kind: 'movie', title: 'Ember Harbor', subtitle: '2025' }),
-		previewItem({
-			id: 'movie-atlas-of-dawn',
-			kind: 'movie',
-			title: 'Atlas of Dawn',
-			subtitle: '2024'
-		}),
-		previewItem({
-			id: 'movie-polar-night',
-			kind: 'movie',
-			title: 'Polar Night',
-			subtitle: '2024'
-		}),
-		previewItem({
-			id: 'movie-night-archive',
-			kind: 'movie',
-			title: 'Night Archive',
-			subtitle: '2022'
-		}),
-		previewItem({
-			id: 'movie-the-last-orchard',
-			kind: 'movie',
-			title: 'The Last Orchard',
-			subtitle: '2023'
-		}),
-		previewItem({
-			id: 'movie-violet-signal',
-			kind: 'movie',
-			title: 'Violet Signal',
-			subtitle: '2022'
-		}),
-		previewItem({ id: 'movie-broken-current', kind: 'movie', title: 'Broken Current', subtitle: '2021' }),
-		previewItem({ id: 'movie-glass-canyon', kind: 'movie', title: 'Glass Canyon', subtitle: '2020' })
-	];
-
-	const tvItems = [
-		previewItem({
-			id: 'tv-coastline',
-			kind: 'series',
-			title: 'Coastline',
-			subtitle: 'Latest: S2 E6'
-		}),
-		previewItem({
-			id: 'tv-return-vector',
-			kind: 'series',
-			title: 'Return Vector',
-			subtitle: 'Latest: S3 E2'
-		}),
-		previewItem({ id: 'tv-night-orbit', kind: 'series', title: 'Night Orbit', subtitle: 'Latest: S1 E4' }),
-		previewItem({ id: 'tv-littoral', kind: 'series', title: 'Littoral', subtitle: 'Latest: S2 E5' }),
-		previewItem({ id: 'tv-violet-signal', kind: 'series', title: 'Violet Signal', subtitle: 'Latest: S3 E1' }),
-		previewItem({ id: 'tv-sunward', kind: 'series', title: 'Sunward', subtitle: 'Latest: S1 E10' }),
-		previewItem({ id: 'tv-archipelago', kind: 'series', title: 'Archipelago', subtitle: 'Latest: S2 E1' })
-	];
-	for (const item of tvItems) {
-		if (item.id === 'tv-violet-signal') {
-			item.posterUrl = '/preview-art/lorivo/violet-signal-tv-poster.webp';
-			item.backdropUrl = '/preview-art/lorivo/violet-signal-wide.webp';
-		}
-	}
-
-	const watchlistItems = [
-		previewItem({ id: 'watchlist-ember-harbor', kind: 'movie', title: 'Ember Harbor', subtitle: '2025' }),
-		previewItem({ id: 'watchlist-violet-signal', kind: 'series', title: 'Violet Signal', subtitle: 'S1 E7' }),
-		previewItem({ id: 'watchlist-polar-night', kind: 'movie', title: 'Polar Night', subtitle: '2024' })
-	];
-
-	return {
-		hero,
-		continueItems,
-		movieItems,
-		tvItems,
-		watchlistItems
-	};
-}
-
-function previewItem({
-	id,
-	kind,
-	title,
-	subtitle = '',
-	meta = '',
-	description = '',
-	progressPercent = 0
-}: {
-	id: string;
-	kind: string;
-	title: string;
-	subtitle?: string;
-	meta?: string;
-	description?: string;
-	progressPercent?: number;
-}): HomeDisplayItem {
-	const cleanTitle = cleanDisplayTitle(title);
-	const cleanSubtitle = cleanDisplaySubtitle(subtitle, cleanTitle);
-	const year = extractYear(subtitle);
-	return {
-		id,
-		kind,
-		mediaSourceId: '',
-		title: cleanTitle,
-		subtitle: cleanSubtitle,
-		meta: meta || buildMeta(kind, cleanSubtitle, year, ''),
-		description: cleanDescription(description),
-		posterUrl: homePreviewPoster(cleanTitle) || previewPoster(cleanTitle),
-		backdropUrl: homePreviewBackdrop(cleanTitle) || previewBackdrop(cleanTitle),
-		progressPercent: normalizeProgress(progressPercent),
-		searchText: buildSearchText(cleanTitle, cleanSubtitle, year, meta),
-		playMediaSourceId: '',
-		isPreview: true
-	};
+	return buildEmptyHero();
 }
 
 function buildEmptyHero(): HomeDisplayItem {
@@ -618,8 +377,7 @@ function buildEmptyHero(): HomeDisplayItem {
 		backdropUrl: '',
 		progressPercent: 0,
 		searchText: 'add your first library',
-		playMediaSourceId: '',
-		isPreview: false
+		playMediaSourceId: ''
 	};
 }
 
@@ -720,8 +478,8 @@ function isArtworkEntity(kind: string): boolean {
 function parseBooleanFlag(value: string | null): boolean | undefined {
 	const trimmed = asText(value).toLowerCase();
 	if (!trimmed) return undefined;
-	if (PREVIEW_TRUE_VALUES.has(trimmed)) return true;
-	if (PREVIEW_FALSE_VALUES.has(trimmed)) return false;
+	if (BOOLEAN_TRUE_VALUES.has(trimmed)) return true;
+	if (BOOLEAN_FALSE_VALUES.has(trimmed)) return false;
 	return undefined;
 }
 

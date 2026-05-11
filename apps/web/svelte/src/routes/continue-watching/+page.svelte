@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { resolvePreviewMode } from '$lib/home/model';
 	import {
 		BrowseHeader,
 		MediaShell,
@@ -26,7 +25,6 @@
 	let loadError = $state('');
 	let searchValue = $state('');
 	let rowAvailable = $state(false);
-	let usingPreviewData = $state(false);
 	let userDisplayName = $state('Local User');
 	let userRole = $state('Local Account');
 	let userInitials = $state('V');
@@ -47,18 +45,14 @@
 		isLoading = true;
 		loadError = '';
 		rowAvailable = false;
-		usingPreviewData = false;
 		try {
-			const url = new URL(window.location.href);
-			const previewMode = resolvePreviewMode(url.searchParams);
-			const context = await loadSecondaryRouteContext({ previewMode, limit: 60 });
+			const context = await loadSecondaryRouteContext({ limit: 60 });
 			userDisplayName =
 				context.user?.displayName || context.user?.username || userDisplayName;
 			userRole = context.user?.role || 'Local Account';
 			userInitials = initialsForName(userDisplayName);
 			libraries = context.libraries || [];
 			rowAvailable = Boolean(findRow(context.homePayload, 'continue'));
-			usingPreviewData = context.model.usingPreviewData;
 			items = context.model.continueItems;
 		} catch (error) {
 			loadError = formatLoadError(error, 'Continue Watching');
@@ -86,17 +80,15 @@
 			<BrowseHeader title="Continue Watching" subtitle="Resume in-progress movies and episodes.">
 				{#snippet chips()}
 					<BrowseStatChip label={`${visibleItems.length} visible`} />
-					{#if !rowAvailable && !usingPreviewData}
+					{#if !rowAvailable}
 						<BrowseStatChip label="Not available yet" />
-					{:else if usingPreviewData}
-						<BrowseStatChip label="Preview mode" />
 					{/if}
 				{/snippet}
 			</BrowseHeader>
 
 			<BrowseToolbar />
 
-			{#if !rowAvailable && !usingPreviewData}
+			{#if !rowAvailable}
 				<VyrdenEmptyState
 					title="Continue Watching is not available yet"
 					message="The current backend payload does not expose a continue row for this route."

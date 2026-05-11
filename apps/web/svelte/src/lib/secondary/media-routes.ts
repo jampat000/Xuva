@@ -38,11 +38,9 @@ export type SecondaryRouteLoadState =
 	  };
 
 export async function loadSecondaryRouteContext({
-	previewMode,
 	forceEmpty = false,
 	limit = 48
 }: {
-	previewMode: boolean;
 	forceEmpty?: boolean;
 	limit?: number;
 }): Promise<SecondaryRouteContext> {
@@ -62,7 +60,7 @@ export async function loadSecondaryRouteContext({
 			getLibraries(apiClient)
 		]);
 	} catch (error) {
-		if (isApiStatus(error, 401) && (previewMode || forceEmpty)) {
+		if (isApiStatus(error, 401) && forceEmpty) {
 			homePayload = {};
 			playbackRecentPayload = { recent: [] };
 			librariesPayload = { libraries: [] };
@@ -76,7 +74,6 @@ export async function loadSecondaryRouteContext({
 		playbackRecentPayload,
 		librariesPayload,
 		sessionPayload: sessionPayload as AuthSessionResponse | null,
-		previewMode,
 		forceEmpty
 	});
 
@@ -90,19 +87,17 @@ export async function loadSecondaryRouteContext({
 }
 
 export async function loadSecondaryRouteContextSafe({
-	previewMode,
 	forceEmpty = false,
 	limit = 48
 }: {
-	previewMode: boolean;
 	forceEmpty?: boolean;
 	limit?: number;
 }): Promise<SecondaryRouteLoadState> {
 	try {
-		const context = await loadSecondaryRouteContext({ previewMode, forceEmpty, limit });
+		const context = await loadSecondaryRouteContext({ forceEmpty, limit });
 		return { kind: 'ready', context };
 	} catch (error) {
-		if (isApiStatus(error, 401) && !previewMode && !forceEmpty) {
+		if (isApiStatus(error, 401) && !forceEmpty) {
 			return {
 				kind: 'auth',
 				message: 'Your session has expired. Sign in again to continue.'
@@ -144,7 +139,6 @@ export function initialsForName(name: string): string {
 }
 
 export function itemDetailHref(item: HomeDisplayItem): string | undefined {
-	if (item.isPreview) return undefined;
 	const id = asText(item.id);
 	if (!id) return undefined;
 	if (item.kind === 'movie') return `/movies/${encodeURIComponent(id)}`;
@@ -153,7 +147,6 @@ export function itemDetailHref(item: HomeDisplayItem): string | undefined {
 }
 
 export function itemPlayHref(item: HomeDisplayItem): string | undefined {
-	if (item.isPreview) return undefined;
 	const mediaSourceID = asText(item.playMediaSourceId || item.mediaSourceId);
 	if (!mediaSourceID) return undefined;
 	return `/play/${encodeURIComponent(mediaSourceID)}`;

@@ -19,8 +19,6 @@
 		type SeasonDetail,
 		type SeriesDetailResponse
 	} from '$lib/api/details';
-	import { resolvePreviewMode } from '$lib/home/model';
-	import { getPreviewSeriesFixture } from '$lib/preview/media-library';
 	import DetailHero from '$lib/lorivo/DetailHero.svelte';
 	import DetailSection from '$lib/lorivo/DetailSection.svelte';
 	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
@@ -84,7 +82,6 @@
 	let selectedSource = $state<EpisodeSourceModel | null>(null);
 	let selectedSourceLoading = $state(false);
 	let selectedSourceError = $state('');
-	let previewDetailMode = $state(false);
 
 	const seriesID = $derived.by(() => asText(series?.id) || asText(params.id));
 	const seriesTitle = $derived.by(() =>
@@ -145,18 +142,6 @@
 		loadError = '';
 		selectedSource = null;
 		selectedSourceError = '';
-		const previewMode = resolvePreviewMode(new URL(window.location.href).searchParams);
-		const routeSeriesId = asText(params.id);
-		previewDetailMode = previewMode && isSeriesPreviewId(routeSeriesId);
-		if (previewDetailMode) {
-			const preview = buildSeriesDetailPreview(routeSeriesId);
-			series = preview.series;
-			seasons = preview.seasons;
-			selectedEpisodeId = preview.firstEpisodeId;
-			isLoading = false;
-			return;
-		}
-
 		try {
 			const [seriesPayload, mediaSourcePayload] = await Promise.all([
 				getSeriesDetail(asText(params.id), apiClient),
@@ -235,41 +220,6 @@
 	): Promise<void> {
 		selectedSourceLoading = true;
 		selectedSourceError = '';
-		if (mediaSourceId.startsWith('preview-tv-') || mediaSourceId.startsWith('series-')) {
-			selectedSource = {
-				mediaSourceId,
-				source: {
-					id: mediaSourceId,
-					kind: 'episode',
-					durationSeconds: 2_700,
-					bitrate: 7_200_000,
-					width: 1920,
-					height: 1080,
-					sizeBytes: 2_430_000_000,
-					container: 'mkv'
-				},
-				tracks: {
-					audioTracks: [
-						{ codec: 'eac3', language: 'en', channels: 6, default: true },
-						{ codec: 'aac', language: 'es', channels: 2 }
-					],
-					subtitleTracks: [{ codec: 'srt', language: 'en', default: true }]
-				},
-				subtitles: { sidecars: [{ relPath: 'preview/en.srt', format: 'srt', language: 'en' }] },
-				decision: {
-					mode: 'directplay',
-					reasonText: 'Browser profile supports this source.',
-					estimatedNetworkBitrate: 7_200_000,
-					containerAction: 'copy',
-					videoAction: 'copy',
-					audioAction: 'copy',
-					subtitleAction: 'copy'
-				},
-				state
-			};
-			selectedSourceLoading = false;
-			return;
-		}
 		try {
 			const [source, tracks, subtitles, decision] = await Promise.all([
 				getMediaSourceDetail(mediaSourceId, apiClient).catch(() => null),
@@ -347,72 +297,6 @@
 		if (isApiStatus(error, 401)) return 'Your session is no longer active. Sign in again to continue.';
 		if (error instanceof Error) return error.message;
 		return 'TV details could not load.';
-	}
-
-	function isSeriesPreviewId(id: string): boolean {
-		return id === 'preview' || id.startsWith('preview-tv-');
-	}
-
-	function buildSeriesDetailPreview(id: string): {
-		series: SeriesDetailResponse;
-		seasons: SeasonModel[];
-		firstEpisodeId: string;
-	} {
-		const fixture = getPreviewSeriesFixture(id);
-		const seriesId = fixture.id;
-		const title = fixture.title;
-		const episodesSeason1: EpisodeItemModel[] = [
-			previewEpisode(seriesId, 1, 1, 'Pilot', true),
-			previewEpisode(seriesId, 1, 2, 'Second Signal', false),
-			previewEpisode(seriesId, 1, 3, 'Crossfade', false)
-		];
-		const episodesSeason2: EpisodeItemModel[] = [
-			previewEpisode(seriesId, 2, 1, 'Return Vector', false),
-			previewEpisode(seriesId, 2, 2, 'Night Archive', false)
-		];
-		const seasons: SeasonModel[] = [
-			{ seasonId: `${seriesId}-season-1`, seasonNumber: 1, episodes: episodesSeason1 },
-			{ seasonId: `${seriesId}-season-2`, seasonNumber: 2, episodes: episodesSeason2 }
-		];
-		const series: SeriesDetailResponse = {
-			id: seriesId,
-			title,
-			seasonCount: fixture.seasonCount,
-			episodeCount: fixture.episodeCount,
-			metadata: {
-				title,
-				year: fixture.year,
-				posterUrl: fixture.posterUrl,
-				backdropUrl: fixture.backdropUrl,
-				overview: fixture.overview
-			}
-		};
-		return { series, seasons, firstEpisodeId: episodesSeason1[0]?.episodeId || '' };
-	}
-
-	function previewEpisode(
-		seriesId: string,
-		seasonNumber: number,
-		episodeNumber: number,
-		title: string,
-		resume: boolean
-	): EpisodeItemModel {
-		const mediaSourceId = `${seriesId}-s${seasonNumber}e${episodeNumber}`;
-		return {
-			episodeId: `${mediaSourceId}-episode`,
-			seasonId: `${seriesId}-season-${seasonNumber}`,
-			seasonNumber,
-			episodeNumber,
-			episodeEnd: 0,
-			title,
-			label: `S${seasonNumber} E${episodeNumber}`,
-			versionCount: 1,
-			needsReview: false,
-			mediaSourceId,
-			state: resume
-				? { mediaSourceId, watched: false, progressSeconds: 680, durationSeconds: 2700, percent: 25.1 }
-				: { mediaSourceId, watched: false, progressSeconds: 0, durationSeconds: 2700, percent: 0 }
-		};
 	}
 
 </script>
@@ -525,9 +409,7 @@
 
 		<DetailSection
 			title="Selected Episode Source"
-			subtitle={previewDetailMode
-				? 'Technical source details stay secondary to browsing and playback.'
-				: 'Technical details stay secondary to episode browsing and playback.'}
+			subtitle="Technical details stay secondary to episode browsing and playback."
 		>
 			{#if !selectedEpisode}
 				<p class="text-sm leading-relaxed text-white/60">Choose a playable episode to inspect source, tracks, and subtitles.</p>
@@ -548,10 +430,9 @@
 							{watchedLabel(selectedSource.state)}
 						</span>
 					</div>
-					{#if !previewDetailMode}
-						<p class="mt-5 text-sm font-semibold text-white">{playbackModeLabel(selectedSource.decision)}</p>
-						<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(selectedSource.decision)}</p>
-						<dl class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+					<p class="mt-5 text-sm font-semibold text-white">{playbackModeLabel(selectedSource.decision)}</p>
+					<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(selectedSource.decision)}</p>
+					<dl class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Quality</dt>
 								<dd class="mt-1 text-sm text-white/75">
@@ -576,49 +457,9 @@
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">File Size</dt>
 								<dd class="mt-1 text-sm text-white/75">{formatBytes(Number(selectedSource.source?.sizeBytes || 0))}</dd>
 							</div>
-						</dl>
-					{/if}
+					</dl>
 				</div>
 
-				{#if previewDetailMode}
-					<details class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-						<summary class="cursor-pointer text-sm font-semibold text-white/70">Technical playback details</summary>
-						<div class="mt-4 grid gap-4 lg:grid-cols-2">
-							<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
-								<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
-								{#if (selectedSource.tracks.audioTracks || []).length === 0}
-									<p class="mt-3 text-sm text-white/55">No audio track data is available yet.</p>
-								{:else}
-									<ul class="mt-3 grid gap-2">
-										{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
-											<li class="text-sm text-white/70">
-												<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
-												{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							</article>
-							<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
-								<h3 class="text-base font-semibold text-white">Subtitle Tracks</h3>
-								{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
-									<p class="mt-3 text-sm text-white/55">No embedded subtitle tracks were detected.</p>
-								{:else}
-									<ul class="mt-3 grid gap-2">
-										{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
-											<li class="text-sm text-white/70">
-												<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language)}</strong>
-												{#if track.forced}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
-												{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
-											</li>
-										{/each}
-									</ul>
-								{/if}
-								<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
-							</article>
-						</div>
-					</details>
-				{:else}
 					<div class="mt-4 grid gap-4 lg:grid-cols-2">
 						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
 							<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
@@ -653,7 +494,6 @@
 							<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
 						</article>
 					</div>
-				{/if}
 			{/if}
 		</DetailSection>
 	{/if}
