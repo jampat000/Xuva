@@ -13,7 +13,6 @@
 	import {
 		buildSeriesCards,
 		filterAndSortSeriesCards,
-		type SeriesFilter,
 		type SeriesSort
 	} from '$lib/browse/model';
 
@@ -24,20 +23,19 @@
 	let actionMessage = $state('');
 	let searchValue = $state('');
 	let previewMode = $state(false);
-	let seriesFilter = $state<SeriesFilter>('all');
 	let seriesSort = $state<SeriesSort>('title');
 	let seriesRows = $state<SeriesListItem[]>([]);
 
 	const seriesCards = $derived.by(() => buildSeriesCards(seriesRows));
 	const visibleCards = $derived.by(() =>
-		filterAndSortSeriesCards(seriesCards, searchValue, seriesFilter, seriesSort)
+		filterAndSortSeriesCards(seriesCards, searchValue, 'all', seriesSort)
 	);
 	const featuredCards = $derived.by(() => visibleCards.slice(0, 5));
-	const totalEpisodes = $derived.by(() =>
-		seriesCards.reduce((total, item) => total + item.episodeCount, 0)
+	const visibleEpisodes = $derived.by(() =>
+		visibleCards.reduce((total, item) => total + item.episodeCount, 0)
 	);
-	const totalSeasons = $derived.by(() =>
-		seriesCards.reduce((total, item) => total + item.seasonCount, 0)
+	const visibleSeasons = $derived.by(() =>
+		visibleCards.reduce((total, item) => total + item.seasonCount, 0)
 	);
 
 	onMount(() => {
@@ -111,6 +109,13 @@
 		return new Intl.NumberFormat().format(Math.max(0, Math.round(value)));
 	}
 
+	function formatVisibleCount(shows: number, seasons: number, episodes: number): string {
+		const showLabel = shows === 1 ? 'show' : 'shows';
+		const seasonLabel = seasons === 1 ? 'season' : 'seasons';
+		const episodeLabel = episodes === 1 ? 'episode' : 'episodes';
+		return `${formatCount(shows)} visible ${showLabel} - ${formatCount(seasons)} ${seasonLabel} - ${formatCount(episodes)} ${episodeLabel}`;
+	}
+
 	function isApiStatus(error: unknown, expectedStatus: number): boolean {
 		if (error instanceof ApiClientError) return error.status === expectedStatus;
 		if (typeof error !== 'object' || !error) return false;
@@ -125,11 +130,11 @@
 		return 'TV could not load.';
 	}
 
-	function filterClass(active: boolean): string {
+	function chipClass(active: boolean): string {
 		const base =
-			'rounded-full border px-4 py-2 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
-		if (active) return `${base} border-[#7C5CFF]/60 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/20`;
-		return `${base} border-white/10 bg-[#111827] text-white/60 hover:border-white/25 hover:bg-white/10 hover:text-white`;
+			'inline-flex min-h-9 items-center rounded-full border px-3.5 py-1.5 text-sm font-semibold transition duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
+		if (active) return `${base} border-[#7C5CFF]/70 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/25`;
+		return `${base} border-white/10 bg-white/[0.04] text-white/65 hover:border-white/25 hover:bg-white/[0.08] hover:text-white`;
 	}
 
 </script>
@@ -146,7 +151,7 @@
 				<h1 class="text-4xl font-bold leading-tight text-white [text-shadow:0_4px_28px_rgba(0,0,0,0.72)] sm:text-5xl xl:text-6xl">TV Shows</h1>
 				<p class="mt-3 text-base text-white/60">Browse your TV library.</p>
 				<p class="mt-4 text-base leading-relaxed text-white/70">
-					{formatCount(visibleCards.length)} visible shows - {formatCount(totalSeasons)} seasons - {formatCount(totalEpisodes)} episodes
+					{formatVisibleCount(visibleCards.length, visibleSeasons, visibleEpisodes)}
 				</p>
 			</div>
 			{#if previewMode && featuredCards.length > 0}
@@ -185,27 +190,26 @@
 		</LorivoPanel>
 	{:else}
 		<section class="relative px-4 pt-7 sm:px-6 lg:px-8">
-			<div class="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
-				<div class="relative w-full lg:max-w-[420px]">
+			<div class="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-lg shadow-black/20 backdrop-blur sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+				<div class="relative w-full lg:max-w-[400px]">
 					<Search size={16} class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
 					<input
 						type="text"
 						placeholder="Search TV"
 						bind:value={searchValue}
-						class="h-10 w-full rounded-full border border-white/5 bg-[#111827] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#7C5CFF]/50"
+						class="h-10 w-full rounded-full border border-white/10 bg-[#111827]/80 pl-11 pr-4 text-sm text-white shadow-inner shadow-black/20 placeholder:text-white/40 transition focus:border-[#7C5CFF]/50 focus:outline-none focus:ring-2 focus:ring-[#7C5CFF]/25"
 					/>
 				</div>
-				<div class="flex flex-wrap gap-2">
-					{#if !previewMode}
-						<button type="button" class={filterClass(seriesFilter === 'all')} onclick={() => (seriesFilter = 'all')}>All</button>
-						<button type="button" class={filterClass(seriesFilter === 'multi-season')} onclick={() => (seriesFilter = 'multi-season')}>Multi-Season</button>
-						<button type="button" class={filterClass(seriesFilter === 'with-episodes')} onclick={() => (seriesFilter = 'with-episodes')}>With Episodes</button>
-						<button type="button" class={filterClass(seriesFilter === 'unknown-year')} onclick={() => (seriesFilter = 'unknown-year')}>Unknown Year</button>
-					{/if}
-					<button type="button" class={filterClass(seriesSort === 'title')} onclick={() => (seriesSort = 'title')}>Title</button>
-					<button type="button" class={filterClass(seriesSort === 'year')} onclick={() => (seriesSort = 'year')}>Year</button>
-					<button type="button" class={filterClass(seriesSort === 'seasons')} onclick={() => (seriesSort = 'seasons')}>Seasons</button>
-					<button type="button" class={filterClass(seriesSort === 'episodes')} onclick={() => (seriesSort = 'episodes')}>Episodes</button>
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+					<span class="inline-flex min-h-9 items-center rounded-full border border-white/10 bg-[#111827]/70 px-3.5 py-1.5 text-sm font-medium text-white/65">
+						{formatVisibleCount(visibleCards.length, visibleSeasons, visibleEpisodes)}
+					</span>
+					<div class="flex flex-wrap gap-2">
+						<button type="button" class={chipClass(seriesSort === 'title')} onclick={() => (seriesSort = 'title')}>Title</button>
+						<button type="button" class={chipClass(seriesSort === 'year')} onclick={() => (seriesSort = 'year')}>Year</button>
+						<button type="button" class={chipClass(seriesSort === 'seasons')} onclick={() => (seriesSort = 'seasons')}>Seasons</button>
+						<button type="button" class={chipClass(seriesSort === 'episodes')} onclick={() => (seriesSort = 'episodes')}>Episodes</button>
+					</div>
 				</div>
 			</div>
 			{#if actionMessage}
@@ -216,9 +220,9 @@
 		{#if seriesCards.length === 0}
 			<LorivoPanel title="No TV shows found" subtitle="Try adding a TV library or running a scan." />
 		{:else if visibleCards.length === 0}
-			<LorivoPanel title="No TV shows found" subtitle="Try changing search terms." />
+			<LorivoPanel title="No matching TV shows" subtitle="Try another search term." />
 		{:else}
-			<MediaGrid title="TV Shows" subtitle={`${formatCount(visibleCards.length)} shows`}>
+			<MediaGrid title="TV Shows" subtitle={formatVisibleCount(visibleCards.length, visibleSeasons, visibleEpisodes)}>
 				{#each visibleCards as item (item.id)}
 					<LorivoPosterLink
 						title={item.title}
