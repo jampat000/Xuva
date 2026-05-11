@@ -244,6 +244,77 @@ func TestSaveMovieScanPersistsIncrementalState(t *testing.T) {
 	}
 }
 
+func TestBestMetadataHonorsLibrarySourceOrder(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{
+		ID:              "movies",
+		Name:            "Movies",
+		Path:            `X:\Movies`,
+		Kind:            libraries.KindMovies,
+		MetadataSources: []string{"wikipedia", "filename", "nfo"},
+	}
+	file := fileCandidate(`X:\Movies\Arrival (2016)\Arrival.2016.1080p.mkv`, "Arrival (2016)/Arrival.2016.1080p.mkv")
+	result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+	candidates := []movies.Candidate{{
+		Title:        "Arrival",
+		Year:         2016,
+		QualityLabel: "1080p",
+		Media:        file,
+	}}
+	if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+		t.Fatalf("save movie scan: %v", err)
+	}
+	movieList, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	if len(movieList) != 1 {
+		t.Fatalf("expected one movie, got %#v", movieList)
+	}
+	movieID := movieList[0].ID
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:       "movie",
+		ItemID:     movieID,
+		Provider:   "filename",
+		Title:      "Arrival",
+		Year:       2016,
+		Confidence: 0.98,
+	}); err != nil {
+		t.Fatalf("upsert filename metadata: %v", err)
+	}
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:       "movie",
+		ItemID:     movieID,
+		Provider:   "wikipedia",
+		Title:      "Arrival (Film)",
+		Year:       2016,
+		Confidence: 0.45,
+	}); err != nil {
+		t.Fatalf("upsert wikipedia metadata: %v", err)
+	}
+	best, ok, err := service.GetBestMetadata(ctx, "movie", movieID)
+	if err != nil {
+		t.Fatalf("get best metadata: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected metadata record")
+	}
+	if best.Provider != "wikipedia" {
+		t.Fatalf("expected library source order to prioritize wikipedia, got %#v", best)
+	}
+	records, err := service.ListMetadataRecords(ctx, "movie", movieID)
+	if err != nil {
+		t.Fatalf("list metadata records: %v", err)
+	}
+	if len(records) < 2 {
+		t.Fatalf("expected at least two metadata records, got %#v", records)
+	}
+	if records[0].Provider != "wikipedia" {
+		t.Fatalf("expected ordered metadata records to start with wikipedia, got %#v", records[0])
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const playback = require("../static/modules/playback-presenter.js");
+const playback = require("./modules/playback-presenter.js");
 
 test("direct play forecast uses user-facing no-work language", () => {
   const decision = {

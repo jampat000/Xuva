@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const errors = require("../static/modules/error-boundary.js");
+const errors = require("./modules/error-boundary.js");
 
 test("error boundary renders retry action and escapes messages", () => {
   const html = errors.renderErrorBoundary({ userMessage: "Bad <thing>", requestId: "req-2" }, {

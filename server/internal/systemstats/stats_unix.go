@@ -102,3 +102,79 @@ func procCPU() (cpuTimes, bool) {
 	}
 	return cpuTimes{idle: idle, total: total}, true
 }
+
+func networkStats() NetworkStats {
+	first, ok := procNet()
+	if !ok {
+		return NetworkStats{}
+	}
+	time.Sleep(120 * time.Millisecond)
+	second, ok := procNet()
+	if !ok {
+		return NetworkStats{}
+	}
+	interval := 0.12
+	total := NetworkStats{Interfaces: []NetworkInterfaceStat{}}
+	for name, after := range second {
+		before, exists := first[name]
+		if !exists {
+			continue
+		}
+		rx := rateBps(after.rxBytes, before.rxBytes, interval)
+		tx := rateBps(after.txBytes, before.txBytes, interval)
+		total.ReceiveBps += rx
+		total.TransmitBps += tx
+		total.Interfaces = append(total.Interfaces, NetworkInterfaceStat{
+			Name:        name,
+			ReceiveBps:  rx,
+			TransmitBps: tx,
+		})
+	}
+	return total
+}
+
+type netCounters struct {
+	rxBytes uint64
+	txBytes uint64
+}
+
+func procNet() (map[string]netCounters, bool) {
+	raw, err := os.ReadFile("/proc/net/dev")
+	if err != nil {
+		return nil, false
+	}
+	lines := strings.Split(string(raw), "\n")
+	output := map[string]netCounters{}
+	for _, line := range lines[2:] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		if name == "" || name == "lo" {
+			continue
+		}
+		fields := strings.Fields(parts[1])
+		if len(fields) < 9 {
+			continue
+		}
+		rx, err1 := strconv.ParseUint(fields[0], 10, 64)
+		tx, err2 := strconv.ParseUint(fields[8], 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		output[name] = netCounters{rxBytes: rx, txBytes: tx}
+	}
+	return output, true
+}
+
+func rateBps(after uint64, before uint64, seconds float64) uint64 {
+	if after < before || seconds <= 0 {
+		return 0
+	}
+	return uint64(float64(after-before) * 8 / seconds)
+}

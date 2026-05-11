@@ -91,10 +91,12 @@ var migrations = []string{
 		name TEXT NOT NULL,
 		path TEXT NOT NULL UNIQUE,
 		storage_type TEXT NOT NULL DEFAULT 'unknown',
+		metadata_sources_json TEXT NOT NULL DEFAULT '[]',
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL
 	)`,
 	`ALTER TABLE libraries ADD COLUMN storage_type TEXT NOT NULL DEFAULT 'unknown'`,
+	`ALTER TABLE libraries ADD COLUMN metadata_sources_json TEXT NOT NULL DEFAULT '[]'`,
 	`CREATE TABLE IF NOT EXISTS app_settings (
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL,

@@ -25,8 +25,12 @@ func route(pattern string, group string, action string, roles ...string) routePo
 }
 
 var routePolicies = map[string]routePolicy{
-	"GET /api/auth/session": route("GET /api/auth/session", "auth", "session.read", roleAdmin, roleStandard),
-	"POST /api/auth/logout": route("POST /api/auth/logout", "auth", "session.logout", roleAdmin, roleStandard),
+	"GET /api/auth/session":         route("GET /api/auth/session", "auth", "session.read", roleAdmin, roleStandard),
+	"POST /api/auth/logout":         route("POST /api/auth/logout", "auth", "session.logout", roleAdmin, roleStandard),
+	"GET /api/users":                route("GET /api/users", "auth", "users.list", roleAdmin),
+	"POST /api/users":               route("POST /api/users", "auth", "user.create", roleAdmin),
+	"DELETE /api/users/{id}":        route("DELETE /api/users/{id}", "auth", "user.delete", roleAdmin),
+	"POST /api/users/{id}/password": route("POST /api/users/{id}/password", "auth", "user.password.update", roleAdmin),
 
 	"POST /api/libraries":             route("POST /api/libraries", "libraries", "library.save", roleAdmin),
 	"DELETE /api/libraries/{id}":      route("DELETE /api/libraries/{id}", "libraries", "library.delete", roleAdmin),
@@ -105,6 +109,11 @@ func requireRoutePolicy(deps Deps, policy routePolicy, requireCSRF bool, next ht
 			return
 		}
 		if requireCSRF {
+			if hasHeaderAuthToken(r) {
+				publishAudit(deps, r, policy, resolved, "allowed", "header_token")
+				next(w, r)
+				return
+			}
 			csrfCookie, _ := r.Cookie(auth.CSRFCookieName)
 			csrfCookieValue := ""
 			if csrfCookie != nil {

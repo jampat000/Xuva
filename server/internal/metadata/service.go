@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vyrdenhq/vyrden/server/internal/catalog"
@@ -17,10 +19,20 @@ import (
 )
 
 type Service struct {
-	cfg     config.Config
-	catalog *catalog.Service
-	events  *events.Bus
-	client  *http.Client
+	cfg                 config.Config
+	catalog             *catalog.Service
+	events              *events.Bus
+	client              *http.Client
+	tmdbBaseURL         string
+	omdbBaseURL         string
+	tvMazeBaseURL       string
+	tvdbBaseURL         string
+	wikidataSearchURL   string
+	wikidataEntityURL   string
+	wikipediaSearchURL  string
+	wikipediaSummaryURL string
+	providerStateMu     sync.RWMutex
+	providerState       map[string]providerRuntimeState
 }
 
 type RefreshRequest struct {
@@ -51,12 +63,35 @@ type BatchResult struct {
 }
 
 func NewService(cfg config.Config, catalogService *catalog.Service, eventBus *events.Bus) *Service {
+	return newServiceWithClient(cfg, catalogService, eventBus, &http.Client{Timeout: 4 * time.Second})
+}
+
+func newServiceWithClient(cfg config.Config, catalogService *catalog.Service, eventBus *events.Bus, client *http.Client) *Service {
 	return &Service{
-		cfg:     cfg,
-		catalog: catalogService,
-		events:  eventBus,
-		client:  &http.Client{Timeout: 12 * time.Second},
+		cfg:                 cfg,
+		catalog:             catalogService,
+		events:              eventBus,
+		client:              client,
+		tmdbBaseURL:         "https://api.themoviedb.org/3",
+		omdbBaseURL:         "https://www.omdbapi.com",
+		tvMazeBaseURL:       "https://api.tvmaze.com",
+		tvdbBaseURL:         "https://api4.thetvdb.com/v4",
+		wikidataSearchURL:   "https://www.wikidata.org/w/api.php",
+		wikidataEntityURL:   "https://www.wikidata.org/wiki/Special:EntityData",
+		wikipediaSearchURL:  "https://en.wikipedia.org/w/api.php",
+		wikipediaSummaryURL: "https://en.wikipedia.org/api/rest_v1/page/summary",
+		providerState:       map[string]providerRuntimeState{},
 	}
+}
+
+func (s *Service) activeConfig() config.Config {
+	if strings.TrimSpace(s.cfg.DataDir) == "" {
+		return s.cfg
+	}
+	if saved, err := config.LoadFile(s.cfg.DataDir); err == nil {
+		return config.Merge(s.cfg, saved)
+	}
+	return s.cfg
 }
 
 func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshResult, error) {
@@ -77,20 +112,30 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 		return RefreshResult{}, errors.New("title is required")
 	}
 
+	cfg := s.activeConfig()
+	order := s.sourceOrder(ctx, request)
 	result := RefreshResult{
-		Kind:       request.Kind,
-		ID:         request.ID,
-		Configured: map[string]bool{"omdb": s.cfg.OMDbAPIKey != "", "tmdb": s.cfg.TMDBAPIKey != ""},
+		Kind: request.Kind,
+		ID:   request.ID,
+		Configured: map[string]bool{
+			"filename":  true,
+			"manual":    true,
+			"nfo":       true,
+			"artwork":   true,
+			"tvmaze":    true,
+			"tvdb":      cfg.TVDBAPIKey != "",
+			"wikidata":  true,
+			"wikipedia": true,
+			"omdb":      cfg.OMDbAPIKey != "",
+			"tmdb":      cfg.TMDBAPIKey != "",
+		},
 	}
-	if s.cfg.OMDbAPIKey == "" {
-		result.Warnings = append(result.Warnings, "OMDb is not configured. Set VYRDEN_OMDB_API_KEY to fetch IMDb, Rotten Tomatoes, and Metacritic ratings.")
-	} else if err := s.refreshOMDb(ctx, request, &result); err != nil {
-		result.Warnings = append(result.Warnings, "OMDb refresh failed: "+err.Error())
+
+	if err := s.refreshLocal(ctx, request, order, &result); err != nil {
+		result.Warnings = append(result.Warnings, "Local metadata refresh failed: "+err.Error())
 	}
-	if s.cfg.TMDBAPIKey == "" {
-		result.Warnings = append(result.Warnings, "TMDB is not configured. Set VYRDEN_TMDB_API_KEY to fetch TMDB ratings and external IDs.")
-	} else if err := s.refreshTMDB(ctx, request, &result); err != nil {
-		result.Warnings = append(result.Warnings, "TMDB refresh failed: "+err.Error())
+	if err := s.refreshAutomaticOnline(ctx, request, order, cfg, &result); err != nil {
+		result.Warnings = append(result.Warnings, err.Error())
 	}
 
 	records, err := s.catalog.ListMetadataRecords(ctx, request.Kind, request.ID)
@@ -122,17 +167,17 @@ func (s *Service) RefreshBatch(ctx context.Context, kind string, limit int) (Bat
 		limit = 100
 	}
 	result := BatchResult{Kind: kind, Limit: limit}
-	if s.cfg.OMDbAPIKey == "" && s.cfg.TMDBAPIKey == "" {
-		result.Warnings = append(result.Warnings, "metadata providers are not configured")
-		return result, nil
-	}
+	candidateWindow := batchCandidateWindow(limit)
 	switch kind {
 	case "movie", "movies":
-		movies, err := s.catalog.ListMovies(ctx, limit)
+		movies, err := s.catalog.ListMovies(ctx, candidateWindow)
 		if err != nil {
 			return BatchResult{}, err
 		}
 		for _, item := range movies {
+			if result.Attempted >= limit {
+				break
+			}
 			if shouldSkipMetadata(item.Metadata) {
 				result.Skipped++
 				continue
@@ -147,11 +192,14 @@ func (s *Service) RefreshBatch(ctx context.Context, kind string, limit int) (Bat
 			result.Items = append(result.Items, refresh)
 		}
 	case "series", "tv":
-		series, err := s.catalog.ListSeries(ctx, limit)
+		series, err := s.catalog.ListSeries(ctx, candidateWindow)
 		if err != nil {
 			return BatchResult{}, err
 		}
 		for _, item := range series {
+			if result.Attempted >= limit {
+				break
+			}
 			if shouldSkipMetadata(item.Metadata) {
 				result.Skipped++
 				continue
@@ -178,15 +226,56 @@ func shouldSkipMetadata(record *catalog.MetadataRecord) bool {
 	if record == nil {
 		return false
 	}
-	if len(record.Ratings) > 0 && len(record.ExternalIDs) > 0 {
+	provider := normalizeProviderID(record.Provider)
+	if provider == "" {
+		return false
+	}
+	if hasEnrichedMetadata(record) {
 		return true
 	}
-	return record.Provider == "tmdb" || record.Provider == "omdb"
+	switch provider {
+	case "manual", "nfo":
+		return true
+	case "filename":
+		return false
+	case "artwork":
+		// Keep artwork-only records eligible so online summaries/IDs can still be fetched.
+		return false
+	case "tmdb", "tvdb", "omdb", "tvmaze", "wikipedia", "wikidata":
+		return true
+	default:
+		return false
+	}
 }
 
-func (s *Service) refreshOMDb(ctx context.Context, request RefreshRequest, result *RefreshResult) error {
-	endpoint := "https://www.omdbapi.com/?" + url.Values{
-		"apikey": {s.cfg.OMDbAPIKey},
+func hasEnrichedMetadata(record *catalog.MetadataRecord) bool {
+	if record == nil {
+		return false
+	}
+	if strings.TrimSpace(record.Overview) != "" {
+		return true
+	}
+	if strings.TrimSpace(record.PosterURL) != "" || strings.TrimSpace(record.BackdropURL) != "" {
+		return true
+	}
+	return len(record.Ratings) > 0 || len(record.ExternalIDs) > 0
+}
+
+func batchCandidateWindow(limit int) int {
+	window := limit * 30
+	if window < 400 {
+		window = 400
+	}
+	if window > 5000 {
+		window = 5000
+	}
+	return window
+}
+
+func (s *Service) refreshOMDb(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {
+	apiKey := managedProviderCredential("omdb", cfg)
+	endpoint := strings.TrimRight(s.omdbBaseURL, "/") + "/?" + url.Values{
+		"apikey": {apiKey},
 		"t":      {request.Title},
 		"type":   {omdbType(request.Kind)},
 		"plot":   {"full"},
@@ -211,7 +300,7 @@ func (s *Service) refreshOMDb(ctx context.Context, request RefreshRequest, resul
 		Year:       parseYear(payload.Year, request.Year),
 		Overview:   payload.Plot,
 		PosterURL:  emptyNA(payload.Poster),
-		Confidence: 0.88,
+		Confidence: sourceConfidence(order, "omdb", 0.88),
 		RawJSON:    mustJSON(payload),
 		FetchedAt:  now,
 		UpdatedAt:  now,
@@ -245,16 +334,17 @@ func (s *Service) refreshOMDb(ctx context.Context, request RefreshRequest, resul
 	return nil
 }
 
-func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, result *RefreshResult) error {
+func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {
 	if request.Kind != "movie" && request.Kind != "series" {
 		return nil
 	}
+	apiKey := managedProviderCredential("tmdb", cfg)
 	path := "movie"
 	if request.Kind == "series" {
 		path = "tv"
 	}
-	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/%s?", path) + url.Values{
-		"api_key": {s.cfg.TMDBAPIKey},
+	searchURL := fmt.Sprintf("%s/search/%s?", strings.TrimRight(s.tmdbBaseURL, "/"), path) + url.Values{
+		"api_key": {apiKey},
 		"query":   {request.Title},
 	}.Encode()
 	if request.Year > 0 && request.Kind == "movie" {
@@ -278,9 +368,9 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, resul
 		Title:       title,
 		Year:        parseYear(firstNonEmpty(match.ReleaseDate, match.FirstAirDate), request.Year),
 		Overview:    match.Overview,
-		PosterURL:   tmdbImageURL(match.PosterPath, "w500"),
-		BackdropURL: tmdbImageURL(match.BackdropPath, "w1280"),
-		Confidence:  0.84,
+		PosterURL:   tmdbImageURL(match.PosterPath, "original"),
+		BackdropURL: tmdbImageURL(match.BackdropPath, "original"),
+		Confidence:  sourceConfidence(order, "tmdb", 0.84),
 		RawJSON:     mustJSON(match),
 		FetchedAt:   now,
 		UpdatedAt:   now,
@@ -309,9 +399,24 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, resul
 }
 
 func (s *Service) getJSON(ctx context.Context, endpoint string, target any) error {
+	return s.getJSONHeaders(ctx, endpoint, nil, target)
+}
+
+func (s *Service) getJSONHeaders(ctx context.Context, endpoint string, headers map[string]string, target any) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
+	}
+	for key, value := range headers {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			request.Header.Set(key, value)
+		}
+	}
+	if request.Header.Get("User-Agent") == "" {
+		request.Header.Set("User-Agent", "Vyrden/0.1 (+https://github.com/vyrdenhq/vyrden)")
+	}
+	if request.Header.Get("Accept") == "" {
+		request.Header.Set("Accept", "application/json")
 	}
 	response, err := s.client.Do(request)
 	if err != nil {
@@ -319,9 +424,74 @@ func (s *Service) getJSON(ctx context.Context, endpoint string, target any) erro
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return fmt.Errorf("provider returned %s", response.Status)
+		return newProviderHTTPError(response)
 	}
 	return json.NewDecoder(response.Body).Decode(target)
+}
+
+func (s *Service) postJSON(ctx context.Context, endpoint string, body any, headers map[string]string, target any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			request.Header.Set(key, value)
+		}
+	}
+	if request.Header.Get("User-Agent") == "" {
+		request.Header.Set("User-Agent", "Vyrden/0.1 (+https://github.com/vyrdenhq/vyrden)")
+	}
+	if request.Header.Get("Accept") == "" {
+		request.Header.Set("Accept", "application/json")
+	}
+	response, err := s.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return newProviderHTTPError(response)
+	}
+	return json.NewDecoder(response.Body).Decode(target)
+}
+
+type providerHTTPError struct {
+	StatusCode int
+	Status     string
+	Detail     string
+}
+
+func (e providerHTTPError) Error() string {
+	if strings.TrimSpace(e.Detail) != "" {
+		return strings.TrimSpace(e.Detail)
+	}
+	if strings.TrimSpace(e.Status) != "" {
+		return "provider returned " + strings.TrimSpace(e.Status)
+	}
+	return "provider returned error"
+}
+
+func newProviderHTTPError(response *http.Response) error {
+	if response == nil {
+		return providerHTTPError{Status: "unknown"}
+	}
+	detail := ""
+	if response.Body != nil {
+		if payload, err := io.ReadAll(io.LimitReader(response.Body, 2048)); err == nil {
+			detail = strings.TrimSpace(string(payload))
+		}
+	}
+	return providerHTTPError{
+		StatusCode: response.StatusCode,
+		Status:     response.Status,
+		Detail:     detail,
+	}
 }
 
 type omdbResponse struct {
@@ -427,7 +597,7 @@ func tmdbImageURL(path string, size string) string {
 		return ""
 	}
 	if size == "" {
-		size = "w500"
+		size = "original"
 	}
 	return "https://image.tmdb.org/t/p/" + size + path
 }

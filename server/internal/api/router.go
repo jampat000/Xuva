@@ -1,11 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log/slog"
 	"net"
@@ -16,8 +21,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	_ "golang.org/x/image/webp"
 
 	"github.com/vyrdenhq/vyrden/server/internal/adaptive"
 	"github.com/vyrdenhq/vyrden/server/internal/auth"
@@ -30,6 +38,7 @@ import (
 	"github.com/vyrdenhq/vyrden/server/internal/libraries"
 	"github.com/vyrdenhq/vyrden/server/internal/media"
 	metaprovider "github.com/vyrdenhq/vyrden/server/internal/metadata"
+	"github.com/vyrdenhq/vyrden/server/internal/metasources"
 	"github.com/vyrdenhq/vyrden/server/internal/migration"
 	"github.com/vyrdenhq/vyrden/server/internal/movies"
 	"github.com/vyrdenhq/vyrden/server/internal/observability"
@@ -89,9 +98,14 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))
 	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))
 	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))
+	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))
 	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/auth/logout", authLogoutHandler(deps))
+	handleProtected(mux, deps, "GET /api/users", usersListHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/users", usersCreateHandler(deps))
+	handleProtectedCSRF(mux, deps, "DELETE /api/users/{id}", usersDeleteHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/users/{id}/password", usersPasswordHandler(deps))
 	mux.HandleFunc("GET /api/events", eventsHandler(deps))
 	mux.HandleFunc("GET /api/architecture", architectureHandler(deps))
 	mux.HandleFunc("GET /api/libraries", librariesHandler(deps))
@@ -117,6 +131,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/series", seriesHandler(deps))
 	mux.HandleFunc("GET /api/series/{id}", seriesDetailHandler(deps))
 	mux.HandleFunc("GET /api/review", reviewHandler(deps))
+	mux.HandleFunc("GET /api/metadata/providers", metadataProvidersHandler(deps))
 	mux.HandleFunc("GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
 	mux.HandleFunc("GET /api/metadata/{kind}/{id}", metadataRecordsHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/metadata/match", metadataMatchHandler(deps))
@@ -177,7 +192,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/playback/decision", playbackDecisionHandler(deps))
 	mux.HandleFunc("GET /api/playback/route", playbackRouteHandler(deps))
 	handleProtected(mux, deps, "GET /play/{id}", playerHandler(deps))
-	mux.Handle("GET /", webapp.Handler())
+	mux.Handle("GET /", webapp.RootHandler())
 	return withObservability(deps, withSecurity(deps, withResolvedSession(deps, mux)))
 }
 
@@ -232,21 +247,57 @@ func withResolvedSession(deps Deps, next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(auth.SessionCookieName)
-		if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		cookieToken := ""
+		if cookie, err := r.Cookie(auth.SessionCookieName); err == nil {
+			cookieToken = strings.TrimSpace(cookie.Value)
+		}
+		headerToken := strings.TrimSpace(r.Header.Get("X-Auth-Token"))
+		if headerToken == "" {
+			authz := strings.TrimSpace(r.Header.Get("Authorization"))
+			if authz != "" {
+				parts := strings.SplitN(authz, " ", 2)
+				if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "Bearer") {
+					headerToken = strings.TrimSpace(parts[1])
+				}
+			}
+		}
+		if cookieToken == "" && headerToken == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		resolved, err := deps.Auth.Resolve(r.Context(), cookie.Value, requestRemoteAddr(r), r.UserAgent())
+		resolve := func(token string) (auth.ResolvedSession, error) {
+			return deps.Auth.Resolve(r.Context(), token, requestRemoteAddr(r), r.UserAgent())
+		}
+		resolved := auth.ResolvedSession{}
+		var err error
+		if cookieToken != "" {
+			resolved, err = resolve(cookieToken)
+			if err == nil {
+				if resolved.Rotated {
+					writeAuthCookies(w, r, resolved)
+				}
+				next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), resolved)))
+				return
+			}
+		}
+		if headerToken != "" {
+			resolved, err = resolve(headerToken)
+			if err == nil {
+				if resolved.Rotated {
+					writeAuthCookies(w, r, resolved)
+				}
+				w.Header().Set("X-Auth-Token", resolved.Token)
+				next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), resolved)))
+				return
+			}
+		}
+		// Both candidate tokens failed. Continue unauthenticated and let protected
+		// handlers decide response; avoid clearing cookies for transient token races.
 		if err != nil {
-			clearAuthCookies(w)
 			next.ServeHTTP(w, r)
 			return
 		}
-		if resolved.Rotated {
-			writeAuthCookies(w, r, resolved)
-		}
-		next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), resolved)))
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -257,7 +308,12 @@ func requireAuth(deps Deps, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if _, ok := auth.ResolvedSessionFromContext(r.Context()); !ok {
-			clearAuthCookies(w)
+			// Avoid clearing cookies when a header token is present. That path can be
+			// hit by transient resolve failures (for example a momentary DB busy write)
+			// and should not force a full sign-out.
+			if !hasHeaderAuthToken(r) {
+				clearAuthCookies(w)
+			}
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
@@ -268,6 +324,10 @@ func requireAuth(deps Deps, next http.HandlerFunc) http.HandlerFunc {
 func requireAuthCSRF(deps Deps, next http.HandlerFunc) http.HandlerFunc {
 	return requireAuth(deps, func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth == nil || deps.Auth.Disabled() {
+			next(w, r)
+			return
+		}
+		if hasHeaderAuthToken(r) {
 			next(w, r)
 			return
 		}
@@ -329,6 +389,61 @@ func authLoginHandler(deps Deps) http.HandlerFunc {
 				"id":        session.ID,
 				"expiresAt": session.ExpiresAt.Format(time.RFC3339),
 			},
+			"sessionToken": token,
+		})
+	}
+}
+
+func authBootstrapHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		DisplayName string `json:"displayName"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeJSON(w, http.StatusOK, map[string]any{"authDisabled": true})
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		principal, err := deps.Auth.BootstrapUser(r.Context(), auth.BootstrapOptions{
+			Username:    payload.Username,
+			Password:    payload.Password,
+			DisplayName: payload.DisplayName,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, auth.ErrBootstrapComplete):
+				writeError(w, http.StatusConflict, "an account already exists; sign in")
+			case strings.Contains(strings.ToLower(err.Error()), "password"), strings.Contains(strings.ToLower(err.Error()), "required"):
+				writeError(w, http.StatusBadRequest, err.Error())
+			default:
+				writeError(w, http.StatusInternalServerError, "bootstrap failed")
+			}
+			return
+		}
+		createdPrincipal, session, token, err := deps.Auth.Authenticate(r.Context(), principal.Username, payload.Password, requestRemoteAddr(r), r.UserAgent())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "bootstrap sign-in failed")
+			return
+		}
+		publishAuthAudit(deps, r, createdPrincipal.Username, createdPrincipal.ID, createdPrincipal.Role, "bootstrap", "allowed")
+		writeAuthCookies(w, r, auth.ResolvedSession{Principal: createdPrincipal, Session: session, Token: token})
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"user": map[string]any{
+				"id":          createdPrincipal.ID,
+				"username":    createdPrincipal.Username,
+				"displayName": createdPrincipal.DisplayName,
+				"role":        createdPrincipal.Role,
+			},
+			"session": map[string]any{
+				"id":        session.ID,
+				"expiresAt": session.ExpiresAt.Format(time.RFC3339),
+			},
+			"sessionToken": token,
 		})
 	}
 }
@@ -412,6 +527,145 @@ func authLogoutHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func usersListHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeError(w, http.StatusServiceUnavailable, "user accounts are not available")
+			return
+		}
+		users, err := deps.Auth.ListUsers(r.Context())
+		if err != nil {
+			if errors.Is(err, auth.ErrUnauthorized) {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "user list failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"users": users})
+	}
+}
+
+func usersCreateHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		DisplayName string `json:"displayName"`
+		Role        string `json:"role"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeError(w, http.StatusServiceUnavailable, "user accounts are not available")
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		principal, err := deps.Auth.CreateUser(r.Context(), payload.Username, payload.Password, payload.DisplayName, payload.Role)
+		if err != nil {
+			switch {
+			case errors.Is(err, auth.ErrUnauthorized):
+				writeError(w, http.StatusUnauthorized, "authentication required")
+			case strings.Contains(strings.ToLower(err.Error()), "users.username"):
+				writeError(w, http.StatusConflict, "username already exists")
+			case strings.Contains(strings.ToLower(err.Error()), "required"), strings.Contains(strings.ToLower(err.Error()), "password"):
+				writeError(w, http.StatusBadRequest, err.Error())
+			default:
+				writeError(w, http.StatusBadRequest, "user create failed")
+			}
+			return
+		}
+		publishDomainAudit(deps, r, "audit.auth", "user.create", "allowed", map[string]any{
+			"targetUserId":   principal.ID,
+			"targetUsername": principal.Username,
+			"targetRole":     principal.Role,
+		})
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"user": map[string]any{
+				"id":          principal.ID,
+				"username":    principal.Username,
+				"displayName": principal.DisplayName,
+				"role":        principal.Role,
+			},
+		})
+	}
+}
+
+func usersDeleteHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeError(w, http.StatusServiceUnavailable, "user accounts are not available")
+			return
+		}
+		userID := strings.TrimSpace(r.PathValue("id"))
+		resolved, _ := auth.ResolvedSessionFromContext(r.Context())
+		if userID == "" {
+			writeError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+		if userID == resolved.Principal.ID {
+			writeError(w, http.StatusBadRequest, "cannot delete the signed-in account")
+			return
+		}
+		if err := deps.Auth.DeleteUser(r.Context(), userID); err != nil {
+			switch {
+			case errors.Is(err, auth.ErrUnauthorized):
+				writeError(w, http.StatusUnauthorized, "authentication required")
+			case errors.Is(err, auth.ErrUserNotFound):
+				writeError(w, http.StatusNotFound, "user not found")
+			case errors.Is(err, auth.ErrLastAdmin):
+				writeError(w, http.StatusConflict, "cannot delete the last admin account")
+			default:
+				writeError(w, http.StatusInternalServerError, "user delete failed")
+			}
+			return
+		}
+		publishDomainAudit(deps, r, "audit.auth", "user.delete", "allowed", map[string]any{
+			"targetUserId": userID,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "deleted"})
+	}
+}
+
+func usersPasswordHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		Password string `json:"password"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeError(w, http.StatusServiceUnavailable, "user accounts are not available")
+			return
+		}
+		userID := strings.TrimSpace(r.PathValue("id"))
+		if userID == "" {
+			writeError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		if err := deps.Auth.SetUserPassword(r.Context(), userID, payload.Password); err != nil {
+			switch {
+			case errors.Is(err, auth.ErrUnauthorized):
+				writeError(w, http.StatusUnauthorized, "authentication required")
+			case errors.Is(err, auth.ErrUserNotFound):
+				writeError(w, http.StatusNotFound, "user not found")
+			case strings.Contains(strings.ToLower(err.Error()), "password"):
+				writeError(w, http.StatusBadRequest, err.Error())
+			default:
+				writeError(w, http.StatusInternalServerError, "password update failed")
+			}
+			return
+		}
+		publishDomainAudit(deps, r, "audit.auth", "user.password.update", "allowed", map[string]any{
+			"targetUserId": userID,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
+	}
+}
+
 func writeAuthCookies(w http.ResponseWriter, r *http.Request, resolved auth.ResolvedSession) {
 	secure := requestSecure(r)
 	maxAge := int(time.Until(resolved.Session.ExpiresAt).Seconds())
@@ -452,10 +706,54 @@ func clearAuthCookies(w http.ResponseWriter) {
 }
 
 func requestSecure(r *http.Request) bool {
-	if r.TLS != nil {
+	// Do not infer secure-cookie behavior from forwarded headers. In desktop and
+	// dev topologies those headers can be present even when the browser origin is
+	// plain HTTP localhost, which causes cookies to be dropped.
+	return r.TLS != nil
+}
+
+func hasHeaderAuthToken(r *http.Request) bool {
+	if strings.TrimSpace(r.Header.Get("X-Auth-Token")) != "" {
 		return true
 	}
-	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	authz := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authz == "" {
+		return false
+	}
+	parts := strings.SplitN(authz, " ", 2)
+	return len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "Bearer") && strings.TrimSpace(parts[1]) != ""
+}
+
+func requestHostIsLoopback(r *http.Request) bool {
+	host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(r.Host)
+	}
+	if host == "" && r.URL != nil {
+		host = strings.TrimSpace(r.URL.Host)
+	}
+	return isLoopbackHost(host)
+}
+
+func isLoopbackHost(hostport string) bool {
+	host := strings.TrimSpace(hostport)
+	if host == "" {
+		return false
+	}
+	parsedHost := host
+	if value, _, err := net.SplitHostPort(host); err == nil {
+		parsedHost = value
+	}
+	parsedHost = strings.TrimSpace(strings.Trim(parsedHost, "[]"))
+	if parsedHost == "" {
+		return false
+	}
+	lower := strings.ToLower(parsedHost)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(parsedHost)
+	return ip != nil && ip.IsLoopback()
 }
 
 func requestRemoteAddr(r *http.Request) string {
@@ -496,13 +794,18 @@ func metricsHandler(deps Deps) http.HandlerFunc {
 			events = deps.Observe.Events()
 		}
 		queues := []map[string]any{}
+		timeline := []observability.TimelineEntry{}
 		if deps.Jobs != nil {
 			queues = deps.Jobs.Snapshot()
+		}
+		if deps.Observe != nil {
+			timeline = deps.Observe.Recent(60)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"requests": requests,
 			"queues":   queues,
 			"events":   events,
+			"timeline": timeline,
 			"outcomes": map[string]any{
 				"sessions":  sessionOutcomeCounts(deps),
 				"transcode": transcodeOutcomeCounts(deps),
@@ -526,18 +829,31 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 			startedAt = time.Now().UTC()
 		}
 		authRequired := deps.Auth != nil && !deps.Auth.Disabled()
+		bootstrapAllowed := false
+		defaultAdminUsername := strings.TrimSpace(deps.Config.AdminUsername)
+		if defaultAdminUsername == "" {
+			defaultAdminUsername = "admin"
+		}
+		if authRequired {
+			if required, err := deps.Auth.RequiresBootstrap(r.Context()); err == nil {
+				bootstrapAllowed = required
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"server": map[string]any{
 				"product":      "vyrden",
-				"name":         "Vyrden",
+				"name":         firstNonEmpty(strings.TrimSpace(deps.Config.ServerName), "My Server"),
 				"baseUrl":      requestBaseURL(r, deps.Config.HTTPAddr),
 				"httpAddr":     deps.Config.HTTPAddr,
 				"lanAddresses": lanAddresses(deps.Config.HTTPAddr),
 				"startedAt":    startedAt.UTC().Format(time.RFC3339),
 			},
 			"auth": map[string]any{
-				"required": authRequired,
-				"methods":  []string{"session_cookie", "local_pairing_code"},
+				"required":          authRequired,
+				"bootstrapAllowed":  bootstrapAllowed,
+				"defaultUsername":   defaultAdminUsername,
+				"bootstrapEndpoint": "/api/auth/bootstrap",
+				"methods":           []string{"session_cookie", "local_pairing_code"},
 			},
 			"client": map[string]any{
 				"requestedProfile": profileID,
@@ -727,8 +1043,10 @@ func architectureHandler(deps Deps) http.HandlerFunc {
 
 func librariesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := currentConfig(deps)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"libraries": deps.Libraries.List(),
+			"libraries":       deps.Libraries.List(),
+			"metadataSources": metadataSourceCatalogPayload(r.Context(), cfg, deps.Metadata),
 		})
 	}
 }
@@ -739,6 +1057,7 @@ func librarySaveHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
+		request.MetadataSources = metasources.NormalizeRequestedSourceOrder(string(request.Kind), request.MetadataSources)
 		library, err := deps.Catalog.SaveLibrary(r.Context(), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -782,7 +1101,7 @@ func libraryScanByIDHandler(deps Deps) http.HandlerFunc {
 		if library.Kind == libraries.KindTV {
 			kind = scans.KindTV
 		}
-		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: kind, Path: library.Path})
+		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: kind, LibraryID: library.ID, Path: library.Path})
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -1455,14 +1774,48 @@ func metadataPoster(record *catalog.MetadataRecord) string {
 	if record == nil {
 		return ""
 	}
-	return record.PosterURL
+	return normalizeArtworkSourceURL(record.PosterURL, "poster")
 }
 
 func metadataBackdrop(record *catalog.MetadataRecord) string {
 	if record == nil {
 		return ""
 	}
-	return record.BackdropURL
+	return normalizeArtworkSourceURL(record.BackdropURL, "backdrop")
+}
+
+func normalizeArtworkSourceURL(raw string, artType string) string {
+	_ = artType
+	source := strings.TrimSpace(raw)
+	if source == "" {
+		return ""
+	}
+	lower := strings.ToLower(source)
+	if !strings.Contains(lower, "image.tmdb.org") {
+		return source
+	}
+	parsed, err := url.Parse(source)
+	if err != nil {
+		return source
+	}
+	const prefix = "/t/p/"
+	if !strings.HasPrefix(parsed.Path, prefix) {
+		return source
+	}
+	parts := strings.SplitN(strings.TrimPrefix(parsed.Path, prefix), "/", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		return source
+	}
+	current := parts[0]
+	if strings.EqualFold(current, "original") {
+		return source
+	}
+	target := "original"
+	if strings.EqualFold(current, target) {
+		return source
+	}
+	parsed.Path = prefix + target + "/" + parts[1]
+	return parsed.String()
 }
 
 func formatProgress(value float64) string {
@@ -1554,8 +1907,8 @@ func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"suggestions": items,
-			"providers":   metadataProviders(deps),
-			"strategy":    "filename and manual records are local-first; online providers layer on top only when configured",
+			"providers":   metadataProviders(r.Context(), deps),
+			"strategy":    "Vyrden runs strict managed metadata mode: local-first signals and account-free online sources stay active, managed providers auto-run when server credentials are provisioned, and fallback paths continue when limits or provider outages occur.",
 		})
 	}
 }
@@ -1581,7 +1934,16 @@ func metadataRecordsHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"best":      selected,
 			"records":   records,
-			"providers": metadataProviders(deps),
+			"providers": metadataProviders(r.Context(), deps),
+		})
+	}
+}
+
+func metadataProvidersHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"managedMode": "strict",
+			"providers":   metadataProviders(r.Context(), deps),
 		})
 	}
 }
@@ -1650,23 +2012,53 @@ func metadataRefreshBatchHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
-func metadataProviders(deps Deps) []map[string]any {
-	tmdbStatus := "needs-api-key"
-	if deps.Config.TMDBAPIKey != "" {
-		tmdbStatus = "configured"
+func metadataProviders(ctx context.Context, deps Deps) []map[string]any {
+	cfg := currentConfig(deps)
+	health := map[string]metaprovider.ProviderHealth{}
+	if deps.Metadata != nil {
+		health = deps.Metadata.ProviderHealth(ctx)
 	}
-	omdbStatus := "needs-api-key"
-	if deps.Config.OMDbAPIKey != "" {
-		omdbStatus = "configured"
-	}
-	return []map[string]any{
+	providers := []map[string]any{
 		{"id": "filename", "name": "Filename and folders", "status": "active", "local": true},
 		{"id": "manual", "name": "Manual correction", "status": "active", "local": true},
-		{"id": "nfo", "name": "Local NFO", "status": "planned", "local": true},
-		{"id": "tmdb", "name": "TMDB", "status": tmdbStatus, "local": false},
-		{"id": "tvdb", "name": "TVDB", "status": "planned-configurable", "local": false},
-		{"id": "omdb", "name": "OMDb", "status": omdbStatus, "local": false},
+		{"id": "nfo", "name": "Local NFO", "status": "active", "local": true},
+		{"id": "artwork", "name": "Poster and fanart sidecars", "status": "active", "local": true},
+		{"id": "tvmaze", "name": "TVMaze", "status": "automatic", "local": false},
+		{"id": "wikipedia", "name": "Wikipedia", "status": "automatic", "local": false},
+		{"id": "wikidata", "name": "Wikidata", "status": "automatic", "local": false},
+		{"id": "tmdb", "name": "TMDB", "status": "managed-ready", "local": false},
+		{"id": "tvdb", "name": "TheTVDB", "status": "managed-ready", "local": false},
+		{"id": "omdb", "name": "OMDb", "status": "managed-ready", "local": false},
 	}
+	for _, provider := range providers {
+		id, _ := provider["id"].(string)
+		if id == "" {
+			continue
+		}
+		if id != "tmdb" && id != "tvdb" && id != "omdb" {
+			continue
+		}
+		state, ok := health[id]
+		if !ok {
+			state = metaprovider.ProviderHealth{
+				ID:         id,
+				Managed:    true,
+				Configured: managedProviderConfiguredForConfig(id, cfg),
+				Healthy:    managedProviderConfiguredForConfig(id, cfg),
+				Status:     "ready",
+			}
+			if !state.Configured {
+				state.Status = "not_provisioned"
+				state.Healthy = false
+			}
+		}
+		provider["managedMode"] = "strict"
+		provider["configured"] = state.Configured
+		provider["healthy"] = state.Healthy
+		provider["health"] = state
+		provider["status"] = state.Status
+	}
+	return providers
 }
 
 func artworkHandler(deps Deps) http.HandlerFunc {
@@ -1686,19 +2078,24 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid artwork type")
 			return
 		}
-		if record, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id); err == nil && ok {
-			if artType == "backdrop" && record.BackdropURL != "" {
-				if serveCachedArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, record.BackdropURL) {
-					return
+		if deps.Catalog != nil {
+			if record, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id); err == nil && ok {
+				if record.Title != "" {
+					title = record.Title
 				}
 			}
-			if artType == "poster" && record.PosterURL != "" {
-				if serveCachedArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, record.PosterURL) {
-					return
+			if records, err := deps.Catalog.ListMetadataRecords(r.Context(), kind, id); err == nil {
+				candidates := metadataArtworkCandidates(records, artType)
+				for _, candidate := range candidates {
+					if serveArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, candidate, true) {
+						return
+					}
 				}
-			}
-			if record.Title != "" {
-				title = record.Title
+				for _, candidate := range candidates {
+					if serveArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, candidate, false) {
+						return
+					}
+				}
 			}
 		}
 		switch kind {
@@ -1713,18 +2110,116 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = fmt.Fprintf(w, `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
-<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#171815"/><stop offset="1" stop-color="#0c0d0c"/></linearGradient></defs>
-<rect width="600" height="900" fill="#070807"/>
-<rect x="24" y="24" width="552" height="852" rx="22" fill="url(#g)" stroke="#2a2925" stroke-width="2"/>
-<rect x="54" y="54" width="492" height="792" rx="12" fill="none" stroke="#f5f0e7" stroke-opacity="0.08"/>
-<path d="M96 702h408v26H96zM96 762h278v18H96z" fill="#f5f0e7" opacity="0.18"/>
-<text x="96" y="660" fill="#f5f0e7" fill-opacity="0.82" font-family="Inter,Segoe UI,sans-serif" font-size="42" font-weight="800">%s</text>
-</svg>`, html.EscapeString(truncate(title, 20)))
+		_, _ = io.WriteString(w, fallbackArtworkSVG(title, artType))
 	}
 }
 
-func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir string, kind string, id string, artType string, sourceURL string) bool {
+func metadataArtworkCandidates(records []catalog.MetadataRecord, artType string) []string {
+	output := []string{}
+	seen := map[string]struct{}{}
+	push := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		key := strings.ToLower(value)
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		output = append(output, value)
+	}
+	if strings.EqualFold(artType, "backdrop") {
+		for _, record := range records {
+			push(metadataBackdrop(&record))
+		}
+		for _, record := range records {
+			push(metadataPoster(&record))
+		}
+		return output
+	}
+	for _, record := range records {
+		push(metadataPoster(&record))
+	}
+	for _, record := range records {
+		push(metadataBackdrop(&record))
+	}
+	return output
+}
+
+func fallbackArtworkSVG(title string, artType string) string {
+	safeTitle := html.EscapeString(truncate(strings.TrimSpace(title), 20))
+	if safeTitle == "" {
+		safeTitle = "Vyrden"
+	}
+	if strings.EqualFold(artType, "backdrop") {
+		return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<defs>
+  <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+    <stop stop-color="#0a1522"/>
+    <stop offset="0.52" stop-color="#11233a"/>
+    <stop offset="1" stop-color="#0d1a2c"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="0.82" cy="0.14" r="0.6">
+    <stop stop-color="#5bc2d6" stop-opacity="0.2"/>
+    <stop offset="1" stop-color="#5bc2d6" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<rect width="1280" height="720" fill="url(#bg)"/>
+<rect width="1280" height="720" fill="url(#glow)"/>
+</svg>`
+	}
+	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
+<defs>
+  <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+    <stop stop-color="#101f33"/>
+    <stop offset="1" stop-color="#0a1522"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="0.78" cy="0.16" r="0.55">
+    <stop stop-color="#61d0e2" stop-opacity="0.24"/>
+    <stop offset="1" stop-color="#61d0e2" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<rect width="600" height="900" fill="url(#g)"/>
+<rect width="600" height="900" fill="url(#glow)"/>
+<rect x="26" y="26" width="548" height="848" rx="22" fill="none" stroke="#d7ebf8" stroke-opacity="0.12" stroke-width="2"/>
+<text x="72" y="702" fill="#ecf5fc" fill-opacity="0.9" font-family="Inter,Segoe UI,sans-serif" font-size="40" font-weight="760">%s</text>
+</svg>`, safeTitle)
+}
+
+func serveArtwork(w http.ResponseWriter, r *http.Request, metadataDir string, kind string, id string, artType string, source string, strict bool) bool {
+	if serveLocalArtwork(w, r, source, artType, strict) {
+		return true
+	}
+	return serveCachedArtwork(w, r, metadataDir, kind, id, artType, source, strict)
+}
+
+func serveLocalArtwork(w http.ResponseWriter, r *http.Request, path string, artType string, strict bool) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	lower := strings.ToLower(path)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg", ".png", ".webp":
+		if !artworkPassesQualityGatePath(path, artType, strict) {
+			return false
+		}
+		http.ServeFile(w, r, path)
+		return true
+	default:
+		return false
+	}
+}
+
+func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir string, kind string, id string, artType string, sourceURL string, strict bool) bool {
 	if !strings.HasPrefix(strings.ToLower(sourceURL), "https://") && !strings.HasPrefix(strings.ToLower(sourceURL), "http://") {
 		return false
 	}
@@ -1738,12 +2233,27 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return false
 	}
+	normalizedSource := strings.TrimSpace(sourceURL)
+	sourceMarkerPath, ok := safeChildPath(dir, artType+".source")
+	if !ok {
+		return false
+	}
+	cachedSource := readCachedArtworkSource(sourceMarkerPath)
+	refreshBecauseSourceChanged := cachedSource != "" && !strings.EqualFold(cachedSource, normalizedSource)
+	refreshLegacyTMDBCache := cachedSource == "" && strings.Contains(strings.ToLower(normalizedSource), "image.tmdb.org/t/p/")
 	for _, ext := range []string{".jpg", ".png", ".webp"} {
 		path, ok := safeChildPath(dir, artType+ext)
 		if !ok {
 			return false
 		}
 		if _, err := os.Stat(path); err == nil {
+			if refreshBecauseSourceChanged || refreshLegacyTMDBCache {
+				_ = os.Remove(path)
+				continue
+			}
+			if !artworkPassesQualityGatePath(path, artType, strict) {
+				return false
+			}
 			http.ServeFile(w, r, path)
 			return true
 		}
@@ -1754,6 +2264,8 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	if err != nil {
 		return false
 	}
+	request.Header.Set("User-Agent", "Vyrden/0.1 (+https://github.com/vyrdenhq/vyrden)")
+	request.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return false
@@ -1767,11 +2279,18 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	if !ok {
 		return false
 	}
+	payload, err := io.ReadAll(io.LimitReader(response.Body, 32*1024*1024))
+	if err != nil {
+		return false
+	}
+	if !artworkPassesQualityGateBytes(payload, artType, sourceURL, strict) {
+		return false
+	}
 	file, err := os.Create(path)
 	if err != nil {
 		return false
 	}
-	if _, err := io.Copy(file, response.Body); err != nil {
+	if _, err := io.Copy(file, bytes.NewReader(payload)); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return false
@@ -1780,8 +2299,21 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 		_ = os.Remove(path)
 		return false
 	}
+	writeCachedArtworkSource(sourceMarkerPath, normalizedSource)
 	http.ServeFile(w, r, path)
 	return true
+}
+
+func readCachedArtworkSource(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+func writeCachedArtworkSource(path string, source string) {
+	_ = os.WriteFile(path, []byte(strings.TrimSpace(source)), 0o644)
 }
 
 func artworkExtension(contentType string, sourceURL string) string {
@@ -1802,6 +2334,125 @@ func artworkExtension(contentType string, sourceURL string) string {
 		return ext
 	}
 	return ".jpg"
+}
+
+func artworkPassesQualityGatePath(path string, artType string, strict bool) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return artworkPassesQualityGateBytes(data, artType, path, strict)
+}
+
+func artworkPassesQualityGateBytes(payload []byte, artType string, sourceHint string, strict bool) bool {
+	minWidth, minHeight := artworkQualityThresholds(artType, strict)
+	config, _, err := image.DecodeConfig(bytes.NewReader(payload))
+	if err == nil {
+		return config.Width >= minWidth && config.Height >= minHeight
+	}
+	widthHint, heightHint := artworkDimensionHints(sourceHint, artType)
+	if widthHint <= 0 || heightHint <= 0 {
+		return false
+	}
+	return widthHint >= minWidth && heightHint >= minHeight
+}
+
+func artworkQualityThresholds(artType string, strict bool) (minWidth int, minHeight int) {
+	if !strict {
+		if strings.EqualFold(artType, "backdrop") {
+			return 480, 270
+		}
+		return 180, 260
+	}
+	if strings.EqualFold(artType, "backdrop") {
+		return 1280, 720
+	}
+	return 600, 900
+}
+
+func artworkDimensionHints(source string, artType string) (int, int) {
+	value := strings.ToLower(strings.TrimSpace(source))
+	if value == "" {
+		return 0, 0
+	}
+	if strings.Contains(value, "image.tmdb.org/t/p/") {
+		return tmdbArtworkHint(value, artType)
+	}
+	if strings.Contains(value, "tvmaze.com") {
+		if strings.Contains(value, "/original") || strings.Contains(value, "original_") {
+			return 1280, 720
+		}
+		if strings.Contains(value, "/medium") || strings.Contains(value, "medium_") {
+			if strings.EqualFold(artType, "backdrop") {
+				return 0, 0
+			}
+			return 210, 295
+		}
+	}
+	if strings.Contains(value, "/thumb/") {
+		if width := wikipediaThumbWidth(value); width > 0 {
+			if strings.EqualFold(artType, "backdrop") {
+				return width, int(float64(width) * 9.0 / 16.0)
+			}
+			return width, int(float64(width) * 1.5)
+		}
+	}
+	return 0, 0
+}
+
+func tmdbArtworkHint(source string, artType string) (int, int) {
+	const prefix = "/t/p/"
+	parsed, err := url.Parse(source)
+	if err != nil {
+		return 0, 0
+	}
+	if !strings.HasPrefix(parsed.Path, prefix) {
+		return 0, 0
+	}
+	parts := strings.SplitN(strings.TrimPrefix(parsed.Path, prefix), "/", 2)
+	if len(parts) != 2 {
+		return 0, 0
+	}
+	size := strings.TrimSpace(parts[0])
+	switch strings.ToLower(size) {
+	case "original":
+		if strings.EqualFold(artType, "backdrop") {
+			return 1920, 1080
+		}
+		return 1000, 1500
+	}
+	if !strings.HasPrefix(strings.ToLower(size), "w") {
+		return 0, 0
+	}
+	width, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(size), "w"))
+	if err != nil || width <= 0 {
+		return 0, 0
+	}
+	if strings.EqualFold(artType, "backdrop") {
+		return width, int(float64(width) * 9.0 / 16.0)
+	}
+	return width, int(float64(width) * 1.5)
+}
+
+func wikipediaThumbWidth(source string) int {
+	const marker = "px-"
+	index := strings.Index(source, marker)
+	if index <= 0 {
+		return 0
+	}
+	start := index - 1
+	for start >= 0 {
+		char := source[start]
+		if char < '0' || char > '9' {
+			break
+		}
+		start--
+	}
+	width, err := strconv.Atoi(source[start+1 : index])
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
 }
 
 func versionsHandler(deps Deps) http.HandlerFunc {
@@ -1850,13 +2501,76 @@ func storageDefaults(libraryList []libraries.Library) map[string]libraries.Worke
 	return output
 }
 
+func metadataSourceCatalogPayload(ctx context.Context, cfg config.Config, service *metaprovider.Service) map[string][]map[string]any {
+	catalog := metasources.SourceCatalogByKind(cfg)
+	health := map[string]metaprovider.ProviderHealth{}
+	if service != nil {
+		health = service.ProviderHealth(ctx)
+	}
+	output := map[string][]map[string]any{
+		"movie":  {},
+		"series": {},
+	}
+	for kind, definitions := range catalog {
+		rows := make([]map[string]any, 0, len(definitions))
+		for _, definition := range definitions {
+			item := map[string]any{
+				"id":             definition.ID,
+				"name":           definition.Name,
+				"description":    definition.Description,
+				"coverage":       definition.Coverage,
+				"note":           definition.Note,
+				"kinds":          definition.Kinds,
+				"local":          definition.Local,
+				"managed":        definition.Managed,
+				"requiresConfig": definition.RequiresConfig,
+				"available":      definition.Available,
+			}
+			if definition.Managed {
+				state, ok := health[definition.ID]
+				if !ok {
+					state = metaprovider.ProviderHealth{
+						ID:         definition.ID,
+						Managed:    true,
+						Configured: managedProviderConfiguredForConfig(definition.ID, cfg),
+						Healthy:    definition.Available,
+						Status:     "ready",
+					}
+					if !state.Configured {
+						state.Status = "not_provisioned"
+						state.Healthy = false
+					}
+				}
+				item["available"] = state.Configured
+				item["providerHealth"] = state
+				item["runtimeReady"] = state.Healthy
+				item["status"] = state.Status
+			}
+			rows = append(rows, item)
+		}
+		output[kind] = rows
+	}
+	return output
+}
+
+func managedProviderConfiguredForConfig(provider string, cfg config.Config) bool {
+	return metaprovider.ManagedProviderConfigured(provider, cfg)
+}
+
 func settingsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := currentConfig(deps)
+		health := map[string]metaprovider.ProviderHealth{}
+		if deps.Metadata != nil {
+			health = deps.Metadata.ProviderHealth(r.Context())
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"config":       settingsPayload(cfg),
-			"runtimePaths": runtimePaths(cfg),
-			"libraries":    deps.Libraries.List(),
+			"config":          settingsPayload(cfg),
+			"runtimePaths":    runtimePaths(cfg),
+			"libraries":       deps.Libraries.List(),
+			"metadataSources": metadataSourceCatalogPayload(r.Context(), cfg, deps.Metadata),
+			"metadataHealth":  health,
+			"managedMode":     "strict",
 		})
 	}
 }
@@ -1879,6 +2593,7 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		updated := currentConfig(deps)
+		mergeString(&updated.ServerName, request.ServerName)
 		mergeString(&updated.HTTPAddr, request.HTTPAddr)
 		mergeString(&updated.DataDir, request.DataDir)
 		mergeString(&updated.TranscodeDir, request.TranscodeDir)
@@ -1888,8 +2603,7 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeString(&updated.TempDir, request.TempDir)
 		mergeString(&updated.FFmpegPath, request.FFmpegPath)
 		mergeString(&updated.FFprobePath, request.FFprobePath)
-		mergeString(&updated.OMDbAPIKey, request.OMDbAPIKey)
-		mergeString(&updated.TMDBAPIKey, request.TMDBAPIKey)
+		mergeInt(&updated.EventBuffer, request.EventBuffer)
 		mergeInt(&updated.ScanWorkers, request.ScanWorkers)
 		mergeInt(&updated.ProbeWorkers, request.ProbeWorkers)
 		mergeInt(&updated.TranscodeWorkers, request.TranscodeWorkers)
@@ -1900,7 +2614,7 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeInt(&updated.SyncIntervalMins, request.SyncIntervalMins)
 		mergeInt(&updated.WatchDebounceSecs, request.WatchDebounceSecs)
 		mergeInt(&updated.ProbeBatchLimit, request.ProbeBatchLimit)
-		if len(request.AllowedOrigins) > 0 {
+		if request.AllowedOrigins != nil {
 			updated.AllowedOrigins = request.AllowedOrigins
 		}
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
@@ -1917,6 +2631,7 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			TempDir:          updated.TempDir,
 			FFmpegPath:       updated.FFmpegPath,
 			FFprobePath:      updated.FFprobePath,
+			EventBuffer:      updated.EventBuffer,
 			ScanWorkers:      updated.ScanWorkers,
 			ProbeWorkers:     updated.ProbeWorkers,
 			TranscodeWorkers: updated.TranscodeWorkers,
@@ -2297,6 +3012,7 @@ func currentConfig(deps Deps) config.Config {
 
 func settingsPayload(cfg config.Config) map[string]any {
 	return map[string]any{
+		"serverName":        cfg.ServerName,
 		"httpAddr":          cfg.HTTPAddr,
 		"dataDir":           cfg.DataDir,
 		"transcodeDir":      cfg.TranscodeDir,
@@ -2306,6 +3022,7 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"tempDir":           cfg.TempDir,
 		"ffmpegPath":        cfg.FFmpegPath,
 		"ffprobePath":       cfg.FFprobePath,
+		"eventBuffer":       cfg.EventBuffer,
 		"scanWorkers":       cfg.ScanWorkers,
 		"probeWorkers":      cfg.ProbeWorkers,
 		"transcodeWorkers":  cfg.TranscodeWorkers,
@@ -2318,13 +3035,18 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"probeBatchLimit":   cfg.ProbeBatchLimit,
 		"allowedOrigins":    cfg.AllowedOrigins,
 		"metadataProviders": map[string]any{
-			"omdb": map[string]any{
-				"configured": cfg.OMDbAPIKey != "",
-				"ratings":    []string{"IMDb", "Rotten Tomatoes", "Metacritic"},
+			"automatic": []map[string]any{
+				{"id": "filename", "name": "Filename and folders", "coverage": "All libraries", "note": "Always on"},
+				{"id": "nfo", "name": "Local NFO", "coverage": "Movies and TV with sidecars", "note": "Always on"},
+				{"id": "artwork", "name": "Poster and fanart sidecars", "coverage": "Movies and TV with local images", "note": "Always on"},
+				{"id": "tvmaze", "name": "TVMaze", "coverage": "Series metadata and TV ratings", "note": "No user account required"},
+				{"id": "wikipedia", "name": "Wikipedia", "coverage": "Movie and series summaries and art where available", "note": "No user account required"},
+				{"id": "wikidata", "name": "Wikidata", "coverage": "Movie and series labels, external IDs, and Wikimedia artwork", "note": "No user account required"},
 			},
-			"tmdb": map[string]any{
-				"configured": cfg.TMDBAPIKey != "",
-				"ratings":    []string{"TMDB"},
+			"managedOverrides": []map[string]any{
+				{"id": "omdb", "name": "OMDb", "configured": managedProviderConfiguredForConfig("omdb", cfg), "coverage": "IMDb, Rotten Tomatoes, Metacritic"},
+				{"id": "tmdb", "name": "TMDB", "configured": managedProviderConfiguredForConfig("tmdb", cfg), "coverage": "TMDB community ratings and IDs"},
+				{"id": "tvdb", "name": "TheTVDB", "configured": managedProviderConfiguredForConfig("tvdb", cfg), "coverage": "TV and movie metadata, IDs, and ratings"},
 			},
 		},
 	}
@@ -3081,6 +3803,24 @@ func playerHandler(deps Deps) http.HandlerFunc {
       forecastRoute.textContent = label;
       return mode;
     }
+    function supportsNativeHLS() {
+      if (!player || typeof player.canPlayType !== "function") return false;
+      return Boolean(player.canPlayType("application/vnd.apple.mpegurl") || player.canPlayType("application/x-mpegURL"));
+    }
+    async function playbackURLForRoute(route) {
+      if (route.protocol === "hls" && route.manifestUrl) {
+        if (supportsNativeHLS()) return route.manifestUrl;
+        return "";
+      }
+      if (route.url) {
+        if (route.route === "direct") {
+          const signed = await authorizeStream();
+          return signed.streamUrl || route.url;
+        }
+        return route.url;
+      }
+      return "";
+    }
     async function resolvePlaybackRoute() {
       sessionState.textContent = "Selecting route";
       const route = await getJSON("/api/playback/route?mediaSourceId=" + mediaSourceId + "&clientProfile=web", {});
@@ -3100,13 +3840,23 @@ func playerHandler(deps Deps) http.HandlerFunc {
         }
         return "blocked";
       }
-      if (route.url) {
-        const signed = await authorizeStream();
-        player.src = signed.streamUrl || route.url;
-        sessionState.textContent = route.route === "direct" ? "Direct stream" : "Prepared stream";
-        await updateInspectorRoute(route.route || "direct", route.decision || currentDecision);
-        await player.play().catch(() => {});
-        return route.route || "direct";
+      if (route.status === "ready") {
+        const playbackURL = await playbackURLForRoute(route);
+        if (playbackURL) {
+          player.src = playbackURL;
+          sessionState.textContent = route.route === "direct" ? "Direct stream" : route.route === "adaptive" ? "Adaptive stream" : "Prepared stream";
+          await updateInspectorRoute(route.route || "direct", route.decision || currentDecision);
+          await player.play().catch(() => {});
+          return route.route || "direct";
+        }
+        if (route.protocol === "hls" && route.manifestUrl && !supportsNativeHLS()) {
+          sessionState.textContent = "Adaptive stream unavailable";
+          forecastMode.textContent = "Browser fallback needed";
+          forecastReason.textContent = "This browser does not support native HLS playback for adaptive streams. Use a native player profile or switch to a direct-compatible file.";
+          forecastServer.textContent = "Route blocked";
+          forecastRoute.textContent = "Adaptive HLS";
+          return "blocked";
+        }
       }
       if (route.job && route.job.id) {
         sessionState.textContent = "Preparing " + (route.route || "playback");
@@ -3115,10 +3865,16 @@ func playerHandler(deps Deps) http.HandlerFunc {
         return route.route || "preparing";
       }
       const signed = await authorizeStream();
-      player.src = signed.streamUrl || "";
-      sessionState.textContent = "Direct fallback";
-      await updateInspectorRoute("direct", currentDecision);
-      return "direct";
+      if (signed.streamUrl) {
+        player.src = signed.streamUrl;
+        sessionState.textContent = "Direct fallback";
+        await updateInspectorRoute("direct", currentDecision);
+        return "direct";
+      }
+      sessionState.textContent = "Playback unavailable";
+      forecastReason.textContent = "Vyrden could not resolve a playable route for this browser. Check source compatibility and playback policy.";
+      await updateInspectorRoute("blocked", currentDecision);
+      return "blocked";
     }
     async function updateInspectorRoute(route, decision) {
       if (!sessionId) return;
@@ -4009,7 +4765,12 @@ func movieScanHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		path := firstNonEmpty(request.Path, request.MoviesPath, deps.Config.MovieLibraryPath)
+		path := firstNonEmpty(
+			request.Path,
+			request.MoviesPath,
+			deps.Config.MovieLibraryPath,
+			firstLibraryPathByKind(deps.Libraries, libraries.KindMovies),
+		)
 		if path == "" {
 			writeError(w, http.StatusBadRequest, "movie library path is required")
 			return
@@ -4029,7 +4790,12 @@ func tvScanHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		path := firstNonEmpty(request.Path, request.TVPath, deps.Config.TVLibraryPath)
+		path := firstNonEmpty(
+			request.Path,
+			request.TVPath,
+			deps.Config.TVLibraryPath,
+			firstLibraryPathByKind(deps.Libraries, libraries.KindTV),
+		)
 		if path == "" {
 			writeError(w, http.StatusBadRequest, "tv library path is required")
 			return
@@ -4050,8 +4816,16 @@ func allLibrariesScanHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		moviesPath := firstNonEmpty(request.MoviesPath, deps.Config.MovieLibraryPath)
-		tvPath := firstNonEmpty(request.TVPath, deps.Config.TVLibraryPath)
+		moviesPath := firstNonEmpty(
+			request.MoviesPath,
+			deps.Config.MovieLibraryPath,
+			firstLibraryPathByKind(deps.Libraries, libraries.KindMovies),
+		)
+		tvPath := firstNonEmpty(
+			request.TVPath,
+			deps.Config.TVLibraryPath,
+			firstLibraryPathByKind(deps.Libraries, libraries.KindTV),
+		)
 		if moviesPath == "" && tvPath == "" {
 			writeError(w, http.StatusBadRequest, "at least one movie or tv library path is required")
 			return
@@ -4571,6 +5345,18 @@ func firstNonEmpty(values ...string) string {
 		value = strings.TrimSpace(value)
 		if value != "" {
 			return value
+		}
+	}
+	return ""
+}
+
+func firstLibraryPathByKind(service *libraries.Service, kind libraries.Kind) string {
+	if service == nil {
+		return ""
+	}
+	for _, library := range service.List() {
+		if library.Kind == kind {
+			return strings.TrimSpace(library.Path)
 		}
 	}
 	return ""

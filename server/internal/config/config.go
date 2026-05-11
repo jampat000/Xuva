@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	ServerName        string   `json:"serverName,omitempty"`
 	HTTPAddr          string   `json:"httpAddr"`
 	DataDir           string   `json:"dataDir"`
 	TranscodeDir      string   `json:"transcodeDir,omitempty"`
@@ -22,6 +23,7 @@ type Config struct {
 	FFmpegPath        string   `json:"ffmpegPath"`
 	OMDbAPIKey        string   `json:"omdbApiKey,omitempty"`
 	TMDBAPIKey        string   `json:"tmdbApiKey,omitempty"`
+	TVDBAPIKey        string   `json:"tvdbApiKey,omitempty"`
 	EventBuffer       int      `json:"eventBuffer"`
 	ScanWorkers       int      `json:"scanWorkers"`
 	ProbeWorkers      int      `json:"probeWorkers"`
@@ -42,6 +44,7 @@ type Config struct {
 func FromEnv() Config {
 	dataDir := envString("VYRDEN_DATA_DIR", "data")
 	cfg := Config{
+		ServerName:        envString("VYRDEN_SERVER_NAME", "My Server"),
 		HTTPAddr:          envString("VYRDEN_HTTP_ADDR", "127.0.0.1:8097"),
 		DataDir:           dataDir,
 		TranscodeDir:      envString("VYRDEN_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
@@ -55,6 +58,7 @@ func FromEnv() Config {
 		FFmpegPath:        envString("VYRDEN_FFMPEG_PATH", "ffmpeg"),
 		OMDbAPIKey:        envString("VYRDEN_OMDB_API_KEY", ""),
 		TMDBAPIKey:        envString("VYRDEN_TMDB_API_KEY", ""),
+		TVDBAPIKey:        envString("VYRDEN_TVDB_API_KEY", ""),
 		EventBuffer:       envInt("VYRDEN_EVENT_BUFFER", 128),
 		ScanWorkers:       envInt("VYRDEN_SCAN_WORKERS", 1),
 		ProbeWorkers:      envInt("VYRDEN_PROBE_WORKERS", 2),
@@ -75,6 +79,7 @@ func FromEnv() Config {
 		cfg = merge(cfg, saved)
 	}
 	cfg.HTTPAddr = envString("VYRDEN_HTTP_ADDR", cfg.HTTPAddr)
+	cfg.ServerName = envString("VYRDEN_SERVER_NAME", defaultServerName(cfg.ServerName))
 	cfg.DataDir = envString("VYRDEN_DATA_DIR", cfg.DataDir)
 	cfg.TranscodeDir = envString("VYRDEN_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
 	cfg.DownloadsDir = envString("VYRDEN_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
@@ -87,6 +92,7 @@ func FromEnv() Config {
 	cfg.FFmpegPath = envString("VYRDEN_FFMPEG_PATH", cfg.FFmpegPath)
 	cfg.OMDbAPIKey = envString("VYRDEN_OMDB_API_KEY", cfg.OMDbAPIKey)
 	cfg.TMDBAPIKey = envString("VYRDEN_TMDB_API_KEY", cfg.TMDBAPIKey)
+	cfg.TVDBAPIKey = envString("VYRDEN_TVDB_API_KEY", cfg.TVDBAPIKey)
 	cfg.EventBuffer = envInt("VYRDEN_EVENT_BUFFER", cfg.EventBuffer)
 	cfg.ScanWorkers = envInt("VYRDEN_SCAN_WORKERS", cfg.ScanWorkers)
 	cfg.ProbeWorkers = envInt("VYRDEN_PROBE_WORKERS", cfg.ProbeWorkers)
@@ -129,6 +135,9 @@ func SaveFile(dataDir string, cfg Config) error {
 }
 
 func merge(base Config, saved Config) Config {
+	if saved.ServerName != "" {
+		base.ServerName = saved.ServerName
+	}
 	if saved.HTTPAddr != "" {
 		base.HTTPAddr = saved.HTTPAddr
 	}
@@ -167,6 +176,9 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.TMDBAPIKey != "" {
 		base.TMDBAPIKey = saved.TMDBAPIKey
+	}
+	if saved.TVDBAPIKey != "" {
+		base.TVDBAPIKey = saved.TVDBAPIKey
 	}
 	if saved.EventBuffer > 0 {
 		base.EventBuffer = saved.EventBuffer
@@ -227,6 +239,13 @@ func defaultPlaybackPolicy(value string) string {
 	default:
 		return "original_only"
 	}
+}
+
+func defaultServerName(value string) string {
+	if strings.TrimSpace(value) != "" {
+		return strings.TrimSpace(value)
+	}
+	return "My Server"
 }
 
 func defaultInt(value int, fallback int) int {

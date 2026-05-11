@@ -29,6 +29,9 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrCSRF               = errors.New("invalid csrf token")
 	ErrLocked             = errors.New("login temporarily locked")
+	ErrBootstrapComplete  = errors.New("bootstrap already complete")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrLastAdmin          = errors.New("cannot remove the last admin account")
 )
 
 type Principal struct {
@@ -36,6 +39,14 @@ type Principal struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
 	Role        string `json:"role"`
+}
+
+type UserAccount struct {
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Role        string `json:"role"`
+	CreatedAt   string `json:"createdAt,omitempty"`
 }
 
 type Session struct {
@@ -61,6 +72,7 @@ type Service struct {
 	db               *sql.DB
 	disabled         bool
 	sessionTTL       time.Duration
+	sessionTouchTTL  time.Duration
 	rotationInterval time.Duration
 	lockoutThreshold int
 	lockoutWindow    time.Duration
@@ -87,16 +99,22 @@ type userRecord struct {
 }
 
 type BootstrapOptions struct {
-	Username string
-	Password string
+	Username    string
+	Password    string
+	DisplayName string
 }
 
 func NewService(databaseService *database.Service, disabled bool) *Service {
 	return &Service{
-		db:               databaseService.DB(),
-		disabled:         disabled,
-		sessionTTL:       24 * time.Hour,
-		rotationInterval: 30 * time.Minute,
+		db:         databaseService.DB(),
+		disabled:   disabled,
+		sessionTTL: 24 * time.Hour,
+		// Refresh persisted session timestamps at a low cadence to avoid high-write
+		// contention when many authenticated requests land in parallel.
+		sessionTouchTTL: 45 * time.Second,
+		// Disabled by default. Rotating session secrets during request resolution can
+		// invalidate concurrent in-flight requests and force unnecessary re-auth flows.
+		rotationInterval: 0,
 		lockoutThreshold: 5,
 		lockoutWindow:    15 * time.Minute,
 		unknownAttempt:   map[string]attempt{},
@@ -111,11 +129,11 @@ func (s *Service) Bootstrap(ctx context.Context, options BootstrapOptions) error
 	if s.Disabled() {
 		return nil
 	}
-	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE username <> '' AND password_hash <> ''`).Scan(&count); err != nil {
+	required, err := s.RequiresBootstrap(ctx)
+	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if !required {
 		return nil
 	}
 	username := normalizeUsername(options.Username)
@@ -127,20 +145,86 @@ func (s *Service) Bootstrap(ctx context.Context, options BootstrapOptions) error
 		password = randomToken(24)
 		slog.Warn("auth bootstrap password generated", "username", username, "password", password)
 	}
-	hash, err := hashPassword(password)
+	displayName := strings.TrimSpace(options.DisplayName)
+	if displayName == "" {
+		displayName = "Administrator"
+	}
+	principal, err := s.bootstrapAdminUser(ctx, username, password, displayName)
 	if err != nil {
 		return err
 	}
+	slog.Info("auth bootstrap user created", "username", principal.Username)
+	return nil
+}
+
+func (s *Service) RequiresBootstrap(ctx context.Context) (bool, error) {
+	if s.Disabled() {
+		return false, nil
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE username <> '' AND password_hash <> ''`).Scan(&count); err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+func (s *Service) BootstrapUser(ctx context.Context, options BootstrapOptions) (Principal, error) {
+	if s.Disabled() {
+		return Principal{}, ErrUnauthorized
+	}
+	required, err := s.RequiresBootstrap(ctx)
+	if err != nil {
+		return Principal{}, err
+	}
+	if !required {
+		return Principal{}, ErrBootstrapComplete
+	}
+	username := normalizeUsername(options.Username)
+	if username == "" {
+		username = "admin"
+	}
+	if strings.TrimSpace(options.Password) == "" {
+		return Principal{}, errors.New("password is required")
+	}
+	displayName := strings.TrimSpace(options.DisplayName)
+	if displayName == "" {
+		displayName = username
+	}
+	return s.bootstrapAdminUser(ctx, username, options.Password, displayName)
+}
+
+func (s *Service) bootstrapAdminUser(ctx context.Context, username string, password string, displayName string) (Principal, error) {
+	hash, err := hashPassword(password)
+	if err != nil {
+		return Principal{}, err
+	}
 	now := timestamp(time.Now())
+
+	// If a placeholder admin row already exists, claim it instead of inserting a duplicate id.
+	updateResult, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET username = ?, display_name = ?, role = 'admin', password_hash = ?, password_updated_at = ?, updated_at = ?
+		WHERE id = 'admin' AND username = '' AND password_hash = ''
+	`, username, displayName, hash, now, now)
+	if err != nil {
+		return Principal{}, err
+	}
+	if rows, _ := updateResult.RowsAffected(); rows > 0 {
+		return Principal{ID: "admin", Username: username, DisplayName: displayName, Role: "admin"}, nil
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO users(id, username, display_name, role, password_hash, password_updated_at, updated_at)
 		VALUES(?, ?, ?, 'admin', ?, ?, ?)
-	`, "admin", username, "Administrator", hash, now, now)
+	`, "admin", username, displayName, hash, now, now)
 	if err != nil {
-		return err
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "users.id") || strings.Contains(lower, "users.username") {
+			return Principal{}, ErrBootstrapComplete
+		}
+		return Principal{}, err
 	}
-	slog.Info("auth bootstrap user created", "username", username)
-	return nil
+	return Principal{ID: "admin", Username: username, DisplayName: displayName, Role: "admin"}, nil
 }
 
 func (s *Service) CreateUser(ctx context.Context, username string, password string, displayName string, role string) (Principal, error) {
@@ -172,6 +256,115 @@ func (s *Service) CreateUser(ctx context.Context, username string, password stri
 		return Principal{}, err
 	}
 	return Principal{ID: id, Username: username, DisplayName: displayName, Role: role}, nil
+}
+
+func (s *Service) ListUsers(ctx context.Context) ([]UserAccount, error) {
+	if s.Disabled() {
+		return nil, ErrUnauthorized
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, username, display_name, role, created_at
+		FROM users
+		WHERE username <> ''
+		ORDER BY LOWER(username) ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []UserAccount{}
+	for rows.Next() {
+		var account UserAccount
+		if err := rows.Scan(&account.ID, &account.Username, &account.DisplayName, &account.Role, &account.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, account)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Service) DeleteUser(ctx context.Context, userID string) error {
+	if s.Disabled() {
+		return ErrUnauthorized
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return ErrUserNotFound
+	}
+	var role string
+	var username string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT role, username
+		FROM users
+		WHERE id = ?
+	`, userID).Scan(&role, &username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(username) == "" {
+		return ErrUserNotFound
+	}
+	if strings.EqualFold(strings.TrimSpace(role), "admin") {
+		var admins int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM users
+			WHERE username <> '' AND role = 'admin'
+		`).Scan(&admins); err != nil {
+			return err
+		}
+		if admins <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM auth_sessions WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (s *Service) SetUserPassword(ctx context.Context, userID string, password string) error {
+	if s.Disabled() {
+		return ErrUnauthorized
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return ErrUserNotFound
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
+	now := timestamp(time.Now())
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET password_hash = ?, password_updated_at = ?, failed_login_count = 0, last_failed_at = '', locked_until = '', updated_at = ?
+		WHERE id = ? AND username <> ''
+	`, hash, now, now, userID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return ErrUserNotFound
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM auth_sessions WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func normalizeRole(role string) string {
@@ -285,13 +478,15 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 		return ResolvedSession{}, ErrUnauthorized
 	}
 	createdAt, _ := parseTimestamp(row.CreatedAt)
+	lastSeenAt, _ := parseTimestamp(row.LastSeenAt)
 	rotated := false
 	nextToken := token
 	nextCSRF := row.CSRFToken
+	nextExpiresAt := expiresAt
 	if createdAt.IsZero() {
 		createdAt = now
 	}
-	if now.Sub(createdAt) >= s.rotationInterval {
+	if s.rotationInterval > 0 && now.Sub(createdAt) >= s.rotationInterval {
 		newSecret := randomToken(32)
 		nextToken = row.SessionID + "." + newSecret
 		nextCSRF = randomToken(32)
@@ -301,15 +496,28 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 			SET secret_hash = ?, csrf_token = ?, created_at = ?, last_seen_at = ?, expires_at = ?, remote_addr = ?, user_agent = ?
 			WHERE id = ?
 		`, hashSecret(newSecret), nextCSRF, timestamp(now), timestamp(now), timestamp(now.Add(s.sessionTTL)), remoteAddr, userAgent, row.SessionID); err != nil {
-			return ResolvedSession{}, err
+			// Keep the existing token/session valid if rotation persistence fails.
+			rotated = false
+			nextToken = token
+			nextCSRF = row.CSRFToken
+			slog.Warn("auth session rotation skipped", "session_id", row.SessionID, "error", err)
+		} else {
+			nextExpiresAt = now.Add(s.sessionTTL)
 		}
 	} else {
-		if _, err := s.db.ExecContext(ctx, `
-			UPDATE auth_sessions
-			SET last_seen_at = ?, expires_at = ?, remote_addr = ?, user_agent = ?
-			WHERE id = ?
-		`, timestamp(now), timestamp(now.Add(s.sessionTTL)), remoteAddr, userAgent, row.SessionID); err != nil {
-			return ResolvedSession{}, err
+		shouldTouch := s.sessionTouchTTL <= 0 || lastSeenAt.IsZero() || now.Sub(lastSeenAt) >= s.sessionTouchTTL
+		if shouldTouch {
+			if _, err := s.db.ExecContext(ctx, `
+				UPDATE auth_sessions
+				SET last_seen_at = ?, expires_at = ?, remote_addr = ?, user_agent = ?
+				WHERE id = ?
+			`, timestamp(now), timestamp(now.Add(s.sessionTTL)), remoteAddr, userAgent, row.SessionID); err != nil {
+				// A timestamp refresh failure should not invalidate an otherwise valid
+				// session during request handling.
+				slog.Warn("auth session touch skipped", "session_id", row.SessionID, "error", err)
+			} else {
+				nextExpiresAt = now.Add(s.sessionTTL)
+			}
 		}
 	}
 	return ResolvedSession{
@@ -318,7 +526,7 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 			ID:        row.SessionID,
 			UserID:    row.UserID,
 			CSRFToken: nextCSRF,
-			ExpiresAt: now.Add(s.sessionTTL),
+			ExpiresAt: nextExpiresAt,
 			CreatedAt: createdAt,
 		},
 		Token:   nextToken,

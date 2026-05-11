@@ -88,10 +88,16 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		return nil, err
 	}
 	authService := auth.NewService(databaseService, cfg.AuthDisabled)
-	if err := authService.Bootstrap(ctx, auth.BootstrapOptions{
-		Username: cfg.AdminUsername,
-		Password: cfg.AdminPassword,
-	}); err != nil {
+	if cfg.AdminPassword != "" {
+		if err := authService.Bootstrap(ctx, auth.BootstrapOptions{
+			Username: cfg.AdminUsername,
+			Password: cfg.AdminPassword,
+		}); err != nil {
+			return nil, err
+		}
+	} else if required, err := authService.RequiresBootstrap(ctx); err == nil && required {
+		slog.Info("auth bootstrap pending", "reason", "no admin password configured", "next_step", "create first admin from sign-in screen")
+	} else if err != nil {
 		return nil, err
 	}
 	catalogService := catalog.NewService(databaseService)
