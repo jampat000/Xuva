@@ -81,7 +81,7 @@
 	data-testid={testId}
 >
 	<div class="app-drawer__header">
-		<div class="app-drawer__brand">
+		<div class="app-drawer__brand" data-testid="drawer-brand">
 			{@render brand?.()}
 		</div>
 		<button type="button" class="app-drawer__close" aria-label={closeLabel} onclick={onClose}>
@@ -153,7 +153,28 @@
 	}
 
 	.app-drawer__brand {
+		display: flex;
+		align-items: center;
 		min-width: 0;
+		opacity: 0;
+		transform: translateX(-8px);
+		transition:
+			opacity 240ms var(--lorivo-drawer-ease),
+			transform 240ms var(--lorivo-drawer-ease);
+	}
+
+	.app-drawer--open .app-drawer__brand {
+		opacity: 1;
+		transform: translateX(0);
+	}
+
+	.app-drawer__brand :global(.v-brand) {
+		min-height: 40px;
+		justify-content: flex-start;
+	}
+
+	.app-drawer__brand :global(.v-brand__wordmark) {
+		font-size: 1.06rem;
 	}
 
 	.app-drawer__close {
@@ -228,6 +249,24 @@
 			0 12px 30px rgb(124 92 255 / 10%);
 	}
 
+	:global(.app-drawer__link--back) {
+		min-height: 48px;
+		border-color: rgb(255 255 255 / 14%);
+		background:
+			linear-gradient(90deg, rgb(255 255 255 / 8%), rgb(255 255 255 / 3%)),
+			rgb(154 167 255 / 4%);
+		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 7%);
+	}
+
+	:global(.app-drawer__link--back:hover),
+	:global(.app-drawer__link--back:focus-visible) {
+		border-color: rgb(154 167 255 / 32%);
+		background:
+			linear-gradient(90deg, rgb(154 167 255 / 13%), rgb(255 255 255 / 4%)),
+			rgb(255 255 255 / 4%);
+	}
+
 	:global(.app-drawer__link svg) {
 		width: 19px;
 		height: 19px;
@@ -251,6 +290,7 @@
 	@media (prefers-reduced-motion: reduce) {
 		.app-drawer,
 		.app-drawer__backdrop,
+		.app-drawer__brand,
 		:global(.app-drawer__link) {
 			animation: none;
 			transition: none;

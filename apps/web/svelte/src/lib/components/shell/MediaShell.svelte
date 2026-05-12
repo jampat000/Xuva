@@ -113,7 +113,15 @@
 					<span></span>
 					<span></span>
 				</button>
-				<a class="brand-link" href="/" aria-label="Go to Home">
+				<a
+					class="brand-link"
+					class:brand-link--drawer-open={menuOpen}
+					href="/"
+					aria-label="Go to Home"
+					aria-hidden={menuOpen}
+					tabindex={menuOpen ? -1 : undefined}
+					data-testid="topbar-brand"
+				>
 					<LorivoBrand />
 				</a>
 			</div>
@@ -194,7 +202,24 @@
 	.brand-link {
 		display: inline-flex;
 		align-items: center;
+		max-width: 190px;
+		min-width: 0;
+		overflow: hidden;
 		text-decoration: none;
+		opacity: 1;
+		transform: translateX(0);
+		transition:
+			opacity 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			transform 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			max-width 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
+		will-change: opacity, transform, max-width;
+	}
+
+	.brand-link--drawer-open {
+		max-width: 0;
+		opacity: 0;
+		pointer-events: none;
+		transform: translateX(-10px);
 	}
 
 	.brand-link :global(.v-brand) {
@@ -331,7 +356,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.media-shell__surface {
+		.media-shell__surface,
+		.brand-link {
 			transition: none;
 		}
 	}

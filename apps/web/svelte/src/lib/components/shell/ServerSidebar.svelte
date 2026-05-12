@@ -92,7 +92,7 @@
 	{/snippet}
 
 	{#snippet secondary()}
-		<SidebarItem label="Back to Media" href="/">
+		<SidebarItem label="Back to Media" href="/" variant="back">
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path
