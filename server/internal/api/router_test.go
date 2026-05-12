@@ -105,7 +105,6 @@ func TestRootSupportsHistoryFallbackForMigratedRoutes(t *testing.T) {
 		"/movies/movie-route-id",
 		"/tv/series-route-id",
 		"/settings",
-		"/admin",
 		"/collections",
 		"/watchlist",
 		"/continue-watching",
@@ -130,6 +129,18 @@ func TestRootSupportsHistoryFallbackForMigratedRoutes(t *testing.T) {
 		if !bytes.Contains(body, []byte("__sveltekit_")) {
 			t.Fatalf("expected %s to return svelte bootstrap shell", routePath)
 		}
+	}
+}
+
+func TestRootDoesNotServeRemovedAdminRoute(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected removed admin route to return 404, got %d", response.Code)
 	}
 }
 
