@@ -47,6 +47,61 @@ export interface MetadataRefreshResponse {
 	[key: string]: unknown;
 }
 
+export interface ReviewItem {
+	kind?: string;
+	id?: string;
+	title?: string;
+	reviewReason?: string;
+}
+
+export interface ReviewItemsResponse {
+	items?: ReviewItem[];
+}
+
+export interface VersionGroup {
+	kind?: string;
+	id?: string;
+	title?: string;
+	versionCount?: number;
+}
+
+export interface VersionGroupsResponse {
+	versions?: VersionGroup[];
+}
+
+export interface MetadataProviderRecord {
+	id?: string;
+	name?: string;
+	status?: string;
+	local?: boolean;
+}
+
+export interface MetadataRecordsResponse {
+	best?: MetadataRecord | null;
+	records?: MetadataRecord[];
+	providers?: MetadataProviderRecord[];
+}
+
+export interface MetadataRefreshRequest {
+	kind: string;
+	id: string;
+	title?: string;
+	year?: number;
+}
+
+export interface MetadataMatchRequest {
+	kind: string;
+	id: string;
+	title: string;
+	year?: number;
+	overview?: string;
+	provider?: string;
+	externalId?: string;
+	posterUrl?: string;
+	backdropUrl?: string;
+	review: boolean;
+}
+
 export function getMovies(client: ApiClient = apiClient, limit = 500): Promise<MoviesResponse> {
 	return client.request<MoviesResponse>(`/api/movies?limit=${encodeURIComponent(String(limit))}`);
 }
@@ -86,5 +141,53 @@ export function refreshMetadataBatch(
 		'/api/metadata/refresh-batch',
 		{ kind, limit },
 		'POST'
+	);
+}
+
+export function getReviewItems(
+	client: ApiClient = apiClient,
+	limit = 100
+): Promise<ReviewItemsResponse> {
+	return client.request<ReviewItemsResponse>(`/api/review?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function getVersionGroups(
+	client: ApiClient = apiClient,
+	limit = 100
+): Promise<VersionGroupsResponse> {
+	return client.request<VersionGroupsResponse>(
+		`/api/versions?limit=${encodeURIComponent(String(limit))}`
+	);
+}
+
+export function getMetadataRecords(
+	kind: string,
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MetadataRecordsResponse> {
+	return client.request<MetadataRecordsResponse>(
+		`/api/metadata/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`
+	);
+}
+
+export function refreshMetadataItem(
+	payload: MetadataRefreshRequest,
+	client: ApiClient = apiClient
+): Promise<MetadataRefreshResponse> {
+	return client.send<MetadataRefreshResponse, MetadataRefreshRequest>(
+		'/api/metadata/refresh',
+		payload,
+		'POST'
+	);
+}
+
+export function applyMetadataMatch(
+	payload: MetadataMatchRequest,
+	client: ApiClient = apiClient
+): Promise<{ match?: MetadataMatchRequest; records?: MetadataRecord[] }> {
+	return client.send<{ match?: MetadataMatchRequest; records?: MetadataRecord[] }, MetadataMatchRequest>(
+		'/api/metadata/match',
+		payload,
+		'PUT'
 	);
 }
