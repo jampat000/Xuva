@@ -143,6 +143,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/settings", settingsHandler(deps))
 	handleProtected(mux, deps, "GET /api/settings/folders/browse", settingsFolderBrowseHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/settings", settingsUpdateHandler(deps))
+	handleProtectedCSRF(mux, deps, "PUT /api/settings/metadata-sources", metadataSourceSettingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
 	mux.HandleFunc("GET /api/system/status", systemStatusHandler(deps))
 	mux.HandleFunc("GET /api/remote/access", remoteAccessHandler(deps))
@@ -1083,6 +1084,9 @@ func librarySaveHandler(deps Deps) http.HandlerFunc {
 		var request libraries.Library
 		if !decodeJSON(w, r, &request) {
 			return
+		}
+		if len(request.MetadataSources) == 0 {
+			request.MetadataSources = defaultMetadataSourcePreferenceForLibrary(currentConfig(deps), request.Kind)
 		}
 		request.MetadataSources = metasources.NormalizeRequestedSourceOrder(string(request.Kind), request.MetadataSources)
 		library, err := deps.Catalog.SaveLibrary(r.Context(), request)
@@ -2580,6 +2584,31 @@ func metadataSourceCatalogPayload(ctx context.Context, cfg config.Config, servic
 	return output
 }
 
+func metadataSourcePreferencesPayload(cfg config.Config) map[string][]string {
+	return map[string][]string{
+		"movie":  configuredMetadataSourceOrder(cfg, "movie"),
+		"series": configuredMetadataSourceOrder(cfg, "series"),
+	}
+}
+
+func configuredMetadataSourceOrder(cfg config.Config, kind string) []string {
+	switch metasources.NormalizeKind(kind) {
+	case "series":
+		return metasources.NormalizeRequestedSourceOrder("series", cfg.SeriesMetadataSources)
+	default:
+		return metasources.NormalizeRequestedSourceOrder("movie", cfg.MovieMetadataSources)
+	}
+}
+
+func defaultMetadataSourcePreferenceForLibrary(cfg config.Config, kind libraries.Kind) []string {
+	switch kind {
+	case libraries.KindTV:
+		return configuredMetadataSourceOrder(cfg, "series")
+	default:
+		return configuredMetadataSourceOrder(cfg, "movie")
+	}
+}
+
 func managedProviderConfiguredForConfig(provider string, cfg config.Config) bool {
 	return metaprovider.ManagedProviderConfigured(provider, cfg)
 }
@@ -2592,12 +2621,13 @@ func settingsHandler(deps Deps) http.HandlerFunc {
 			health = deps.Metadata.ProviderHealth(r.Context())
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"config":          settingsPayload(cfg),
-			"runtimePaths":    runtimePaths(cfg),
-			"libraries":       deps.Libraries.List(),
-			"metadataSources": metadataSourceCatalogPayload(r.Context(), cfg, deps.Metadata),
-			"metadataHealth":  health,
-			"managedMode":     "strict",
+			"config":                    settingsPayload(cfg),
+			"runtimePaths":              runtimePaths(cfg),
+			"libraries":                 deps.Libraries.List(),
+			"metadataSources":           metadataSourceCatalogPayload(r.Context(), cfg, deps.Metadata),
+			"metadataSourcePreferences": metadataSourcePreferencesPayload(cfg),
+			"metadataHealth":            health,
+			"managedMode":               "strict",
 		})
 	}
 }
@@ -2704,6 +2734,72 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			"config":          settingsPayload(updated),
 			"runtimePaths":    runtimePaths(updated),
 			"restartRequired": true,
+		})
+	}
+}
+
+func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Movie  []string `json:"movie"`
+			Series []string `json:"series"`
+		}
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+
+		movie := metasources.NormalizeRequestedSourceOrder("movie", request.Movie)
+		series := metasources.NormalizeRequestedSourceOrder("series", request.Series)
+		if len(movie) == 0 {
+			writeError(w, http.StatusBadRequest, "choose at least one movie metadata source")
+			return
+		}
+		if len(series) == 0 {
+			writeError(w, http.StatusBadRequest, "choose at least one TV metadata source")
+			return
+		}
+
+		updated := currentConfig(deps)
+		updated.MovieMetadataSources = append([]string(nil), movie...)
+		updated.SeriesMetadataSources = append([]string(nil), series...)
+		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
+			writeError(w, http.StatusInternalServerError, "metadata source settings save failed")
+			return
+		}
+
+		librariesList, err := deps.Catalog.ListLibraries(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "metadata source settings save failed")
+			return
+		}
+		for _, library := range librariesList {
+			switch library.Kind {
+			case libraries.KindMovies:
+				library.MetadataSources = append([]string(nil), movie...)
+			case libraries.KindTV:
+				library.MetadataSources = append([]string(nil), series...)
+			default:
+				continue
+			}
+			saved, saveErr := deps.Catalog.SaveLibrary(r.Context(), library)
+			if saveErr != nil {
+				writeError(w, http.StatusInternalServerError, "metadata source settings save failed")
+				return
+			}
+			deps.Libraries.Set(saved)
+			deps.Events.Publish("library.updated", saved)
+		}
+
+		payload := metadataSourcePreferencesPayload(updated)
+		deps.Events.Publish("settings.updated", map[string]any{"metadataSourcePreferences": payload})
+		publishDomainAudit(deps, r, "audit.settings", "settings.metadata_sources.update", "allowed", map[string]any{
+			"movieSources":  payload["movie"],
+			"seriesSources": payload["series"],
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"metadataSourcePreferences": payload,
+			"metadataSources":           metadataSourceCatalogPayload(r.Context(), updated, deps.Metadata),
+			"restartRequired":           false,
 		})
 	}
 }

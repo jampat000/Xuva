@@ -153,6 +153,38 @@ export interface PerformanceSettingsResponse {
 
 export interface SettingsResponse {
 	restartRequired?: boolean;
+	metadataSources?: {
+		movie?: Array<{
+			id?: string;
+			name?: string;
+			description?: string;
+			coverage?: string;
+			note?: string;
+			local?: boolean;
+			managed?: boolean;
+			requiresConfig?: boolean;
+			available?: boolean;
+			runtimeReady?: boolean;
+			status?: string;
+		}>;
+		series?: Array<{
+			id?: string;
+			name?: string;
+			description?: string;
+			coverage?: string;
+			note?: string;
+			local?: boolean;
+			managed?: boolean;
+			requiresConfig?: boolean;
+			available?: boolean;
+			runtimeReady?: boolean;
+			status?: string;
+		}>;
+	};
+	metadataSourcePreferences?: {
+		movie?: string[];
+		series?: string[];
+	};
 	config?: {
 		serverName?: string;
 		dataDir?: string;
@@ -200,6 +232,11 @@ export interface UpdateSettingsRequest {
 	playbackPolicy?: string;
 }
 
+export interface UpdateMetadataSourcePreferencesRequest {
+	movie: string[];
+	series: string[];
+}
+
 export function getCatalogSummary(client: ApiClient = apiClient): Promise<CatalogSummaryResponse> {
 	return client.request<CatalogSummaryResponse>('/api/catalog/summary');
 }
@@ -221,6 +258,17 @@ export function updateSettings(
 	client: ApiClient = apiClient
 ): Promise<SettingsResponse> {
 	return client.send<SettingsResponse, UpdateSettingsRequest>('/api/settings', payload, 'PUT');
+}
+
+export function updateMetadataSourcePreferences(
+	payload: UpdateMetadataSourcePreferencesRequest,
+	client: ApiClient = apiClient
+): Promise<SettingsResponse> {
+	return client.send<SettingsResponse, UpdateMetadataSourcePreferencesRequest>(
+		'/api/settings/metadata-sources',
+		payload,
+		'PUT'
+	);
 }
 
 export function getPerformanceSettings(

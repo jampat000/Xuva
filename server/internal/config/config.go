@@ -15,37 +15,39 @@ import (
 const legacyDefaultServerName = "My Server"
 
 type Config struct {
-	ServerName        string   `json:"serverName,omitempty"`
-	HTTPAddr          string   `json:"httpAddr"`
-	DataDir           string   `json:"dataDir"`
-	TranscodeDir      string   `json:"transcodeDir,omitempty"`
-	DownloadsDir      string   `json:"downloadsDir,omitempty"`
-	MetadataDir       string   `json:"metadataDir,omitempty"`
-	CacheDir          string   `json:"cacheDir,omitempty"`
-	TempDir           string   `json:"tempDir,omitempty"`
-	MovieLibraryPath  string   `json:"movieLibraryPath,omitempty"`
-	TVLibraryPath     string   `json:"tvLibraryPath,omitempty"`
-	FFprobePath       string   `json:"ffprobePath"`
-	FFmpegPath        string   `json:"ffmpegPath"`
-	OMDbAPIKey        string   `json:"omdbApiKey,omitempty"`
-	TMDBAPIKey        string   `json:"tmdbApiKey,omitempty"`
-	TVDBAPIKey        string   `json:"tvdbApiKey,omitempty"`
-	EventBuffer       int      `json:"eventBuffer"`
-	ScanWorkers       int      `json:"scanWorkers"`
-	ProbeWorkers      int      `json:"probeWorkers"`
-	TranscodeWorkers  int      `json:"transcodeWorkers"`
-	GPUWorkers        int      `json:"gpuWorkers"`
-	HardwareUnlocked  bool     `json:"hardwareUnlocked,omitempty"`
-	PlaybackPolicy    string   `json:"playbackPolicy,omitempty"`
-	LibrarySyncMode   string   `json:"librarySyncMode,omitempty"`
-	SyncIntervalMins  int      `json:"syncIntervalMins,omitempty"`
-	WatchDebounceSecs int      `json:"watchDebounceSecs,omitempty"`
-	ProbeBatchLimit   int      `json:"probeBatchLimit,omitempty"`
-	AllowedOrigins    []string `json:"allowedOrigins,omitempty"`
-	AuthDisabled      bool     `json:"-"`
-	DevAuthBypass     bool     `json:"-"`
-	AdminUsername     string   `json:"-"`
-	AdminPassword     string   `json:"-"`
+	ServerName            string   `json:"serverName,omitempty"`
+	HTTPAddr              string   `json:"httpAddr"`
+	DataDir               string   `json:"dataDir"`
+	TranscodeDir          string   `json:"transcodeDir,omitempty"`
+	DownloadsDir          string   `json:"downloadsDir,omitempty"`
+	MetadataDir           string   `json:"metadataDir,omitempty"`
+	CacheDir              string   `json:"cacheDir,omitempty"`
+	TempDir               string   `json:"tempDir,omitempty"`
+	MovieLibraryPath      string   `json:"movieLibraryPath,omitempty"`
+	TVLibraryPath         string   `json:"tvLibraryPath,omitempty"`
+	MovieMetadataSources  []string `json:"movieMetadataSources,omitempty"`
+	SeriesMetadataSources []string `json:"seriesMetadataSources,omitempty"`
+	FFprobePath           string   `json:"ffprobePath"`
+	FFmpegPath            string   `json:"ffmpegPath"`
+	OMDbAPIKey            string   `json:"omdbApiKey,omitempty"`
+	TMDBAPIKey            string   `json:"tmdbApiKey,omitempty"`
+	TVDBAPIKey            string   `json:"tvdbApiKey,omitempty"`
+	EventBuffer           int      `json:"eventBuffer"`
+	ScanWorkers           int      `json:"scanWorkers"`
+	ProbeWorkers          int      `json:"probeWorkers"`
+	TranscodeWorkers      int      `json:"transcodeWorkers"`
+	GPUWorkers            int      `json:"gpuWorkers"`
+	HardwareUnlocked      bool     `json:"hardwareUnlocked,omitempty"`
+	PlaybackPolicy        string   `json:"playbackPolicy,omitempty"`
+	LibrarySyncMode       string   `json:"librarySyncMode,omitempty"`
+	SyncIntervalMins      int      `json:"syncIntervalMins,omitempty"`
+	WatchDebounceSecs     int      `json:"watchDebounceSecs,omitempty"`
+	ProbeBatchLimit       int      `json:"probeBatchLimit,omitempty"`
+	AllowedOrigins        []string `json:"allowedOrigins,omitempty"`
+	AuthDisabled          bool     `json:"-"`
+	DevAuthBypass         bool     `json:"-"`
+	AdminUsername         string   `json:"-"`
+	AdminPassword         string   `json:"-"`
 }
 
 func FromEnv() Config {
@@ -173,6 +175,12 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.TVLibraryPath != "" {
 		base.TVLibraryPath = saved.TVLibraryPath
+	}
+	if len(saved.MovieMetadataSources) > 0 {
+		base.MovieMetadataSources = append([]string(nil), saved.MovieMetadataSources...)
+	}
+	if len(saved.SeriesMetadataSources) > 0 {
+		base.SeriesMetadataSources = append([]string(nil), saved.SeriesMetadataSources...)
 	}
 	if saved.FFprobePath != "" {
 		base.FFprobePath = saved.FFprobePath

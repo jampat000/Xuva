@@ -19,6 +19,7 @@ import (
 	"github.com/jampat000/Lorivo/server/internal/libraries"
 	"github.com/jampat000/Lorivo/server/internal/media"
 	"github.com/jampat000/Lorivo/server/internal/metadata"
+	"github.com/jampat000/Lorivo/server/internal/metasources"
 	"github.com/jampat000/Lorivo/server/internal/migration"
 	"github.com/jampat000/Lorivo/server/internal/movies"
 	"github.com/jampat000/Lorivo/server/internal/observability"
@@ -117,10 +118,11 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	}
 	if cfg.MovieLibraryPath != "" {
 		library, err := catalogService.SaveLibrary(ctx, libraries.Library{
-			ID:   "movies",
-			Name: "Movies",
-			Path: cfg.MovieLibraryPath,
-			Kind: libraries.KindMovies,
+			ID:              "movies",
+			Name:            "Movies",
+			Path:            cfg.MovieLibraryPath,
+			Kind:            libraries.KindMovies,
+			MetadataSources: metasources.NormalizeRequestedSourceOrder("movie", cfg.MovieMetadataSources),
 		})
 		if err == nil {
 			libraryService.Set(library)
@@ -128,10 +130,11 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	}
 	if cfg.TVLibraryPath != "" {
 		library, err := catalogService.SaveLibrary(ctx, libraries.Library{
-			ID:   "tv",
-			Name: "TV",
-			Path: cfg.TVLibraryPath,
-			Kind: libraries.KindTV,
+			ID:              "tv",
+			Name:            "TV",
+			Path:            cfg.TVLibraryPath,
+			Kind:            libraries.KindTV,
+			MetadataSources: metasources.NormalizeRequestedSourceOrder("series", cfg.SeriesMetadataSources),
 		})
 		if err == nil {
 			libraryService.Set(library)

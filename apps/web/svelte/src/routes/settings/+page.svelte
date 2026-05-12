@@ -24,6 +24,7 @@
 		getSystemStatus,
 		getWork,
 		updateSettings,
+		updateMetadataSourcePreferences,
 		type CatalogHealthResponse,
 		type CatalogSummaryResponse,
 		type DownloadJobItem,
@@ -100,6 +101,21 @@
 		editable: boolean;
 	}
 
+	interface MetadataSourceDefinition {
+		id?: string;
+		name?: string;
+		description?: string;
+		coverage?: string;
+		note?: string;
+		local?: boolean;
+		managed?: boolean;
+		available?: boolean;
+		runtimeReady?: boolean;
+		status?: string;
+	}
+
+	type MetadataKind = 'movie' | 'series';
+
 	let isLoading = $state(true);
 	let isScanningMovies = $state(false);
 	let isScanningTV = $state(false);
@@ -109,6 +125,7 @@
 	let isSavingScanningAutomation = $state(false);
 	let isSavingPlaybackPolicy = $state(false);
 	let isSavingStorage = $state(false);
+	let isSavingMetadataSources = $state(false);
 	let isSigningOut = $state(false);
 	let isBrowsingStorage = $state(false);
 	let loadError = $state('');
@@ -116,6 +133,7 @@
 	let scanningSettingsError = $state('');
 	let serverNameError = $state('');
 	let storageSettingsError = $state('');
+	let metadataSourceError = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
@@ -147,6 +165,14 @@
 	let watchDebounceDraft = $state('30');
 	let probeBatchLimitDraft = $state('50');
 	let playbackPolicyDraft = $state<'original_only' | 'light' | 'full' | 'cinema'>('original_only');
+	let metadataSourceOrderDraft = $state<Record<MetadataKind, string[]>>({
+		movie: [],
+		series: []
+	});
+	let metadataSourceEnabledDraft = $state<Record<MetadataKind, Record<string, boolean>>>({
+		movie: {},
+		series: {}
+	});
 	let storageDraft = $state<Record<StorageFieldKey, string>>({
 		dataDir: '',
 		transcodeDir: '',
@@ -253,6 +279,7 @@
 			description: 'Allow heavier live compatibility work for the widest range of devices.'
 		}
 	];
+	const metadataKinds: MetadataKind[] = ['movie', 'series'];
 
 	const devOwnerActive = $derived.by(() => devAuthBypass && Boolean(user));
 	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
@@ -304,6 +331,27 @@
 		if (authDisabled) return 'Sign-in is not required on this server.';
 		return 'Sign in to change protected settings.';
 	});
+	const metadataSourceCatalog = $derived.by(
+		() =>
+			(settings.metadataSources || {
+				movie: [],
+				series: []
+			}) as Record<MetadataKind, MetadataSourceDefinition[]>
+	);
+	const metadataSourcePreferences = $derived.by(
+		() =>
+			(settings.metadataSourcePreferences || {
+				movie: [],
+				series: []
+			}) as Record<MetadataKind, string[]>
+	);
+	const metadataSourcesChanged = $derived.by(
+		() =>
+			joinMetadataSourceIDs(enabledMetadataSourceIDsForKind('movie')) !==
+				joinMetadataSourceIDs(metadataSourcePreferences.movie || []) ||
+			joinMetadataSourceIDs(enabledMetadataSourceIDsForKind('series')) !==
+				joinMetadataSourceIDs(metadataSourcePreferences.series || [])
+	);
 	const accessSessionValue = $derived.by(() => {
 		if (devOwnerActive) return 'Development access';
 		if (user) return 'Active';
@@ -549,6 +597,7 @@
 			settings = settingsPayload || {};
 			serverNameDraft = displayServerName(settingsPayload.config?.serverName);
 			syncStorageDraft(settingsPayload.config);
+			syncMetadataSourceDraft(settingsPayload);
 			librarySyncModeDraft = normalizeLibrarySyncMode(settingsPayload.config?.librarySyncMode);
 			syncIntervalDraft = stringDraft(settingsPayload.config?.syncIntervalMins, 1440);
 			watchDebounceDraft = stringDraft(settingsPayload.config?.watchDebounceSecs, 30);
@@ -633,6 +682,45 @@
 			actionMessage = formatLoadError(error);
 		} finally {
 			isRefreshingTV = false;
+		}
+	}
+
+	async function saveMetadataSources(): Promise<void> {
+		if (isSavingMetadataSources || !canManageSettings) return;
+		const movie = enabledMetadataSourceIDsForKind('movie');
+		const series = enabledMetadataSourceIDsForKind('series');
+		metadataSourceError = '';
+		actionMessage = '';
+
+		if (movie.length === 0) {
+			metadataSourceError = 'Enable at least one movie metadata source.';
+			return;
+		}
+		if (series.length === 0) {
+			metadataSourceError = 'Enable at least one TV metadata source.';
+			return;
+		}
+
+		isSavingMetadataSources = true;
+		try {
+			const updated = await updateMetadataSourcePreferences({ movie, series }, apiClient);
+			settings = {
+				...settings,
+				...updated,
+				config: { ...settings.config, ...updated.config },
+				metadataSources: updated.metadataSources || settings.metadataSources,
+				metadataSourcePreferences:
+					updated.metadataSourcePreferences || settings.metadataSourcePreferences
+			};
+			syncMetadataSourceDraft(settings);
+			actionMessage = updated.restartRequired
+				? 'Saved. Restart Lorivo for metadata source changes to fully take effect.'
+				: 'Metadata source settings saved.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			metadataSourceError = formatLoadError(error);
+		} finally {
+			isSavingMetadataSources = false;
 		}
 	}
 
@@ -1183,6 +1271,105 @@
 		storageDraft.tempDir = asText(configValues?.tempDir);
 	}
 
+	function syncMetadataSourceDraft(sourceSettings: SettingsResponse): void {
+		const catalog = (sourceSettings.metadataSources || {
+			movie: [],
+			series: []
+		}) as Record<MetadataKind, MetadataSourceDefinition[]>;
+		const preferences = (sourceSettings.metadataSourcePreferences || {
+			movie: [],
+			series: []
+		}) as Record<MetadataKind, string[]>;
+		for (const kind of ['movie', 'series'] as MetadataKind[]) {
+			const ids = (catalog[kind] || []).map((item) => asText(item.id)).filter(Boolean);
+			const preferred = (preferences[kind] || []).map((item) => asText(item)).filter(Boolean);
+			const seen = new Set<string>();
+			const order: string[] = [];
+			for (const id of preferred) {
+				if (!ids.includes(id) || seen.has(id)) continue;
+				seen.add(id);
+				order.push(id);
+			}
+			for (const id of ids) {
+				if (seen.has(id)) continue;
+				seen.add(id);
+				order.push(id);
+			}
+			metadataSourceOrderDraft[kind] = order;
+			const enabled: Record<string, boolean> = {};
+			for (const id of ids) enabled[id] = preferred.includes(id);
+			metadataSourceEnabledDraft[kind] = enabled;
+		}
+		metadataSourceError = '';
+	}
+
+	function metadataSourceDefinition(kind: MetadataKind, id: string): MetadataSourceDefinition | undefined {
+		return (metadataSourceCatalog[kind] || []).find((item) => asText(item.id) === id);
+	}
+
+	function metadataSourceRows(kind: MetadataKind): Array<MetadataSourceDefinition & { id: string; enabled: boolean; unavailable: boolean }> {
+		return metadataSourceOrderDraft[kind]
+			.map((id) => {
+				const source = metadataSourceDefinition(kind, id);
+				if (!source) return null;
+				const enabled = Boolean(metadataSourceEnabledDraft[kind]?.[id]);
+				const unavailable =
+					Boolean(source.managed) && !Boolean(source.available);
+				return {
+					...source,
+					id,
+					enabled,
+					unavailable
+				};
+			})
+			.filter(Boolean) as Array<MetadataSourceDefinition & { id: string; enabled: boolean; unavailable: boolean }>;
+	}
+
+	function enabledMetadataSourceIDsForKind(kind: MetadataKind): string[] {
+		return metadataSourceOrderDraft[kind].filter((id) => Boolean(metadataSourceEnabledDraft[kind]?.[id]));
+	}
+
+	function joinMetadataSourceIDs(values: string[]): string {
+		return values.map((value) => asText(value)).filter(Boolean).join('|');
+	}
+
+	function metadataSourceStatusLabel(source: MetadataSourceDefinition & { enabled: boolean; unavailable: boolean }): string {
+		if (source.unavailable) return 'Unavailable in this build';
+		return source.enabled ? 'Enabled' : 'Disabled';
+	}
+
+	function metadataSourceStatusTone(source: MetadataSourceDefinition & { enabled: boolean; unavailable: boolean }): 'good' | 'warn' | 'neutral' {
+		if (source.unavailable) return 'warn';
+		return source.enabled ? 'good' : 'neutral';
+	}
+
+	function toggleMetadataSource(kind: MetadataKind, id: string): void {
+		const source = metadataSourceDefinition(kind, id);
+		if (!source) return;
+		metadataSourceEnabledDraft[kind] = {
+			...metadataSourceEnabledDraft[kind],
+			[id]: !Boolean(metadataSourceEnabledDraft[kind]?.[id])
+		};
+		metadataSourceError = '';
+	}
+
+	function moveMetadataSource(kind: MetadataKind, id: string, direction: -1 | 1): void {
+		const order = [...metadataSourceOrderDraft[kind]];
+		const index = order.indexOf(id);
+		if (index < 0) return;
+		const target = index + direction;
+		if (target < 0 || target >= order.length) return;
+		[order[index], order[target]] = [order[target], order[index]];
+		metadataSourceOrderDraft[kind] = order;
+	}
+
+	function canMoveMetadataSource(kind: MetadataKind, id: string, direction: -1 | 1): boolean {
+		const order = metadataSourceOrderDraft[kind];
+		const index = order.indexOf(id);
+		const target = index + direction;
+		return index >= 0 && target >= 0 && target < order.length;
+	}
+
 	function storageDiskFor(name: StorageFieldDefinition['diskName']): SystemDisk | undefined {
 		return (system.disks || []).find((disk) => asText(disk.name).toLowerCase() === name);
 	}
@@ -1249,7 +1436,7 @@
 			dashboard: 'Check whether your Lorivo library is ready and jump to the next useful setting.',
 			library: 'Media folders, setup status, and the current Library Setup flow.',
 			scanning: 'Choose how Lorivo checks libraries and review current scan activity.',
-			metadata: 'Refresh movie and TV information and review items that need attention.',
+			metadata: 'Choose metadata sources and refresh movie and TV information.',
 			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
 			storage: 'Choose where Lorivo keeps media processing files, library artwork, cache, and local data.',
 			access: 'See who is signed in and manage the current session.',
@@ -1688,13 +1875,86 @@
 						<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} files pending media checks`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
 						<LorivoStat label="Subtitles Found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
 					</div>
-					<div class="settings-subsection settings-subsection--quiet">
+					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
-								<h3>Title and artwork lookup</h3>
-								<p>Lorivo manages artwork and title lookups in this build. There are no lookup settings to manage here.</p>
+								<h3>Metadata Sources</h3>
+								<p>Lorivo checks enabled sources in order. Move your preferred source higher.</p>
 							</div>
 						</div>
+						{#if canManageSettings}
+							<form class="metadata-source-form" data-testid="metadata-source-form" onsubmit={(event) => { event.preventDefault(); void saveMetadataSources(); }}>
+								<div class="metadata-source-groups">
+									{#each metadataKinds as kind (kind)}
+										<div class="metadata-source-group">
+											<div class="settings-subsection__head settings-subsection__head--tight">
+												<div>
+													<h4>{kind === 'movie' ? 'Movie metadata sources' : 'TV metadata sources'}</h4>
+													<p>{kind === 'movie' ? 'Choose where Lorivo looks first for movie titles, artwork, and ratings.' : 'Choose where Lorivo looks first for series titles, artwork, and ratings.'}</p>
+												</div>
+											</div>
+											<div class="metadata-source-list" data-testid={`metadata-source-list-${kind}`}>
+												{#each metadataSourceRows(kind) as source (source.id)}
+													<div class="metadata-source-card" class:metadata-source-card--disabled={!source.enabled}>
+														<div class="metadata-source-card__main">
+															<label class="metadata-source-card__toggle">
+																<input
+																	type="checkbox"
+																	checked={source.enabled}
+																	onchange={() => toggleMetadataSource(kind, source.id)}
+																/>
+																<div>
+																	<strong>{source.name || 'Metadata source'}</strong>
+																	<span>{source.description || source.coverage || source.note || ''}</span>
+																</div>
+															</label>
+															<div class="metadata-source-card__meta">
+																<span class={`status-pill status-pill--${metadataSourceStatusTone(source)}`}>{metadataSourceStatusLabel(source)}</span>
+																{#if source.note && !source.unavailable}
+																	<small>{source.note}</small>
+																{:else if source.unavailable}
+																	<small>This source is managed by Lorivo and is unavailable in this build.</small>
+																{/if}
+															</div>
+														</div>
+														<div class="metadata-source-card__actions">
+															<LorivoButton variant="ghost" size="sm" onclick={() => moveMetadataSource(kind, source.id, -1)} disabled={!canMoveMetadataSource(kind, source.id, -1)}>
+																Move Up
+															</LorivoButton>
+															<LorivoButton variant="ghost" size="sm" onclick={() => moveMetadataSource(kind, source.id, 1)} disabled={!canMoveMetadataSource(kind, source.id, 1)}>
+																Move Down
+															</LorivoButton>
+														</div>
+													</div>
+												{/each}
+											</div>
+										</div>
+									{/each}
+								</div>
+								{#if metadataSourceError}
+									<p class="status-copy status-copy--warn">{metadataSourceError}</p>
+								{/if}
+								<div class="status-actions">
+									<LorivoButton variant="primary" type="submit" disabled={isSavingMetadataSources || !metadataSourcesChanged}>
+										{isSavingMetadataSources ? 'Saving Metadata Sources...' : 'Save Metadata Sources'}
+									</LorivoButton>
+								</div>
+							</form>
+						{:else}
+							<div class="settings-subsection settings-subsection--quiet">
+								<div class="settings-subsection__head">
+									<div>
+										<h4>Metadata Sources</h4>
+										<p>{ownerAccessMessage}</p>
+									</div>
+								</div>
+								<div class="status-actions">
+									{#if canShowSignIn}
+										<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
+									{/if}
+								</div>
+							</div>
+						{/if}
 					</div>
 				</SettingsPanel>
 			</section>
@@ -2386,6 +2646,7 @@
 	}
 
 	.scanning-automation-form,
+	.metadata-source-form,
 	.playback-policy-form,
 	.storage-settings-form {
 		display: grid;
@@ -2418,6 +2679,122 @@
 	.playback-policy-options {
 		display: grid;
 		gap: 10px;
+	}
+
+	.metadata-source-groups {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 12px;
+	}
+
+	.metadata-source-group {
+		display: grid;
+		gap: 10px;
+	}
+
+	.metadata-source-list {
+		display: grid;
+		gap: 10px;
+	}
+
+	.metadata-source-card {
+		display: grid;
+		gap: 10px;
+		padding: 12px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.metadata-source-card--disabled {
+		background: color-mix(in srgb, var(--settings-accent-soft) 30%, transparent);
+	}
+
+	.metadata-source-card__main {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
+	}
+
+	.metadata-source-card__toggle {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		gap: 10px;
+		align-items: flex-start;
+		min-width: 0;
+	}
+
+	.metadata-source-card__toggle input {
+		margin-top: 3px;
+	}
+
+	.metadata-source-card__toggle div {
+		display: grid;
+		gap: 4px;
+	}
+
+	.metadata-source-card__toggle strong {
+		font-size: 0.92rem;
+		font-weight: 760;
+	}
+
+	.metadata-source-card__toggle span,
+	.metadata-source-card__meta small {
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.8rem;
+		line-height: 1.4;
+	}
+
+	.metadata-source-card__meta {
+		display: grid;
+		gap: 4px;
+		justify-items: end;
+		text-align: right;
+	}
+
+	.metadata-source-card__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		justify-content: flex-end;
+	}
+
+	.status-pill {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 8px;
+		border-radius: 999px;
+		background: rgb(154 167 255 / 10%);
+		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
+		font-size: 0.74rem;
+		font-weight: 760;
+	}
+
+	.status-pill--good {
+		background: rgb(65 143 101 / 18%);
+		color: color-mix(in srgb, #b7ffd4 75%, white 25%);
+	}
+
+	.status-pill--warn {
+		background: rgb(255 178 102 / 15%);
+		color: color-mix(in srgb, #ffc897 78%, white 22%);
+	}
+
+	.status-pill--neutral {
+		background: rgb(154 167 255 / 10%);
+		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
+	}
+
+	.status-copy {
+		margin: 0;
+		font-size: 0.82rem;
+		line-height: 1.4;
+	}
+
+	.status-copy--warn {
+		color: var(--lorivo-color-danger, #ff9f9f);
 	}
 
 	.playback-policy-option {
@@ -2458,6 +2835,10 @@
 
 		.library-card__facts {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.metadata-source-groups {
+			grid-template-columns: 1fr;
 		}
 	}
 
@@ -2645,6 +3026,17 @@
 
 		.storage-field-facts {
 			grid-template-columns: 1fr;
+		}
+
+		.metadata-source-card__main {
+			display: grid;
+		}
+
+		.metadata-source-card__meta,
+		.metadata-source-card__actions {
+			justify-items: start;
+			justify-content: flex-start;
+			text-align: left;
 		}
 
 		.settings-subsection {

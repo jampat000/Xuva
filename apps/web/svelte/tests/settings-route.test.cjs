@@ -18,6 +18,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*nextName\s*\},\s*apiClient\)/);
 	assert.match(source, /updateSettings\(\s*\{\s*librarySyncMode,\s*syncIntervalMins:\s*syncIntervalMins\s*\?\?\s*1440,\s*watchDebounceSecs:\s*watchDebounceSecs\s*\?\?\s*30,\s*probeBatchLimit\s*\}\s*,\s*apiClient\s*\)/);
 	assert.match(source, /updateSettings\(\{\s*playbackPolicy:\s*playbackPolicyDraft\s*\},\s*apiClient\)/);
+	assert.match(source, /updateMetadataSourcePreferences\(\{\s*movie,\s*series\s*\},\s*apiClient\)/);
 	assert.match(source, /getPerformanceSettings\(apiClient\)/);
 	assert.match(source, /getSystemStatus\(apiClient\)/);
 	assert.match(source, /getCatalogSummary\(apiClient\)/);
@@ -43,6 +44,11 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Media check batch size/);
 	assert.match(source, /Save Scanning Settings/);
 	assert.match(source, /Metadata/);
+	assert.match(source, /Metadata Sources/);
+	assert.match(source, /Movie metadata sources/);
+	assert.match(source, /TV metadata sources/);
+	assert.match(source, /Save Metadata Sources/);
+	assert.match(source, /Unavailable in this build/);
 	assert.match(source, /Playback/);
 	assert.match(source, /Storage/);
 	assert.match(source, /Access/);
@@ -84,13 +90,17 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Manual scans/);
 	assert.match(source, /Automation/);
 	assert.match(source, /Advanced scanning/);
-	assert.match(source, /Title and artwork lookup/);
+	assert.match(source, /Lorivo checks enabled sources in order\. Move your preferred source higher\./);
+	assert.match(source, /Enable at least one movie metadata source\./);
+	assert.match(source, /Enable at least one TV metadata source\./);
+	assert.match(source, /Metadata source settings saved\./);
 	assert.match(source, /Save Playback Policy/);
 	assert.doesNotMatch(source, /legacy/i);
 	assert.doesNotMatch(source, /Admin Dashboard/);
 	assert.doesNotMatch(source, /Admin Controls/);
 	assert.doesNotMatch(source, /<SettingsPanel title="Server"/);
 	assert.doesNotMatch(source, /Provider setup/);
+	assert.doesNotMatch(source, /API key/i);
 	assert.doesNotMatch(source, /Transcode Workers/);
 	assert.doesNotMatch(source, /FFmpeg path/i);
 	assert.doesNotMatch(source, /FFprobe path/i);
