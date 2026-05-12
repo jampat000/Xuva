@@ -318,6 +318,7 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	assert.equal(await page.title(), 'Living Room Lorivo · Lorivo');
 	assert.match(await page.getByTestId('settings-server-name').innerText(), /Living Room Lorivo/);
 	assert.match(await page.locator('body').innerText(), /Dashboard/);
+	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
 	await assertSettingsSafetyCopy(page);
 	if (viewport.width >= 981) {
 		const sidebar = page.getByTestId('settings-mode-sidebar');
@@ -325,11 +326,13 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		assert.equal(await sidebar.isVisible(), true);
 		assert.match(await sidebar.innerText(), /LORIVO/);
 		assert.match(await sidebar.innerText(), /Settings/i);
-		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
+		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'About', 'Back to Media']) {
 			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
+		assert.equal(await sidebar.getByRole('link', { name: 'Access', exact: true }).count(), 0);
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		assert.equal(await sidebar.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
+		assert.equal(await sidebar.getByRole('link', { name: 'Diagnostics', exact: true }).count(), 0);
 		const backToMedia = sidebar.getByRole('link', { name: 'Back to Media', exact: true });
 		assert.equal(await backToMedia.count(), 1);
 		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('sidebar-item--back')), true);
@@ -346,11 +349,13 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		assert.match(await settingsDrawer.innerText(), /LORIVO/);
 		assert.match(await settingsDrawer.innerText(), /Settings/i);
 		assert.equal(await settingsDrawer.getByTestId('drawer-brand').count(), 1);
-		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
+		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'About', 'Back to Media']) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Access', exact: true }).count(), 0);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Diagnostics', exact: true }).count(), 0);
 		const backToMedia = settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true });
 		assert.equal(await backToMedia.count(), 1);
 		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('app-drawer__link--back')), true);
@@ -369,7 +374,6 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		['Scanning', 'scanning'],
 		['Metadata', 'metadata'],
 		['Playback', 'playback'],
-		['Access', 'access'],
 		['About', 'about']
 	];
 	for (let index = 0; index < sections.length; index += 1) {
@@ -419,6 +423,7 @@ async function assertSettingsSafetyCopy(page) {
 	const body = await page.locator('body').innerText();
 	assert.doesNotMatch(body, /\bAdmin\b/i);
 	assert.doesNotMatch(body, /\bOperator\b/i);
+	assert.doesNotMatch(body, /\bAccess\b/i);
 	assert.doesNotMatch(body, /Operational telemetry/i);
 	assert.doesNotMatch(body, /Manage Server/i);
 	assert.doesNotMatch(body, /Write Controls/i);
@@ -433,6 +438,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	assert.match(await page.title(), /(?:Living Room Lorivo|Family Library) · Lorivo/);
 	assert.match(await page.locator('body').innerText(), /Library Setup/);
+	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
 	const setupServerName = page.locator('input[placeholder="Lorivo"]');
 	assert.equal(await setupServerName.count(), 1);
 	assert.match(await page.locator('body').innerText(), /This is the name devices on your home network will use to identify this Lorivo server\./);

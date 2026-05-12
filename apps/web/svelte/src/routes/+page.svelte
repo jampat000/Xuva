@@ -261,7 +261,7 @@
 					</a>
 					<a class="next-step-card" href="/settings">
 						<strong>Check settings</strong>
-						<span>Review configured libraries, providers, and server status.</span>
+						<span>Review your library setup and scan status.</span>
 					</a>
 				</div>
 				{#snippet primaryAction()}

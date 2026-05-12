@@ -9,7 +9,7 @@
 		userDisplayName = 'Local User',
 		userRole = 'Local Account'
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 	}>();
@@ -73,14 +73,6 @@
 				</svg>
 			{/snippet}
 		</SidebarItem>
-		<SidebarItem label="Access" href="/settings#access" active={active === 'access'}>
-			{#snippet icon()}
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M12 4.8 18 7v4.8c0 3.6-2.3 6.4-6 7.4-3.7-1-6-3.8-6-7.4V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-					<path d="M9.5 12.3 11.2 14l3.3-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
-			{/snippet}
-		</SidebarItem>
 		<SidebarItem label="About" href="/settings#about" active={active === 'about'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -119,6 +111,7 @@
 		align-items: center;
 		gap: 12px;
 		min-width: 0;
+		min-height: 48px;
 	}
 
 	.settings-brand span {

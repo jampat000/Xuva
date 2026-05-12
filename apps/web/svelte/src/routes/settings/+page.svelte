@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { scanMovies, scanTV, refreshMetadataBatch } from '$lib/api/browse';
-	import { getAuthSession, logout, type AuthSessionUser } from '$lib/api/auth';
+	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import {
@@ -40,7 +40,7 @@
 	} from '$lib/components';
 	import SettingsPanel from '$lib/components/operator/SettingsPanel.svelte';
 
-	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'about';
 
 	interface BuildInfo {
 		buildID?: string;
@@ -54,10 +54,8 @@
 	let isScanningTV = $state(false);
 	let isRefreshingMovies = $state(false);
 	let isRefreshingTV = $state(false);
-	let isSigningOut = $state(false);
 	let isSavingServerName = $state(false);
 	let loadError = $state('');
-	let searchValue = $state('');
 	let actionMessage = $state('');
 	let serverNameError = $state('');
 	let lastUpdatedLabel = $state('');
@@ -309,20 +307,6 @@
 		}
 	}
 
-	async function signOut(): Promise<void> {
-		if (isSigningOut) return;
-		isSigningOut = true;
-		actionMessage = '';
-		try {
-			await logout(apiClient);
-			window.location.href = '/signin';
-		} catch (error) {
-			actionMessage = formatLoadError(error);
-		} finally {
-			isSigningOut = false;
-		}
-	}
-
 	async function saveServerName(): Promise<void> {
 		if (isSavingServerName) return;
 		const nextName = asText(serverNameDraft);
@@ -357,7 +341,7 @@
 	}
 
 	function isSettingsSection(value: string): value is SettingsSection {
-		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'access', 'about'].includes(value);
+		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'about'].includes(value);
 	}
 
 	function queueSilentRefresh(): void {
@@ -429,29 +413,10 @@
 			.join(' ');
 	}
 
-	function asPercent(value: unknown): string {
-		const parsed = Number(value || 0);
-		if (!Number.isFinite(parsed)) return '0%';
-		return `${Math.round(parsed)}%`;
-	}
-
 	function asCount(value: unknown): string {
 		const parsed = Number(value || 0);
 		if (!Number.isFinite(parsed)) return '0';
 		return new Intl.NumberFormat().format(Math.max(0, Math.round(parsed)));
-	}
-
-	function formatBytes(value: unknown): string {
-		const bytes = Number(value || 0);
-		if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-		let size = bytes;
-		let unitIndex = 0;
-		while (size >= 1024 && unitIndex < units.length - 1) {
-			size /= 1024;
-			unitIndex += 1;
-		}
-		return `${size >= 100 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`;
 	}
 
 	function libraryKindLabel(kind: string): string {
@@ -533,7 +498,6 @@
 			scanning: 'Scanning',
 			metadata: 'Metadata',
 			playback: 'Playback',
-			access: 'Access',
 			about: 'About'
 		}[section];
 	}
@@ -545,7 +509,6 @@
 			scanning: 'Run library scans and review current scan activity.',
 			metadata: 'Refresh movie and TV information and review items that need attention.',
 			playback: 'Review playback behavior and active viewing sessions.',
-			access: 'Review the current signed-in account and session actions.',
 			about: 'Lorivo identity, build, and local-first details.'
 		}[section];
 	}
@@ -557,7 +520,6 @@
 
 <ServerShell
 	active={activeSection}
-	bind:searchValue
 	{userDisplayName}
 	userRole={userRoleLabel}
 	{userInitials}
@@ -591,68 +553,81 @@
 
 			{#if activeSection === 'dashboard'}
 				<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
-					<a class="settings-dashboard-card settings-dashboard-card--identity" href="#about">
+					<article class="settings-dashboard-card settings-dashboard-card--identity">
 						<span>Server name</span>
 						<strong>{serverDisplayName}</strong>
-						<small>Lorivo Media Server</small>
-					</a>
-					<a class="settings-dashboard-card" href="#library">
+						<small>This is the name devices on your home network will use to identify this Lorivo server.</small>
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="secondary" size="sm" href="#about">Edit in About</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
 						<span>Library</span>
 						<strong>{asCount(libraryRows.length)}</strong>
 						<small>{libraryRows.length > 0 ? 'folders configured' : 'setup needed'}</small>
-					</a>
-					<a class="settings-dashboard-card" href="#library">
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="secondary" size="sm" href="#library">Review Library</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" href="/setup">Library Setup</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
 						<span>Media</span>
-						<strong>{asCount(summary.movies)} movies</strong>
-						<small>{asCount(summary.series)} shows / {asCount(summary.episodes)} episodes</small>
-					</a>
-					<a class="settings-dashboard-card" href="#scanning">
+						<strong>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.movies)} movies` : 'No media found yet'}</strong>
+						<small>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.series)} shows / ${asCount(summary.episodes)} episodes` : 'Add a library and run a scan to populate Lorivo.'}</small>
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="ghost" size="sm" href="/movies">Movies</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" href="/tv">TV</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
 						<span>Scanning</span>
 						<strong>{activeQueueCount > 0 ? 'Running' : 'Idle'}</strong>
 						<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'no scans running'}</small>
-					</a>
-					<a class="settings-dashboard-card" href="#metadata">
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="secondary" size="sm" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
+								{isScanningMovies ? 'Scanning...' : 'Scan Movies'}
+							</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
+								{isScanningTV ? 'Scanning...' : 'Scan TV'}
+							</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" href="#scanning">Details</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
 						<span>Metadata</span>
 						<strong>{Number(health.needsReview || 0) > 0 ? 'Review' : 'Ready'}</strong>
 						<small>{Number(health.needsReview || 0) > 0 ? `${asCount(health.needsReview)} items need attention` : 'no review needed'}</small>
-					</a>
-					<a class="settings-dashboard-card" href="#playback">
-						<span>Playback</span>
-						<strong>{asCount(activeSessionCount)}</strong>
-						<small>{activeSessionCount === 1 ? 'active session' : 'active sessions'}</small>
-					</a>
-					<a class="settings-dashboard-card" href="#dashboard">
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="secondary" size="sm" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+								{isRefreshingMovies ? 'Refreshing...' : 'Refresh Movies'}
+							</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+								{isRefreshingTV ? 'Refreshing...' : 'Refresh TV'}
+							</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" href="#metadata">Details</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
 						<span>Needs attention</span>
 						<strong>{warningItems.length > 0 ? asCount(warningItems.length) : 'Ready'}</strong>
 						<small>{warningItems.length > 0 ? 'items to review' : 'everything looks ready'}</small>
-					</a>
-					<a class="settings-dashboard-card" href="#access">
-						<span>Access</span>
-						<strong>{user ? 'Signed in' : 'Local'}</strong>
-						<small>{user ? userDisplayName : 'no active account'}</small>
-					</a>
-					<a class="settings-dashboard-card" href="#about">
+						{#if warningItems.length > 0}
+							<ul class="dashboard-warning-list">
+								{#each warningItems.slice(0, 3) as item (item.id)}
+									<li>{item.label}</li>
+								{/each}
+							</ul>
+						{/if}
+					</article>
+					<article class="settings-dashboard-card settings-dashboard-card--quiet">
 						<span>About</span>
 						<strong>Lorivo</strong>
 						<small>{asText(buildInfo?.buildID) || 'build details'}</small>
-					</a>
-				</section>
-				<div class="settings-grid">
-					<ActivityListShell title="Next Steps">
-						<LorivoActionList
-							items={warningItems}
-							emptyLabel="Everything looks ready."
-						/>
-					</ActivityListShell>
-					<SettingsPanel title="App Readiness" description="A quiet summary of the local app health that affects daily use." status={appStatus}>
-						<div class="stat-grid stat-grid--compact">
-							<LorivoStat label="Library" value={libraryRows.length > 0 ? 'Ready' : 'Setup needed'} meta={`${asCount(libraryRows.length)} folders configured`} tone={libraryRows.length > 0 ? 'good' : 'warn'} />
-							<LorivoStat label="Activity" value={activeQueueCount > 0 ? 'Busy' : 'Idle'} meta={activeQueueCount > 0 ? `${asCount(activeQueueCount)} tasks running` : 'No active scans or refreshes'} tone={activeQueueCount > 0 ? 'warn' : 'good'} />
-							<LorivoStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={formatBytes(system.memory?.usedBytes)} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
-							<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Unavailable'} meta="Current installed web app." />
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="ghost" size="sm" href="#about">Open About</LorivoButton>
 						</div>
-					</SettingsPanel>
-				</div>
+					</article>
+				</section>
 			{:else if activeSection === 'library'}
 				<section id="library" class="settings-section" data-testid="settings-section-content" data-section="library">
 				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryRows.length > 0 ? 'healthy' : 'idle'}>
@@ -740,29 +715,6 @@
 					<LorivoEmptyState
 						title="Playback controls"
 						message="Playback preference editing is not available in this build. Current playback behavior is shown here for clarity."
-					/>
-				</SettingsPanel>
-			</section>
-
-			{:else if activeSection === 'access'}
-			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
-				<SettingsPanel title="Access" description="Current account and session actions." status={user ? 'healthy' : 'idle'}>
-					{#snippet actions()}
-						{#if user}
-							<LorivoButton variant="secondary" onclick={signOut} disabled={isSigningOut}>
-								{isSigningOut ? 'Signing out...' : 'Sign Out'}
-							</LorivoButton>
-						{:else}
-							<LorivoButton variant="primary" href="/signin">Sign In</LorivoButton>
-						{/if}
-					{/snippet}
-					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Account" value={user ? userDisplayName : 'Not signed in'} meta={userRoleLabel} />
-						<LorivoStat label="Session" value={user ? 'Active' : 'Local browsing'} meta={user ? 'This browser has an active Lorivo session.' : 'Sign in to manage protected actions.'} tone={user ? 'good' : 'neutral'} />
-					</div>
-					<LorivoEmptyState
-						title="User management"
-						message="Creating and managing additional users is not available from this Settings page yet."
 					/>
 				</SettingsPanel>
 			</section>
@@ -866,14 +818,14 @@
 
 	.settings-dashboard {
 		display: grid;
-		grid-template-columns: repeat(6, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 12px;
 	}
 
 	.settings-dashboard-card {
 		display: grid;
 		gap: 7px;
-		min-height: 112px;
+		min-height: 156px;
 		align-content: space-between;
 		padding: 15px;
 		border: 1px solid color-mix(in srgb, var(--settings-accent-border) 42%, var(--lorivo-color-border-soft));
@@ -882,25 +834,9 @@
 			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 2%)),
 			color-mix(in srgb, var(--lorivo-color-surface-elevated) 96%, #111827 4%);
 		color: var(--lorivo-color-text);
-		text-decoration: none;
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 7%),
 			0 14px 32px rgb(0 0 0 / 14%);
-		transition:
-			border-color 160ms ease,
-			background-color 160ms ease,
-			transform 160ms ease,
-			box-shadow 160ms ease;
-	}
-
-	.settings-dashboard-card:hover,
-	.settings-dashboard-card:focus-visible {
-		transform: translateY(-1px);
-		border-color: var(--settings-accent-border);
-		outline: none;
-		box-shadow:
-			inset 0 1px 0 rgb(255 255 255 / 8%),
-			0 18px 42px rgb(30 35 62 / 16%);
 	}
 
 	.settings-dashboard-card span {
@@ -918,7 +854,7 @@
 		font-size: clamp(1.2rem, 0.6vw + 1rem, 1.6rem);
 		font-weight: 820;
 		line-height: 1.08;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 	}
 
 	.settings-dashboard-card small {
@@ -931,6 +867,28 @@
 		grid-column: span 2;
 	}
 
+	.settings-dashboard-card--quiet {
+		min-height: 132px;
+	}
+
+	.dashboard-card-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 7px;
+		align-items: center;
+	}
+
+	.dashboard-warning-list {
+		display: grid;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.8rem;
+		line-height: 1.35;
+	}
+
 	.settings-section {
 		scroll-margin-top: 18px;
 	}
@@ -941,12 +899,6 @@
 
 	:global([data-shell='server'] .settings-panel h2) {
 		font-size: 1.13rem;
-	}
-
-	.settings-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 15px;
 	}
 
 	.stat-grid {
@@ -967,11 +919,7 @@
 
 	@media (max-width: 1120px) {
 		.settings-dashboard {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
-		}
-
-		.settings-grid {
-			grid-template-columns: 1fr;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 
@@ -1021,7 +969,11 @@
 
 	@media (max-width: 820px) {
 		.settings-dashboard {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-columns: 1fr;
+		}
+
+		.settings-dashboard-card--identity {
+			grid-column: span 1;
 		}
 
 		.settings-head {
