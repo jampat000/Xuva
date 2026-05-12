@@ -28,6 +28,15 @@ async function waitForServer(url) {
 	throw new Error('dev server did not become ready');
 }
 
+async function waitForCondition(check, message, timeout = 5000) {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < timeout) {
+		if (check()) return;
+		await new Promise((resolve) => setTimeout(resolve, 40));
+	}
+	throw new Error(message);
+}
+
 async function launchDevServer() {
 	const port = await getFreePort();
 	const { createServer } = await import('vite');
@@ -46,39 +55,96 @@ async function launchDevServer() {
 	return { server, baseURL };
 }
 
+function playbackPolicyInfo(id) {
+	const policy = id === 'light' || id === 'full' || id === 'cinema' ? id : 'original_only';
+	const labels = {
+		original_only: 'Original Only',
+		light: 'Light Compatibility',
+		full: 'Full Compatibility',
+		cinema: 'Cinema Server'
+	};
+	const descriptions = {
+		original_only:
+			'Lorivo plays the original file only. If this device cannot play it as-is, Lorivo shows fallback options instead of converting automatically.',
+		light: 'Lorivo may repackage while playing or convert audio. Video stays untouched, so quality is preserved.',
+		full: 'Lorivo may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.',
+		cinema: 'Lorivo allows heavier live conversion and future automated optimization controls for power users.'
+	};
+	return { id: policy, label: labels[policy], description: descriptions[policy] };
+}
+
 function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/auth/session') {
-		return { user: { id: 'local', username: 'local', displayName: 'Local User', role: 'admin' } };
+		if (state.authDisabled) return { authDisabled: true };
+		if (!state.signedIn) return { user: null };
+		return {
+			user: { id: 'local', username: 'local', displayName: 'Local User', role: 'admin' },
+			session: { id: 'session-local', expiresAt: '2026-05-12T21:15:00Z' }
+		};
 	}
 	if (pathname === '/api/client/home') return { rows: [], actions: {} };
 	if (pathname === '/api/playback/recent') return { recent: [] };
-	if (pathname === '/api/libraries') return { libraries: [] };
+	if (pathname === '/api/libraries') return { libraries: state.libraries || [] };
 	if (pathname === '/api/movies') return { movies: [] };
 	if (pathname === '/api/series') return { series: [] };
-	if (pathname === '/api/catalog/summary') return { movies: 0, series: 0, episodes: 0 };
+	if (pathname === '/api/catalog/summary') return { movies: 42, series: 6, episodes: 48 };
 	if (pathname === '/api/catalog/health') return {};
 	if (pathname === '/api/system/status') return { cpu: {}, memory: {} };
 	if (pathname === '/api/settings') {
 		return {
 			config: {
 				serverName: state.serverName,
+				playbackPolicy: state.playbackPolicy,
 				metadataProviders: { automatic: [], managedOverrides: [] }
 			},
-			libraries: []
+			libraries: state.libraries || []
 		};
 	}
-	if (pathname === '/api/settings/performance') return {};
-	if (pathname === '/api/scans') return { scans: [] };
+	if (pathname === '/api/settings/performance') {
+		return {
+			playbackPolicy: playbackPolicyInfo(state.playbackPolicy),
+			hardwareAcceleration: { status: 'Available' }
+		};
+	}
+	if (pathname === '/api/scans') return { scans: state.scans || [] };
 	if (pathname === '/api/probes') return { probes: [] };
 	if (pathname === '/api/work') return { work: [] };
 	if (pathname === '/api/downloads') return { downloads: [] };
-	if (pathname === '/api/sessions') return { sessions: [] };
+	if (pathname === '/api/sessions') {
+		if (!state.signedIn && !state.authDisabled) return { error: 'authentication required' };
+		return { sessions: state.sessions || [] };
+	}
 	return {};
 }
 
 async function installApiMocks(page, options = {}) {
 	const state = {
-		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Lorivo'
+		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Lorivo',
+		playbackPolicy: 'original_only',
+		restartRequired: true,
+		signedIn: !options.signedOut,
+		authDisabled: Boolean(options.authDisabled),
+		libraries: [
+			{ id: 'movies-main', name: 'Movies', kind: 'movies', path: 'D:\\Media\\Movies', storageType: 'local' },
+			{ id: 'tv-main', name: 'TV', kind: 'tv', path: 'D:\\Media\\TV', storageType: 'network' }
+		],
+		scans: [
+			{ id: 'scan-tv-main', status: 'completed', libraryId: 'tv-main', updatedAt: '2026-05-12T18:20:00Z' }
+		],
+		sessions: [
+			{
+				id: 'session-1',
+				title: 'Heat',
+				sourceName: 'Heat (1995)',
+				deviceId: 'living-room-tv',
+				mode: 'direct',
+				route: 'direct'
+			}
+		],
+		playbackUpdates: [],
+		deletedLibraries: [],
+		scannedLibraries: [],
+		logoutCount: 0
 	};
 	await page.route('**/api/**', (route) => {
 		const url = new URL(route.request().url());
@@ -87,25 +153,87 @@ async function installApiMocks(page, options = {}) {
 		if (url.pathname === '/api/settings' && route.request().method() === 'PUT') {
 			const body = route.request().postDataJSON() || {};
 			const nextName = String(body.serverName ?? '').trim();
-			if (!nextName) {
-				return route.fulfill({
-					status: 400,
-					contentType: 'application/json',
-					body: JSON.stringify({ error: 'server name is required' })
-				});
+			if (Object.hasOwn(body, 'serverName')) {
+				if (!nextName) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'server name is required' })
+					});
+				}
+				if ([...nextName].length > 50) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'server name must be 50 characters or fewer' })
+					});
+				}
+				state.serverName = nextName;
 			}
-			if ([...nextName].length > 50) {
-				return route.fulfill({
-					status: 400,
-					contentType: 'application/json',
-					body: JSON.stringify({ error: 'server name must be 50 characters or fewer' })
-				});
+			if (Object.hasOwn(body, 'playbackPolicy')) {
+				const nextPolicy = String(body.playbackPolicy || '').trim();
+				if (!['original_only', 'light', 'full', 'cinema'].includes(nextPolicy)) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'invalid playback policy' })
+					});
+				}
+				state.playbackPolicy = nextPolicy;
+				state.playbackUpdates.push(body);
 			}
-			state.serverName = nextName;
 			return route.fulfill({
 				status: 200,
 				contentType: 'application/json',
-				body: JSON.stringify(apiPayload('/api/settings', state))
+				body: JSON.stringify({
+					...apiPayload('/api/settings', state),
+					restartRequired: state.restartRequired
+				})
+			});
+		}
+		if (url.pathname.startsWith('/api/libraries/') && url.pathname.endsWith('/scan') && route.request().method() === 'POST') {
+			const libraryID = url.pathname.split('/')[3];
+			state.scannedLibraries.push(libraryID);
+			state.scans = [
+				{
+					id: `scan-${libraryID}`,
+					status: 'queued',
+					libraryId: libraryID,
+					updatedAt: '2026-05-12T19:30:00Z'
+				},
+				...state.scans.filter((item) => item.libraryId !== libraryID)
+			];
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ id: `scan-${libraryID}`, status: 'queued', libraryId: libraryID })
+			});
+		}
+		if (url.pathname.startsWith('/api/libraries/') && route.request().method() === 'DELETE') {
+			const libraryID = url.pathname.split('/')[3];
+			state.deletedLibraries.push(libraryID);
+			state.libraries = state.libraries.filter((library) => library.id !== libraryID);
+			state.scans = state.scans.filter((item) => item.libraryId !== libraryID);
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ id: libraryID })
+			});
+		}
+		if (url.pathname === '/api/auth/logout' && route.request().method() === 'POST') {
+			state.signedIn = false;
+			state.logoutCount += 1;
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ status: 'logged_out' })
+			});
+		}
+		if (url.pathname === '/api/sessions' && !state.signedIn && !state.authDisabled) {
+			return route.fulfill({
+				status: 401,
+				contentType: 'application/json',
+				body: JSON.stringify({ error: 'authentication required' })
 			});
 		}
 		return route.fulfill({
@@ -121,6 +249,7 @@ async function installApiMocks(page, options = {}) {
 			body: JSON.stringify({ buildID: 'test', gitCommit: 'test', sourceApp: 'apps/web/svelte' })
 		})
 	);
+	return state;
 }
 
 async function assertNoPersistentMediaPills(page) {
@@ -309,7 +438,7 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	await waitForDrawerState(mediaDrawer, 'closed');
 }
 
-async function verifySettingsMenu(page, baseURL, viewport) {
+async function verifySettingsMenu(page, baseURL, viewport, state) {
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoHorizontalOverflow(page);
@@ -318,6 +447,9 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	assert.equal(await page.title(), 'Living Room Lorivo · Lorivo');
 	assert.match(await page.getByTestId('settings-server-name').innerText(), /Living Room Lorivo/);
 	assert.match(await page.locator('body').innerText(), /Dashboard/);
+	assert.match(await page.locator('body').innerText(), /Library Setup/);
+	assert.match(await page.locator('body').innerText(), /Playback/);
+	assert.match(await page.locator('body').innerText(), /Access/);
 	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
 	await assertSettingsSafetyCopy(page);
 	if (viewport.width >= 981) {
@@ -326,17 +458,16 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		assert.equal(await sidebar.isVisible(), true);
 		assert.match(await sidebar.innerText(), /LORIVO/);
 		assert.match(await sidebar.innerText(), /Settings/i);
-		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'About', 'Back to Media']) {
+		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
 			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
-		assert.equal(await sidebar.getByRole('link', { name: 'Access', exact: true }).count(), 0);
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		assert.equal(await sidebar.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
 		assert.equal(await sidebar.getByRole('link', { name: 'Diagnostics', exact: true }).count(), 0);
 		const backToMedia = sidebar.getByRole('link', { name: 'Back to Media', exact: true });
 		assert.equal(await backToMedia.count(), 1);
 		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('sidebar-item--back')), true);
-		await verifySettingsSections(page, sidebar, baseURL, false);
+		await verifySettingsSections(page, sidebar, baseURL, false, state);
 		await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).click();
 	} else {
 		const settingsButton = page.getByTestId('settings-menu-button');
@@ -349,17 +480,16 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		assert.match(await settingsDrawer.innerText(), /LORIVO/);
 		assert.match(await settingsDrawer.innerText(), /Settings/i);
 		assert.equal(await settingsDrawer.getByTestId('drawer-brand').count(), 1);
-		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'About', 'Back to Media']) {
+		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
-		assert.equal(await settingsDrawer.getByRole('link', { name: 'Access', exact: true }).count(), 0);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Diagnostics', exact: true }).count(), 0);
 		const backToMedia = settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true });
 		assert.equal(await backToMedia.count(), 1);
 		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('app-drawer__link--back')), true);
-		await verifySettingsSections(page, settingsDrawer, baseURL, true);
+		await verifySettingsSections(page, settingsDrawer, baseURL, true, state);
 		await settingsButton.click();
 		await waitForDrawerState(settingsDrawer, 'open');
 		await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
@@ -368,13 +498,14 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	await assertNoHorizontalOverflow(page);
 }
 
-async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer) {
+async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer, state) {
 	const sections = [
 		['Library', 'library'],
 		['Scanning', 'scanning'],
 		['Metadata', 'metadata'],
 		['Playback', 'playback'],
-		['About', 'about']
+		['About', 'about'],
+		['Access', 'access']
 	];
 	for (let index = 0; index < sections.length; index += 1) {
 		const [label, hash] = sections[index];
@@ -394,6 +525,12 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		assert.equal(await selectedSection.getAttribute('data-section'), hash);
 		assert.equal(await page.locator(`section#${hash}`).count(), 1);
 		assert.equal(await page.getByTestId('settings-dashboard').count(), 0);
+		if (hash === 'library') {
+			await assertLibrarySection(page, state);
+		}
+		if (hash === 'playback') {
+			await assertPlaybackSection(page, state);
+		}
 		if (hash === 'about') {
 			assert.match(await selectedSection.innerText(), /Server name/);
 			const serverNameInput = selectedSection.locator('input[placeholder="Lorivo"]');
@@ -403,6 +540,9 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 			await page.waitForFunction(() => document.title === 'Family Library · Lorivo', { timeout: 5000 });
 			assert.equal(await page.title(), 'Family Library · Lorivo');
 			assert.match(await page.getByTestId('settings-server-name').innerText(), /Family Library/);
+		}
+		if (hash === 'access') {
+			await assertAccessSection(page, state);
 		}
 		await assertSettingsSafetyCopy(page);
 		for (const [, otherHash] of sections) {
@@ -417,13 +557,15 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 			await waitForDrawerState(page.getByTestId('settings-menu-drawer'), 'open');
 		}
 	}
+	if (state.logoutCount > 0) {
+		await verifySignedOutLibraryState(page, baseURL, reopensDrawer);
+	}
 }
 
 async function assertSettingsSafetyCopy(page) {
 	const body = await page.locator('body').innerText();
 	assert.doesNotMatch(body, /\bAdmin\b/i);
 	assert.doesNotMatch(body, /\bOperator\b/i);
-	assert.doesNotMatch(body, /\bAccess\b/i);
 	assert.doesNotMatch(body, /Operational telemetry/i);
 	assert.doesNotMatch(body, /Manage Server/i);
 	assert.doesNotMatch(body, /Write Controls/i);
@@ -431,6 +573,128 @@ async function assertSettingsSafetyCopy(page) {
 	assert.doesNotMatch(body, /endpoint/i);
 	assert.doesNotMatch(body, /provider internals/i);
 	assert.doesNotMatch(body, /Transcode Workers/i);
+}
+
+async function assertLibrarySection(page, state) {
+	const selectedSection = page.getByTestId('settings-section-content');
+	assert.equal(await selectedSection.getByRole('link', { name: 'Library Setup', exact: true }).count(), 1);
+	assert.equal(await page.getByTestId('library-list').count(), 1);
+	assert.equal(await page.getByTestId('library-item').count(), state.libraries.length);
+	assert.match(await selectedSection.innerText(), /Movies library/);
+	assert.match(await selectedSection.innerText(), /TV library/);
+	assert.match(await selectedSection.innerText(), /Folder/);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Edit', exact: true }).count(), 0);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Scan', exact: true }).count(), state.libraries.length);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), state.libraries.length);
+
+	const firstLibrary = page.getByTestId('library-item').first();
+	await firstLibrary.getByRole('button', { name: 'Scan', exact: true }).click();
+	await waitForCondition(
+		() => state.scannedLibraries.includes('movies-main'),
+		'expected library scan action to be recorded'
+	);
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Movies scan started.'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.match(await page.locator('body').innerText(), /Movies scan started\./);
+
+	await Promise.all([
+		page.waitForEvent('dialog').then(async (dialog) => {
+			assert.match(dialog.message(), /Media files are not deleted\./);
+			await dialog.accept();
+		}),
+		firstLibrary.getByRole('button', { name: 'Remove', exact: true }).click()
+	]);
+	await waitForCondition(
+		() => state.deletedLibraries.includes('movies-main'),
+		'expected library remove action to be recorded'
+	);
+	await page.waitForFunction(
+		() => document.querySelectorAll('[data-testid="library-item"]').length === 1,
+		null,
+		{ timeout: 5000 }
+	);
+	assert.equal(await page.getByTestId('library-item').count(), 1);
+	assert.match(await selectedSection.innerText(), /TV library/);
+	assert.doesNotMatch(await selectedSection.innerText(), /D:\\Media\\Movies/);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Scan', exact: true }).count(), 1);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 1);
+	await assertNoHorizontalOverflow(page);
+}
+
+async function assertPlaybackSection(page, state) {
+	const selectedSection = page.getByTestId('settings-section-content');
+	assert.equal(await page.getByTestId('playback-policy-form').count(), 1);
+	assert.match(await selectedSection.innerText(), /Original Only/);
+	await selectedSection.locator('input[value="full"]').check();
+	await selectedSection.getByRole('button', { name: 'Save Playback Setting', exact: true }).click();
+	await waitForCondition(
+		() => state.playbackUpdates.some((item) => item.playbackPolicy === 'full'),
+		'expected playback policy update to be recorded'
+	);
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Playback setting saved. Restart Lorivo to apply it.'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.match(await page.locator('body').innerText(), /Playback setting saved\. Restart Lorivo to apply it\./);
+
+	state.restartRequired = false;
+	await selectedSection.locator('input[value="cinema"]').check();
+	await selectedSection.getByRole('button', { name: 'Save Playback Setting', exact: true }).click();
+	await waitForCondition(
+		() => state.playbackUpdates.some((item) => item.playbackPolicy === 'cinema'),
+		'expected second playback policy update to be recorded'
+	);
+	await page.waitForFunction(
+		() =>
+			document.body.innerText.includes('Playback setting saved.') &&
+			!document.body.innerText.includes('Playback setting saved. Restart Lorivo to apply it.'),
+		null,
+		{ timeout: 5000 }
+	);
+	const body = await page.locator('body').innerText();
+	assert.match(body, /Playback setting saved\./);
+	assert.doesNotMatch(body, /Playback setting saved\. Restart Lorivo to apply it\./);
+	await assertNoHorizontalOverflow(page);
+}
+
+async function assertAccessSection(page, state) {
+	const selectedSection = page.getByTestId('settings-section-content');
+	assert.match(await selectedSection.innerText(), /Local User/);
+	assert.match(await selectedSection.innerText(), /Owner account/);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 1);
+	assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 0);
+	await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).click();
+	await waitForCondition(() => state.logoutCount === 1, 'expected logout to be recorded');
+	await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
+	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
+	assert.doesNotMatch(await selectedSection.innerText(), /Create User|Delete User|User management/i);
+	await assertNoHorizontalOverflow(page);
+}
+
+async function verifySignedOutLibraryState(page, baseURL, reopensDrawer) {
+	const navContainer = reopensDrawer ? page.getByTestId('settings-menu-drawer') : page.getByTestId('settings-mode-sidebar');
+	if (reopensDrawer) {
+		const settingsButton = page.getByTestId('settings-menu-button');
+		await settingsButton.click();
+		await waitForDrawerState(navContainer, 'open');
+	}
+	await navContainer.getByRole('link', { name: 'Library', exact: true }).click();
+	await page.waitForURL(`${baseURL}/settings#library`, { timeout: 10000 });
+	await page.waitForFunction(
+		() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'library',
+		null,
+		{ timeout: 5000 }
+	);
+	const selectedSection = page.getByTestId('settings-section-content');
+	await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
+	assert.equal(await selectedSection.getByRole('button', { name: 'Scan', exact: true }).count(), 0);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 0);
+	assert.match(await selectedSection.innerText(), /Sign in with the owner account to scan or remove libraries\./);
+	await assertNoHorizontalOverflow(page);
 }
 
 async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
@@ -451,6 +715,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		assert.equal(await sidebar.count(), 1);
 		assert.equal(await sidebar.isVisible(), true);
 		assert.equal(await sidebar.getByRole('link', { name: 'Library', exact: true }).count(), 1);
+		assert.equal(await sidebar.getByRole('link', { name: 'Access', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 	} else {
@@ -460,6 +725,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		await settingsButton.click();
 		const settingsDrawer = page.getByTestId('settings-menu-drawer');
 		await waitForDrawerState(settingsDrawer, 'open');
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Access', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
@@ -485,10 +751,10 @@ test('hamburger media and settings menus open and navigate across viewports', as
 				isMobile: viewport.isMobile,
 				hasTouch: viewport.isMobile
 			});
-			await installApiMocks(page);
+			const state = await installApiMocks(page);
 			await verifyMediaMenu(page, baseURL, viewport);
-			await verifySettingsMenu(page, baseURL, viewport);
 			await verifySetupBelongsToSettingsMode(page, baseURL, viewport);
+			await verifySettingsMenu(page, baseURL, viewport, state);
 			await page.close();
 		}
 

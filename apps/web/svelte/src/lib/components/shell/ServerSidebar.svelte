@@ -9,7 +9,7 @@
 		userDisplayName = 'Local User',
 		userRole = 'Local Account'
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 	}>();
@@ -70,6 +70,14 @@
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5" />
 					<path d="m10 8.8 5.2 3.2-5.2 3.2z" fill="currentColor" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+		<SidebarItem label="Access" href="/settings#access" active={active === 'access'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="12" cy="8.4" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="M6.2 18.2c1.4-2.7 3.5-4 5.8-4s4.4 1.3 5.8 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 				</svg>
 			{/snippet}
 		</SidebarItem>

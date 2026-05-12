@@ -1,9 +1,10 @@
-<script lang="ts">
+	<script lang="ts">
 	import { onMount } from 'svelte';
 	import { scanMovies, scanTV, refreshMetadataBatch } from '$lib/api/browse';
-	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+	import { getAuthSession, logout, type AuthSessionResponse, type AuthSessionUser } from '$lib/api/auth';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
+	import { deleteLibrary, startLibraryScan } from '$lib/api/setup';
 	import {
 		getCatalogHealth,
 		getCatalogSummary,
@@ -40,7 +41,15 @@
 	} from '$lib/components';
 	import SettingsPanel from '$lib/components/operator/SettingsPanel.svelte';
 
-	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'about';
+	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+
+	type LibraryActionKind = 'scan' | 'remove' | '';
+
+	interface PlaybackPolicyOption {
+		id: 'original_only' | 'light' | 'full' | 'cinema';
+		label: string;
+		description: string;
+	}
 
 	interface BuildInfo {
 		buildID?: string;
@@ -55,12 +64,17 @@
 	let isRefreshingMovies = $state(false);
 	let isRefreshingTV = $state(false);
 	let isSavingServerName = $state(false);
+	let isSavingPlaybackPolicy = $state(false);
+	let isSigningOut = $state(false);
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let serverNameError = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
+	let authDisabled = $state(false);
 	let activeSection = $state<SettingsSection>('dashboard');
+	let activeLibraryActionID = $state('');
+	let activeLibraryActionKind = $state<LibraryActionKind>('');
 
 	let user = $state<AuthSessionUser | null>(null);
 	let libraries = $state<LibraryRecord[]>([]);
@@ -76,13 +90,40 @@
 	let sessions = $state<SessionItem[]>([]);
 	let buildInfo = $state<BuildInfo | null>(null);
 	let serverNameDraft = $state('Lorivo');
+	let playbackPolicyDraft = $state<'original_only' | 'light' | 'full' | 'cinema'>('original_only');
+	let sessionExpiresAt = $state('');
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const playbackPolicyOptions: PlaybackPolicyOption[] = [
+		{
+			id: 'original_only',
+			label: 'Original Only',
+			description: 'Play original files only. If a device needs help, Lorivo shows fallback options instead of converting automatically.'
+		},
+		{
+			id: 'light',
+			label: 'Light Compatibility',
+			description: 'Allow repackaging while playing and audio conversion. Video stays untouched.'
+		},
+		{
+			id: 'full',
+			label: 'Full Compatibility',
+			description: 'Allow temporary video conversion while playing when a device needs it.'
+		},
+		{
+			id: 'cinema',
+			label: 'Cinema Server',
+			description: 'Allow heavier live compatibility work for the broadest device support.'
+		}
+	];
 
 	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
 	const userRoleLabel = $derived.by(() => accountTypeLabel(user?.role));
 	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
+	const canManageSettings = $derived.by(() => authDisabled || asText(user?.role).toLowerCase() === 'admin');
+	const canShowSignIn = $derived.by(() => !authDisabled && !user);
 	const activeQueueCount = $derived.by(
 		() => [...scans, ...probes, ...work, ...downloads].filter((item) => isActiveStatus(item.status)).length
 	);
@@ -95,11 +136,16 @@
 		if (cpu > 0 || memory > 0) return 'healthy';
 		return 'idle';
 	});
-	const libraryRows = $derived.by(() =>
-		(settings.libraries || libraries || []).map((item) => ({
-			id: asText(item.id) || asText(item.path) || asText(item.name),
-			label: asText(item.name) || libraryKindLabel(asText(item.kind)),
-			description: libraryDescription(item)
+	const configuredLibraries = $derived.by(() => settings.libraries || libraries || []);
+	const libraryCards = $derived.by(() =>
+		configuredLibraries.map((item) => ({
+			id: asText(item.id),
+			name: asText(item.name) || libraryTypeLabel(item.kind),
+			typeLabel: libraryTypeLabel(item.kind),
+			path: asText(item.path),
+			storageLabel: libraryStorageLabel(item.storageType),
+			statusLabel: libraryStatusLabel(item),
+			lastScanLabel: libraryLastScanLabel(item)
 		}))
 	);
 	const scanItems = $derived.by(() => scans.map((item) => scanListItem(item)));
@@ -113,7 +159,7 @@
 	);
 	const warningItems = $derived.by(() => {
 		const output: Array<{ id: string; label: string; description: string; status: string }> = [];
-		if (libraryRows.length === 0) {
+		if (libraryCards.length === 0) {
 			output.push({
 				id: 'warn-library',
 				label: 'Library setup needed',
@@ -198,7 +244,7 @@
 				sessionsPayload
 			] = await Promise.all([
 				getAuthSession(apiClient).catch((error: unknown) => {
-					if (isApiStatus(error, 401)) return { user: null };
+					if (isApiStatus(error, 401)) return {} as AuthSessionResponse;
 					throw error;
 				}),
 				getLibraries(apiClient),
@@ -220,13 +266,16 @@
 				})
 			]);
 
+			authDisabled = Boolean(sessionPayload?.authDisabled);
 			user = sessionPayload?.user || null;
+			sessionExpiresAt = asText(sessionPayload?.session?.expiresAt);
 			libraries = librariesPayload.libraries || [];
 			summary = summaryPayload || {};
 			health = healthPayload || {};
 			system = systemPayload || {};
 			settings = settingsPayload || {};
 			serverNameDraft = displayServerName(settingsPayload.config?.serverName);
+			playbackPolicyDraft = normalizePlaybackPolicy(settingsPayload.config?.playbackPolicy);
 			performance = performancePayload || {};
 			scans = scansPayload.scans || [];
 			probes = probesPayload.probes || [];
@@ -308,7 +357,7 @@
 	}
 
 	async function saveServerName(): Promise<void> {
-		if (isSavingServerName) return;
+		if (isSavingServerName || !canManageSettings) return;
 		const nextName = asText(serverNameDraft);
 		serverNameError = '';
 		actionMessage = '';
@@ -334,6 +383,77 @@
 		}
 	}
 
+	async function savePlaybackPolicy(): Promise<void> {
+		if (isSavingPlaybackPolicy || !canManageSettings) return;
+		isSavingPlaybackPolicy = true;
+		actionMessage = '';
+		try {
+			const updated = await updateSettings({ playbackPolicy: playbackPolicyDraft }, apiClient);
+			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
+			playbackPolicyDraft = normalizePlaybackPolicy(updated.config?.playbackPolicy);
+			actionMessage = updated.restartRequired
+				? 'Playback setting saved. Restart Lorivo to apply it.'
+				: 'Playback setting saved.';
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			isSavingPlaybackPolicy = false;
+		}
+	}
+
+	async function scanLibraryItem(library: LibraryRecord): Promise<void> {
+		const id = asText(library.id);
+		if (!id || !canManageSettings) return;
+		activeLibraryActionID = id;
+		activeLibraryActionKind = 'scan';
+		actionMessage = '';
+		try {
+			await startLibraryScan(id, apiClient);
+			actionMessage = `${libraryDisplayName(library)} scan started.`;
+			await loadSettingsSurface(true);
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			activeLibraryActionID = '';
+			activeLibraryActionKind = '';
+		}
+	}
+
+	async function removeLibraryItem(library: LibraryRecord): Promise<void> {
+		const id = asText(library.id);
+		if (!id || !canManageSettings || typeof window === 'undefined') return;
+		const confirmed = window.confirm('Remove this library from Lorivo? Media files are not deleted.');
+		if (!confirmed) return;
+		activeLibraryActionID = id;
+		activeLibraryActionKind = 'remove';
+		actionMessage = '';
+		try {
+			await deleteLibrary(id, apiClient);
+			actionMessage = `${libraryDisplayName(library)} removed.`;
+			await loadSettingsSurface(true);
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			activeLibraryActionID = '';
+			activeLibraryActionKind = '';
+		}
+	}
+
+	async function signOut(): Promise<void> {
+		if (isSigningOut || authDisabled || !user) return;
+		isSigningOut = true;
+		actionMessage = '';
+		try {
+			await logout(apiClient);
+			actionMessage = 'Signed out.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			isSigningOut = false;
+		}
+	}
+
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
@@ -341,7 +461,7 @@
 	}
 
 	function isSettingsSection(value: string): value is SettingsSection {
-		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'about'].includes(value);
+		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'access', 'about'].includes(value);
 	}
 
 	function queueSilentRefresh(): void {
@@ -426,6 +546,79 @@
 		return 'Library';
 	}
 
+	function libraryTypeLabel(kind: unknown): string {
+		const normalized = asText(kind).toLowerCase();
+		if (normalized === 'movies' || normalized === 'movie') return 'Movies library';
+		if (normalized === 'tv' || normalized === 'series') return 'TV library';
+		return 'Library';
+	}
+
+	function libraryDisplayName(library: LibraryRecord): string {
+		return asText(library.name) || libraryTypeLabel(library.kind);
+	}
+
+	function libraryStorageLabel(storageType: unknown): string {
+		const normalized = asText(storageType).toLowerCase();
+		if (normalized === 'local') return 'Local drive';
+		if (normalized === 'network') return 'Network drive';
+		if (normalized === 'mounted') return 'Mounted drive';
+		if (normalized === 'removable') return 'Removable drive';
+		return 'Storage not known yet';
+	}
+
+	function latestScanForLibrary(libraryID: unknown): ScanJobItem | null {
+		const id = asText(libraryID);
+		if (!id) return null;
+		const matches = scans.filter((item) => asText(item.libraryId) === id);
+		if (matches.length === 0) return null;
+		return [...matches].sort((left, right) => latestTimestamp(right) - latestTimestamp(left))[0] || null;
+	}
+
+	function latestTimestamp(item: { updatedAt?: unknown; createdAt?: unknown }): number {
+		const value = asText(item.updatedAt || item.createdAt);
+		if (!value) return 0;
+		const parsed = Date.parse(value);
+		return Number.isFinite(parsed) ? parsed : 0;
+	}
+
+	function libraryStatusLabel(library: LibraryRecord): string {
+		const scan = latestScanForLibrary(library.id);
+		if (scan) return humanStatus(scan.status);
+		return 'Ready';
+	}
+
+	function libraryLastScanLabel(library: LibraryRecord): string {
+		const scan = latestScanForLibrary(library.id);
+		if (!scan) return '';
+		const when = asText(scan.updatedAt || scan.createdAt);
+		if (!when) return '';
+		return formatDateTime(when);
+	}
+
+	function formatDateTime(value: unknown): string {
+		const text = asText(value);
+		if (!text) return '';
+		const parsed = new Date(text);
+		if (Number.isNaN(parsed.getTime())) return text;
+		return parsed.toLocaleString([], {
+			month: 'short',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+	}
+
+	function normalizePlaybackPolicy(value: unknown): PlaybackPolicyOption['id'] {
+		const normalized = asText(value).toLowerCase();
+		if (normalized === 'light' || normalized === 'full' || normalized === 'cinema') return normalized;
+		return 'original_only';
+	}
+
+	function playbackPolicyDetails(value: unknown): PlaybackPolicyOption {
+		const policy = normalizePlaybackPolicy(value);
+		return playbackPolicyOptions.find((item) => item.id === policy) || playbackPolicyOptions[0];
+	}
+
 	function initialsForName(name: string): string {
 		const words = asText(name).split(/\s+/).filter(Boolean);
 		if (words.length === 0) return 'L';
@@ -477,12 +670,6 @@
 		return 'Settings could not load.';
 	}
 
-	function libraryDescription(item: LibraryRecord | { kind?: string; path?: string }): string {
-		const kind = libraryKindLabel(asText(item.kind));
-		const path = asText(item.path);
-		return path ? `${kind} folder: ${path}` : `${kind} folder`;
-	}
-
 	function accountTypeLabel(role: unknown): string {
 		const normalized = asText(role).toLowerCase();
 		if (!normalized) return 'Local Account';
@@ -498,6 +685,7 @@
 			scanning: 'Scanning',
 			metadata: 'Metadata',
 			playback: 'Playback',
+			access: 'Access',
 			about: 'About'
 		}[section];
 	}
@@ -508,7 +696,8 @@
 			library: 'Media folders, setup status, and the current Library Setup flow.',
 			scanning: 'Run library scans and review current scan activity.',
 			metadata: 'Refresh movie and TV information and review items that need attention.',
-			playback: 'Review playback behavior and active viewing sessions.',
+			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
+			access: 'See who is signed in and manage the current session.',
 			about: 'Lorivo identity, build, and local-first details.'
 		}[section];
 	}
@@ -563,8 +752,8 @@
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Library</span>
-						<strong>{asCount(libraryRows.length)}</strong>
-						<small>{libraryRows.length > 0 ? 'folders configured' : 'setup needed'}</small>
+						<strong>{asCount(libraryCards.length)}</strong>
+						<small>{libraryCards.length > 0 ? 'folders configured' : 'setup needed'}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="secondary" size="sm" href="#library">Review Library</LorivoButton>
 							<LorivoButton variant="ghost" size="sm" href="/setup">Library Setup</LorivoButton>
@@ -608,6 +797,22 @@
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
+						<span>Playback</span>
+						<strong>{playbackPolicyDetails(settings.config?.playbackPolicy).label}</strong>
+						<small>{activeSessionCount > 0 ? `${asCount(activeSessionCount)} active sessions` : 'no active sessions'}</small>
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="secondary" size="sm" href="#playback">Playback</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
+						<span>Access</span>
+						<strong>{user ? 'Signed in' : authDisabled ? 'Local access' : 'Sign in'}</strong>
+						<small>{user ? userDisplayName : authDisabled ? 'sign-in is not required on this server' : 'owner account needed for changes'}</small>
+						<div class="dashboard-card-actions">
+							<LorivoButton variant="secondary" size="sm" href="#access">Access</LorivoButton>
+						</div>
+					</article>
+					<article class="settings-dashboard-card">
 						<span>Needs attention</span>
 						<strong>{warningItems.length > 0 ? asCount(warningItems.length) : 'Ready'}</strong>
 						<small>{warningItems.length > 0 ? 'items to review' : 'everything looks ready'}</small>
@@ -630,25 +835,77 @@
 				</section>
 			{:else if activeSection === 'library'}
 				<section id="library" class="settings-section" data-testid="settings-section-content" data-section="library">
-				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryRows.length > 0 ? 'healthy' : 'idle'}>
+				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryCards.length > 0 ? 'healthy' : 'idle'}>
 					{#snippet actions()}
 						<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
 					{/snippet}
-					<ActivityListShell title="Configured Libraries">
-						<LorivoActionList
-							items={libraryRows.map((item) => ({
-								id: item.id,
-								label: item.label,
-								description: item.description,
-								status: 'Configured'
-							}))}
-							emptyLabel="No libraries configured."
+					<div class="stat-grid stat-grid--compact">
+						<LorivoStat label="Libraries" value={asCount(libraryCards.length)} meta={libraryCards.length > 0 ? 'Configured folders' : 'Add a library to begin'} tone={libraryCards.length > 0 ? 'good' : 'warn'} />
+						<LorivoStat label="Movies" value={asCount(summary.movies)} meta="Current movie catalog count." />
+						<LorivoStat label="Shows" value={asCount(summary.series)} meta={`${asCount(summary.episodes)} episodes in the current TV catalog.`} />
+					</div>
+					{#if libraryCards.length > 0}
+						<div class="library-list" data-testid="library-list">
+							{#each libraryCards as library (library.id)}
+								<article class="library-card" data-testid="library-item">
+									<div class="library-card__body">
+										<div class="library-card__heading">
+											<div>
+												<h3>{library.name}</h3>
+												<p>{library.typeLabel}</p>
+											</div>
+											<span class="library-card__status">{library.statusLabel}</span>
+										</div>
+										<dl class="library-card__facts">
+											<div>
+												<dt>Folder</dt>
+												<dd>{library.path || 'Not set'}</dd>
+											</div>
+											<div>
+												<dt>Storage</dt>
+												<dd>{library.storageLabel}</dd>
+											</div>
+											{#if library.lastScanLabel}
+												<div>
+													<dt>Last scan</dt>
+													<dd>{library.lastScanLabel}</dd>
+												</div>
+											{/if}
+										</dl>
+										<p class="library-card__note">Item counts are available for the full catalog, but not per library yet.</p>
+									</div>
+									{#if canManageSettings}
+										<div class="library-card__actions">
+											<LorivoButton
+												variant="secondary"
+												size="sm"
+												disabled={activeLibraryActionID === library.id}
+												onclick={() => scanLibraryItem(configuredLibraries.find((item) => asText(item.id) === library.id) || {})}
+											>
+												{activeLibraryActionID === library.id && activeLibraryActionKind === 'scan' ? 'Scanning...' : 'Scan'}
+											</LorivoButton>
+											<LorivoButton
+												variant="ghost"
+												size="sm"
+												disabled={activeLibraryActionID === library.id}
+												onclick={() => removeLibraryItem(configuredLibraries.find((item) => asText(item.id) === library.id) || {})}
+											>
+												{activeLibraryActionID === library.id && activeLibraryActionKind === 'remove' ? 'Removing...' : 'Remove'}
+											</LorivoButton>
+										</div>
+									{/if}
+								</article>
+							{/each}
+						</div>
+					{:else}
+						<LorivoEmptyState
+							title="No libraries yet"
+							message="Use Library Setup to add a Movies or TV folder."
 						/>
-					</ActivityListShell>
-					<LorivoEmptyState
-						title="Library folder management"
-						message="Use Library Setup to add Movies or TV folders. Editing existing folders is not available here yet."
-					/>
+					{/if}
+					{#if !canManageSettings && !authDisabled}
+						<p class="settings-note">Sign in with the owner account to scan or remove libraries.</p>
+					{/if}
 				</SettingsPanel>
 			</section>
 
@@ -700,22 +957,69 @@
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat
 							label="Playback Policy"
-							value={displayText(performance.playbackPolicy?.label) || displayText(settings.config?.playbackPolicy) || 'Unknown'}
-							meta={displayText(performance.playbackPolicy?.description) || 'Current playback behavior.'}
+							value={playbackPolicyDetails(settings.config?.playbackPolicy).label}
+							meta={playbackPolicyDetails(settings.config?.playbackPolicy).description}
 						/>
 						<LorivoStat label="Conversion Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Lorivo can reduce playback load when conversion is needed." />
 						<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
 					</div>
+					{#if canManageSettings}
+						<form class="playback-policy-form" data-testid="playback-policy-form" onsubmit={(event) => { event.preventDefault(); void savePlaybackPolicy(); }}>
+							<div class="playback-policy-options">
+								{#each playbackPolicyOptions as option (option.id)}
+									<label class="playback-policy-option">
+										<input
+											type="radio"
+											name="playbackPolicy"
+											value={option.id}
+											checked={playbackPolicyDraft === option.id}
+											onchange={() => (playbackPolicyDraft = option.id)}
+										/>
+										<div>
+											<strong>{option.label}</strong>
+											<span>{option.description}</span>
+										</div>
+									</label>
+								{/each}
+							</div>
+							<div class="status-actions">
+								<LorivoButton
+									variant="primary"
+									disabled={isSavingPlaybackPolicy || playbackPolicyDraft === normalizePlaybackPolicy(settings.config?.playbackPolicy)}
+									onclick={savePlaybackPolicy}
+								>
+									{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Setting'}
+								</LorivoButton>
+							</div>
+						</form>
+					{:else if !authDisabled}
+						<p class="settings-note">Sign in with the owner account to change playback settings.</p>
+					{/if}
 					<ActivityListShell title="Playback Sessions">
 						<LorivoActionList
 							items={sessionItems}
 							emptyLabel={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'No active playback sessions right now.'}
 						/>
 					</ActivityListShell>
-					<LorivoEmptyState
-						title="Playback controls"
-						message="Playback preference editing is not available in this build. Current playback behavior is shown here for clarity."
-					/>
+				</SettingsPanel>
+			</section>
+
+			{:else if activeSection === 'access'}
+			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
+				<SettingsPanel title="Access" description="Current account and session." status={user ? 'healthy' : 'idle'}>
+					{#snippet actions()}
+						{#if user && !authDisabled}
+							<LorivoButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
+								{isSigningOut ? 'Signing out...' : 'Sign Out'}
+							</LorivoButton>
+						{:else if canShowSignIn}
+							<LorivoButton variant="primary" href="/signin">Sign In</LorivoButton>
+						{/if}
+					{/snippet}
+					<div class="stat-grid stat-grid--compact">
+						<LorivoStat label="Account" value={user ? userDisplayName : authDisabled ? 'Local access' : 'Not signed in'} meta={user ? userRoleLabel : authDisabled ? 'Sign-in is not required on this server.' : 'Sign in to change protected settings.'} tone={user ? 'good' : 'neutral'} />
+						<LorivoStat label="Session" value={user ? 'Active' : authDisabled ? 'Local' : 'Signed out'} meta={user && sessionExpiresAt ? `Current session expires ${formatDateTime(sessionExpiresAt)}.` : user ? 'This browser has an active Lorivo session.' : authDisabled ? 'This server is running without account sign-in.' : 'Open Sign In to continue.'} tone={user ? 'good' : 'neutral'} />
+					</div>
 				</SettingsPanel>
 			</section>
 
@@ -729,27 +1033,31 @@
 						<LorivoStat label="App Health" value={capitalize(appStatus)} meta="Small readiness signal based on local activity and system load." tone={appStatus === 'warning' || appStatus === 'critical' ? 'warn' : 'good'} />
 						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
 					</div>
-					<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
-						<label class="settings-field">
-							<span>Server name</span>
-							<input
-								bind:value={serverNameDraft}
-								maxlength="50"
-								required
-								placeholder="Lorivo"
-								aria-describedby="settings-server-name-help"
-							/>
-							<small id="settings-server-name-help">This is the name devices on your home network will use to identify this Lorivo server.</small>
-						</label>
-						<div class="status-actions">
-							<LorivoButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
-								{isSavingServerName ? 'Saving...' : 'Save Server Name'}
-							</LorivoButton>
-						</div>
-						{#if serverNameError}
-							<p class="settings-error">{serverNameError}</p>
-						{/if}
-					</form>
+					{#if canManageSettings}
+						<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
+							<label class="settings-field">
+								<span>Server name</span>
+								<input
+									bind:value={serverNameDraft}
+									maxlength="50"
+									required
+									placeholder="Lorivo"
+									aria-describedby="settings-server-name-help"
+								/>
+								<small id="settings-server-name-help">This is the name devices on your home network will use to identify this Lorivo server.</small>
+							</label>
+							<div class="status-actions">
+								<LorivoButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
+									{isSavingServerName ? 'Saving...' : 'Save Server Name'}
+								</LorivoButton>
+							</div>
+							{#if serverNameError}
+								<p class="settings-error">{serverNameError}</p>
+							{/if}
+						</form>
+					{:else if !authDisabled}
+						<p class="settings-note">Sign in with the owner account to change the server name.</p>
+					{/if}
 				</SettingsPanel>
 			</section>
 			{/if}
@@ -917,8 +1225,144 @@
 		gap: var(--lorivo-space-2);
 	}
 
+	.library-list {
+		display: grid;
+		gap: 12px;
+	}
+
+	.library-card {
+		display: grid;
+		gap: 14px;
+		padding: 14px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.library-card__body {
+		display: grid;
+		gap: 10px;
+		min-width: 0;
+	}
+
+	.library-card__heading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
+	}
+
+	.library-card__heading h3 {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 760;
+	}
+
+	.library-card__heading p,
+	.library-card__note,
+	.settings-note {
+		margin: 0;
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.82rem;
+		line-height: 1.4;
+	}
+
+	.library-card__status {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 8px;
+		border-radius: 999px;
+		background: rgb(154 167 255 / 10%);
+		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
+		font-size: 0.74rem;
+		font-weight: 760;
+	}
+
+	.library-card__facts {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 10px;
+		margin: 0;
+	}
+
+	.library-card__facts div {
+		display: grid;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.library-card__facts dt {
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.76rem;
+		font-weight: 700;
+	}
+
+	.library-card__facts dd {
+		margin: 0;
+		color: var(--lorivo-color-text);
+		font-size: 0.88rem;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
+	}
+
+	.library-card__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.playback-policy-form {
+		display: grid;
+		gap: 12px;
+		margin-top: 14px;
+		padding-top: 14px;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+	}
+
+	.playback-policy-options {
+		display: grid;
+		gap: 10px;
+	}
+
+	.playback-policy-option {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: flex-start;
+		gap: 10px;
+		padding: 12px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.playback-policy-option input {
+		margin-top: 3px;
+	}
+
+	.playback-policy-option div {
+		display: grid;
+		gap: 4px;
+	}
+
+	.playback-policy-option strong {
+		font-size: 0.94rem;
+		font-weight: 760;
+	}
+
+	.playback-policy-option span {
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.82rem;
+		line-height: 1.4;
+	}
+
 	@media (max-width: 1120px) {
 		.settings-dashboard {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.library-card__facts {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
@@ -988,6 +1432,10 @@
 		.stat-grid,
 		.stat-grid--compact {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.library-card__facts {
+			grid-template-columns: 1fr;
 		}
 	}
 
