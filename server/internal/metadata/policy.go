@@ -4,16 +4,27 @@ import (
 	"context"
 	"strings"
 
+	"github.com/jampat000/Lorivo/server/internal/config"
 	"github.com/jampat000/Lorivo/server/internal/metasources"
 )
 
 func (s *Service) sourceOrder(ctx context.Context, request RefreshRequest) []string {
+	cfg := s.activeConfig()
 	if s.catalog != nil {
 		if library, ok, err := s.catalog.GetLibraryForItem(ctx, request.Kind, request.ID); err == nil && ok {
-			return metasources.NormalizeSourceOrder(request.Kind, library.MetadataSources, s.cfg)
+			return metasources.NormalizeSourceOrder(request.Kind, library.MetadataSources, cfg)
 		}
 	}
-	return metasources.NormalizeSourceOrder(request.Kind, nil, s.cfg)
+	return metasources.NormalizeSourceOrder(request.Kind, metadataSourcePreferenceForKind(cfg, request.Kind), cfg)
+}
+
+func metadataSourcePreferenceForKind(cfg config.Config, kind string) []string {
+	switch metasources.NormalizeKind(kind) {
+	case "series":
+		return append([]string(nil), cfg.SeriesMetadataSources...)
+	default:
+		return append([]string(nil), cfg.MovieMetadataSources...)
+	}
 }
 
 func sourceEnabled(order []string, provider string) bool {

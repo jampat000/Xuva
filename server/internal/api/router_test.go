@@ -2133,6 +2133,77 @@ func TestSettingsManagedProviderOverridesIgnoreClientKeyInjection(t *testing.T) 
 	}
 }
 
+func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	initial := getJSON(t, router, "/api/settings")
+	preferences, _ := initial["metadataSourcePreferences"].(map[string]any)
+	movie, _ := preferences["movie"].([]any)
+	series, _ := preferences["series"].([]any)
+	if len(movie) == 0 || len(series) == 0 {
+		t.Fatalf("expected default metadata source preferences, got %#v", initial)
+	}
+
+	update := requestJSON(t, router, http.MethodPut, "/api/settings/metadata-sources", map[string]any{
+		"movie":  []string{"wikipedia", "tmdb", "filename"},
+		"series": []string{"tvmaze", "wikidata", "filename"},
+	})
+	if update["restartRequired"] != false {
+		t.Fatalf("expected metadata source updates to avoid restart, got %#v", update)
+	}
+
+	updatedPreferences, _ := update["metadataSourcePreferences"].(map[string]any)
+	updatedMovie, _ := updatedPreferences["movie"].([]any)
+	updatedSeries, _ := updatedPreferences["series"].([]any)
+	if len(updatedMovie) != 3 || updatedMovie[0] != "wikipedia" || updatedMovie[1] != "tmdb" || updatedMovie[2] != "filename" {
+		t.Fatalf("expected movie metadata source order to persist, got %#v", updatedPreferences)
+	}
+	if len(updatedSeries) != 3 || updatedSeries[0] != "tvmaze" || updatedSeries[1] != "wikidata" || updatedSeries[2] != "filename" {
+		t.Fatalf("expected series metadata source order to persist, got %#v", updatedPreferences)
+	}
+
+	saved, err := config.LoadFile(deps.Config.DataDir)
+	if err != nil {
+		t.Fatalf("load saved settings file: %v", err)
+	}
+	if len(saved.MovieMetadataSources) != 3 || saved.MovieMetadataSources[0] != "wikipedia" || saved.MovieMetadataSources[1] != "tmdb" || saved.MovieMetadataSources[2] != "filename" {
+		t.Fatalf("expected saved movie metadata source order, got %#v", saved.MovieMetadataSources)
+	}
+	if len(saved.SeriesMetadataSources) != 3 || saved.SeriesMetadataSources[0] != "tvmaze" || saved.SeriesMetadataSources[1] != "wikidata" || saved.SeriesMetadataSources[2] != "filename" {
+		t.Fatalf("expected saved series metadata source order, got %#v", saved.SeriesMetadataSources)
+	}
+}
+
+func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
+	root := t.TempDir()
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	requestJSON(t, router, http.MethodPut, "/api/settings/metadata-sources", map[string]any{
+		"movie":  []string{"wikipedia", "tmdb", "filename"},
+		"series": []string{"tvmaze", "wikidata", "filename"},
+	})
+
+	moviesLibrary := postJSON(t, router, "/api/libraries", map[string]any{
+		"kind": "movies",
+		"name": "Archive Movies",
+		"path": root,
+	})
+	if got := moviesLibrary["metadataSources"].([]any); len(got) != 3 || got[0] != "wikipedia" || got[1] != "tmdb" || got[2] != "filename" {
+		t.Fatalf("expected movies library to inherit metadata source order, got %#v", moviesLibrary)
+	}
+
+	tvLibrary := postJSON(t, router, "/api/libraries", map[string]any{
+		"kind": "tv",
+		"name": "Archive TV",
+		"path": filepath.Join(root, "tv"),
+	})
+	if got := tvLibrary["metadataSources"].([]any); len(got) != 3 || got[0] != "tvmaze" || got[1] != "wikidata" || got[2] != "filename" {
+		t.Fatalf("expected TV library to inherit metadata source order, got %#v", tvLibrary)
+	}
+}
+
 func TestAuthzProtectedMediaAndDownloadRoutes(t *testing.T) {
 	deps := testDepsWithAuth(t, time.Now())
 	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {

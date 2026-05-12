@@ -56,6 +56,7 @@ var routePolicies = map[string]routePolicy{
 	"PATCH /api/client/playback/{id}":     route("PATCH /api/client/playback/{id}", "client", "client.playback.heartbeat", roleAdmin, roleStandard),
 	"POST /api/client/playback/{id}/stop": route("POST /api/client/playback/{id}/stop", "client", "client.playback.stop", roleAdmin, roleStandard),
 	"PUT /api/settings":                   route("PUT /api/settings", "settings", "settings.update", roleAdmin),
+	"PUT /api/settings/metadata-sources":  route("PUT /api/settings/metadata-sources", "settings", "settings.metadata_sources.update", roleAdmin),
 	"GET /api/settings/folders/browse":    route("GET /api/settings/folders/browse", "settings", "settings.folders.browse", roleAdmin),
 	"POST /api/settings/hardware/test":    route("POST /api/settings/hardware/test", "settings", "settings.hardware.test", roleAdmin),
 	"POST /api/remote/diagnostics":        route("POST /api/remote/diagnostics", "remote", "remote.diagnostics.run", roleAdmin),

@@ -42,6 +42,7 @@ Public client bootstrap routes:
 | `PATCH /api/client/playback/{id}` | client | `client.playback.heartbeat` | admin, standard |
 | `POST /api/client/playback/{id}/stop` | client | `client.playback.stop` | admin, standard |
 | `PUT /api/settings` | settings | `settings.update` | admin |
+| `PUT /api/settings/metadata-sources` | settings | `settings.metadata_sources.update` | admin |
 | `POST /api/settings/hardware/test` | settings | `settings.hardware.test` | admin |
 | `POST /api/remote/diagnostics` | remote | `remote.diagnostics.run` | admin |
 | `POST /api/remote/wan` | remote | `remote.wan.lookup` | admin |

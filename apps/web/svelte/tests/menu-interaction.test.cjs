@@ -148,6 +148,8 @@ function apiPayload(pathname, state = {}) {
 				playbackPolicy: state.playbackPolicy,
 				metadataProviders: { automatic: [], managedOverrides: [] }
 			},
+			metadataSources: state.metadataSources,
+			metadataSourcePreferences: state.metadataSourcePreferences,
 			libraries: state.libraries || []
 		};
 	}
@@ -192,6 +194,33 @@ async function installApiMocks(page, options = {}) {
 			{ id: 'movies-main', name: 'Movies', kind: 'movies', path: 'D:\\Media\\Movies', storageType: 'local' },
 			{ id: 'tv-main', name: 'TV', kind: 'tv', path: 'D:\\Media\\TV', storageType: 'network' }
 		],
+		metadataSources: {
+			movie: [
+				{ id: 'nfo', name: 'Local NFO', description: 'Reads movie.nfo and sidecar NFO files.', note: 'Always available', available: true },
+				{ id: 'artwork', name: 'Local artwork', description: 'Uses poster and backdrop sidecars from your library.', note: 'Always available', available: true },
+				{ id: 'tmdb', name: 'TMDB', description: 'Adds TMDB IDs, artwork, and community ratings.', note: 'Managed by server credentials', managed: true, available: true },
+				{ id: 'tvdb', name: 'TheTVDB', description: 'Adds TV and movie metadata, IDs, and ratings.', note: 'Managed by server credentials', managed: true, available: false },
+				{ id: 'wikipedia', name: 'Wikipedia', description: 'Adds richer summaries and artwork when available.', note: 'No user account required', available: true },
+				{ id: 'wikidata', name: 'Wikidata', description: 'Adds structured labels, descriptions, and external IDs.', note: 'No user account required', available: true },
+				{ id: 'omdb', name: 'OMDb', description: 'Adds IMDb, Rotten Tomatoes, and Metacritic ratings.', note: 'Managed by server credentials', managed: true, available: true },
+				{ id: 'filename', name: 'Filename and folders', description: 'Fast local title and year parsing from library paths.', note: 'Always available', available: true }
+			],
+			series: [
+				{ id: 'nfo', name: 'Local NFO', description: 'Reads tvshow.nfo and sidecar NFO files.', note: 'Always available', available: true },
+				{ id: 'artwork', name: 'Local artwork', description: 'Uses poster and backdrop sidecars from your library.', note: 'Always available', available: true },
+				{ id: 'tvmaze', name: 'TVMaze', description: 'Adds series metadata, external IDs, and TV ratings.', note: 'No user account required', available: true },
+				{ id: 'tvdb', name: 'TheTVDB', description: 'Adds TV and movie metadata, IDs, and ratings.', note: 'Managed by server credentials', managed: true, available: false },
+				{ id: 'tmdb', name: 'TMDB', description: 'Adds TMDB IDs, artwork, and community ratings.', note: 'Managed by server credentials', managed: true, available: true },
+				{ id: 'wikipedia', name: 'Wikipedia', description: 'Adds richer summaries and artwork when available.', note: 'No user account required', available: true },
+				{ id: 'wikidata', name: 'Wikidata', description: 'Adds structured labels, descriptions, and external IDs.', note: 'No user account required', available: true },
+				{ id: 'omdb', name: 'OMDb', description: 'Adds IMDb, Rotten Tomatoes, and Metacritic ratings.', note: 'Managed by server credentials', managed: true, available: true },
+				{ id: 'filename', name: 'Filename and folders', description: 'Fast local title and year parsing from library paths.', note: 'Always available', available: true }
+			]
+		},
+		metadataSourcePreferences: {
+			movie: ['nfo', 'artwork', 'tmdb', 'wikipedia', 'wikidata', 'omdb', 'filename'],
+			series: ['nfo', 'artwork', 'tvmaze', 'tmdb', 'wikipedia', 'wikidata', 'omdb', 'filename']
+		},
 		scans: [
 			{ id: 'scan-tv-main', status: 'completed', libraryId: 'tv-main', updatedAt: '2026-05-12T18:20:00Z' }
 		],
@@ -254,6 +283,39 @@ async function installApiMocks(page, options = {}) {
 					entries: isLeaf ? [] : entries,
 					writable: true,
 					message: 'Ready'
+				})
+			});
+		}
+		if (url.pathname === '/api/settings/metadata-sources' && route.request().method() === 'PUT') {
+			const body = route.request().postDataJSON() || {};
+			const movie = Array.isArray(body.movie) ? body.movie.map((value) => String(value || '').trim()).filter(Boolean) : [];
+			const series = Array.isArray(body.series) ? body.series.map((value) => String(value || '').trim()).filter(Boolean) : [];
+			if (movie.length === 0) {
+				return route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'choose at least one movie metadata source' })
+				});
+			}
+			if (series.length === 0) {
+				return route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'choose at least one TV metadata source' })
+				});
+			}
+			state.metadataSourcePreferences = { movie, series };
+			for (const library of state.libraries) {
+				if (library.kind === 'movies') library.metadataSources = [...movie];
+				if (library.kind === 'tv') library.metadataSources = [...series];
+			}
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					metadataSources: state.metadataSources,
+					metadataSourcePreferences: state.metadataSourcePreferences,
+					restartRequired: false
 				})
 			});
 		}
@@ -744,6 +806,9 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		if (hash === 'scanning') {
 			await assertScanningSection(page, state);
 		}
+		if (hash === 'metadata') {
+			await assertMetadataSection(page, state);
+		}
 		if (hash === 'playback') {
 			await assertPlaybackSection(page, state);
 		}
@@ -956,6 +1021,47 @@ async function assertPlaybackSection(page, state) {
 	const body = await page.locator('body').innerText();
 	assert.match(body, /Playback setting saved\./);
 	assert.doesNotMatch(body, /Playback setting saved\. Restart Lorivo to apply it\./);
+	await assertNoHorizontalOverflow(page);
+}
+
+async function assertMetadataSection(page, state) {
+	const selectedSection = page.getByTestId('settings-section-content');
+	assert.match(await selectedSection.innerText(), /Metadata Sources/);
+	assert.match(await selectedSection.innerText(), /Movie metadata sources/);
+	assert.match(await selectedSection.innerText(), /TV metadata sources/);
+	assert.match(await selectedSection.innerText(), /Refresh Movies/);
+	assert.match(await selectedSection.innerText(), /Refresh TV/);
+	assert.match(await selectedSection.innerText(), /TMDB/);
+	assert.match(await selectedSection.innerText(), /TheTVDB/);
+	assert.match(await selectedSection.innerText(), /OMDb/);
+	assert.doesNotMatch(await selectedSection.innerText(), /API key/i);
+
+	if (!state.signedIn && !state.devAuthBypass && !state.authDisabled) {
+		assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+		assert.equal(await page.getByTestId('metadata-source-form').count(), 0);
+		await assertNoHorizontalOverflow(page);
+		return;
+	}
+
+	assert.equal(await page.getByTestId('metadata-source-form').count(), 1);
+	assert.equal(await page.getByTestId('metadata-source-list-movie').count(), 1);
+	assert.equal(await page.getByTestId('metadata-source-list-series').count(), 1);
+	assert.match(await selectedSection.innerText(), /Unavailable in this build/);
+
+	await selectedSection.getByRole('button', { name: 'Move Down', exact: true }).first().click();
+	await selectedSection
+		.locator('[data-testid="metadata-source-list-movie"] input[type="checkbox"]')
+		.nth(4)
+		.uncheck();
+	await selectedSection.getByRole('button', { name: 'Save Metadata Sources', exact: true }).click();
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Metadata source settings saved.'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.match(await page.locator('body').innerText(), /Metadata source settings saved\./);
+	assert.ok(state.metadataSourcePreferences.movie.length >= 1);
+	assert.ok(state.metadataSourcePreferences.series.length >= 1);
 	await assertNoHorizontalOverflow(page);
 }
 
