@@ -44,6 +44,24 @@ This alignment is based on the harness-engineering model described by OpenAI: hu
 - Native client contracts are documented before app implementation depends on them.
 - Logs and operational events include correlation IDs for workflows that cross services.
 
+## In-App Browser Automation
+
+Use the Codex in-app browser for visual and interaction checks when it is available. If Browser Use advertises the `iab` backend but setup fails with `No Codex IAB backends were discovered`, do not keep retrying the stale cached client under `plugins/cache/openai-bundled/browser-use`.
+
+Prefer the active bundled marketplace client:
+
+```js
+const { setupAtlasRuntime } = await import(
+  "C:/Users/User/Projects/.tmp/bundled-marketplaces/openai-bundled/plugins/browser-use/scripts/browser-client.mjs"
+);
+await setupAtlasRuntime({ globals: globalThis, backend: "iab" });
+const [browser] = await agent.browsers.list();
+const iab = await agent.browsers.get(browser.id);
+const tab = await iab.tabs.selected();
+```
+
+This client exposes `agent.browsers`, not the older `agent.browser` shape. Use it to validate local Lorivo pages already open in the app browser before falling back to external browser automation.
+
 ## Current Harness Checks
 
 Run:
