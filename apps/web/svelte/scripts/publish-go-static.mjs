@@ -50,6 +50,27 @@ async function cleanStaticNextDirectory() {
 	);
 }
 
+const textAssetExtensions = new Set(['.css', '.html', '.js', '.json', '.md', '.svg', '.txt']);
+
+async function normalizeStaticNextTextFiles(dir = staticNextDir) {
+	const entries = await readdir(dir, { withFileTypes: true });
+	for (const entry of entries) {
+		const abs = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			await normalizeStaticNextTextFiles(abs);
+			continue;
+		}
+		if (!entry.isFile()) continue;
+		if (!textAssetExtensions.has(path.extname(entry.name).toLowerCase())) continue;
+
+		const source = await readFile(abs, 'utf8');
+		const normalized = source.replace(/[ \t]+$/gm, '');
+		if (normalized !== source) {
+			await writeFile(abs, normalized, 'utf8');
+		}
+	}
+}
+
 function runNpmBuild() {
 	execSync('npm run build', {
 		cwd: appDir,
@@ -137,5 +158,6 @@ async function ensureManagedFiles() {
 
 await cleanStaticNextDirectory();
 runNpmBuild();
+await normalizeStaticNextTextFiles();
 await writeBuildInfo();
 await ensureManagedFiles();

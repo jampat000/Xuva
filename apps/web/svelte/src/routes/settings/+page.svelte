@@ -11,7 +11,7 @@
 	} from '$lib/api/auth';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
-	import { deleteLibrary, startLibraryScan } from '$lib/api/setup';
+	import { browseFolder, deleteLibrary, startLibraryScan, type FolderBrowseResponse } from '$lib/api/setup';
 	import {
 		getCatalogHealth,
 		getCatalogSummary,
@@ -33,6 +33,7 @@
 		type SessionItem,
 		type SettingsResponse,
 		type SystemStatusResponse,
+		type UpdateSettingsRequest,
 		type WorkQueueItem
 	} from '$lib/api/operator';
 	import { createEventStream } from '$lib/events/stream';
@@ -46,10 +47,30 @@
 		LorivoStat
 	} from '$lib/components';
 	import SettingsPanel from '$lib/components/operator/SettingsPanel.svelte';
+	import FolderBrowserPanel from '$lib/components/operator/FolderBrowserPanel.svelte';
 
-	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+	type SettingsSection =
+		| 'dashboard'
+		| 'library'
+		| 'scanning'
+		| 'metadata'
+		| 'playback'
+		| 'storage'
+		| 'access'
+		| 'about';
 
 	type LibraryActionKind = 'scan' | 'remove' | '';
+
+	type StorageFieldKey =
+		| 'dataDir'
+		| 'transcodeDir'
+		| 'downloadsDir'
+		| 'metadataDir'
+		| 'cacheDir'
+		| 'tempDir';
+
+	type EditableStorageFieldKey = Exclude<StorageFieldKey, 'dataDir'>;
+	type SystemDisk = NonNullable<SystemStatusResponse['disks']>[number];
 
 	interface LibrarySyncModeOption {
 		id: 'manual' | 'daily' | 'watch';
@@ -70,6 +91,15 @@
 		sourceApp?: string;
 	}
 
+	interface StorageFieldDefinition {
+		key: StorageFieldKey;
+		diskName: 'data' | 'transcode' | 'downloads' | 'metadata' | 'cache' | 'temp';
+		label: string;
+		helper: string;
+		group: 'processing' | 'library' | 'app';
+		editable: boolean;
+	}
+
 	let isLoading = $state(true);
 	let isScanningMovies = $state(false);
 	let isScanningTV = $state(false);
@@ -78,11 +108,14 @@
 	let isSavingServerName = $state(false);
 	let isSavingScanningAutomation = $state(false);
 	let isSavingPlaybackPolicy = $state(false);
+	let isSavingStorage = $state(false);
 	let isSigningOut = $state(false);
+	let isBrowsingStorage = $state(false);
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let scanningSettingsError = $state('');
 	let serverNameError = $state('');
+	let storageSettingsError = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
@@ -106,18 +139,79 @@
 	let downloads = $state<DownloadJobItem[]>([]);
 	let sessions = $state<SessionItem[]>([]);
 	let buildInfo = $state<BuildInfo | null>(null);
+	let storageFolderBrowse = $state<FolderBrowseResponse | null>(null);
+	let activeStorageBrowseField = $state<EditableStorageFieldKey | ''>('');
 	let serverNameDraft = $state('Lorivo');
 	let librarySyncModeDraft = $state<LibrarySyncModeOption['id']>('daily');
 	let syncIntervalDraft = $state('1440');
 	let watchDebounceDraft = $state('30');
 	let probeBatchLimitDraft = $state('50');
 	let playbackPolicyDraft = $state<'original_only' | 'light' | 'full' | 'cinema'>('original_only');
+	let storageDraft = $state<Record<StorageFieldKey, string>>({
+		dataDir: '',
+		transcodeDir: '',
+		downloadsDir: '',
+		metadataDir: '',
+		cacheDir: '',
+		tempDir: ''
+	});
 	let sessionExpiresAt = $state('');
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const serverIdentityHelpText =
 		'Lorivo uses this name in the browser title and shares it with local clients. Local network discovery is not available in this build yet.';
+
+	const storageFieldDefinitions: StorageFieldDefinition[] = [
+		{
+			key: 'transcodeDir',
+			diskName: 'transcode',
+			label: 'Transcoding folder',
+			helper: 'Where Lorivo stores temporary files while preparing playback.',
+			group: 'processing',
+			editable: true
+		},
+		{
+			key: 'downloadsDir',
+			diskName: 'downloads',
+			label: 'Optimized versions folder',
+			helper: 'Where Lorivo stores optimized versions created for playback or travel.',
+			group: 'processing',
+			editable: true
+		},
+		{
+			key: 'metadataDir',
+			diskName: 'metadata',
+			label: 'Metadata folder',
+			helper: 'Where Lorivo stores artwork and metadata it downloads for your library.',
+			group: 'library',
+			editable: true
+		},
+		{
+			key: 'cacheDir',
+			diskName: 'cache',
+			label: 'Cache folder',
+			helper: 'Where Lorivo stores temporary cached data.',
+			group: 'library',
+			editable: true
+		},
+		{
+			key: 'tempDir',
+			diskName: 'temp',
+			label: 'Scratch/temp folder',
+			helper: 'Where Lorivo stores short-lived working files.',
+			group: 'library',
+			editable: true
+		},
+		{
+			key: 'dataDir',
+			diskName: 'data',
+			label: 'Data folder',
+			helper: 'Where Lorivo stores its main settings and local data.',
+			group: 'app',
+			editable: false
+		}
+	];
 
 	const librarySyncModeOptions: LibrarySyncModeOption[] = [
 		{
@@ -242,6 +336,14 @@
 			watchDebounceDraft !== stringDraft(settings.config?.watchDebounceSecs, 30) ||
 			probeBatchLimitDraft !== stringDraft(settings.config?.probeBatchLimit, 50)
 	);
+	const hasStorageChanges = $derived.by(
+		() =>
+			asText(storageDraft.transcodeDir) !== asText(settings.config?.transcodeDir) ||
+			asText(storageDraft.downloadsDir) !== asText(settings.config?.downloadsDir) ||
+			asText(storageDraft.metadataDir) !== asText(settings.config?.metadataDir) ||
+			asText(storageDraft.cacheDir) !== asText(settings.config?.cacheDir) ||
+			asText(storageDraft.tempDir) !== asText(settings.config?.tempDir)
+	);
 	const configuredLibraries = $derived.by(() => settings.libraries || libraries || []);
 	const libraryCards = $derived.by(() =>
 		configuredLibraries.map((item) => ({
@@ -300,9 +402,55 @@
 		return output;
 	});
 	const primaryWarningItem = $derived.by(() => warningItems[0] || null);
+	const storageFields = $derived.by(() =>
+		storageFieldDefinitions.map((field) => {
+			const disk = storageDiskFor(field.diskName);
+			const value = asText(storageDraft[field.key]);
+			const diskForValue = asText(disk?.path) === value ? disk : undefined;
+			const readiness = storageReadinessForDisk(diskForValue, value);
+			return {
+				...field,
+				value,
+				readinessLabel: readiness.label,
+				readinessTone: readiness.tone,
+				readinessDetail: readiness.detail,
+				capacityLabel: storageCapacityLabel(diskForValue),
+				sharedWithData: Boolean(diskForValue?.sharedWithData),
+				error: asText(diskForValue?.error),
+				browseAvailable: field.editable && canManageSettings
+			};
+		})
+	);
+	const storageConfiguredCount = $derived.by(() => storageFields.filter((field) => Boolean(asText(field.value))).length);
+	const storageNeedsAttentionCount = $derived.by(
+		() => storageFields.filter((field) => field.readinessLabel === 'Needs attention').length
+	);
+	const storageDashboardLabel = $derived.by(() => {
+		if (storageNeedsAttentionCount > 0) return 'Needs attention';
+		if (storageConfiguredCount > 0) return `${asCount(storageConfiguredCount)} folders configured`;
+		return 'Folders not set yet';
+	});
+	const storageDashboardDetail = $derived.by(() => {
+		if (storageNeedsAttentionCount > 0) {
+			return `${asCount(storageNeedsAttentionCount)} folder${storageNeedsAttentionCount === 1 ? '' : 's'} need attention before restart.`;
+		}
+		return 'Review where Lorivo keeps its media processing, artwork, cache, and local data.';
+	});
+	const storagePanelStatus = $derived.by(() => {
+		if (storageNeedsAttentionCount > 0) return 'warning';
+		if (storageConfiguredCount > 0) return 'healthy';
+		return 'idle';
+	});
+	const activeStorageBrowseFieldLabel = $derived.by(() => storageFieldLabel(activeStorageBrowseField));
 	const scanningSaveMessage = $derived.by(() =>
 		actionMessage === 'Scanning settings saved.' ||
 		actionMessage === 'Saved. Restart Lorivo for this change to fully take effect.'
+			? actionMessage
+			: ''
+	);
+	const storageSaveMessage = $derived.by(() =>
+		actionMessage === 'Storage settings saved.' ||
+		actionMessage === 'Saved. Restart Lorivo for these folder changes to fully take effect.'
 			? actionMessage
 			: ''
 	);
@@ -400,11 +548,13 @@
 			system = systemPayload || {};
 			settings = settingsPayload || {};
 			serverNameDraft = displayServerName(settingsPayload.config?.serverName);
+			syncStorageDraft(settingsPayload.config);
 			librarySyncModeDraft = normalizeLibrarySyncMode(settingsPayload.config?.librarySyncMode);
 			syncIntervalDraft = stringDraft(settingsPayload.config?.syncIntervalMins, 1440);
 			watchDebounceDraft = stringDraft(settingsPayload.config?.watchDebounceSecs, 30);
 			probeBatchLimitDraft = stringDraft(settingsPayload.config?.probeBatchLimit, 50);
 			scanningSettingsError = '';
+			storageSettingsError = '';
 			playbackPolicyDraft = normalizePlaybackPolicy(settingsPayload.config?.playbackPolicy);
 			performance = performancePayload || {};
 			scans = scansPayload.scans || [];
@@ -583,6 +733,93 @@
 		}
 	}
 
+	async function openStorageBrowser(field: EditableStorageFieldKey, path = ''): Promise<void> {
+		if (!canManageSettings) return;
+		isBrowsingStorage = true;
+		storageSettingsError = '';
+		try {
+			activeStorageBrowseField = field;
+			storageFolderBrowse = await browseFolder(path || asText(storageDraft[field]), apiClient);
+		} catch (error) {
+			storageSettingsError = formatLoadError(error);
+		} finally {
+			isBrowsingStorage = false;
+		}
+	}
+
+	function useStorageBrowsePath(path: string): void {
+		if (!activeStorageBrowseField) return;
+		storageDraft[activeStorageBrowseField] = asText(path);
+		storageSettingsError = '';
+	}
+
+	function browseStorageField(field: StorageFieldKey): void {
+		if (field === 'dataDir') return;
+		void openStorageBrowser(field);
+	}
+
+	function browseActiveStoragePath(path: string): Promise<void> {
+		if (!activeStorageBrowseField) return Promise.resolve();
+		return openStorageBrowser(activeStorageBrowseField, path);
+	}
+
+	async function saveStorageSettings(): Promise<void> {
+		if (isSavingStorage || !canManageSettings) return;
+		storageSettingsError = '';
+		actionMessage = '';
+
+		const nextTranscodeDir = asText(storageDraft.transcodeDir);
+		const nextDownloadsDir = asText(storageDraft.downloadsDir);
+		const nextMetadataDir = asText(storageDraft.metadataDir);
+		const nextCacheDir = asText(storageDraft.cacheDir);
+		const nextTempDir = asText(storageDraft.tempDir);
+
+		if (!nextTranscodeDir) {
+			storageSettingsError = 'Choose a folder for the Transcoding folder.';
+			return;
+		}
+		if (!nextDownloadsDir) {
+			storageSettingsError = 'Choose a folder for the Optimized versions folder.';
+			return;
+		}
+		if (!nextMetadataDir) {
+			storageSettingsError = 'Choose a folder for the Metadata folder.';
+			return;
+		}
+		if (!nextCacheDir) {
+			storageSettingsError = 'Choose a folder for the Cache folder.';
+			return;
+		}
+		if (!nextTempDir) {
+			storageSettingsError = 'Choose a folder for the Scratch/temp folder.';
+			return;
+		}
+
+		const payload: UpdateSettingsRequest = {};
+		if (nextTranscodeDir !== asText(settings.config?.transcodeDir)) payload.transcodeDir = nextTranscodeDir;
+		if (nextDownloadsDir !== asText(settings.config?.downloadsDir)) payload.downloadsDir = nextDownloadsDir;
+		if (nextMetadataDir !== asText(settings.config?.metadataDir)) payload.metadataDir = nextMetadataDir;
+		if (nextCacheDir !== asText(settings.config?.cacheDir)) payload.cacheDir = nextCacheDir;
+		if (nextTempDir !== asText(settings.config?.tempDir)) payload.tempDir = nextTempDir;
+
+		if (Object.keys(payload).length === 0) return;
+
+		isSavingStorage = true;
+		try {
+			const updated = await updateSettings(payload, apiClient);
+			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
+			syncStorageDraft(updated.config);
+			actionMessage = updated.restartRequired
+				? 'Saved. Restart Lorivo for these folder changes to fully take effect.'
+				: 'Storage settings saved.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			storageSettingsError = formatLoadError(error);
+		} finally {
+			isSavingStorage = false;
+		}
+	}
+
 	async function scanLibraryItem(library: LibraryRecord): Promise<void> {
 		const id = asText(library.id);
 		if (!id || !canManageSettings) return;
@@ -643,7 +880,7 @@
 	}
 
 	function isSettingsSection(value: string): value is SettingsSection {
-		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'access', 'about'].includes(value);
+		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'storage', 'access', 'about'].includes(value);
 	}
 
 	function queueSilentRefresh(): void {
@@ -937,6 +1174,63 @@
 		return 'Local Account';
 	}
 
+	function syncStorageDraft(configValues: SettingsResponse['config'] | undefined): void {
+		storageDraft.dataDir = asText(configValues?.dataDir);
+		storageDraft.transcodeDir = asText(configValues?.transcodeDir);
+		storageDraft.downloadsDir = asText(configValues?.downloadsDir);
+		storageDraft.metadataDir = asText(configValues?.metadataDir);
+		storageDraft.cacheDir = asText(configValues?.cacheDir);
+		storageDraft.tempDir = asText(configValues?.tempDir);
+	}
+
+	function storageDiskFor(name: StorageFieldDefinition['diskName']): SystemDisk | undefined {
+		return (system.disks || []).find((disk) => asText(disk.name).toLowerCase() === name);
+	}
+
+	function storageFieldLabel(field: StorageFieldKey | EditableStorageFieldKey | ''): string {
+		return storageFieldDefinitions.find((item) => item.key === field)?.label || 'Folder';
+	}
+
+	function storageReadinessForDisk(
+		disk: SystemDisk | undefined,
+		path: string
+	): { label: 'Ready' | 'Needs attention' | 'Not checked'; tone: 'good' | 'warn' | 'neutral'; detail: string } {
+		if (!path) {
+			return { label: 'Not checked', tone: 'neutral', detail: 'No folder is set yet.' };
+		}
+		if (!disk) {
+			return { label: 'Not checked', tone: 'neutral', detail: 'Lorivo has not checked this folder yet.' };
+		}
+		if (disk.error || disk.writable === false) {
+			return {
+				label: 'Needs attention',
+				tone: 'warn',
+				detail: asText(disk.error) || 'Lorivo could not confirm that this folder is writable.'
+			};
+		}
+		return { label: 'Ready', tone: 'good', detail: 'Lorivo can use this folder.' };
+	}
+
+	function storageCapacityLabel(disk: SystemDisk | undefined): string {
+		const total = Number(disk?.totalBytes || 0);
+		const free = Number(disk?.freeBytes || 0);
+		if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(free) || free < 0) return '';
+		return `${formatBytes(free)} free of ${formatBytes(total)}`;
+	}
+
+	function formatBytes(value: number): string {
+		if (!Number.isFinite(value) || value <= 0) return '0 B';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		let size = value;
+		let unitIndex = 0;
+		while (size >= 1024 && unitIndex < units.length - 1) {
+			size /= 1024;
+			unitIndex += 1;
+		}
+		const rounded = size >= 100 || unitIndex === 0 ? Math.round(size) : Math.round(size * 10) / 10;
+		return `${rounded} ${units[unitIndex]}`;
+	}
+
 	function sectionTitle(section: SettingsSection): string {
 		return {
 			dashboard: 'Dashboard',
@@ -944,6 +1238,7 @@
 			scanning: 'Scanning',
 			metadata: 'Metadata',
 			playback: 'Playback',
+			storage: 'Storage',
 			access: 'Access',
 			about: 'About'
 		}[section];
@@ -956,6 +1251,7 @@
 			scanning: 'Choose how Lorivo checks libraries and review current scan activity.',
 			metadata: 'Refresh movie and TV information and review items that need attention.',
 			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
+			storage: 'Choose where Lorivo keeps media processing files, library artwork, cache, and local data.',
 			access: 'See who is signed in and manage the current session.',
 			about: 'Lorivo identity, build, and local-first details.'
 		}[section];
@@ -968,6 +1264,7 @@
 
 <ServerShell
 	active={activeSection}
+	showStorage={canManageSettings}
 	{userDisplayName}
 	userRole={userRoleLabel}
 	{userInitials}
@@ -1061,6 +1358,16 @@
 							<LorivoButton variant="secondary" size="sm" href="#playback">Open Playback</LorivoButton>
 						</div>
 					</article>
+					{#if canManageSettings}
+						<article class="settings-dashboard-card">
+							<span>Storage</span>
+							<strong>{storageDashboardLabel}</strong>
+							<small>{storageDashboardDetail}</small>
+							<div class="dashboard-card-actions">
+								<LorivoButton variant="secondary" size="sm" href="#storage">Open Storage</LorivoButton>
+							</div>
+						</article>
+					{/if}
 					<article class="settings-dashboard-card">
 						<span>Access</span>
 						<strong>{accessCardLabel}</strong>
@@ -1458,6 +1765,207 @@
 							emptyLabel={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'No active playback sessions right now.'}
 						/>
 					</ActivityListShell>
+				</SettingsPanel>
+			</section>
+
+			{:else if activeSection === 'storage'}
+			<section id="storage" class="settings-section" data-testid="settings-section-content" data-section="storage">
+				<SettingsPanel
+					title="Storage"
+					description="Choose where Lorivo keeps media processing files, library artwork, cache, and local data."
+					status={storagePanelStatus}
+				>
+					<div class="stat-grid stat-grid--compact">
+						<LorivoStat
+							label="Folders configured"
+							value={asCount(storageConfiguredCount)}
+							meta="Saved folders Lorivo can use for local storage."
+							tone={storageConfiguredCount > 0 ? 'good' : 'neutral'}
+						/>
+						<LorivoStat
+							label="Needs attention"
+							value={asCount(storageNeedsAttentionCount)}
+							meta={storageNeedsAttentionCount > 0 ? 'One or more folders may need review before restart.' : 'All checked folders look ready.'}
+							tone={storageNeedsAttentionCount > 0 ? 'warn' : 'good'}
+						/>
+					</div>
+					{#if canManageSettings}
+						<form class="storage-settings-form" data-testid="storage-form" onsubmit={(event) => { event.preventDefault(); void saveStorageSettings(); }}>
+							<div class="settings-subsection">
+								<div class="settings-subsection__head">
+									<div>
+										<h3>Media processing folders</h3>
+										<p>Choose where Lorivo keeps temporary processing files and optimized versions.</p>
+									</div>
+								</div>
+								<div class="storage-field-list">
+									{#each storageFields.filter((field) => field.group === 'processing') as field (field.key)}
+										<article class="storage-field-card" data-testid="storage-field">
+											<div class="storage-field-card__head">
+												<div>
+													<h4>{field.label}</h4>
+													<p>{field.helper}</p>
+												</div>
+												<span class:storage-status-pill--warn={field.readinessTone === 'warn'} class:storage-status-pill--neutral={field.readinessTone === 'neutral'} class="storage-status-pill">
+													{field.readinessLabel}
+												</span>
+											</div>
+											<label class="settings-field">
+												<span>{field.label}</span>
+												<div class="storage-input-row">
+													<input bind:value={storageDraft[field.key]} readonly={!field.editable} />
+													{#if field.browseAvailable}
+														<LorivoButton
+															variant="secondary"
+															size="sm"
+															type="button"
+															onclick={() => browseStorageField(field.key)}
+														>
+															{isBrowsingStorage && activeStorageBrowseField === field.key ? 'Loading folders...' : 'Browse'}
+														</LorivoButton>
+													{/if}
+												</div>
+												<small>{field.readinessDetail}</small>
+											</label>
+											<dl class="storage-field-facts">
+												<div>
+													<dt>Readiness</dt>
+													<dd>{field.readinessLabel}</dd>
+												</div>
+												{#if field.capacityLabel}
+													<div>
+														<dt>Capacity</dt>
+														<dd>{field.capacityLabel}</dd>
+													</div>
+												{/if}
+											</dl>
+										</article>
+									{/each}
+								</div>
+							</div>
+							<div class="settings-subsection">
+								<div class="settings-subsection__head">
+									<div>
+										<h3>Library data folders</h3>
+										<p>Choose where Lorivo keeps artwork, cache, and other short-lived working files.</p>
+									</div>
+								</div>
+								<div class="storage-field-list">
+									{#each storageFields.filter((field) => field.group === 'library') as field (field.key)}
+										<article class="storage-field-card" data-testid="storage-field">
+											<div class="storage-field-card__head">
+												<div>
+													<h4>{field.label}</h4>
+													<p>{field.helper}</p>
+												</div>
+												<span class:storage-status-pill--warn={field.readinessTone === 'warn'} class:storage-status-pill--neutral={field.readinessTone === 'neutral'} class="storage-status-pill">
+													{field.readinessLabel}
+												</span>
+											</div>
+											<label class="settings-field">
+												<span>{field.label}</span>
+												<div class="storage-input-row">
+													<input bind:value={storageDraft[field.key]} readonly={!field.editable} />
+													{#if field.browseAvailable}
+														<LorivoButton
+															variant="secondary"
+															size="sm"
+															type="button"
+															onclick={() => browseStorageField(field.key)}
+														>
+															{isBrowsingStorage && activeStorageBrowseField === field.key ? 'Loading folders...' : 'Browse'}
+														</LorivoButton>
+													{/if}
+												</div>
+												<small>{field.readinessDetail}</small>
+											</label>
+											<dl class="storage-field-facts">
+												<div>
+													<dt>Readiness</dt>
+													<dd>{field.readinessLabel}</dd>
+												</div>
+												{#if field.capacityLabel}
+													<div>
+														<dt>Capacity</dt>
+														<dd>{field.capacityLabel}</dd>
+													</div>
+												{/if}
+											</dl>
+										</article>
+									{/each}
+								</div>
+							</div>
+							<div class="settings-subsection settings-subsection--quiet">
+								<div class="settings-subsection__head">
+									<div>
+										<h3>App data folder</h3>
+										<p>This folder stores Lorivo's main settings and local data.</p>
+									</div>
+								</div>
+								{#each storageFields.filter((field) => field.group === 'app') as field (field.key)}
+									<article class="storage-field-card storage-field-card--readonly" data-testid="storage-field">
+										<div class="storage-field-card__head">
+											<div>
+												<h4>{field.label}</h4>
+												<p>{field.helper}</p>
+											</div>
+											<span class:storage-status-pill--warn={field.readinessTone === 'warn'} class:storage-status-pill--neutral={field.readinessTone === 'neutral'} class="storage-status-pill">
+												{field.readinessLabel}
+											</span>
+										</div>
+										<label class="settings-field">
+											<span>{field.label}</span>
+											<input bind:value={storageDraft[field.key]} readonly />
+											<small>Changing this folder can move where Lorivo expects its settings and local data after restart. It stays read-only in this build.</small>
+										</label>
+										<dl class="storage-field-facts">
+											<div>
+												<dt>Readiness</dt>
+												<dd>{field.readinessLabel}</dd>
+											</div>
+											{#if field.capacityLabel}
+												<div>
+													<dt>Capacity</dt>
+													<dd>{field.capacityLabel}</dd>
+												</div>
+											{/if}
+										</dl>
+									</article>
+								{/each}
+							</div>
+							<div class="status-actions">
+								<LorivoButton
+									variant="primary"
+									disabled={isSavingStorage || !hasStorageChanges}
+									onclick={saveStorageSettings}
+								>
+									{isSavingStorage ? 'Saving...' : 'Save Storage Settings'}
+								</LorivoButton>
+							</div>
+							{#if storageSaveMessage}
+								<p class="settings-feedback">{storageSaveMessage}</p>
+							{/if}
+							{#if storageSettingsError}
+								<p class="settings-error">{storageSettingsError}</p>
+							{/if}
+						</form>
+						<FolderBrowserPanel
+							browser={storageFolderBrowse}
+							title="Folder browser"
+							subtitle={storageFolderBrowse?.path || (activeStorageBrowseFieldLabel ? `Select a folder for ${activeStorageBrowseFieldLabel.toLowerCase()}.` : 'Select a folder path.')}
+							onBrowse={browseActiveStoragePath}
+							onUsePath={useStorageBrowsePath}
+						/>
+					{:else if !authDisabled}
+						<div class="settings-auth-callout">
+							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+							<div class="status-actions">
+								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+							</div>
+						</div>
+					{/if}
 				</SettingsPanel>
 			</section>
 
@@ -1878,7 +2386,8 @@
 	}
 
 	.scanning-automation-form,
-	.playback-policy-form {
+	.playback-policy-form,
+	.storage-settings-form {
 		display: grid;
 		gap: 12px;
 		margin-top: 14px;
@@ -1982,6 +2491,116 @@
 		width: 100%;
 	}
 
+	.settings-field input[readonly] {
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 92%, #0f172a 8%);
+		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+	}
+
+	.storage-field-list {
+		display: grid;
+		gap: 12px;
+	}
+
+	.storage-field-card {
+		display: grid;
+		gap: 12px;
+		padding: 14px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.storage-field-card--readonly {
+		background: color-mix(in srgb, var(--settings-accent-soft) 36%, transparent);
+	}
+
+	.storage-field-card__head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
+	}
+
+	.storage-field-card__head h4 {
+		margin: 0;
+		font-size: 0.98rem;
+		font-weight: 760;
+	}
+
+	.storage-field-card__head p {
+		margin: 4px 0 0;
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.82rem;
+		line-height: 1.4;
+	}
+
+	.storage-status-pill {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 8px;
+		border-radius: 999px;
+		background: rgb(65 143 101 / 18%);
+		color: color-mix(in srgb, #b7ffd4 75%, white 25%);
+		font-size: 0.74rem;
+		font-weight: 760;
+	}
+
+	.storage-status-pill--warn {
+		background: rgb(255 178 102 / 15%);
+		color: color-mix(in srgb, #ffc897 78%, white 22%);
+	}
+
+	.storage-status-pill--neutral {
+		background: rgb(154 167 255 / 10%);
+		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
+	}
+
+	.storage-input-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.storage-input-row :global(.button) {
+		flex: 0 0 auto;
+	}
+
+	.storage-input-row input {
+		flex: 1 1 280px;
+		min-width: 0;
+	}
+
+	.storage-field-facts {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 10px;
+		margin: 0;
+	}
+
+	.storage-field-facts div {
+		display: grid;
+		gap: 3px;
+		min-width: 0;
+	}
+
+	.storage-field-facts dt {
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+
+	.storage-field-facts dd {
+		margin: 0;
+		color: var(--lorivo-color-text);
+		font-size: 0.84rem;
+		line-height: 1.38;
+		overflow-wrap: anywhere;
+	}
+
 	.settings-field small,
 	.settings-error {
 		margin: 0;
@@ -2021,6 +2640,10 @@
 		}
 
 		.library-card__facts {
+			grid-template-columns: 1fr;
+		}
+
+		.storage-field-facts {
 			grid-template-columns: 1fr;
 		}
 

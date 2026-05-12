@@ -1,14 +1,24 @@
 <script lang="ts">
 	import SidebarItem from './SidebarItem.svelte';
 
-	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+	type SettingsSection =
+		| 'dashboard'
+		| 'library'
+		| 'scanning'
+		| 'metadata'
+		| 'playback'
+		| 'storage'
+		| 'access'
+		| 'about';
 
 	let {
 		active = 'dashboard',
-		section = 'primary'
+		section = 'primary',
+		showStorage = true
 	} = $props<{
 		active?: SettingsSection;
 		section?: 'primary' | 'secondary';
+		showStorage?: boolean;
 	}>();
 </script>
 
@@ -62,6 +72,16 @@
 			</svg>
 		{/snippet}
 	</SidebarItem>
+	{#if showStorage}
+		<SidebarItem label="Storage" href="/settings#storage" active={active === 'storage'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M5 7.5h14v9H5z" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="M8 11h8M8 14h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+	{/if}
 	<SidebarItem label="Access" href="/settings#access" active={active === 'access'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">

@@ -117,11 +117,30 @@ function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/series') return { series: [] };
 	if (pathname === '/api/catalog/summary') return { movies: 42, series: 6, episodes: 48 };
 	if (pathname === '/api/catalog/health') return {};
-	if (pathname === '/api/system/status') return { cpu: {}, memory: {} };
+	if (pathname === '/api/system/status') {
+		return {
+			cpu: {},
+			memory: {},
+			disks: [
+				{ name: 'data', path: state.dataDir, totalBytes: 512 * 1024 ** 3, freeBytes: 320 * 1024 ** 3, writable: true },
+				{ name: 'transcode', path: state.transcodeDir, totalBytes: 512 * 1024 ** 3, freeBytes: 318 * 1024 ** 3, writable: true },
+				{ name: 'downloads', path: state.downloadsDir, totalBytes: 512 * 1024 ** 3, freeBytes: 300 * 1024 ** 3, writable: true },
+				{ name: 'metadata', path: state.metadataDir, totalBytes: 512 * 1024 ** 3, freeBytes: 298 * 1024 ** 3, writable: true },
+				{ name: 'cache', path: state.cacheDir, totalBytes: 512 * 1024 ** 3, freeBytes: 296 * 1024 ** 3, writable: true },
+				{ name: 'temp', path: state.tempDir, totalBytes: 512 * 1024 ** 3, freeBytes: 294 * 1024 ** 3, writable: true }
+			]
+		};
+	}
 	if (pathname === '/api/settings') {
 		return {
 			config: {
 				serverName: state.serverName,
+				dataDir: state.dataDir,
+				transcodeDir: state.transcodeDir,
+				downloadsDir: state.downloadsDir,
+				metadataDir: state.metadataDir,
+				cacheDir: state.cacheDir,
+				tempDir: state.tempDir,
 				librarySyncMode: state.librarySyncMode,
 				syncIntervalMins: state.syncIntervalMins,
 				watchDebounceSecs: state.watchDebounceSecs,
@@ -152,6 +171,12 @@ function apiPayload(pathname, state = {}) {
 async function installApiMocks(page, options = {}) {
 	const state = {
 		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Lorivo',
+		dataDir: 'D:\\Lorivo\\Data',
+		transcodeDir: 'D:\\Lorivo\\Transcode',
+		downloadsDir: 'D:\\Lorivo\\Optimized',
+		metadataDir: 'D:\\Lorivo\\Metadata',
+		cacheDir: 'D:\\Lorivo\\Cache',
+		tempDir: 'D:\\Lorivo\\Temp',
 		librarySyncMode: 'daily',
 		syncIntervalMins: 1440,
 		watchDebounceSecs: 30,
@@ -186,7 +211,8 @@ async function installApiMocks(page, options = {}) {
 		tvScanCount: 0,
 		deletedLibraries: [],
 		scannedLibraries: [],
-		logoutCount: 0
+		logoutCount: 0,
+		storageUpdates: []
 	};
 	await page.route('**/api/**', (route) => {
 		const url = new URL(route.request().url());
@@ -206,6 +232,29 @@ async function installApiMocks(page, options = {}) {
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({ id: `scan-tv-${state.tvScanCount}`, status: 'queued', kind: 'series' })
+			});
+		}
+		if (url.pathname === '/api/settings/folders/browse' && route.request().method() === 'GET') {
+			const requestedPath = url.searchParams.get('path') || state.dataDir;
+			const normalizedPath = requestedPath.replace(/[\\/]$/, '');
+			const entries = [
+				{ name: 'Transcode', path: 'D:\\Lorivo\\Storage\\Transcode' },
+				{ name: 'Optimized', path: 'D:\\Lorivo\\Storage\\Optimized' },
+				{ name: 'Metadata', path: 'D:\\Lorivo\\Storage\\Metadata' },
+				{ name: 'Cache', path: 'D:\\Lorivo\\Storage\\Cache' },
+				{ name: 'Temp', path: 'D:\\Lorivo\\Storage\\Temp' }
+			];
+			const isLeaf = entries.some((entry) => entry.path === normalizedPath);
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					path: normalizedPath,
+					parent: normalizedPath.includes('\\') ? normalizedPath.split('\\').slice(0, -1).join('\\') || normalizedPath : normalizedPath,
+					entries: isLeaf ? [] : entries,
+					writable: true,
+					message: 'Ready'
+				})
 			});
 		}
 		if (url.pathname === '/api/settings' && route.request().method() === 'PUT') {
@@ -287,6 +336,34 @@ async function installApiMocks(page, options = {}) {
 					syncIntervalMins: state.syncIntervalMins,
 					watchDebounceSecs: state.watchDebounceSecs,
 					probeBatchLimit: state.probeBatchLimit
+				});
+			}
+			if (
+				Object.hasOwn(body, 'transcodeDir') ||
+				Object.hasOwn(body, 'downloadsDir') ||
+				Object.hasOwn(body, 'metadataDir') ||
+				Object.hasOwn(body, 'cacheDir') ||
+				Object.hasOwn(body, 'tempDir')
+			) {
+				for (const key of ['transcodeDir', 'downloadsDir', 'metadataDir', 'cacheDir', 'tempDir']) {
+					if (Object.hasOwn(body, key)) {
+						const nextValue = String(body[key] || '').trim();
+						if (!nextValue) {
+							return route.fulfill({
+								status: 400,
+								contentType: 'application/json',
+								body: JSON.stringify({ error: `${key} is required` })
+							});
+						}
+						state[key] = nextValue;
+					}
+				}
+				state.storageUpdates.push({
+					transcodeDir: state.transcodeDir,
+					downloadsDir: state.downloadsDir,
+					metadataDir: state.metadataDir,
+					cacheDir: state.cacheDir,
+					tempDir: state.tempDir
 				});
 			}
 			return route.fulfill({
@@ -569,6 +646,10 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 }
 
 async function verifySettingsMenu(page, baseURL, viewport, state) {
+	const expectedSettingsLinks = ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media'];
+	if (state.signedIn || state.devAuthBypass || state.authDisabled) {
+		expectedSettingsLinks.splice(5, 0, 'Storage');
+	}
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoHorizontalOverflow(page);
@@ -588,7 +669,7 @@ async function verifySettingsMenu(page, baseURL, viewport, state) {
 		assert.equal(await sidebar.isVisible(), true);
 		assert.match(await sidebar.innerText(), /LORIVO/);
 		assert.match(await sidebar.innerText(), /Settings/i);
-		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
+		for (const label of expectedSettingsLinks) {
 			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
@@ -610,7 +691,7 @@ async function verifySettingsMenu(page, baseURL, viewport, state) {
 		assert.match(await settingsDrawer.innerText(), /LORIVO/);
 		assert.match(await settingsDrawer.innerText(), /Settings/i);
 		assert.equal(await settingsDrawer.getByTestId('drawer-brand').count(), 1);
-		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
+		for (const label of expectedSettingsLinks) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
@@ -633,10 +714,12 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		['Library', 'library'],
 		['Scanning', 'scanning'],
 		['Metadata', 'metadata'],
-		['Playback', 'playback'],
-		['About', 'about'],
-		['Access', 'access']
+		['Playback', 'playback']
 	];
+	if (state.signedIn || state.devAuthBypass || state.authDisabled) {
+		sections.push(['Storage', 'storage']);
+	}
+	sections.push(['About', 'about'], ['Access', 'access']);
 	for (let index = 0; index < sections.length; index += 1) {
 		const [label, hash] = sections[index];
 		const link = navContainer.getByRole('link', { name: label, exact: true });
@@ -663,6 +746,9 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		}
 		if (hash === 'playback') {
 			await assertPlaybackSection(page, state);
+		}
+		if (hash === 'storage') {
+			await assertStorageSection(page, state);
 		}
 		if (hash === 'about') {
 			assert.match(await selectedSection.innerText(), /Server name/);
@@ -706,6 +792,8 @@ async function assertSettingsSafetyCopy(page) {
 	assert.doesNotMatch(body, /endpoint/i);
 	assert.doesNotMatch(body, /provider internals/i);
 	assert.doesNotMatch(body, /Transcode Workers/i);
+	assert.doesNotMatch(body, /\bdataDir\b|\btranscodeDir\b|\bdownloadsDir\b|\bmetadataDir\b|\bcacheDir\b|\btempDir\b/);
+	assert.doesNotMatch(body, /FFprobe path|FFmpeg path/i);
 }
 
 async function assertLibrarySection(page, state) {
@@ -871,6 +959,69 @@ async function assertPlaybackSection(page, state) {
 	await assertNoHorizontalOverflow(page);
 }
 
+async function assertStorageSection(page, state) {
+	const selectedSection = page.getByTestId('settings-section-content');
+	state.restartRequired = true;
+	assert.equal(await page.getByTestId('storage-form').count(), 1);
+	assert.match(await selectedSection.innerText(), /Transcoding folder/);
+	assert.match(await selectedSection.innerText(), /Optimized versions folder/);
+	assert.match(await selectedSection.innerText(), /Metadata folder/);
+	assert.match(await selectedSection.innerText(), /Cache folder/);
+	assert.match(await selectedSection.innerText(), /Scratch\/temp folder/);
+	assert.match(await selectedSection.innerText(), /Data folder/);
+	assert.match(await selectedSection.innerText(), /read-only in this build/i);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Browse', exact: true }).count(), 5);
+	assert.equal(await selectedSection.locator('input[readonly]').count() >= 1, true);
+
+	await selectedSection.getByRole('button', { name: 'Browse', exact: true }).first().click();
+	await page.getByText('Folder browser', { exact: true }).waitFor({ state: 'visible', timeout: 5000 });
+	await page.locator('.folder-entry').first().click();
+	await page.getByRole('button', { name: 'Use this folder', exact: true }).click();
+	await selectedSection.getByRole('button', { name: 'Save Storage Settings', exact: true }).click();
+	await waitForCondition(
+		() =>
+			state.storageUpdates.some(
+				(item) => item.transcodeDir === 'D:\\Lorivo\\Storage\\Transcode'
+			),
+		'expected storage settings update to be recorded'
+	);
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Saved. Restart Lorivo for these folder changes to fully take effect.'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.match(
+		await page.locator('body').innerText(),
+		/Saved\. Restart Lorivo for these folder changes to fully take effect\./
+	);
+
+	state.restartRequired = false;
+	await selectedSection.locator('.storage-field-card input').nth(1).fill('D:\\Lorivo\\Storage\\Optimized');
+	await selectedSection.getByRole('button', { name: 'Save Storage Settings', exact: true }).click();
+	await waitForCondition(
+		() =>
+			state.storageUpdates.some(
+				(item) =>
+					item.transcodeDir === 'D:\\Lorivo\\Storage\\Transcode' &&
+					item.downloadsDir === 'D:\\Lorivo\\Storage\\Optimized'
+			),
+		'expected second storage settings update to be recorded'
+	);
+	await page.waitForFunction(
+		() =>
+			document.body.innerText.includes('Storage settings saved.') &&
+			!document.body.innerText.includes('Saved. Restart Lorivo for these folder changes to fully take effect.'),
+		null,
+		{ timeout: 5000 }
+	);
+	const body = await page.locator('body').innerText();
+	assert.match(body, /Storage settings saved\./);
+	assert.doesNotMatch(body, /Saved\. Restart Lorivo for these folder changes to fully take effect\./);
+	assert.doesNotMatch(body, /\bdataDir\b|\btranscodeDir\b|\bdownloadsDir\b|\bmetadataDir\b|\bcacheDir\b|\btempDir\b/);
+	assert.doesNotMatch(body, /\bFFmpeg\b|\bFFprobe\b|\bworkers\b|\ballowed origins\b/i);
+	await assertNoHorizontalOverflow(page);
+}
+
 async function assertAccessSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
 	if (state.devAuthBypass) {
@@ -945,6 +1096,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		assert.equal(await sidebar.count(), 1);
 		assert.equal(await sidebar.isVisible(), true);
 		assert.equal(await sidebar.getByRole('link', { name: 'Library', exact: true }).count(), 1);
+		assert.equal(await sidebar.getByRole('link', { name: 'Storage', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Access', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
@@ -955,6 +1107,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		await settingsButton.click();
 		const settingsDrawer = page.getByTestId('settings-menu-drawer');
 		await waitForDrawerState(settingsDrawer, 'open');
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Storage', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Access', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
@@ -1040,6 +1193,7 @@ test('settings shows owner access guidance when the server still needs its first
 			assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
 			assert.equal(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count(), 1);
 		}
+		assert.equal(await page.getByTestId('settings-mode-sidebar').getByRole('link', { name: 'Storage', exact: true }).count(), 0);
 
 		await assertNoHorizontalOverflow(page);
 		await page.close();
