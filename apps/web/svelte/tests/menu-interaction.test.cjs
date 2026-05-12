@@ -486,13 +486,6 @@ test('hamburger media and settings menus open and navigate across viewports', as
 			await page.close();
 		}
 
-		const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-		await installApiMocks(page);
-		await page.goto(`${baseURL}/admin`, { waitUntil: 'domcontentloaded' });
-		await page.waitForURL(`${baseURL}/settings#dashboard`, { timeout: 10000 });
-		assert.doesNotMatch(await page.locator('body').innerText(), /Admin/);
-		await page.close();
-
 		const fallbackPage = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 		await installApiMocks(fallbackPage, { serverName: '' });
 		await fallbackPage.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });

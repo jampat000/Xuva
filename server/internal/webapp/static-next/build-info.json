@@ -1,14 +1,13 @@
 {
-  "buildID": "20260512015521-1f77c876f676fff8",
-  "publishedAt": "2026-05-12T01:55:21.752Z",
+  "buildID": "20260512020449-95259d5933ceb9e9",
+  "publishedAt": "2026-05-12T02:04:49.917Z",
   "basePath": "/",
   "sourceApp": "apps/web/svelte",
   "staticOutput": "server/internal/webapp/static-next",
-  "gitCommit": "d053e1c",
-  "indexHash": "1f77c876f676fff8",
+  "gitCommit": "1a2e468",
+  "indexHash": "95259d5933ceb9e9",
   "routePatterns": [
     "/",
-    "/admin",
     "/collections",
     "/continue-watching",
     "/movies",

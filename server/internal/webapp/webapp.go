@@ -20,6 +20,8 @@ func RootHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") ||
 			strings.HasPrefix(r.URL.Path, "/play/") ||
+			r.URL.Path == "/admin" ||
+			strings.HasPrefix(r.URL.Path, "/admin/") ||
 			strings.HasPrefix(r.URL.Path, "/legacy/") ||
 			r.URL.Path == "/legacy" ||
 			strings.HasPrefix(r.URL.Path, "/next/") ||
