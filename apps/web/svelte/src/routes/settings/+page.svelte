@@ -478,13 +478,77 @@
 		{:else}
 			<header class="settings-head">
 				<div>
+					<p class="settings-head__eyebrow">Settings Mode</p>
 					<h1>Settings</h1>
-					<p>Manage library setup, scans, metadata, playback information, server status, and build details.</p>
+					<p>Control your Lorivo library, scans, metadata, playback behavior, server status, and build details.</p>
 				</div>
 				<div class="settings-head__meta">
 					<span>Updated {lastUpdatedLabel || '--'}</span>
 				</div>
 			</header>
+
+			<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
+				<a
+					class="settings-dashboard-card"
+					class:settings-dashboard-card--active={activeSection === 'library'}
+					href="#library"
+					aria-current={activeSection === 'library' ? 'page' : undefined}
+				>
+					<span>Library</span>
+					<strong>{asCount(libraryRows.length)}</strong>
+					<small>{libraryRows.length === 1 ? 'configured library' : 'configured libraries'}</small>
+				</a>
+				<a
+					class="settings-dashboard-card"
+					class:settings-dashboard-card--active={activeSection === 'scanning'}
+					href="#scanning"
+					aria-current={activeSection === 'scanning' ? 'page' : undefined}
+				>
+					<span>Scanning</span>
+					<strong>{asCount(scans.length)}</strong>
+					<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'ready for scans'}</small>
+				</a>
+				<a
+					class="settings-dashboard-card"
+					class:settings-dashboard-card--active={activeSection === 'metadata'}
+					href="#metadata"
+					aria-current={activeSection === 'metadata' ? 'page' : undefined}
+				>
+					<span>Metadata</span>
+					<strong>{asCount(providerStates.length)}</strong>
+					<small>{Number(health.needsReview || 0) > 0 ? 'review needed' : 'providers listed'}</small>
+				</a>
+				<a
+					class="settings-dashboard-card"
+					class:settings-dashboard-card--active={activeSection === 'playback'}
+					href="#playback"
+					aria-current={activeSection === 'playback' ? 'page' : undefined}
+				>
+					<span>Playback</span>
+					<strong>{asCount(activeSessionCount)}</strong>
+					<small>{activeSessionCount === 1 ? 'active session' : 'active sessions'}</small>
+				</a>
+				<a
+					class="settings-dashboard-card"
+					class:settings-dashboard-card--active={activeSection === 'server'}
+					href="#server"
+					aria-current={activeSection === 'server' ? 'page' : undefined}
+				>
+					<span>Server</span>
+					<strong>{capitalize(serverStatus)}</strong>
+					<small>{activeQueueCount > 0 ? 'activity in progress' : 'status snapshot'}</small>
+				</a>
+				<a
+					class="settings-dashboard-card"
+					class:settings-dashboard-card--active={activeSection === 'about'}
+					href="#about"
+					aria-current={activeSection === 'about' ? 'page' : undefined}
+				>
+					<span>About</span>
+					<strong>Lorivo</strong>
+					<small>{asText(buildInfo?.buildID) || 'build details'}</small>
+				</a>
+			</section>
 
 			{#if actionMessage}
 				<LorivoPanel title="Latest action" subtitle={actionMessage} />
@@ -625,8 +689,11 @@
 
 <style>
 	.settings-page {
+		--settings-accent: #5cc8ff;
+		--settings-accent-soft: rgb(92 200 255 / 13%);
+		--settings-accent-border: rgb(92 200 255 / 28%);
 		display: grid;
-		gap: 18px;
+		gap: 20px;
 		padding-bottom: var(--lorivo-space-8);
 		min-width: 0;
 		scroll-behavior: smooth;
@@ -642,8 +709,17 @@
 	.settings-head h1 {
 		margin: 0;
 		font-family: var(--lorivo-font-display);
-		font-size: clamp(1.5rem, 1.4vw + 1rem, 2rem);
+		font-size: clamp(1.8rem, 1.6vw + 1rem, 2.45rem);
 		letter-spacing: -0.03em;
+	}
+
+	.settings-head__eyebrow {
+		margin: 0 0 7px;
+		color: color-mix(in srgb, var(--settings-accent) 88%, white 12%);
+		font-size: 0.72rem;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
 	}
 
 	.settings-head p {
@@ -660,8 +736,90 @@
 		white-space: nowrap;
 	}
 
+	.settings-dashboard {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		gap: 12px;
+	}
+
+	.settings-dashboard-card {
+		display: grid;
+		gap: 7px;
+		min-height: 122px;
+		align-content: space-between;
+		padding: 15px;
+		border: 1px solid color-mix(in srgb, var(--settings-accent-border) 48%, var(--lorivo-color-border-soft));
+		border-radius: 14px;
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
+			radial-gradient(circle at 20% 0%, rgb(92 200 255 / 11%) 0%, transparent 52%),
+			color-mix(in srgb, var(--lorivo-color-surface-elevated) 92%, #102033 8%);
+		color: var(--lorivo-color-text);
+		text-decoration: none;
+		box-shadow:
+			inset 0 1px 0 rgb(255 255 255 / 7%),
+			0 14px 32px rgb(0 0 0 / 14%);
+		transition:
+			border-color 160ms ease,
+			background-color 160ms ease,
+			transform 160ms ease,
+			box-shadow 160ms ease;
+	}
+
+	.settings-dashboard-card:hover,
+	.settings-dashboard-card:focus-visible {
+		transform: translateY(-1px);
+		border-color: var(--settings-accent-border);
+		outline: none;
+		box-shadow:
+			inset 0 1px 0 rgb(255 255 255 / 8%),
+			0 18px 42px rgb(31 122 191 / 12%);
+	}
+
+	.settings-dashboard-card--active {
+		border-color: rgb(92 200 255 / 42%);
+		background:
+			linear-gradient(180deg, rgb(92 200 255 / 14%), rgb(92 200 255 / 4%)),
+			color-mix(in srgb, var(--lorivo-color-surface-elevated) 90%, #102033 10%);
+		box-shadow:
+			inset 0 0 0 1px rgb(92 200 255 / 10%),
+			0 18px 44px rgb(31 122 191 / 14%);
+	}
+
+	.settings-dashboard-card span {
+		color: color-mix(in srgb, var(--lorivo-color-text-muted) 92%, transparent);
+		font-size: 0.78rem;
+		font-weight: 760;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+	}
+
+	.settings-dashboard-card strong {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--lorivo-color-text);
+		font-size: clamp(1.2rem, 0.6vw + 1rem, 1.6rem);
+		font-weight: 820;
+		line-height: 1.08;
+		white-space: nowrap;
+	}
+
+	.settings-dashboard-card small {
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.78rem;
+		line-height: 1.35;
+	}
+
 	.settings-section {
 		scroll-margin-top: 18px;
+	}
+
+	:global([data-shell='server'] .settings-panel) {
+		border-left: 3px solid rgb(92 200 255 / 28%);
+	}
+
+	:global([data-shell='server'] .settings-panel h2) {
+		font-size: 1.13rem;
 	}
 
 	.settings-grid {
@@ -687,12 +845,20 @@
 	}
 
 	@media (max-width: 1120px) {
+		.settings-dashboard {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+
 		.settings-grid {
 			grid-template-columns: 1fr;
 		}
 	}
 
 	@media (max-width: 820px) {
+		.settings-dashboard {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
 		.settings-head {
 			flex-direction: column;
 			align-items: flex-start;
@@ -709,6 +875,10 @@
 	}
 
 	@media (max-width: 560px) {
+		.settings-dashboard {
+			grid-template-columns: 1fr;
+		}
+
 		.stat-grid,
 		.stat-grid--compact {
 			grid-template-columns: 1fr;

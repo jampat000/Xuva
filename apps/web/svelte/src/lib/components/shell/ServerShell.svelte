@@ -6,6 +6,7 @@
 	import AppDrawer from './AppDrawer.svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoShell from './LorivoShell.svelte';
+	import ServerSidebar from './ServerSidebar.svelte';
 
 	let {
 		active = 'library',
@@ -40,7 +41,7 @@
 	});
 </script>
 
-<div class="server-shell" class:server-shell--drawer-open={settingsMenuOpen} data-shell="server">
+<div class="server-shell" data-shell="server">
 	<AppDrawer
 		open={settingsMenuOpen}
 		label="Settings navigation"
@@ -86,6 +87,12 @@
 
 	<div class="server-shell__surface" data-testid="settings-shell-surface">
 		<LorivoShell density="default">
+			{#snippet sidebar()}
+				<div class="server-shell__sidebar-panel" data-testid="settings-mode-sidebar">
+					<ServerSidebar {active} {userDisplayName} {userRole} />
+				</div>
+			{/snippet}
+
 			{#snippet topbar()}
 				<div class="server-shell__topbar-row">
 					<button
@@ -110,26 +117,20 @@
 
 <style>
 	.server-shell {
+		--lorivo-settings-accent: #5cc8ff;
+		--lorivo-settings-accent-soft: rgb(92 200 255 / 16%);
+		--lorivo-settings-accent-border: rgb(92 200 255 / 34%);
 		min-height: 100dvh;
 		overflow-x: hidden;
-		background: var(--lorivo-color-bg-shell);
+		background:
+			radial-gradient(circle at 12% -14%, rgb(92 200 255 / 13%) 0%, transparent 34%),
+			radial-gradient(circle at 92% 2%, rgb(73 102 158 / 13%) 0%, transparent 28%),
+			var(--lorivo-color-bg-shell);
 	}
 
 	.server-shell__surface {
 		min-height: 100dvh;
 		width: 100%;
-		margin-left: 0;
-		transition:
-			margin-left 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-			width 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
-		will-change: margin-left, width;
-	}
-
-	@media (min-width: 768px) {
-		.server-shell--drawer-open .server-shell__surface {
-			width: calc(100% - var(--lorivo-drawer-width, 320px));
-			margin-left: var(--lorivo-drawer-width, 320px);
-		}
 	}
 
 	.server-shell__topbar-row {
@@ -156,11 +157,30 @@
 	}
 
 	:global([data-shell='server'] .v-shell) {
-		grid-template-columns: minmax(0, 1fr);
+		display: block;
+		min-height: 100dvh;
+		background:
+			linear-gradient(180deg, rgb(92 200 255 / 4%), transparent 24%),
+			var(--lorivo-color-bg-shell);
 	}
 
 	:global([data-shell='server'] .v-shell__sidebar) {
-		display: none;
+		position: fixed;
+		inset: 0 auto 0 0;
+		z-index: 42;
+		width: 304px;
+		height: 100dvh;
+		border-right-color: rgb(92 200 255 / 16%);
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1%) 36%, transparent),
+			radial-gradient(circle at 16% -12%, rgb(92 200 255 / 22%) 0%, transparent 39%),
+			radial-gradient(circle at 84% 112%, rgb(80 111 160 / 16%) 0%, transparent 42%),
+			color-mix(in srgb, var(--lorivo-color-bg-sidebar) 91%, #102033 9%);
+		box-shadow: inset -1px 0 0 rgb(255 255 255 / 4%);
+	}
+
+	.server-shell__sidebar-panel {
+		height: 100%;
 	}
 
 	:global([data-shell='server'] .v-shell__topbar) {
@@ -172,15 +192,110 @@
 			transparent;
 	}
 
+	:global([data-shell='server'] .v-shell__main) {
+		width: calc(100% - 304px);
+		min-height: 100dvh;
+		margin-left: 304px;
+		padding: 20px 32px 28px;
+	}
+
+	:global([data-shell='server'] .v-sidebar) {
+		padding: 20px 16px 18px;
+	}
+
+	:global([data-shell='server'] .v-sidebar__brand) {
+		justify-content: flex-start;
+		margin: 8px 10px 14px;
+	}
+
+	:global([data-shell='server'] .v-sidebar__brand::after) {
+		content: 'Settings';
+		margin-left: 12px;
+		padding: 5px 9px;
+		border: 1px solid rgb(92 200 255 / 18%);
+		border-radius: 999px;
+		background: rgb(92 200 255 / 9%);
+		color: color-mix(in srgb, var(--lorivo-settings-accent) 88%, white 12%);
+		font-size: 0.72rem;
+		font-weight: 760;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	:global([data-shell='server'] .sidebar-item) {
+		min-height: 48px;
+		border-radius: 14px;
+		font-size: 1rem;
+	}
+
+	:global([data-shell='server'] .sidebar-item:hover) {
+		background: rgb(92 200 255 / 7%);
+	}
+
+	:global([data-shell='server'] .sidebar-item[data-active='true']) {
+		border-color: var(--lorivo-settings-accent-border);
+		background:
+			linear-gradient(90deg, rgb(92 200 255 / 20%), rgb(92 200 255 / 5%)),
+			rgb(255 255 255 / 4%);
+		box-shadow:
+			inset 3px 0 0 rgb(92 200 255 / 76%),
+			0 14px 32px rgb(31 122 191 / 13%);
+	}
+
+	:global([data-shell='server'] .sidebar-item[data-active='true'] .sidebar-item__icon) {
+		color: var(--lorivo-settings-accent);
+	}
+
+	:global([data-shell='server'] .app-drawer) {
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1%) 30%, transparent),
+			radial-gradient(circle at 20% -12%, rgb(92 200 255 / 24%) 0%, transparent 38%),
+			radial-gradient(circle at 84% 112%, rgb(80 111 160 / 16%) 0%, transparent 40%),
+			color-mix(in srgb, var(--lorivo-color-bg-sidebar) 92%, #102033 8%);
+	}
+
+	:global([data-shell='server'] .app-drawer__link[aria-current='page']) {
+		border-color: var(--lorivo-settings-accent-border);
+		background:
+			linear-gradient(90deg, rgb(92 200 255 / 22%), rgb(92 200 255 / 5%)),
+			rgb(255 255 255 / 3%);
+		box-shadow:
+			inset 3px 0 0 rgb(92 200 255 / 78%),
+			0 12px 30px rgb(31 122 191 / 12%);
+	}
+
+	:global([data-shell='server'] .app-drawer__link svg) {
+		color: color-mix(in srgb, currentColor 88%, var(--lorivo-settings-accent) 12%);
+	}
+
 	@media (max-width: 980px) {
+		:global([data-shell='server'] .v-shell) {
+			display: grid;
+			grid-template-columns: 1fr;
+		}
+
+		:global([data-shell='server'] .v-shell__sidebar) {
+			display: none;
+		}
+
 		:global([data-shell='server'] .v-shell__main) {
+			width: 100%;
+			margin-left: 0;
 			padding: 14px 14px 20px;
 		}
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.server-shell__surface {
-			transition: none;
+	@media (min-width: 981px) {
+		.server-shell__topbar-row {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.server-shell__menu-button {
+			display: none;
+		}
+
+		:global([data-shell='server'] .app-drawer) {
+			display: none;
 		}
 	}
 </style>
