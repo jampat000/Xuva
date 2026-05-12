@@ -94,6 +94,10 @@ function apiPayload(pathname, state = {}) {
 		return {
 			config: {
 				serverName: state.serverName,
+				librarySyncMode: state.librarySyncMode,
+				syncIntervalMins: state.syncIntervalMins,
+				watchDebounceSecs: state.watchDebounceSecs,
+				probeBatchLimit: state.probeBatchLimit,
 				playbackPolicy: state.playbackPolicy,
 				metadataProviders: { automatic: [], managedOverrides: [] }
 			},
@@ -120,6 +124,10 @@ function apiPayload(pathname, state = {}) {
 async function installApiMocks(page, options = {}) {
 	const state = {
 		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Lorivo',
+		librarySyncMode: 'daily',
+		syncIntervalMins: 1440,
+		watchDebounceSecs: 30,
+		probeBatchLimit: 50,
 		playbackPolicy: 'original_only',
 		restartRequired: true,
 		signedIn: !options.signedOut,
@@ -142,6 +150,9 @@ async function installApiMocks(page, options = {}) {
 			}
 		],
 		playbackUpdates: [],
+		scanningUpdates: [],
+		movieScanCount: 0,
+		tvScanCount: 0,
 		deletedLibraries: [],
 		scannedLibraries: [],
 		logoutCount: 0
@@ -150,6 +161,22 @@ async function installApiMocks(page, options = {}) {
 		const url = new URL(route.request().url());
 		if (!url.pathname.startsWith('/api/')) return route.continue();
 		if (url.pathname === '/api/events') return route.fulfill({ status: 204, body: '' });
+		if (url.pathname === '/api/libraries/movies/scan' && route.request().method() === 'POST') {
+			state.movieScanCount += 1;
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ id: `scan-movies-${state.movieScanCount}`, status: 'queued', kind: 'movie' })
+			});
+		}
+		if (url.pathname === '/api/libraries/tv/scan' && route.request().method() === 'POST') {
+			state.tvScanCount += 1;
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ id: `scan-tv-${state.tvScanCount}`, status: 'queued', kind: 'series' })
+			});
+		}
 		if (url.pathname === '/api/settings' && route.request().method() === 'PUT') {
 			const body = route.request().postDataJSON() || {};
 			const nextName = String(body.serverName ?? '').trim();
@@ -181,6 +208,55 @@ async function installApiMocks(page, options = {}) {
 				}
 				state.playbackPolicy = nextPolicy;
 				state.playbackUpdates.push(body);
+			}
+			if (
+				Object.hasOwn(body, 'librarySyncMode') ||
+				Object.hasOwn(body, 'syncIntervalMins') ||
+				Object.hasOwn(body, 'watchDebounceSecs') ||
+				Object.hasOwn(body, 'probeBatchLimit')
+			) {
+				const nextMode = String(body.librarySyncMode || state.librarySyncMode).trim();
+				if (!['manual', 'daily', 'watch'].includes(nextMode)) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'invalid library scan mode' })
+					});
+				}
+				const nextInterval = Number(body.syncIntervalMins ?? state.syncIntervalMins);
+				const nextWatchDelay = Number(body.watchDebounceSecs ?? state.watchDebounceSecs);
+				const nextProbeBatchLimit = Number(body.probeBatchLimit ?? state.probeBatchLimit);
+				if (nextMode === 'daily' && (!Number.isFinite(nextInterval) || nextInterval < 15)) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'scan interval must be at least 15 minutes' })
+					});
+				}
+				if (nextMode === 'watch' && (!Number.isFinite(nextWatchDelay) || nextWatchDelay < 5 || nextWatchDelay > 300)) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'folder watch delay must be between 5 and 300 seconds' })
+					});
+				}
+				if (!Number.isFinite(nextProbeBatchLimit) || nextProbeBatchLimit <= 0) {
+					return route.fulfill({
+						status: 400,
+						contentType: 'application/json',
+						body: JSON.stringify({ error: 'media check batch size must be greater than 0' })
+					});
+				}
+				state.librarySyncMode = nextMode;
+				state.syncIntervalMins = nextInterval;
+				state.watchDebounceSecs = nextWatchDelay;
+				state.probeBatchLimit = nextProbeBatchLimit;
+				state.scanningUpdates.push({
+					librarySyncMode: state.librarySyncMode,
+					syncIntervalMins: state.syncIntervalMins,
+					watchDebounceSecs: state.watchDebounceSecs,
+					probeBatchLimit: state.probeBatchLimit
+				});
 			}
 			return route.fulfill({
 				status: 200,
@@ -436,6 +512,16 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	await mediaDrawer.getByRole('link', { name: 'Movies', exact: true }).click();
 	await page.waitForURL(`${baseURL}/movies`, { timeout: 10000 });
 	await waitForDrawerState(mediaDrawer, 'closed');
+	await assertNoHorizontalOverflow(page);
+
+	const moviesMediaButton = page.getByTestId('media-menu-button');
+	assert.equal(await moviesMediaButton.count(), 1);
+	await moviesMediaButton.click();
+	await waitForDrawerState(page.getByTestId('media-menu-drawer'), 'open');
+	await page.getByTestId('media-menu-drawer').getByRole('link', { name: 'TV', exact: true }).click();
+	await page.waitForURL(`${baseURL}/tv`, { timeout: 10000 });
+	await waitForDrawerState(page.getByTestId('media-menu-drawer'), 'closed');
+	await assertNoHorizontalOverflow(page);
 }
 
 async function verifySettingsMenu(page, baseURL, viewport, state) {
@@ -527,6 +613,9 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		assert.equal(await page.getByTestId('settings-dashboard').count(), 0);
 		if (hash === 'library') {
 			await assertLibrarySection(page, state);
+		}
+		if (hash === 'scanning') {
+			await assertScanningSection(page, state);
 		}
 		if (hash === 'playback') {
 			await assertPlaybackSection(page, state);
@@ -624,8 +713,83 @@ async function assertLibrarySection(page, state) {
 	await assertNoHorizontalOverflow(page);
 }
 
+async function assertScanningSection(page, state) {
+	const selectedSection = page.getByTestId('settings-section-content');
+	assert.match(await selectedSection.innerText(), /Library scan mode/);
+	assert.match(await selectedSection.innerText(), /Scheduled/);
+	assert.match(await selectedSection.innerText(), /Scan interval/);
+	assert.match(await selectedSection.innerText(), /Media check batch size/);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Scan Movies', exact: true }).count(), 1);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Scan TV', exact: true }).count(), 1);
+	assert.equal(await page.getByTestId('scanning-automation-form').count(), 1);
+	await selectedSection.getByRole('button', { name: 'Scan Movies', exact: true }).click();
+	await waitForCondition(() => state.movieScanCount === 1, 'expected movie scan action to be recorded');
+	await page.waitForFunction(() => document.body.innerText.includes('Movie scan started.'), null, { timeout: 5000 });
+	await selectedSection.getByRole('button', { name: 'Scan TV', exact: true }).click();
+	await waitForCondition(() => state.tvScanCount === 1, 'expected TV scan action to be recorded');
+	await page.waitForFunction(() => document.body.innerText.includes('TV scan started.'), null, { timeout: 5000 });
+
+	const scanIntervalInput = selectedSection.locator('input[placeholder="1440"]');
+	assert.equal(await scanIntervalInput.count(), 1);
+	await scanIntervalInput.fill('0');
+	await selectedSection.getByRole('button', { name: 'Save Scanning Settings', exact: true }).click();
+	assert.match(await selectedSection.innerText(), /Enter a scan interval of at least 15 minutes\./);
+	assert.equal(state.scanningUpdates.length, 0);
+
+	await selectedSection.locator('input[value="watch"]').check();
+	await selectedSection.locator('input[placeholder="30"]').fill('45');
+	const advancedToggle = selectedSection.locator('details[data-testid="scanning-advanced"]');
+	await advancedToggle.locator('summary').click();
+	await selectedSection.locator('input[placeholder="50"]').fill('75');
+	await selectedSection.getByRole('button', { name: 'Save Scanning Settings', exact: true }).click();
+	await waitForCondition(
+		() =>
+			state.scanningUpdates.some(
+				(item) =>
+					item.librarySyncMode === 'watch' &&
+					item.watchDebounceSecs === 45 &&
+					item.probeBatchLimit === 75
+			),
+		'expected watch-mode scanning settings update to be recorded'
+	);
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Saved. Restart Lorivo for this change to fully take effect.'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.match(await page.locator('body').innerText(), /Saved\. Restart Lorivo for this change to fully take effect\./);
+
+	state.restartRequired = false;
+	await selectedSection.locator('input[value="daily"]').check();
+	await selectedSection.locator('input[placeholder="1440"]').fill('120');
+	await selectedSection.getByRole('button', { name: 'Save Scanning Settings', exact: true }).click();
+	await waitForCondition(
+		() =>
+			state.scanningUpdates.some(
+				(item) =>
+					item.librarySyncMode === 'daily' &&
+					item.syncIntervalMins === 120 &&
+					item.watchDebounceSecs === 45 &&
+					item.probeBatchLimit === 75
+			),
+		'expected scheduled scanning settings update to be recorded'
+	);
+	await page.waitForFunction(
+		() =>
+			document.body.innerText.includes('Scanning settings saved.') &&
+			!document.body.innerText.includes('Saved. Restart Lorivo for this change to fully take effect.'),
+		null,
+		{ timeout: 5000 }
+	);
+	const body = await page.locator('body').innerText();
+	assert.match(body, /Scanning settings saved\./);
+	assert.doesNotMatch(body, /\bLibrarySyncMode\b|\bSyncIntervalMins\b|\bWatchDebounceSecs\b|\bProbeBatchLimit\b/);
+	await assertNoHorizontalOverflow(page);
+}
+
 async function assertPlaybackSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
+	state.restartRequired = true;
 	assert.equal(await page.getByTestId('playback-policy-form').count(), 1);
 	assert.match(await selectedSection.innerText(), /Original Only/);
 	await selectedSection.locator('input[value="full"]').check();

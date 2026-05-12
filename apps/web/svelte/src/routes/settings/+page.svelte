@@ -45,6 +45,12 @@
 
 	type LibraryActionKind = 'scan' | 'remove' | '';
 
+	interface LibrarySyncModeOption {
+		id: 'manual' | 'daily' | 'watch';
+		label: string;
+		description: string;
+	}
+
 	interface PlaybackPolicyOption {
 		id: 'original_only' | 'light' | 'full' | 'cinema';
 		label: string;
@@ -64,10 +70,12 @@
 	let isRefreshingMovies = $state(false);
 	let isRefreshingTV = $state(false);
 	let isSavingServerName = $state(false);
+	let isSavingScanningAutomation = $state(false);
 	let isSavingPlaybackPolicy = $state(false);
 	let isSigningOut = $state(false);
 	let loadError = $state('');
 	let actionMessage = $state('');
+	let scanningSettingsError = $state('');
 	let serverNameError = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
@@ -90,10 +98,32 @@
 	let sessions = $state<SessionItem[]>([]);
 	let buildInfo = $state<BuildInfo | null>(null);
 	let serverNameDraft = $state('Lorivo');
+	let librarySyncModeDraft = $state<LibrarySyncModeOption['id']>('daily');
+	let syncIntervalDraft = $state('1440');
+	let watchDebounceDraft = $state('30');
+	let probeBatchLimitDraft = $state('50');
 	let playbackPolicyDraft = $state<'original_only' | 'light' | 'full' | 'cinema'>('original_only');
 	let sessionExpiresAt = $state('');
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const librarySyncModeOptions: LibrarySyncModeOption[] = [
+		{
+			id: 'manual',
+			label: 'Manual only',
+			description: 'Lorivo scans your libraries only when you start a scan.'
+		},
+		{
+			id: 'daily',
+			label: 'Scheduled',
+			description: 'Lorivo checks your libraries on a repeating schedule.'
+		},
+		{
+			id: 'watch',
+			label: 'Watch folders',
+			description: 'Lorivo waits for folder changes, then starts a scan after a short delay.'
+		}
+	];
 
 	const playbackPolicyOptions: PlaybackPolicyOption[] = [
 		{
@@ -136,6 +166,13 @@
 		if (cpu > 0 || memory > 0) return 'healthy';
 		return 'idle';
 	});
+	const hasScanningAutomationChanges = $derived.by(
+		() =>
+			librarySyncModeDraft !== normalizeLibrarySyncMode(settings.config?.librarySyncMode) ||
+			syncIntervalDraft !== stringDraft(settings.config?.syncIntervalMins, 1440) ||
+			watchDebounceDraft !== stringDraft(settings.config?.watchDebounceSecs, 30) ||
+			probeBatchLimitDraft !== stringDraft(settings.config?.probeBatchLimit, 50)
+	);
 	const configuredLibraries = $derived.by(() => settings.libraries || libraries || []);
 	const libraryCards = $derived.by(() =>
 		configuredLibraries.map((item) => ({
@@ -275,6 +312,11 @@
 			system = systemPayload || {};
 			settings = settingsPayload || {};
 			serverNameDraft = displayServerName(settingsPayload.config?.serverName);
+			librarySyncModeDraft = normalizeLibrarySyncMode(settingsPayload.config?.librarySyncMode);
+			syncIntervalDraft = stringDraft(settingsPayload.config?.syncIntervalMins, 1440);
+			watchDebounceDraft = stringDraft(settingsPayload.config?.watchDebounceSecs, 30);
+			probeBatchLimitDraft = stringDraft(settingsPayload.config?.probeBatchLimit, 50);
+			scanningSettingsError = '';
 			playbackPolicyDraft = normalizePlaybackPolicy(settingsPayload.config?.playbackPolicy);
 			performance = performancePayload || {};
 			scans = scansPayload.scans || [];
@@ -380,6 +422,58 @@
 			serverNameError = formatLoadError(error);
 		} finally {
 			isSavingServerName = false;
+		}
+	}
+
+	async function saveScanningAutomation(): Promise<void> {
+		if (isSavingScanningAutomation || !canManageSettings) return;
+		scanningSettingsError = '';
+		actionMessage = '';
+		const librarySyncMode = normalizeLibrarySyncMode(librarySyncModeDraft);
+		const syncIntervalMins = parseWholeNumber(syncIntervalDraft);
+		const watchDebounceSecs = parseWholeNumber(watchDebounceDraft);
+		const probeBatchLimit = parseWholeNumber(probeBatchLimitDraft);
+
+		if (librarySyncMode === 'daily') {
+			if (syncIntervalMins === null || syncIntervalMins < 15) {
+				scanningSettingsError = 'Enter a scan interval of at least 15 minutes.';
+				return;
+			}
+		}
+		if (librarySyncMode === 'watch') {
+			if (watchDebounceSecs === null || watchDebounceSecs < 5 || watchDebounceSecs > 300) {
+				scanningSettingsError = 'Enter a folder watch delay between 5 seconds and 5 minutes.';
+				return;
+			}
+		}
+		if (probeBatchLimit === null || probeBatchLimit <= 0) {
+			scanningSettingsError = 'Enter a media check batch size greater than 0.';
+			return;
+		}
+
+		isSavingScanningAutomation = true;
+		try {
+			const updated = await updateSettings(
+				{
+					librarySyncMode,
+					syncIntervalMins: syncIntervalMins ?? 1440,
+					watchDebounceSecs: watchDebounceSecs ?? 30,
+					probeBatchLimit
+				},
+				apiClient
+			);
+			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
+			librarySyncModeDraft = normalizeLibrarySyncMode(updated.config?.librarySyncMode);
+			syncIntervalDraft = stringDraft(updated.config?.syncIntervalMins, 1440);
+			watchDebounceDraft = stringDraft(updated.config?.watchDebounceSecs, 30);
+			probeBatchLimitDraft = stringDraft(updated.config?.probeBatchLimit, 50);
+			actionMessage = updated.restartRequired
+				? 'Saved. Restart Lorivo for this change to fully take effect.'
+				: 'Scanning settings saved.';
+		} catch (error) {
+			scanningSettingsError = formatLoadError(error);
+		} finally {
+			isSavingScanningAutomation = false;
 		}
 	}
 
@@ -608,6 +702,71 @@
 		});
 	}
 
+	function normalizeLibrarySyncMode(value: unknown): LibrarySyncModeOption['id'] {
+		const normalized = asText(value).toLowerCase();
+		if (normalized === 'manual' || normalized === 'watch') return normalized;
+		return 'daily';
+	}
+
+	function scanningModeDetails(value: unknown): LibrarySyncModeOption {
+		const mode = normalizeLibrarySyncMode(value);
+		return librarySyncModeOptions.find((item) => item.id === mode) || librarySyncModeOptions[1];
+	}
+
+	function scanningModeSummary(): string {
+		return scanningModeDetails(settings.config?.librarySyncMode).label;
+	}
+
+	function scanningModeMeta(): string {
+		const mode = normalizeLibrarySyncMode(settings.config?.librarySyncMode);
+		if (mode === 'watch') {
+			return `Watches folders and waits ${friendlySeconds(settings.config?.watchDebounceSecs, 30)} before scanning.`;
+		}
+		if (mode === 'manual') {
+			return activeQueueCount > 0
+				? `${asCount(activeQueueCount)} active scan tasks right now.`
+				: 'Scans start only when you ask Lorivo to run them.';
+		}
+		return `Checks libraries every ${friendlyMinutes(settings.config?.syncIntervalMins, 1440)}.`;
+	}
+
+	function stringDraft(value: unknown, fallback: number): string {
+		const parsed = parseWholeNumber(value);
+		if (parsed === null || parsed <= 0) return String(fallback);
+		return String(parsed);
+	}
+
+	function parseWholeNumber(value: unknown): number | null {
+		const text = asText(value);
+		if (!text) return null;
+		if (!/^\d+$/.test(text)) return null;
+		const parsed = Number(text);
+		if (!Number.isFinite(parsed)) return null;
+		return Math.trunc(parsed);
+	}
+
+	function friendlyMinutes(value: unknown, fallback: number): string {
+		const minutes = parseWholeNumber(value) ?? fallback;
+		if (minutes % 1440 === 0) {
+			const days = minutes / 1440;
+			return days === 1 ? '24 hours' : `${days} days`;
+		}
+		if (minutes % 60 === 0) {
+			const hours = minutes / 60;
+			return hours === 1 ? '1 hour' : `${hours} hours`;
+		}
+		return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+	}
+
+	function friendlySeconds(value: unknown, fallback: number): string {
+		const seconds = parseWholeNumber(value) ?? fallback;
+		if (seconds % 60 === 0) {
+			const minutes = seconds / 60;
+			return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+		}
+		return seconds === 1 ? '1 second' : `${seconds} seconds`;
+	}
+
 	function normalizePlaybackPolicy(value: unknown): PlaybackPolicyOption['id'] {
 		const normalized = asText(value).toLowerCase();
 		if (normalized === 'light' || normalized === 'full' || normalized === 'cinema') return normalized;
@@ -694,7 +853,7 @@
 		return {
 			dashboard: 'Check whether your Lorivo library is ready and jump to the next useful setting.',
 			library: 'Media folders, setup status, and the current Library Setup flow.',
-			scanning: 'Run library scans and review current scan activity.',
+			scanning: 'Choose how Lorivo checks libraries and review current scan activity.',
 			metadata: 'Refresh movie and TV information and review items that need attention.',
 			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
 			access: 'See who is signed in and manage the current session.',
@@ -770,8 +929,8 @@
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Scanning</span>
-						<strong>{activeQueueCount > 0 ? 'Running' : 'Idle'}</strong>
-						<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'no scans running'}</small>
+						<strong>{scanningModeSummary()}</strong>
+						<small>{scanningModeMeta()}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="secondary" size="sm" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
 								{isScanningMovies ? 'Scanning...' : 'Scan Movies'}
@@ -911,7 +1070,7 @@
 
 			{:else if activeSection === 'scanning'}
 			<section id="scanning" class="settings-section" data-testid="settings-section-content" data-section="scanning">
-				<SettingsPanel title="Scanning" description="Start real library scans and review current scan activity." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Scanning" description="Start real library scans, choose how Lorivo checks libraries, and review current scan activity." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
 					{#snippet actions()}
 						<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
 							{isScanningMovies ? 'Scanning Movies...' : 'Scan Movies'}
@@ -920,6 +1079,121 @@
 							{isScanningTV ? 'Scanning TV...' : 'Scan TV'}
 						</LorivoButton>
 					{/snippet}
+					<div class="stat-grid stat-grid--compact">
+						<LorivoStat
+							label="Library Scan Mode"
+							value={scanningModeDetails(settings.config?.librarySyncMode).label}
+							meta={scanningModeDetails(settings.config?.librarySyncMode).description}
+						/>
+						{#if normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'watch'}
+							<LorivoStat
+								label="Folder Watch Delay"
+								value={friendlySeconds(settings.config?.watchDebounceSecs, 30)}
+								meta="How long Lorivo waits after a folder change before starting a scan."
+							/>
+						{:else}
+							<LorivoStat
+								label="Scan Interval"
+								value={normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'manual' ? 'Manual' : friendlyMinutes(settings.config?.syncIntervalMins, 1440)}
+								meta={normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'manual' ? 'Scans start only when you ask Lorivo to run them.' : 'Time between scheduled library scans.'}
+							/>
+						{/if}
+						<LorivoStat
+							label="Media check batch size"
+							value={asCount(settings.config?.probeBatchLimit || 50)}
+							meta="Items Lorivo checks at a time after a library scan."
+						/>
+					</div>
+					{#if canManageSettings}
+						<form class="scanning-automation-form" data-testid="scanning-automation-form" onsubmit={(event) => { event.preventDefault(); void saveScanningAutomation(); }}>
+							<div class="settings-field">
+								<span>Library scan mode</span>
+								<small>Choose how Lorivo checks your libraries for new or changed media.</small>
+							</div>
+							<div class="playback-policy-options">
+								{#each librarySyncModeOptions as option (option.id)}
+									<label class="playback-policy-option">
+										<input
+											type="radio"
+											name="librarySyncMode"
+											value={option.id}
+											checked={librarySyncModeDraft === option.id}
+											onchange={() => {
+												librarySyncModeDraft = option.id;
+												scanningSettingsError = '';
+											}}
+										/>
+										<div>
+											<strong>{option.label}</strong>
+											<span>{option.description}</span>
+										</div>
+									</label>
+								{/each}
+							</div>
+							{#if librarySyncModeDraft === 'daily'}
+								<label class="settings-field">
+									<span>Scan interval</span>
+									<input
+										bind:value={syncIntervalDraft}
+										type="number"
+										min="15"
+										step="1"
+										inputmode="numeric"
+										placeholder="1440"
+										oninput={() => (scanningSettingsError = '')}
+									/>
+									<small>How often Lorivo runs a scheduled library scan. Minimum 15 minutes.</small>
+								</label>
+							{:else if librarySyncModeDraft === 'watch'}
+								<label class="settings-field">
+									<span>Folder watch delay</span>
+									<input
+										bind:value={watchDebounceDraft}
+										type="number"
+										min="5"
+										max="300"
+										step="1"
+										inputmode="numeric"
+										placeholder="30"
+										oninput={() => (scanningSettingsError = '')}
+									/>
+									<small>How long Lorivo waits after a folder change before starting a scan.</small>
+								</label>
+							{/if}
+							<details class="settings-advanced" data-testid="scanning-advanced">
+								<summary>Advanced scanning</summary>
+								<div class="settings-advanced__content">
+									<label class="settings-field">
+										<span>Media check batch size</span>
+										<input
+											bind:value={probeBatchLimitDraft}
+											type="number"
+											min="1"
+											step="1"
+											inputmode="numeric"
+											placeholder="50"
+											oninput={() => (scanningSettingsError = '')}
+										/>
+										<small>How many items Lorivo checks in one batch during library scanning.</small>
+									</label>
+								</div>
+							</details>
+							<div class="status-actions">
+								<LorivoButton
+									variant="primary"
+									disabled={isSavingScanningAutomation || !hasScanningAutomationChanges}
+									onclick={saveScanningAutomation}
+								>
+									{isSavingScanningAutomation ? 'Saving...' : 'Save Scanning Settings'}
+								</LorivoButton>
+							</div>
+							{#if scanningSettingsError}
+								<p class="settings-error">{scanningSettingsError}</p>
+							{/if}
+						</form>
+					{:else if !authDisabled}
+						<p class="settings-note">Sign in with the owner account to change scanning settings.</p>
+					{/if}
 					<ActivityListShell title="Recent Scans">
 						<LorivoActionList
 							items={scanItems}
@@ -1313,12 +1587,33 @@
 		align-items: center;
 	}
 
+	.scanning-automation-form,
 	.playback-policy-form {
 		display: grid;
 		gap: 12px;
 		margin-top: 14px;
 		padding-top: 14px;
 		border-top: 1px solid var(--lorivo-color-border-soft);
+	}
+
+	.settings-advanced {
+		padding: 12px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.settings-advanced summary {
+		cursor: pointer;
+		color: var(--lorivo-color-text);
+		font-size: 0.9rem;
+		font-weight: 760;
+	}
+
+	.settings-advanced__content {
+		display: grid;
+		gap: 10px;
+		margin-top: 12px;
 	}
 
 	.playback-policy-options {
@@ -1394,6 +1689,7 @@
 		color: var(--lorivo-color-text);
 		font: inherit;
 		padding: 0 12px;
+		width: 100%;
 	}
 
 	.settings-field small,
