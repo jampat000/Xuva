@@ -4,7 +4,9 @@
 	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
 	import { ApiClientError } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
+	import { getSettings, updateSettings } from '$lib/api/operator';
 	import { browseFolder, saveLibrary, startLibraryScan, type FolderBrowseResponse } from '$lib/api/setup';
+	import { lorivoTitle, normalizeServerName } from '$lib/server-name';
 
 	let isLoading = $state(true);
 	let isSubmitting = $state(false);
@@ -23,6 +25,7 @@
 	let libraryName = $state('');
 	let libraryKind = $state<'movies' | 'tv'>('movies');
 	let libraryPath = $state('');
+	let serverName = $state('Lorivo');
 	let runScanAfterSave = $state(true);
 
 	const hasLibraries = $derived.by(() => libraries.length > 0);
@@ -52,13 +55,14 @@
 				if (isApiStatus(error, 401)) return null;
 				throw error;
 			});
-			if (!session?.user) {
+			if (!session?.user && !session?.authDisabled) {
 				authRequired = true;
 				return;
 			}
-			user = session.user;
-			const librariesPayload = await getLibraries();
+			user = session?.user || null;
+			const [librariesPayload, settingsPayload] = await Promise.all([getLibraries(), getSettings()]);
 			libraries = librariesPayload.libraries || [];
+			serverName = displayServerName(settingsPayload.config?.serverName);
 		} catch (error) {
 			loadError = formatError(error, 'Library setup could not load.');
 		} finally {
@@ -85,6 +89,11 @@
 
 		const nameValue = asText(libraryName);
 		const pathValue = asText(libraryPath);
+		const serverNameValue = asText(serverName);
+		if (!serverNameValue) {
+			actionError = 'Enter a server name.';
+			return;
+		}
 		if (!nameValue) {
 			actionError = 'Enter a library name.';
 			return;
@@ -96,6 +105,10 @@
 
 		isSubmitting = true;
 		try {
+			const settingsPayload = await updateSettings({ serverName: serverNameValue });
+			serverName = displayServerName(settingsPayload.config?.serverName);
+			announceServerName();
+			updateDocumentTitle();
 			const created = await saveLibrary({
 				name: nameValue,
 				kind: libraryKind,
@@ -132,6 +145,20 @@
 		return String(value ?? '').trim();
 	}
 
+	function displayServerName(value: unknown): string {
+		return normalizeServerName(value);
+	}
+
+	function updateDocumentTitle(): void {
+		if (typeof document === 'undefined') return;
+		document.title = lorivoTitle(serverName);
+	}
+
+	function announceServerName(): void {
+		if (typeof window === 'undefined') return;
+		window.dispatchEvent(new CustomEvent('lorivo:server-name-changed', { detail: { serverName } }));
+	}
+
 	function isApiStatus(error: unknown, expectedStatus: number): boolean {
 		if (error instanceof ApiClientError) return error.status === expectedStatus;
 		if (typeof error !== 'object' || !error) return false;
@@ -144,6 +171,10 @@
 		return fallback;
 	}
 </script>
+
+<svelte:head>
+	<title>{lorivoTitle(serverName)}</title>
+</svelte:head>
 
 <ServerShell active="library" bind:searchValue {userInitials} userDisplayName={userDisplayName}>
 	<div class="setup-page">
@@ -166,6 +197,18 @@
 			<LorivoPanel title="Library Setup" subtitle="Add a Movies or TV folder to start building your Lorivo home.">
 				<form class="setup-form" onsubmit={(event) => { event.preventDefault(); void createLibrary(); }}>
 					<label class="field">
+						<span>Server name</span>
+						<input
+							bind:value={serverName}
+							maxlength="60"
+							required
+							placeholder="Lorivo"
+							aria-describedby="server-name-help"
+						/>
+						<small id="server-name-help">This name helps identify this Lorivo library in your browser and settings.</small>
+					</label>
+
+					<label class="field">
 						<span>Library name</span>
 						<input bind:value={libraryName} placeholder={libraryKind === 'movies' ? 'Movies' : 'TV Shows'} />
 					</label>
@@ -187,7 +230,7 @@
 						<LorivoButton variant="secondary" type="button" onclick={() => openBrowser()}>
 							{isBrowsing ? 'Loading folders...' : 'Browse folders'}
 						</LorivoButton>
-						<LorivoButton variant="primary" disabled={isSubmitting}>
+						<LorivoButton variant="primary" disabled={isSubmitting} onclick={createLibrary}>
 							{isSubmitting ? 'Saving library...' : 'Save library'}
 						</LorivoButton>
 					</div>
@@ -276,6 +319,12 @@
 		font-size: 0.8rem;
 		font-weight: 600;
 		color: var(--lorivo-color-text-muted);
+	}
+
+	.field small {
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.78rem;
+		line-height: 1.35;
 	}
 
 	.field input,

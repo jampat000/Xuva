@@ -13,6 +13,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	const source = read('src/routes/settings/+page.svelte');
 
 	assert.match(source, /getSettings\(apiClient\)/);
+	assert.match(source, /updateSettings\(\{\s*serverName:\s*nextName\s*\},\s*apiClient\)/);
 	assert.match(source, /getPerformanceSettings\(apiClient\)/);
 	assert.match(source, /getSystemStatus\(apiClient\)/);
 	assert.match(source, /getCatalogSummary\(apiClient\)/);
@@ -35,6 +36,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /About/);
 	assert.match(source, /Dashboard/);
 	assert.match(source, /Library Setup/);
+	assert.match(source, /Server name/);
+	assert.match(source, /This name helps identify this Lorivo library in your browser and settings\./);
 	assert.match(source, /Sign Out/);
 	assert.match(source, /Playback preference editing is not available in this build\./);
 	assert.match(source, /<ServerShell/);
@@ -44,7 +47,17 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.doesNotMatch(source, /<SettingsPanel title="Server"/);
 	assert.doesNotMatch(source, /Provider setup/);
 	assert.doesNotMatch(source, /Transcode Workers/);
-	assert.doesNotMatch(source, /send<.*\/api\/settings/s);
+	assert.doesNotMatch(source, /hostname/i);
+});
+
+test('setup route asks for a user-facing server name', () => {
+	const source = read('src/routes/setup/+page.svelte');
+	assert.match(source, /Server name/);
+	assert.match(source, /This name helps identify this Lorivo library in your browser and settings\./);
+	assert.match(source, /updateSettings\(\{\s*serverName:\s*serverNameValue\s*\}/);
+	assert.match(source, /serverName = \$state\('Lorivo'\)/);
+	assert.match(source, /!session\?\.user && !session\?\.authDisabled/);
+	assert.doesNotMatch(source, /hostname/i);
 });
 
 test('server shell keeps settings mode section navigation', () => {

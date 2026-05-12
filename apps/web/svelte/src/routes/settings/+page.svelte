@@ -15,6 +15,7 @@
 		getSettings,
 		getSystemStatus,
 		getWork,
+		updateSettings,
 		type CatalogHealthResponse,
 		type CatalogSummaryResponse,
 		type DownloadJobItem,
@@ -27,6 +28,7 @@
 		type WorkQueueItem
 	} from '$lib/api/operator';
 	import { createEventStream } from '$lib/events/stream';
+	import { lorivoTitle, normalizeServerName } from '$lib/server-name';
 	import {
 		ActivityListShell,
 		ServerShell,
@@ -53,9 +55,11 @@
 	let isRefreshingMovies = $state(false);
 	let isRefreshingTV = $state(false);
 	let isSigningOut = $state(false);
+	let isSavingServerName = $state(false);
 	let loadError = $state('');
 	let searchValue = $state('');
 	let actionMessage = $state('');
+	let serverNameError = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let activeSection = $state<SettingsSection>('dashboard');
@@ -73,12 +77,14 @@
 	let downloads = $state<DownloadJobItem[]>([]);
 	let sessions = $state<SessionItem[]>([]);
 	let buildInfo = $state<BuildInfo | null>(null);
+	let serverNameDraft = $state('Lorivo');
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
 	const userRoleLabel = $derived.by(() => accountTypeLabel(user?.role));
 	const userInitials = $derived.by(() => initialsForName(userDisplayName));
+	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
 	const activeQueueCount = $derived.by(
 		() => [...scans, ...probes, ...work, ...downloads].filter((item) => isActiveStatus(item.status)).length
 	);
@@ -222,6 +228,7 @@
 			health = healthPayload || {};
 			system = systemPayload || {};
 			settings = settingsPayload || {};
+			serverNameDraft = displayServerName(settingsPayload.config?.serverName);
 			performance = performancePayload || {};
 			scans = scansPayload.scans || [];
 			probes = probesPayload.probes || [];
@@ -313,6 +320,33 @@
 			actionMessage = formatLoadError(error);
 		} finally {
 			isSigningOut = false;
+		}
+	}
+
+	async function saveServerName(): Promise<void> {
+		if (isSavingServerName) return;
+		const nextName = asText(serverNameDraft);
+		serverNameError = '';
+		actionMessage = '';
+		if (!nextName) {
+			serverNameError = 'Enter a server name.';
+			return;
+		}
+		if ([...nextName].length > 60) {
+			serverNameError = 'Server name must be 60 characters or fewer.';
+			return;
+		}
+		isSavingServerName = true;
+		try {
+			const updated = await updateSettings({ serverName: nextName }, apiClient);
+			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
+			serverNameDraft = displayServerName(settings.config?.serverName);
+			announceServerName();
+			actionMessage = 'Server name saved.';
+		} catch (error) {
+			serverNameError = formatLoadError(error);
+		} finally {
+			isSavingServerName = false;
 		}
 	}
 
@@ -447,6 +481,19 @@
 		return asText(value).replace(/_/g, ' ');
 	}
 
+	function displayServerName(value: unknown): string {
+		return normalizeServerName(value);
+	}
+
+	function titleForServerName(value: unknown): string {
+		return lorivoTitle(value);
+	}
+
+	function announceServerName(): void {
+		if (typeof window === 'undefined') return;
+		window.dispatchEvent(new CustomEvent('lorivo:server-name-changed', { detail: { serverName: serverDisplayName } }));
+	}
+
 	function randomId(prefix: string): string {
 		return `${prefix.toLowerCase()}-${Math.random().toString(36).slice(2, 8)}`;
 	}
@@ -505,7 +552,7 @@
 </script>
 
 <svelte:head>
-	<title>Settings - Lorivo</title>
+	<title>{titleForServerName(settings.config?.serverName)}</title>
 </svelte:head>
 
 <ServerShell
@@ -529,6 +576,7 @@
 			<header class="settings-head">
 				<div>
 					<p class="settings-head__eyebrow">Settings</p>
+					<strong class="settings-head__server-name" data-testid="settings-server-name">{serverDisplayName}</strong>
 					<h1>{selectedTitle}</h1>
 					<p>{selectedDescription}</p>
 				</div>
@@ -543,6 +591,11 @@
 
 			{#if activeSection === 'dashboard'}
 				<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
+					<a class="settings-dashboard-card settings-dashboard-card--identity" href="#about">
+						<span>Server name</span>
+						<strong>{serverDisplayName}</strong>
+						<small>Lorivo Media Server</small>
+					</a>
 					<a class="settings-dashboard-card" href="#library">
 						<span>Library</span>
 						<strong>{asCount(libraryRows.length)}</strong>
@@ -724,6 +777,27 @@
 						<LorivoStat label="App Health" value={capitalize(appStatus)} meta="Small readiness signal based on local activity and system load." tone={appStatus === 'warning' || appStatus === 'critical' ? 'warn' : 'good'} />
 						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
 					</div>
+					<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
+						<label class="settings-field">
+							<span>Server name</span>
+							<input
+								bind:value={serverNameDraft}
+								maxlength="60"
+								required
+								placeholder="Lorivo"
+								aria-describedby="settings-server-name-help"
+							/>
+							<small id="settings-server-name-help">This name helps identify this Lorivo library in your browser and settings.</small>
+						</label>
+						<div class="status-actions">
+							<LorivoButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
+								{isSavingServerName ? 'Saving...' : 'Save Server Name'}
+							</LorivoButton>
+						</div>
+						{#if serverNameError}
+							<p class="settings-error">{serverNameError}</p>
+						{/if}
+					</form>
 				</SettingsPanel>
 			</section>
 			{/if}
@@ -764,6 +838,16 @@
 		font-weight: 800;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
+	}
+
+	.settings-head__server-name {
+		display: block;
+		margin-bottom: 4px;
+		color: var(--lorivo-color-text);
+		font-size: clamp(1.55rem, 1.2vw + 1rem, 2rem);
+		font-weight: 820;
+		letter-spacing: -0.02em;
+		line-height: 1.08;
 	}
 
 	.settings-head p {
@@ -843,6 +927,10 @@
 		line-height: 1.35;
 	}
 
+	.settings-dashboard-card--identity {
+		grid-column: span 2;
+	}
+
 	.settings-section {
 		scroll-margin-top: 18px;
 	}
@@ -887,6 +975,50 @@
 		}
 	}
 
+	.server-name-form {
+		display: grid;
+		gap: 12px;
+		margin-top: 14px;
+		padding-top: 14px;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+	}
+
+	.settings-field {
+		display: grid;
+		gap: 6px;
+	}
+
+	.settings-field span {
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.8rem;
+		font-weight: 700;
+	}
+
+	.settings-field input {
+		min-height: 42px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: var(--lorivo-color-surface-elevated);
+		color: var(--lorivo-color-text);
+		font: inherit;
+		padding: 0 12px;
+	}
+
+	.settings-field small,
+	.settings-error {
+		margin: 0;
+		font-size: 0.82rem;
+		line-height: 1.38;
+	}
+
+	.settings-field small {
+		color: var(--lorivo-color-text-soft);
+	}
+
+	.settings-error {
+		color: var(--lorivo-color-danger, #ff9f9f);
+	}
+
 	@media (max-width: 820px) {
 		.settings-dashboard {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -910,6 +1042,10 @@
 	@media (max-width: 560px) {
 		.settings-dashboard {
 			grid-template-columns: 1fr;
+		}
+
+		.settings-dashboard-card--identity {
+			grid-column: span 1;
 		}
 
 		.stat-grid,

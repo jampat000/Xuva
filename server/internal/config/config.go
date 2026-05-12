@@ -2,11 +2,16 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
+
+const legacyDefaultServerName = "My Server"
 
 type Config struct {
 	ServerName        string   `json:"serverName,omitempty"`
@@ -44,7 +49,7 @@ type Config struct {
 func FromEnv() Config {
 	dataDir := envString("LORIVO_DATA_DIR", "data")
 	cfg := Config{
-		ServerName:        envString("LORIVO_SERVER_NAME", "My Server"),
+		ServerName:        envString("LORIVO_SERVER_NAME", "Lorivo"),
 		HTTPAddr:          envString("LORIVO_HTTP_ADDR", "127.0.0.1:8097"),
 		DataDir:           dataDir,
 		TranscodeDir:      envString("LORIVO_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
@@ -242,10 +247,29 @@ func defaultPlaybackPolicy(value string) string {
 }
 
 func defaultServerName(value string) string {
-	if strings.TrimSpace(value) != "" {
-		return strings.TrimSpace(value)
+	if strings.TrimSpace(value) == legacyDefaultServerName {
+		return "Lorivo"
 	}
-	return "My Server"
+	if normalized, err := NormalizeServerName(value); err == nil {
+		return normalized
+	}
+	return "Lorivo"
+}
+
+func NormalizeServerName(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", errors.New("server name is required")
+	}
+	if utf8.RuneCountInString(trimmed) > 60 {
+		return "", errors.New("server name must be 60 characters or fewer")
+	}
+	for _, char := range trimmed {
+		if unicode.IsControl(char) {
+			return "", errors.New("server name cannot include control characters")
+		}
+	}
+	return trimmed, nil
 }
 
 func defaultInt(value int, fallback int) int {

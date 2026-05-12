@@ -2589,11 +2589,38 @@ func settingsFolderBrowseHandler(deps Deps) http.HandlerFunc {
 func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request config.Config
-		if !decodeJSON(w, r, &request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json body")
 			return
 		}
+		if len(strings.TrimSpace(string(raw))) > 0 {
+			if err := json.Unmarshal(raw, &request); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid json body")
+				return
+			}
+		}
+		fields := map[string]json.RawMessage{}
+		if len(strings.TrimSpace(string(raw))) > 0 {
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid json body")
+				return
+			}
+		}
 		updated := currentConfig(deps)
-		mergeString(&updated.ServerName, request.ServerName)
+		if value, ok := fields["serverName"]; ok {
+			var serverName string
+			if err := json.Unmarshal(value, &serverName); err != nil {
+				writeError(w, http.StatusBadRequest, "server name must be text")
+				return
+			}
+			normalized, err := config.NormalizeServerName(serverName)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			updated.ServerName = normalized
+		}
 		mergeString(&updated.HTTPAddr, request.HTTPAddr)
 		mergeString(&updated.DataDir, request.DataDir)
 		mergeString(&updated.TranscodeDir, request.TranscodeDir)
@@ -3012,7 +3039,7 @@ func currentConfig(deps Deps) config.Config {
 
 func settingsPayload(cfg config.Config) map[string]any {
 	return map[string]any{
-		"serverName":        cfg.ServerName,
+		"serverName":        configDisplayName(cfg.ServerName),
 		"httpAddr":          cfg.HTTPAddr,
 		"dataDir":           cfg.DataDir,
 		"transcodeDir":      cfg.TranscodeDir,
@@ -3050,6 +3077,17 @@ func settingsPayload(cfg config.Config) map[string]any {
 			},
 		},
 	}
+}
+
+func configDisplayName(value string) string {
+	if strings.TrimSpace(value) == "My Server" {
+		return "Lorivo"
+	}
+	normalized, err := config.NormalizeServerName(value)
+	if err != nil {
+		return "Lorivo"
+	}
+	return normalized
 }
 
 func runtimePaths(cfg config.Config) map[string]string {
