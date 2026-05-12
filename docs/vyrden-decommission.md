@@ -99,7 +99,7 @@ Reason:
 ## Final deletion criteria
 
 - [x] all core owner settings restored
-- [ ] advanced/operator items either restored, rejected, or tracked as issues
+- [x] advanced/operator items either restored, rejected, or tracked as issues
 - [x] LAN discovery implemented and device registry tracked as future work
 - [ ] no required code/assets/docs remain only in Vyrden
 - [x] final Lorivo validation passed
@@ -111,6 +111,8 @@ Reason:
 Archive Vyrden first. Do not delete it yet.
 
 That is the safer sequence because Lorivo has reached practical owner-settings parity, but the remaining advanced and future items should be closed out intentionally rather than by losing the old reference repo too early.
+
+See also: [Advanced owner tools audit](advanced-owner-tools-audit.md)
 
 ## Optional issue drafts
 
