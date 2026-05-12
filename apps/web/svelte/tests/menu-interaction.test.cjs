@@ -58,17 +58,17 @@ async function launchDevServer() {
 function playbackPolicyInfo(id) {
 	const policy = id === 'light' || id === 'full' || id === 'cinema' ? id : 'original_only';
 	const labels = {
-		original_only: 'Original Only',
-		light: 'Light Compatibility',
-		full: 'Full Compatibility',
-		cinema: 'Cinema Server'
+		original_only: 'Original files only',
+		light: 'Direct play with audio fixes',
+		full: 'Compatibility preferred',
+		cinema: 'Broadest device support'
 	};
 	const descriptions = {
 		original_only:
-			'Lorivo plays the original file only. If this device cannot play it as-is, Lorivo shows fallback options instead of converting automatically.',
-		light: 'Lorivo may repackage while playing or convert audio. Video stays untouched, so quality is preserved.',
-		full: 'Lorivo may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.',
-		cinema: 'Lorivo allows heavier live conversion and future automated optimization controls for power users.'
+			'Keep playback as close to the original file as possible. If a device needs help, Lorivo offers fallback choices instead of converting automatically.',
+		light: 'Prefer the original video. Lorivo can repackage playback or convert audio when that is enough.',
+		full: 'Allow temporary video conversion while playing when a device needs more help.',
+		cinema: 'Allow heavier live compatibility work for the widest range of devices.'
 	};
 	return { id: policy, label: labels[policy], description: descriptions[policy] };
 }
@@ -759,6 +759,8 @@ async function assertLibrarySection(page, state) {
 
 async function assertScanningSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
+	assert.match(await selectedSection.innerText(), /Manual scans/);
+	assert.match(await selectedSection.innerText(), /Automation/);
 	assert.match(await selectedSection.innerText(), /Library scan mode/);
 	assert.match(await selectedSection.innerText(), /Scheduled/);
 	assert.match(await selectedSection.innerText(), /Scan interval/);
@@ -835,9 +837,9 @@ async function assertPlaybackSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
 	state.restartRequired = true;
 	assert.equal(await page.getByTestId('playback-policy-form').count(), 1);
-	assert.match(await selectedSection.innerText(), /Original Only/);
+	assert.match(await selectedSection.innerText(), /Original files only/);
 	await selectedSection.locator('input[value="full"]').check();
-	await selectedSection.getByRole('button', { name: 'Save Playback Setting', exact: true }).click();
+	await selectedSection.getByRole('button', { name: 'Save Playback Policy', exact: true }).click();
 	await waitForCondition(
 		() => state.playbackUpdates.some((item) => item.playbackPolicy === 'full'),
 		'expected playback policy update to be recorded'
@@ -851,7 +853,7 @@ async function assertPlaybackSection(page, state) {
 
 	state.restartRequired = false;
 	await selectedSection.locator('input[value="cinema"]').check();
-	await selectedSection.getByRole('button', { name: 'Save Playback Setting', exact: true }).click();
+	await selectedSection.getByRole('button', { name: 'Save Playback Policy', exact: true }).click();
 	await waitForCondition(
 		() => state.playbackUpdates.some((item) => item.playbackPolicy === 'cinema'),
 		'expected second playback policy update to be recorded'
@@ -932,7 +934,8 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
 	const setupServerName = page.locator('input[placeholder="Lorivo"]');
 	assert.equal(await setupServerName.count(), 1);
-	assert.match(await page.locator('body').innerText(), /This is the name devices on your home network will use to identify this Lorivo server\./);
+	assert.match(await page.locator('body').innerText(), /Lorivo uses this name in the browser title and shares it with local clients\./);
+	assert.match(await page.locator('body').innerText(), /Local network discovery is not available in this build yet\./);
 	await setupServerName.fill('   ');
 	await page.getByRole('button', { name: 'Save library', exact: true }).click();
 	assert.match(await page.locator('body').innerText(), /Enter a server name\./);

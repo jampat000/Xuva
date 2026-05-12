@@ -53,7 +53,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Folder/);
 	assert.match(source, /Scan/);
 	assert.match(source, /Remove/);
-	assert.match(source, /Save Playback Setting/);
+	assert.match(source, /Save Playback Policy/);
 	assert.match(source, /Sign Out|Sign In/);
 	assert.match(source, /Create Owner Account/);
 	assert.match(source, /Open Access/);
@@ -61,7 +61,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Development access is active\. User management will be enabled before production\./);
 	assert.match(source, /User management is not available yet\./);
 	assert.match(source, /Device pairing will appear here when client pairing is implemented\./);
-	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
+	assert.match(source, /Lorivo uses this name in the browser title and shares it with local clients\./);
+	assert.match(source, /Local network discovery is not available in this build yet\./);
 	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Playback setting saved\. Restart Lorivo to apply it\./);
 	assert.match(source, /Saved\. Restart Lorivo for this change to fully take effect\./);
@@ -69,6 +70,11 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /This server still needs its first owner account\./);
 	assert.match(source, /<ServerShell/);
 	assert.match(source, /Needs attention|everything looks ready/i);
+	assert.match(source, /Manual scans/);
+	assert.match(source, /Automation/);
+	assert.match(source, /Advanced scanning/);
+	assert.match(source, /Title and artwork lookup/);
+	assert.match(source, /Save Playback Policy/);
 	assert.doesNotMatch(source, /legacy/i);
 	assert.doesNotMatch(source, /Admin Dashboard/);
 	assert.doesNotMatch(source, /Admin Controls/);
@@ -88,7 +94,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 test('setup route asks for a user-facing server name', () => {
 	const source = read('src/routes/setup/+page.svelte');
 	assert.match(source, /Server name/);
-	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
+	assert.match(source, /Lorivo uses this name in the browser title and shares it with local clients\./);
+	assert.match(source, /Local network discovery is not available in this build yet\./);
 	assert.match(source, /maxlength="50"/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*serverNameValue\s*\}/);
 	assert.match(source, /serverName = \$state\('Lorivo'\)/);

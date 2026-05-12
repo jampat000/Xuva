@@ -42,7 +42,6 @@
 		ServerShell,
 		LorivoActionList,
 		LorivoButton,
-		LorivoEmptyState,
 		LorivoPanel,
 		LorivoStat
 	} from '$lib/components';
@@ -117,6 +116,9 @@
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+	const serverIdentityHelpText =
+		'Lorivo uses this name in the browser title and shares it with local clients. Local network discovery is not available in this build yet.';
+
 	const librarySyncModeOptions: LibrarySyncModeOption[] = [
 		{
 			id: 'manual',
@@ -138,23 +140,23 @@
 	const playbackPolicyOptions: PlaybackPolicyOption[] = [
 		{
 			id: 'original_only',
-			label: 'Original Only',
-			description: 'Play original files only. If a device needs help, Lorivo shows fallback options instead of converting automatically.'
+			label: 'Original files only',
+			description: 'Keep playback as close to the original file as possible. If a device needs help, Lorivo offers fallback choices instead of converting automatically.'
 		},
 		{
 			id: 'light',
-			label: 'Light Compatibility',
-			description: 'Allow repackaging while playing and audio conversion. Video stays untouched.'
+			label: 'Direct play with audio fixes',
+			description: 'Prefer the original video. Lorivo can repackage playback or convert audio when that is enough.'
 		},
 		{
 			id: 'full',
-			label: 'Full Compatibility',
-			description: 'Allow temporary video conversion while playing when a device needs it.'
+			label: 'Compatibility preferred',
+			description: 'Allow temporary video conversion while playing when a device needs more help.'
 		},
 		{
 			id: 'cinema',
-			label: 'Cinema Server',
-			description: 'Allow heavier live compatibility work for the broadest device support.'
+			label: 'Broadest device support',
+			description: 'Allow heavier live compatibility work for the widest range of devices.'
 		}
 	];
 
@@ -215,7 +217,7 @@
 		return 'Signed out';
 	});
 	const accessSessionMeta = $derived.by(() => {
-		if (devOwnerActive) return devAccessMessage;
+		if (devOwnerActive) return 'Owner-only settings are unlocked on this device.';
 		if (user && sessionExpiresAt) return `Current session expires ${formatDateTime(sessionExpiresAt)}.`;
 		if (user) return 'This browser has an active Lorivo session.';
 		if (authDisabled) return 'This server is running without account sign-in.';
@@ -297,6 +299,20 @@
 		}
 		return output;
 	});
+	const primaryWarningItem = $derived.by(() => warningItems[0] || null);
+	const scanningSaveMessage = $derived.by(() =>
+		actionMessage === 'Scanning settings saved.' ||
+		actionMessage === 'Saved. Restart Lorivo for this change to fully take effect.'
+			? actionMessage
+			: ''
+	);
+	const playbackSaveMessage = $derived.by(() =>
+		actionMessage === 'Playback setting saved.' ||
+		actionMessage === 'Playback setting saved. Restart Lorivo to apply it.'
+			? actionMessage
+			: ''
+	);
+	const serverNameSaveMessage = $derived.by(() => (actionMessage === 'Server name saved.' ? actionMessage : ''));
 	const selectedTitle = $derived.by(() => {
 		return sectionTitle(activeSection);
 	});
@@ -677,6 +693,18 @@
 		return fallback;
 	}
 
+	function warningItemHref(itemID: string): string {
+		if (itemID === 'warn-library') return '#library';
+		if (itemID === 'warn-unsupported') return '#playback';
+		return '#metadata';
+	}
+
+	function warningItemActionLabel(itemID: string): string {
+		if (itemID === 'warn-library') return 'Open Library';
+		if (itemID === 'warn-unsupported') return 'Open Playback';
+		return 'Open Metadata';
+	}
+
 	function isActiveStatus(value: unknown): boolean {
 		const normalized = asText(value).toLowerCase();
 		return (
@@ -986,15 +1014,15 @@
 					<article class="settings-dashboard-card settings-dashboard-card--identity">
 						<span>Server name</span>
 						<strong>{serverDisplayName}</strong>
-						<small>This is the name devices on your home network will use to identify this Lorivo server.</small>
+						<small>{serverIdentityHelpText}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="secondary" size="sm" href="#about">Edit in About</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Library</span>
-						<strong>{asCount(libraryCards.length)}</strong>
-						<small>{libraryCards.length > 0 ? 'folders configured' : 'setup needed'}</small>
+						<strong>{libraryCards.length > 0 ? `${asCount(libraryCards.length)} folders ready` : 'Library setup needed'}</strong>
+						<small>{libraryCards.length > 0 ? 'Review folders, run scans, or remove a library.' : 'Add a Movies or TV folder so Lorivo can start building your library.'}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="secondary" size="sm" href="#library">Review Library</LorivoButton>
 							<LorivoButton variant="ghost" size="sm" href="/setup">Library Setup</LorivoButton>
@@ -1003,7 +1031,7 @@
 					<article class="settings-dashboard-card">
 						<span>Media</span>
 						<strong>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.movies)} movies` : 'No media found yet'}</strong>
-						<small>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.series)} shows / ${asCount(summary.episodes)} episodes` : 'Add a library and run a scan to populate Lorivo.'}</small>
+						<small>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.series)} shows and ${asCount(summary.episodes)} episodes ready to browse.` : 'Add a library and run a scan to populate Lorivo.'}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="ghost" size="sm" href="/movies">Movies</LorivoButton>
 							<LorivoButton variant="ghost" size="sm" href="/tv">TV</LorivoButton>
@@ -1014,35 +1042,23 @@
 						<strong>{scanningModeSummary()}</strong>
 						<small>{scanningModeMeta()}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
-								{isScanningMovies ? 'Scanning...' : 'Scan Movies'}
-							</LorivoButton>
-							<LorivoButton variant="ghost" size="sm" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
-								{isScanningTV ? 'Scanning...' : 'Scan TV'}
-							</LorivoButton>
-							<LorivoButton variant="ghost" size="sm" href="#scanning">Details</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#scanning">Open Scanning</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Metadata</span>
 						<strong>{Number(health.needsReview || 0) > 0 ? 'Review' : 'Ready'}</strong>
-						<small>{Number(health.needsReview || 0) > 0 ? `${asCount(health.needsReview)} items need attention` : 'no review needed'}</small>
+						<small>{Number(health.needsReview || 0) > 0 ? `${asCount(health.needsReview)} items need attention.` : 'Movie and TV details look up to date.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
-								{isRefreshingMovies ? 'Refreshing...' : 'Refresh Movies'}
-							</LorivoButton>
-							<LorivoButton variant="ghost" size="sm" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
-								{isRefreshingTV ? 'Refreshing...' : 'Refresh TV'}
-							</LorivoButton>
-							<LorivoButton variant="ghost" size="sm" href="#metadata">Details</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#metadata">Open Metadata</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Playback</span>
 						<strong>{playbackPolicyDetails(settings.config?.playbackPolicy).label}</strong>
-						<small>{activeSessionCount > 0 ? `${asCount(activeSessionCount)} active sessions` : 'no active sessions'}</small>
+						<small>{activeSessionCount > 0 ? `${asCount(activeSessionCount)} active sessions right now.` : 'Playback is idle right now.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#playback">Playback</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#playback">Open Playback</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -1050,25 +1066,34 @@
 						<strong>{accessCardLabel}</strong>
 						<small>{accessCardDetail}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#access">Access</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#access">Open Access</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Needs attention</span>
-						<strong>{warningItems.length > 0 ? asCount(warningItems.length) : 'Ready'}</strong>
-						<small>{warningItems.length > 0 ? 'items to review' : 'everything looks ready'}</small>
+						<strong>{warningItems.length > 0 ? `${asCount(warningItems.length)} item${warningItems.length === 1 ? '' : 's'}` : 'Ready'}</strong>
+						<small>{warningItems.length > 0 ? 'A few items need a quick review.' : 'Everything looks ready.'}</small>
 						{#if warningItems.length > 0}
 							<ul class="dashboard-warning-list">
-								{#each warningItems.slice(0, 3) as item (item.id)}
+								{#each warningItems.slice(0, 2) as item (item.id)}
 									<li>{item.label}</li>
 								{/each}
 							</ul>
 						{/if}
+						<div class="dashboard-card-actions">
+							<LorivoButton
+								variant="ghost"
+								size="sm"
+								href={primaryWarningItem ? warningItemHref(primaryWarningItem.id) : '#dashboard'}
+							>
+								{primaryWarningItem ? warningItemActionLabel(primaryWarningItem.id) : 'Review Settings'}
+							</LorivoButton>
+						</div>
 					</article>
 					<article class="settings-dashboard-card settings-dashboard-card--quiet">
 						<span>About</span>
 						<strong>Lorivo</strong>
-						<small>{asText(buildInfo?.buildID) || 'build details'}</small>
+						<small>{asText(buildInfo?.buildID) || 'Local build details'}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="ghost" size="sm" href="#about">Open About</LorivoButton>
 						</div>
@@ -1086,7 +1111,14 @@
 						<LorivoStat label="Shows" value={asCount(summary.series)} meta={`${asCount(summary.episodes)} episodes in the current TV catalog.`} />
 					</div>
 					{#if libraryCards.length > 0}
-						<div class="library-list" data-testid="library-list">
+						<div class="settings-subsection">
+							<div class="settings-subsection__head">
+								<div>
+									<h3>Configured libraries</h3>
+									<p>Review folder paths, run a scan, or remove a library that is no longer needed.</p>
+								</div>
+							</div>
+							<div class="library-list" data-testid="library-list">
 							{#each libraryCards as library (library.id)}
 								<article class="library-card" data-testid="library-item">
 									<div class="library-card__body">
@@ -1126,7 +1158,7 @@
 												{activeLibraryActionID === library.id && activeLibraryActionKind === 'scan' ? 'Scanning...' : 'Scan'}
 											</LorivoButton>
 											<LorivoButton
-												variant="ghost"
+												variant="danger"
 												size="sm"
 												disabled={activeLibraryActionID === library.id}
 												onclick={() => removeLibraryItem(configuredLibraries.find((item) => asText(item.id) === library.id) || {})}
@@ -1137,12 +1169,20 @@
 									{/if}
 								</article>
 							{/each}
+							</div>
 						</div>
 					{:else}
-						<LorivoEmptyState
-							title="No libraries yet"
-							message="Use Library Setup to add a Movies or TV folder."
-						/>
+						<div class="settings-subsection settings-subsection--quiet settings-subsection--empty">
+							<div class="settings-subsection__head">
+								<div>
+									<h3>Set up your first library</h3>
+									<p>Add a Movies or TV folder so Lorivo can scan it and build your media library.</p>
+								</div>
+							</div>
+							<div class="status-actions">
+								<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
+							</div>
+						</div>
 					{/if}
 					{#if !canManageSettings && !authDisabled}
 						<div class="settings-auth-callout">
@@ -1160,15 +1200,30 @@
 			{:else if activeSection === 'scanning'}
 			<section id="scanning" class="settings-section" data-testid="settings-section-content" data-section="scanning">
 				<SettingsPanel title="Scanning" description="Start real library scans, choose how Lorivo checks libraries, and review current scan activity." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
-					{#snippet actions()}
-						<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
-							{isScanningMovies ? 'Scanning Movies...' : 'Scan Movies'}
-						</LorivoButton>
-						<LorivoButton variant="secondary" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
-							{isScanningTV ? 'Scanning TV...' : 'Scan TV'}
-						</LorivoButton>
-					{/snippet}
-					<div class="stat-grid stat-grid--compact">
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Manual scans</h3>
+								<p>Run a scan when you want Lorivo to check movies or TV right now.</p>
+							</div>
+						</div>
+						<div class="status-actions">
+							<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
+								{isScanningMovies ? 'Scanning Movies...' : 'Scan Movies'}
+							</LorivoButton>
+							<LorivoButton variant="secondary" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
+								{isScanningTV ? 'Scanning TV...' : 'Scan TV'}
+							</LorivoButton>
+						</div>
+					</div>
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Automation</h3>
+								<p>Choose how Lorivo checks your libraries for new or changed media.</p>
+							</div>
+						</div>
+						<div class="stat-grid stat-grid--compact">
 						<LorivoStat
 							label="Library Scan Mode"
 							value={scanningModeDetails(settings.config?.librarySyncMode).label}
@@ -1192,6 +1247,7 @@
 							value={asCount(settings.config?.probeBatchLimit || 50)}
 							meta="Items Lorivo checks at a time after a library scan."
 						/>
+						</div>
 					</div>
 					{#if canManageSettings}
 						<form class="scanning-automation-form" data-testid="scanning-automation-form" onsubmit={(event) => { event.preventDefault(); void saveScanningAutomation(); }}>
@@ -1276,6 +1332,9 @@
 									{isSavingScanningAutomation ? 'Saving...' : 'Save Scanning Settings'}
 								</LorivoButton>
 							</div>
+							{#if scanningSaveMessage}
+								<p class="settings-feedback">{scanningSaveMessage}</p>
+							{/if}
 							{#if scanningSettingsError}
 								<p class="settings-error">{scanningSettingsError}</p>
 							{/if}
@@ -1302,39 +1361,57 @@
 			{:else if activeSection === 'metadata'}
 			<section id="metadata" class="settings-section" data-testid="settings-section-content" data-section="metadata">
 				<SettingsPanel title="Metadata" description="Refresh movie and TV information." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
-					{#snippet actions()}
-						<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
-							{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movie Metadata'}
-						</LorivoButton>
-						<LorivoButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
-							{isRefreshingTV ? 'Refreshing TV...' : 'Refresh TV Metadata'}
-						</LorivoButton>
-					{/snippet}
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Refresh media details</h3>
+								<p>Use these actions when movie or TV details need another pass.</p>
+							</div>
+						</div>
+						<div class="status-actions">
+							<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+								{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movies'}
+							</LorivoButton>
+							<LorivoButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+								{isRefreshingTV ? 'Refreshing TV...' : 'Refresh TV'}
+							</LorivoButton>
+						</div>
+					</div>
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} files pending media checks`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
 						<LorivoStat label="Subtitles Found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
 					</div>
-					<LorivoEmptyState
-						title="Metadata preferences"
-						message="Artwork and title lookup are managed by Lorivo in this build. Use refresh actions here when media details need another pass."
-					/>
+					<div class="settings-subsection settings-subsection--quiet">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Title and artwork lookup</h3>
+								<p>Lorivo manages artwork and title lookups in this build. There are no lookup settings to manage here.</p>
+							</div>
+						</div>
+					</div>
 				</SettingsPanel>
 			</section>
 
 			{:else if activeSection === 'playback'}
 			<section id="playback" class="settings-section" data-testid="settings-section-content" data-section="playback">
-				<SettingsPanel title="Playback" description="Playback policy, hardware status, and active playback sessions." status={activeSessionCount > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Playback" description="Playback policy, compatibility status, and active playback sessions." status={activeSessionCount > 0 ? 'warning' : 'healthy'}>
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat
 							label="Playback Policy"
 							value={playbackPolicyDetails(settings.config?.playbackPolicy).label}
 							meta={playbackPolicyDetails(settings.config?.playbackPolicy).description}
 						/>
-						<LorivoStat label="Conversion Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Lorivo can reduce playback load when conversion is needed." />
+						<LorivoStat label="Compatibility Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Lorivo can help when a device needs a different playback format." />
 						<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
 					</div>
 					{#if canManageSettings}
 						<form class="playback-policy-form" data-testid="playback-policy-form" onsubmit={(event) => { event.preventDefault(); void savePlaybackPolicy(); }}>
+							<div class="settings-subsection__head settings-subsection__head--tight">
+								<div>
+									<h3>Playback policy</h3>
+									<p>Pick how Lorivo balances original quality and device compatibility.</p>
+								</div>
+							</div>
 							<div class="playback-policy-options">
 								{#each playbackPolicyOptions as option (option.id)}
 									<label class="playback-policy-option">
@@ -1358,9 +1435,12 @@
 									disabled={isSavingPlaybackPolicy || playbackPolicyDraft === normalizePlaybackPolicy(settings.config?.playbackPolicy)}
 									onclick={savePlaybackPolicy}
 								>
-									{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Setting'}
+									{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Policy'}
 								</LorivoButton>
 							</div>
+							{#if playbackSaveMessage}
+								<p class="settings-feedback">{playbackSaveMessage}</p>
+							{/if}
 						</form>
 					{:else if !authDisabled}
 						<div class="settings-auth-callout">
@@ -1397,17 +1477,13 @@
 						<LorivoStat label="Account" value={accessAccountValue} meta={accessAccountMeta} tone={user ? 'good' : 'neutral'} />
 						<LorivoStat label="Session" value={accessSessionValue} meta={accessSessionMeta} tone={user ? 'good' : 'neutral'} />
 					</div>
-					{#if devOwnerActive}
-						<div class="settings-auth-callout">
-							<p class="settings-note">{devAccessMessage}</p>
-							<p class="settings-auth-callout__detail">User management is not available yet. Device pairing will appear here when client pairing is implemented.</p>
-						</div>
-					{:else}
-						<div class="settings-auth-callout">
-							<p class="settings-note">User management is not available yet.</p>
-							<p class="settings-auth-callout__detail">Device pairing will appear here when client pairing is implemented.</p>
-						</div>
-					{/if}
+					<div class="settings-auth-callout">
+						<p class="settings-note">{devOwnerActive ? devAccessMessage : 'Access is limited to the current owner session in this build.'}</p>
+						<ul class="settings-placeholder-list">
+							<li>User management is not available yet.</li>
+							<li>Device pairing will appear here when client pairing is implemented.</li>
+						</ul>
+					</div>
 					{#if !user && !authDisabled}
 						<div class="settings-auth-callout">
 							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
@@ -1419,13 +1495,20 @@
 
 			{:else if activeSection === 'about'}
 			<section id="about" class="settings-section" data-testid="settings-section-content" data-section="about">
-				<SettingsPanel title="About" description="Lorivo server identity and build information." status="healthy">
+				<SettingsPanel title="About" description="Lorivo identity and local server details." status="healthy">
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
-						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Unavailable'} meta={asText(buildInfo?.publishedAt) || 'Build metadata is not available.'} />
-						<LorivoStat label="Commit" value={asText(buildInfo?.gitCommit) || 'Unavailable'} meta={asText(buildInfo?.sourceApp) || 'apps/web/svelte'} />
-						<LorivoStat label="App Health" value={capitalize(appStatus)} meta="Small readiness signal based on local activity and system load." tone={appStatus === 'warning' || appStatus === 'critical' ? 'warn' : 'good'} />
+						<LorivoStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and shared with local clients." />
+						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Local build'} meta={asText(buildInfo?.publishedAt) || 'Build details are quiet in this view.'} />
 						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
+					</div>
+					<div class="settings-subsection settings-subsection--quiet">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Server identity</h3>
+								<p>{serverIdentityHelpText}</p>
+							</div>
+						</div>
 					</div>
 					{#if canManageSettings}
 						<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
@@ -1438,13 +1521,16 @@
 									placeholder="Lorivo"
 									aria-describedby="settings-server-name-help"
 								/>
-								<small id="settings-server-name-help">This is the name devices on your home network will use to identify this Lorivo server.</small>
+								<small id="settings-server-name-help">{serverIdentityHelpText}</small>
 							</label>
 							<div class="status-actions">
 								<LorivoButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
 									{isSavingServerName ? 'Saving...' : 'Save Server Name'}
 								</LorivoButton>
 							</div>
+							{#if serverNameSaveMessage}
+								<p class="settings-feedback">{serverNameSaveMessage}</p>
+							{/if}
 							{#if serverNameError}
 								<p class="settings-error">{serverNameError}</p>
 							{/if}
@@ -1602,6 +1688,46 @@
 		scroll-margin-top: 18px;
 	}
 
+	.settings-subsection {
+		display: grid;
+		gap: 12px;
+		padding: 14px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.settings-subsection--quiet {
+		background: color-mix(in srgb, var(--settings-accent-soft) 42%, transparent);
+	}
+
+	.settings-subsection--empty {
+		align-content: center;
+		min-height: 180px;
+	}
+
+	.settings-subsection__head {
+		display: grid;
+		gap: 4px;
+	}
+
+	.settings-subsection__head--tight {
+		margin-bottom: -2px;
+	}
+
+	.settings-subsection__head h3 {
+		margin: 0;
+		font-size: 0.98rem;
+		font-weight: 760;
+	}
+
+	.settings-subsection__head p {
+		margin: 0;
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.84rem;
+		line-height: 1.45;
+	}
+
 	:global([data-shell='server'] .settings-panel) {
 		border-left: 2px solid rgb(154 167 255 / 18%);
 	}
@@ -1624,6 +1750,13 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--lorivo-space-2);
+	}
+
+	.settings-feedback {
+		margin: 0;
+		color: color-mix(in srgb, #b7ffd4 78%, white 22%);
+		font-size: 0.82rem;
+		line-height: 1.42;
 	}
 
 	.library-list {
@@ -1731,6 +1864,16 @@
 		margin: 0;
 		color: var(--lorivo-color-text-muted);
 		font-size: 0.88rem;
+		line-height: 1.45;
+	}
+
+	.settings-placeholder-list {
+		display: grid;
+		gap: 4px;
+		margin: 0;
+		padding-left: 18px;
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.82rem;
 		line-height: 1.45;
 	}
 
@@ -1879,6 +2022,10 @@
 
 		.library-card__facts {
 			grid-template-columns: 1fr;
+		}
+
+		.settings-subsection {
+			padding: 13px;
 		}
 	}
 

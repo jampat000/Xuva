@@ -31,7 +31,11 @@
 			</div>
 			<div class="settings-panel__header-right">
 				<LiveStatusBadge {status} />
-				{@render actions?.()}
+				{#if actions}
+					<div class="settings-panel__actions">
+						{@render actions()}
+					</div>
+				{/if}
 			</div>
 		</header>
 		<div>
@@ -68,7 +72,27 @@
 
 	.settings-panel__header-right {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--lorivo-space-2);
 		align-items: center;
+		justify-content: flex-end;
+	}
+
+	.settings-panel__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--lorivo-space-2);
+		justify-content: flex-end;
+	}
+
+	@media (max-width: 720px) {
+		header {
+			flex-direction: column;
+		}
+
+		.settings-panel__header-right,
+		.settings-panel__actions {
+			justify-content: flex-start;
+		}
 	}
 </style>
