@@ -5,11 +5,11 @@
 	import LorivoSidebar from './LorivoSidebar.svelte';
 
 	let {
-		active = 'library',
+		active = 'overview',
 		userDisplayName = 'Local User',
 		userRole = 'Local Account'
 	} = $props<{
-		active?: 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
+		active?: 'overview' | 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 	}>();
@@ -17,7 +17,10 @@
 
 <LorivoSidebar>
 	{#snippet brand()}
-		<LorivoBrand />
+		<div class="settings-brand">
+			<LorivoBrand />
+			<span>Settings</span>
+		</div>
 	{/snippet}
 
 	{#snippet primary()}
@@ -103,3 +106,24 @@
 		<SidebarUser name={userDisplayName} subtitle={userRole} />
 	{/snippet}
 </LorivoSidebar>
+
+<style>
+	.settings-brand {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-width: 0;
+	}
+
+	.settings-brand span {
+		padding: 5px 9px;
+		border: 1px solid rgb(154 167 255 / 16%);
+		border-radius: 999px;
+		background: rgb(154 167 255 / 7%);
+		color: color-mix(in srgb, #9aa7ff 76%, white 24%);
+		font-size: 0.7rem;
+		font-weight: 760;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+</style>

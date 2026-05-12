@@ -230,11 +230,13 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoHorizontalOverflow(page);
 	assert.equal(await page.getByTestId('settings-dashboard').count(), 1);
-	assert.match(await page.locator('body').innerText(), /Settings Mode/i);
+	assert.equal(await page.getByTestId('settings-section-content').count(), 0);
 	if (viewport.width >= 981) {
 		const sidebar = page.getByTestId('settings-mode-sidebar');
 		assert.equal(await sidebar.count(), 1);
 		assert.equal(await sidebar.isVisible(), true);
+		assert.match(await sidebar.innerText(), /LORIVO/);
+		assert.match(await sidebar.innerText(), /Settings/i);
 		for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
 			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
@@ -248,6 +250,8 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		const settingsDrawer = page.getByTestId('settings-menu-drawer');
 		await waitForDrawerState(settingsDrawer, 'open');
 		await assertLeftDrawer(page, settingsDrawer, viewport);
+		assert.match(await settingsDrawer.innerText(), /LORIVO/);
+		assert.match(await settingsDrawer.innerText(), /Settings/i);
 		for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
@@ -275,7 +279,22 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		assert.equal(await link.count(), 1);
 		await link.click();
 		await page.waitForURL(`${baseURL}/settings#${hash}`, { timeout: 10000 });
-		assert.equal(await page.locator(`#${hash}`).count(), 1);
+		const selectedSection = page.getByTestId('settings-section-content');
+		await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
+		await page.waitForFunction(
+			(expected) =>
+				document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === expected,
+			hash,
+			{ timeout: 5000 }
+		);
+		assert.equal(await selectedSection.count(), 1);
+		assert.equal(await selectedSection.getAttribute('data-section'), hash);
+		assert.equal(await page.locator(`section#${hash}`).count(), 1);
+		assert.equal(await page.getByTestId('settings-dashboard').count(), 0);
+		for (const [, otherHash] of sections) {
+			if (otherHash === hash) continue;
+			assert.equal(await page.locator(`section#${otherHash}`).count(), 0);
+		}
 		await assertNoHorizontalOverflow(page);
 		if (reopensDrawer && index < sections.length - 1) {
 			const settingsButton = page.getByTestId('settings-menu-button');

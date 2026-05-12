@@ -39,6 +39,7 @@
 	import SettingsPanel from '$lib/components/operator/SettingsPanel.svelte';
 
 	type SettingsSection = 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
+	type SettingsView = 'overview' | SettingsSection;
 
 	interface BuildInfo {
 		buildID?: string;
@@ -57,7 +58,7 @@
 	let actionMessage = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
-	let activeSection = $state<SettingsSection>('library');
+	let activeSection = $state<SettingsView>('overview');
 
 	let user = $state<AuthSessionUser | null>(null);
 	let libraries = $state<LibraryRecord[]>([]);
@@ -148,6 +149,16 @@
 			});
 		}
 		return output;
+	});
+	const selectedTitle = $derived.by(() => {
+		if (activeSection === 'overview') return 'Settings';
+		return sectionTitle(activeSection);
+	});
+	const selectedDescription = $derived.by(() => {
+		if (activeSection === 'overview') {
+			return 'Choose a settings category to manage Lorivo without leaving the control area.';
+		}
+		return sectionDescription(activeSection);
 	});
 
 	onMount(() => {
@@ -305,7 +316,7 @@
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
-		activeSection = isSettingsSection(candidate) ? candidate : 'library';
+		activeSection = isSettingsSection(candidate) ? candidate : 'overview';
 	}
 
 	function isSettingsSection(value: string): value is SettingsSection {
@@ -452,6 +463,28 @@
 		if (error instanceof Error) return error.message;
 		return 'Settings could not load.';
 	}
+
+	function sectionTitle(section: SettingsSection): string {
+		return {
+			library: 'Library',
+			scanning: 'Scanning',
+			metadata: 'Metadata',
+			playback: 'Playback',
+			server: 'Server',
+			about: 'About'
+		}[section];
+	}
+
+	function sectionDescription(section: SettingsSection): string {
+		return {
+			library: 'Media folders, setup status, and the current Library Setup flow.',
+			scanning: 'Run library scans and review current scan queue state.',
+			metadata: 'Refresh metadata and check provider availability.',
+			playback: 'Review playback policy, hardware status, and active sessions.',
+			server: 'Check server status, catalog health, queues, and runtime settings.',
+			about: 'Lorivo identity, build, and local-first details.'
+		}[section];
+	}
 </script>
 
 <svelte:head>
@@ -478,84 +511,58 @@
 		{:else}
 			<header class="settings-head">
 				<div>
-					<p class="settings-head__eyebrow">Settings Mode</p>
-					<h1>Settings</h1>
-					<p>Control your Lorivo library, scans, metadata, playback behavior, server status, and build details.</p>
+					<p class="settings-head__eyebrow">Settings</p>
+					<h1>{selectedTitle}</h1>
+					<p>{selectedDescription}</p>
 				</div>
 				<div class="settings-head__meta">
 					<span>Updated {lastUpdatedLabel || '--'}</span>
 				</div>
 			</header>
 
-			<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
-				<a
-					class="settings-dashboard-card"
-					class:settings-dashboard-card--active={activeSection === 'library'}
-					href="#library"
-					aria-current={activeSection === 'library' ? 'page' : undefined}
-				>
-					<span>Library</span>
-					<strong>{asCount(libraryRows.length)}</strong>
-					<small>{libraryRows.length === 1 ? 'configured library' : 'configured libraries'}</small>
-				</a>
-				<a
-					class="settings-dashboard-card"
-					class:settings-dashboard-card--active={activeSection === 'scanning'}
-					href="#scanning"
-					aria-current={activeSection === 'scanning' ? 'page' : undefined}
-				>
-					<span>Scanning</span>
-					<strong>{asCount(scans.length)}</strong>
-					<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'ready for scans'}</small>
-				</a>
-				<a
-					class="settings-dashboard-card"
-					class:settings-dashboard-card--active={activeSection === 'metadata'}
-					href="#metadata"
-					aria-current={activeSection === 'metadata' ? 'page' : undefined}
-				>
-					<span>Metadata</span>
-					<strong>{asCount(providerStates.length)}</strong>
-					<small>{Number(health.needsReview || 0) > 0 ? 'review needed' : 'providers listed'}</small>
-				</a>
-				<a
-					class="settings-dashboard-card"
-					class:settings-dashboard-card--active={activeSection === 'playback'}
-					href="#playback"
-					aria-current={activeSection === 'playback' ? 'page' : undefined}
-				>
-					<span>Playback</span>
-					<strong>{asCount(activeSessionCount)}</strong>
-					<small>{activeSessionCount === 1 ? 'active session' : 'active sessions'}</small>
-				</a>
-				<a
-					class="settings-dashboard-card"
-					class:settings-dashboard-card--active={activeSection === 'server'}
-					href="#server"
-					aria-current={activeSection === 'server' ? 'page' : undefined}
-				>
-					<span>Server</span>
-					<strong>{capitalize(serverStatus)}</strong>
-					<small>{activeQueueCount > 0 ? 'activity in progress' : 'status snapshot'}</small>
-				</a>
-				<a
-					class="settings-dashboard-card"
-					class:settings-dashboard-card--active={activeSection === 'about'}
-					href="#about"
-					aria-current={activeSection === 'about' ? 'page' : undefined}
-				>
-					<span>About</span>
-					<strong>Lorivo</strong>
-					<small>{asText(buildInfo?.buildID) || 'build details'}</small>
-				</a>
-			</section>
-
 			{#if actionMessage}
 				<LorivoPanel title="Latest action" subtitle={actionMessage} />
 			{/if}
 
-			<section id="library" class="settings-section">
+			{#if activeSection === 'overview'}
+				<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
+					<a class="settings-dashboard-card" href="#library">
+						<span>Library</span>
+						<strong>{asCount(libraryRows.length)}</strong>
+						<small>{libraryRows.length === 1 ? 'configured library' : 'configured libraries'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#scanning">
+						<span>Scanning</span>
+						<strong>{asCount(scans.length)}</strong>
+						<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'ready for scans'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#metadata">
+						<span>Metadata</span>
+						<strong>{asCount(providerStates.length)}</strong>
+						<small>{Number(health.needsReview || 0) > 0 ? 'review needed' : 'providers listed'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#playback">
+						<span>Playback</span>
+						<strong>{asCount(activeSessionCount)}</strong>
+						<small>{activeSessionCount === 1 ? 'active session' : 'active sessions'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#server">
+						<span>Server</span>
+						<strong>{capitalize(serverStatus)}</strong>
+						<small>{activeQueueCount > 0 ? 'activity in progress' : 'status snapshot'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#about">
+						<span>About</span>
+						<strong>Lorivo</strong>
+						<small>{asText(buildInfo?.buildID) || 'build details'}</small>
+					</a>
+				</section>
+			{:else if activeSection === 'library'}
+				<section id="library" class="settings-section" data-testid="settings-section-content" data-section="library">
 				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryRows.length > 0 ? 'healthy' : 'idle'}>
+					{#snippet actions()}
+						<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
+					{/snippet}
 					<ActivityListShell title="Configured Libraries">
 						<LorivoActionList
 							items={libraryRows.map((item) => ({
@@ -567,9 +574,6 @@
 							emptyLabel="No libraries configured."
 						/>
 					</ActivityListShell>
-					<div class="status-actions">
-						<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
-					</div>
 					<LorivoEmptyState
 						title="Library folder management"
 						message="Use Library Setup to add Movies or TV folders. Editing existing folders is not available here yet."
@@ -577,16 +581,17 @@
 				</SettingsPanel>
 			</section>
 
-			<section id="scanning" class="settings-section">
+			{:else if activeSection === 'scanning'}
+			<section id="scanning" class="settings-section" data-testid="settings-section-content" data-section="scanning">
 				<SettingsPanel title="Scanning" description="Start real library scans and review current scan queue state." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
-					<div class="status-actions">
+					{#snippet actions()}
 						<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
 							{isScanningMovies ? 'Scanning Movies...' : 'Scan Movies'}
 						</LorivoButton>
 						<LorivoButton variant="secondary" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
 							{isScanningTV ? 'Scanning TV...' : 'Scan TV'}
 						</LorivoButton>
-					</div>
+					{/snippet}
 					<ActivityListShell title="Scan Queue">
 						<LorivoActionList
 							items={scans.map((item) => queueListItem('Scan', item.id, item.status, item.libraryId || item.kind))}
@@ -596,16 +601,17 @@
 				</SettingsPanel>
 			</section>
 
-			<section id="metadata" class="settings-section">
+			{:else if activeSection === 'metadata'}
+			<section id="metadata" class="settings-section" data-testid="settings-section-content" data-section="metadata">
 				<SettingsPanel title="Metadata" description="Refresh metadata and review provider availability." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
-					<div class="status-actions">
+					{#snippet actions()}
 						<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
 							{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movie Metadata'}
 						</LorivoButton>
 						<LorivoButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
 							{isRefreshingTV ? 'Refreshing TV...' : 'Refresh TV Metadata'}
 						</LorivoButton>
-					</div>
+					{/snippet}
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} unprobed`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
 						<LorivoStat label="With Subtitles" value={asCount(health.withSubtitles)} meta="Detected by current catalog health payload." />
@@ -623,7 +629,8 @@
 				</SettingsPanel>
 			</section>
 
-			<section id="playback" class="settings-section">
+			{:else if activeSection === 'playback'}
+			<section id="playback" class="settings-section" data-testid="settings-section-content" data-section="playback">
 				<SettingsPanel title="Playback" description="Playback policy, hardware status, and active playback sessions." status={activeSessionCount > 0 ? 'warning' : 'healthy'}>
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat
@@ -648,7 +655,8 @@
 				</SettingsPanel>
 			</section>
 
-			<section id="server" class="settings-section">
+			{:else if activeSection === 'server'}
+			<section id="server" class="settings-section" data-testid="settings-section-content" data-section="server">
 				<SettingsPanel title="Server" description="Server status, queue activity, and runtime configuration snapshot." status={serverStatus}>
 					<div class="stat-grid">
 						<LorivoStat label="Server Name" value={asText(settings.config?.serverName) || 'My Server'} />
@@ -673,7 +681,8 @@
 				</SettingsPanel>
 			</section>
 
-			<section id="about" class="settings-section">
+			{:else if activeSection === 'about'}
+			<section id="about" class="settings-section" data-testid="settings-section-content" data-section="about">
 				<SettingsPanel title="About" description="Lorivo build and application identity." status="healthy">
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media server." />
@@ -683,15 +692,16 @@
 					</div>
 				</SettingsPanel>
 			</section>
+			{/if}
 		{/if}
 	</div>
 </ServerShell>
 
 <style>
 	.settings-page {
-		--settings-accent: #5cc8ff;
-		--settings-accent-soft: rgb(92 200 255 / 13%);
-		--settings-accent-border: rgb(92 200 255 / 28%);
+		--settings-accent: #9aa7ff;
+		--settings-accent-soft: rgb(154 167 255 / 9%);
+		--settings-accent-border: rgb(154 167 255 / 18%);
 		display: grid;
 		gap: 20px;
 		padding-bottom: var(--lorivo-space-8);
@@ -715,7 +725,7 @@
 
 	.settings-head__eyebrow {
 		margin: 0 0 7px;
-		color: color-mix(in srgb, var(--settings-accent) 88%, white 12%);
+		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
 		font-size: 0.72rem;
 		font-weight: 800;
 		letter-spacing: 0.12em;
@@ -745,15 +755,14 @@
 	.settings-dashboard-card {
 		display: grid;
 		gap: 7px;
-		min-height: 122px;
+		min-height: 112px;
 		align-content: space-between;
 		padding: 15px;
-		border: 1px solid color-mix(in srgb, var(--settings-accent-border) 48%, var(--lorivo-color-border-soft));
-		border-radius: 14px;
+		border: 1px solid color-mix(in srgb, var(--settings-accent-border) 42%, var(--lorivo-color-border-soft));
+		border-radius: 12px;
 		background:
-			linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
-			radial-gradient(circle at 20% 0%, rgb(92 200 255 / 11%) 0%, transparent 52%),
-			color-mix(in srgb, var(--lorivo-color-surface-elevated) 92%, #102033 8%);
+			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 2%)),
+			color-mix(in srgb, var(--lorivo-color-surface-elevated) 96%, #111827 4%);
 		color: var(--lorivo-color-text);
 		text-decoration: none;
 		box-shadow:
@@ -773,17 +782,7 @@
 		outline: none;
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 8%),
-			0 18px 42px rgb(31 122 191 / 12%);
-	}
-
-	.settings-dashboard-card--active {
-		border-color: rgb(92 200 255 / 42%);
-		background:
-			linear-gradient(180deg, rgb(92 200 255 / 14%), rgb(92 200 255 / 4%)),
-			color-mix(in srgb, var(--lorivo-color-surface-elevated) 90%, #102033 10%);
-		box-shadow:
-			inset 0 0 0 1px rgb(92 200 255 / 10%),
-			0 18px 44px rgb(31 122 191 / 14%);
+			0 18px 42px rgb(30 35 62 / 16%);
 	}
 
 	.settings-dashboard-card span {
@@ -815,7 +814,7 @@
 	}
 
 	:global([data-shell='server'] .settings-panel) {
-		border-left: 3px solid rgb(92 200 255 / 28%);
+		border-left: 2px solid rgb(154 167 255 / 18%);
 	}
 
 	:global([data-shell='server'] .settings-panel h2) {
