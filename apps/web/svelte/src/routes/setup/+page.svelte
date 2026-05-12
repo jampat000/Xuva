@@ -200,12 +200,12 @@
 						<span>Server name</span>
 						<input
 							bind:value={serverName}
-							maxlength="60"
+							maxlength="50"
 							required
 							placeholder="Lorivo"
 							aria-describedby="server-name-help"
 						/>
-						<small id="server-name-help">This name helps identify this Lorivo library in your browser and settings.</small>
+						<small id="server-name-help">This is the name devices on your home network will use to identify this Lorivo server.</small>
 					</label>
 
 					<label class="field">
