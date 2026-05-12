@@ -14,6 +14,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 
 	assert.match(source, /getSettings\(apiClient\)/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*nextName\s*\},\s*apiClient\)/);
+	assert.match(source, /updateSettings\(\s*\{\s*librarySyncMode,\s*syncIntervalMins:\s*syncIntervalMins\s*\?\?\s*1440,\s*watchDebounceSecs:\s*watchDebounceSecs\s*\?\?\s*30,\s*probeBatchLimit\s*\}\s*,\s*apiClient\s*\)/);
 	assert.match(source, /updateSettings\(\{\s*playbackPolicy:\s*playbackPolicyDraft\s*\},\s*apiClient\)/);
 	assert.match(source, /getPerformanceSettings\(apiClient\)/);
 	assert.match(source, /getSystemStatus\(apiClient\)/);
@@ -34,6 +35,11 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /refreshMetadataBatch\('series'/);
 	assert.match(source, /Library/);
 	assert.match(source, /Scanning/);
+	assert.match(source, /Library scan mode/);
+	assert.match(source, /Scan interval/);
+	assert.match(source, /Folder watch delay/);
+	assert.match(source, /Media check batch size/);
+	assert.match(source, /Save Scanning Settings/);
 	assert.match(source, /Metadata/);
 	assert.match(source, /Playback/);
 	assert.match(source, /Access/);
@@ -51,7 +57,10 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
 	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Playback setting saved\. Restart Lorivo to apply it\./);
+	assert.match(source, /Saved\. Restart Lorivo for this change to fully take effect\./);
+	assert.match(source, /Enter a scan interval of at least 15 minutes\./);
 	assert.match(source, /Sign in with the owner account to scan or remove libraries\./);
+	assert.match(source, /Sign in with the owner account to change scanning settings\./);
 	assert.match(source, /Sign in with the owner account to change playback settings\./);
 	assert.match(source, /<ServerShell/);
 	assert.match(source, /Needs attention|everything looks ready/i);
@@ -65,6 +74,10 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.doesNotMatch(source, /Editing existing folders is not available here yet\./);
 	assert.doesNotMatch(source, /Playback preference editing is not available in this build\./);
 	assert.doesNotMatch(source, /Provider API/i);
+	assert.doesNotMatch(source, /\bLibrarySyncMode\b/);
+	assert.doesNotMatch(source, /\bSyncIntervalMins\b/);
+	assert.doesNotMatch(source, /\bWatchDebounceSecs\b/);
+	assert.doesNotMatch(source, /\bProbeBatchLimit\b/);
 	assert.doesNotMatch(source, /hostname/i);
 });
 

@@ -154,6 +154,8 @@ export interface SettingsResponse {
 		serverName?: string;
 		librarySyncMode?: string;
 		syncIntervalMins?: number;
+		watchDebounceSecs?: number;
+		probeBatchLimit?: number;
 		playbackPolicy?: string;
 		scanWorkers?: number;
 		probeWorkers?: number;
@@ -176,6 +178,10 @@ export interface SettingsResponse {
 
 export interface UpdateSettingsRequest {
 	serverName?: string;
+	librarySyncMode?: string;
+	syncIntervalMins?: number;
+	watchDebounceSecs?: number;
+	probeBatchLimit?: number;
 	playbackPolicy?: string;
 }
 
