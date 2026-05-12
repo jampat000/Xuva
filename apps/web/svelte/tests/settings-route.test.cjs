@@ -23,6 +23,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /getSystemStatus\(apiClient\)/);
 	assert.match(source, /getCatalogSummary\(apiClient\)/);
 	assert.match(source, /getCatalogHealth\(apiClient\)/);
+	assert.match(source, /getDiscoveryStatus\(apiClient\)/);
 	assert.match(source, /getScans\(apiClient\)/);
 	assert.match(source, /getProbes\(apiClient\)/);
 	assert.match(source, /getWork\(apiClient\)/);
@@ -94,13 +95,17 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /User management is not available yet\./);
 	assert.match(source, /Device Pairing/);
 	assert.match(source, /Approve devices that ask to connect to this Lorivo server\./);
-	assert.match(source, /Automatic local network discovery is not available in this build\./);
+	assert.match(source, /Device pairing stays separate from local discovery\./);
 	assert.match(source, /Persistent connected-device registry is not implemented yet\./);
 	assert.match(source, /No pairing requests right now\./);
 	assert.match(source, /Approve/);
 	assert.match(source, /Deny/);
-	assert.match(source, /Lorivo uses this name in the browser title and shares it with local clients\./);
-	assert.match(source, /Local network discovery is not available in this build yet\./);
+	assert.match(source, /Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running\./);
+	assert.match(source, /Local discovery/);
+	assert.match(source, /Devices on your home network can find this server as/);
+	assert.match(source, /Local discovery is not running\./);
+	assert.match(source, /Lorivo could not start local discovery\. The server is still available at this web address\./);
+	assert.match(source, /mDNS \/ Bonjour/);
 	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Playback setting saved\. Restart Lorivo to apply it\./);
 	assert.match(source, /Saved\. Restart Lorivo for this change to fully take effect\./);
@@ -146,8 +151,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 test('setup route asks for a user-facing server name', () => {
 	const source = read('src/routes/setup/+page.svelte');
 	assert.match(source, /Server name/);
-	assert.match(source, /Lorivo uses this name in the browser title and shares it with local clients\./);
-	assert.match(source, /Local network discovery is not available in this build yet\./);
+	assert.match(source, /Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running\./);
 	assert.match(source, /maxlength="50"/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*serverNameValue\s*\}/);
 	assert.match(source, /serverName = \$state\('Lorivo'\)/);

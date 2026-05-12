@@ -23,6 +23,7 @@ This index is the repository map for humans and agents. Keep it short, current, 
 - [Architecture](architecture.md)
 - [Route policy](route-policy.md)
 - [Operations runbook](operations-runbook.md)
+- [Local discovery](local-discovery.md)
 - [Runtime recovery](runtime-recovery.md)
 - [Security baseline](security-baseline.md)
 - [Signed streaming](signed-streaming.md)

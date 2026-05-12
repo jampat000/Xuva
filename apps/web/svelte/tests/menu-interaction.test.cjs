@@ -125,6 +125,22 @@ function apiPayload(pathname, state = {}) {
 			withSubtitles: 5
 		};
 	}
+	if (pathname === '/api/discovery/status') {
+		return {
+			enabled: state.discoveryEnabled,
+			running: state.discoveryRunning,
+			serviceName: state.serverName || 'Lorivo',
+			serviceType: '_lorivo._tcp.local.',
+			port: 8097,
+			txtRecords: ['api=/api/client/bootstrap', 'app=lorivo', `serverName=${state.serverName || 'Lorivo'}`],
+			lastError: state.discoveryLastError || '',
+			note:
+				state.discoveryNote ||
+				(state.discoveryRunning
+					? 'mDNS / Bonjour on port 8097.'
+					: 'This server is listening only on this device right now.')
+		};
+	}
 	if (pathname === '/api/review') return { items: state.reviewItems || [] };
 	if (pathname === '/api/versions') return { versions: state.versionGroups || [] };
 	if (pathname === '/api/system/status') {
@@ -202,6 +218,10 @@ async function installApiMocks(page, options = {}) {
 		signedIn: !options.signedOut,
 		devAuthBypass: Boolean(options.devAuthBypass),
 		authDisabled: Boolean(options.authDisabled),
+		discoveryEnabled: Object.hasOwn(options, 'discoveryEnabled') ? Boolean(options.discoveryEnabled) : true,
+		discoveryRunning: Object.hasOwn(options, 'discoveryRunning') ? Boolean(options.discoveryRunning) : true,
+		discoveryLastError: options.discoveryLastError || '',
+		discoveryNote: options.discoveryNote || '',
 		bootstrapAllowed: Boolean(options.bootstrapAllowed),
 		defaultUsername: 'owner',
 		libraries: [
@@ -1043,6 +1063,9 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		}
 		if (hash === 'about') {
 			assert.match(await selectedSection.innerText(), /Server name/);
+			assert.match(await selectedSection.innerText(), /Local discovery/);
+			assert.match(await selectedSection.innerText(), /mDNS \/ Bonjour/);
+			assert.match(await selectedSection.innerText(), /Devices on your home network can find this server as/);
 			const serverNameInput = selectedSection.locator('input[placeholder="Lorivo"]');
 			assert.equal(await serverNameInput.count(), 1);
 			await serverNameInput.fill('Family Library');
@@ -1393,7 +1416,7 @@ async function assertAccessSection(page, state) {
 		assert.match(await selectedSection.innerText(), /User management is not available yet\./);
 		assert.match(await selectedSection.innerText(), /Device Pairing/);
 		assert.match(await selectedSection.innerText(), /Approve devices that ask to connect to this Lorivo server\./);
-		assert.match(await selectedSection.innerText(), /Automatic local network discovery is not available in this build\./);
+		assert.match(await selectedSection.innerText(), /Device pairing stays separate from local discovery\./);
 		assert.equal(await selectedSection.getByTestId('pairing-request-list').count(), 1);
 		assert.match(await selectedSection.innerText(), /Living Room Apple TV/);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 1);
@@ -1484,8 +1507,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
 	const setupServerName = page.locator('input[placeholder="Lorivo"]');
 	assert.equal(await setupServerName.count(), 1);
-	assert.match(await page.locator('body').innerText(), /Lorivo uses this name in the browser title and shares it with local clients\./);
-	assert.match(await page.locator('body').innerText(), /Local network discovery is not available in this build yet\./);
+	assert.match(await page.locator('body').innerText(), /Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running\./);
 	await setupServerName.fill('   ');
 	await page.getByRole('button', { name: 'Save library', exact: true }).click();
 	assert.match(await page.locator('body').innerText(), /Enter a server name\./);
@@ -1636,6 +1658,38 @@ test('access shows an empty pairing state when there are no pending requests', a
 		assert.match(await selectedSection.innerText(), /No pairing requests right now\./);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
+		await assertNoHorizontalOverflow(page);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('about shows a plain local discovery unavailable state when discovery is not running', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, {
+			devAuthBypass: true,
+			discoveryRunning: false,
+			discoveryLastError: '',
+			discoveryNote: 'This server is listening only on this device right now.'
+		});
+		await page.goto(`${baseURL}/settings#about`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await page.waitForFunction(
+			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'about',
+			null,
+			{ timeout: 5000 }
+		);
+		const selectedSection = page.getByTestId('settings-section-content');
+		assert.match(await selectedSection.innerText(), /Local discovery/);
+		assert.match(await selectedSection.innerText(), /Local discovery is not running\./);
+		assert.match(await selectedSection.innerText(), /This server is listening only on this device right now\./);
+		assert.doesNotMatch(await selectedSection.innerText(), /DLNA|SSDP|UPnP/i);
 		await assertNoHorizontalOverflow(page);
 		await page.close();
 	} finally {

@@ -139,6 +139,17 @@ export interface PairingRequestsResponse {
 	requests?: PairingRequestItem[];
 }
 
+export interface DiscoveryStatusResponse {
+	enabled?: boolean;
+	running?: boolean;
+	serviceName?: string;
+	serviceType?: string;
+	port?: number;
+	txtRecords?: string[];
+	lastError?: string;
+	note?: string;
+}
+
 export interface PerformanceSettingsResponse {
 	profile?: string;
 	playbackPolicy?: {
@@ -316,6 +327,12 @@ export function getSessions(client: ApiClient = apiClient): Promise<SessionsResp
 
 export function getPairingRequests(client: ApiClient = apiClient): Promise<PairingRequestsResponse> {
 	return client.request<PairingRequestsResponse>('/api/pairing/requests');
+}
+
+export function getDiscoveryStatus(
+	client: ApiClient = apiClient
+): Promise<DiscoveryStatusResponse> {
+	return client.request<DiscoveryStatusResponse>('/api/discovery/status');
 }
 
 export function approvePairingRequest(

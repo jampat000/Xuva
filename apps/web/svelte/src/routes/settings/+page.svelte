@@ -31,6 +31,7 @@
 		denyPairingRequest,
 		getCatalogHealth,
 		getCatalogSummary,
+		getDiscoveryStatus,
 		getDownloads,
 		getPairingRequests,
 		getPerformanceSettings,
@@ -44,6 +45,7 @@
 		updateMetadataSourcePreferences,
 		type CatalogHealthResponse,
 		type CatalogSummaryResponse,
+		type DiscoveryStatusResponse,
 		type DownloadJobItem,
 		type PerformanceSettingsResponse,
 		type PairingRequestItem,
@@ -200,6 +202,7 @@
 	let reviewMessages = $state<Record<string, string>>({});
 	let reviewErrors = $state<Record<string, string>>({});
 	let buildInfo = $state<BuildInfo | null>(null);
+	let discoveryStatus = $state<DiscoveryStatusResponse>({});
 	let storageFolderBrowse = $state<FolderBrowseResponse | null>(null);
 	let activeStorageBrowseField = $state<EditableStorageFieldKey | ''>('');
 	let serverNameDraft = $state('Lorivo');
@@ -229,7 +232,7 @@
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const serverIdentityHelpText =
-		'Lorivo uses this name in the browser title and shares it with local clients. Local network discovery is not available in this build yet.';
+		'Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running.';
 
 	const storageFieldDefinitions: StorageFieldDefinition[] = [
 		{
@@ -420,6 +423,38 @@
 		if (cpu > 0 || memory > 0) return 'healthy';
 		return 'idle';
 	});
+	const discoveryRunning = $derived.by(() => Boolean(discoveryStatus.running));
+	const discoveryServiceName = $derived.by(
+		() => asText(discoveryStatus.serviceName) || serverDisplayName || 'Lorivo'
+	);
+	const discoveryStatusLabel = $derived.by(() => {
+		if (discoveryRunning) return 'Running';
+		if (asText(discoveryStatus.lastError)) return 'Needs attention';
+		return 'Not running';
+	});
+	const discoveryStatusTone = $derived.by(() => {
+		if (discoveryRunning) return 'good';
+		if (asText(discoveryStatus.lastError)) return 'warn';
+		return 'neutral';
+	});
+	const discoveryStatusMessage = $derived.by(() => {
+		if (discoveryRunning) {
+			return `Devices on your home network can find this server as ${discoveryServiceName}.`;
+		}
+		if (asText(discoveryStatus.lastError)) {
+			return 'Lorivo could not start local discovery. The server is still available at this web address.';
+		}
+		return 'Local discovery is not running.';
+	});
+	const discoveryStatusDetail = $derived.by(() => {
+		const note = asText(discoveryStatus.note);
+		if (note) return note;
+		if (discoveryRunning) {
+			const portLabel = Number(discoveryStatus.port || 0) > 0 ? String(discoveryStatus.port) : 'current server port';
+			return `${asText(discoveryStatus.serviceType) || '_lorivo._tcp.local.'} on port ${portLabel}.`;
+		}
+		return 'Lorivo keeps working normally through its web address even when discovery is off.';
+	});
 	const hasScanningAutomationChanges = $derived.by(
 		() =>
 			librarySyncModeDraft !== normalizeLibrarySyncMode(settings.config?.librarySyncMode) ||
@@ -606,6 +641,7 @@
 				workPayload,
 				downloadsPayload,
 				sessionsPayload,
+				discoveryPayload,
 				reviewPayload,
 				versionGroupPayload
 			] = await Promise.all([
@@ -631,6 +667,7 @@
 					}
 					throw error;
 				}),
+				getDiscoveryStatus(apiClient).catch(() => ({} as DiscoveryStatusResponse)),
 				getReviewItems(apiClient).catch((error: unknown) => {
 					metadataReviewError = formatLoadError(error);
 					return { items: [] };
@@ -668,6 +705,7 @@
 			work = workPayload.work || [];
 			downloads = downloadsPayload.downloads || [];
 			sessions = sessionsPayload.sessions || [];
+			discoveryStatus = discoveryPayload || {};
 			reviewItems = reviewPayload.items || [];
 			versionGroups = versionGroupPayload.versions || [];
 			syncReviewDrafts(reviewPayload.items || []);
@@ -2857,7 +2895,7 @@
 								<p>Approve devices that ask to connect to this Lorivo server.</p>
 							</div>
 						</div>
-						<p class="settings-note">Automatic local network discovery is not available in this build.</p>
+						<p class="settings-note">Device pairing stays separate from local discovery. Devices still need owner approval before they connect.</p>
 						{#if canManageSettings || authDisabled}
 							{#if isLoadingPairingRequests}
 								<p class="settings-note">Loading pairing requests…</p>
@@ -2955,7 +2993,7 @@
 				<SettingsPanel title="About" description="Lorivo identity and local server details." status="healthy">
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
-						<LorivoStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and shared with local clients." />
+						<LorivoStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and advertised on your home network when local discovery is running." />
 						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Local build'} meta={asText(buildInfo?.publishedAt) || 'Build details are quiet in this view.'} />
 						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
 					</div>
@@ -2966,6 +3004,30 @@
 								<p>{serverIdentityHelpText}</p>
 							</div>
 						</div>
+					</div>
+					<div class="settings-subsection" data-testid="discovery-status-card">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Local discovery</h3>
+								<p>{discoveryStatusMessage}</p>
+							</div>
+							<span class={`status-pill status-pill--${discoveryStatusTone}`}>{discoveryStatusLabel}</span>
+						</div>
+						<div class="stat-grid stat-grid--compact">
+							<LorivoStat
+								label="Service name"
+								value={discoveryServiceName}
+								meta="Uses your configured Server Name."
+							/>
+							<LorivoStat
+								label="Protocol"
+								value="mDNS / Bonjour"
+								meta={asText(discoveryStatus.serviceType) || '_lorivo._tcp.local.'}
+							/>
+						</div>
+						<p class:status-copy={true} class:status-copy--warn={discoveryStatusTone === 'warn'}>
+							{discoveryStatusDetail}
+						</p>
 					</div>
 					{#if canManageSettings}
 						<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
