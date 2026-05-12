@@ -36,6 +36,11 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /scanTV\(apiClient,\s*50\)/);
 	assert.match(source, /refreshMetadataBatch\('movie'/);
 	assert.match(source, /refreshMetadataBatch\('series'/);
+	assert.match(source, /getReviewItems\(apiClient\)/);
+	assert.match(source, /getVersionGroups\(apiClient\)/);
+	assert.match(source, /getMetadataRecords\(kind,\s*id,\s*apiClient\)/);
+	assert.match(source, /refreshMetadataItem\(/);
+	assert.match(source, /applyMetadataMatch\(/);
 	assert.match(source, /Library/);
 	assert.match(source, /Scanning/);
 	assert.match(source, /Library scan mode/);
@@ -45,6 +50,14 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Save Scanning Settings/);
 	assert.match(source, /Metadata/);
 	assert.match(source, /Metadata Sources/);
+	assert.match(source, /Metadata Review/);
+	assert.match(source, /Version Groups/);
+	assert.match(source, /Refresh Metadata/);
+	assert.match(source, /Needs review/);
+	assert.match(source, /Missing metadata/);
+	assert.match(source, /Wrong match/);
+	assert.match(source, /Manual correction/);
+	assert.match(source, /Apply match/);
 	assert.match(source, /Movie metadata sources/);
 	assert.match(source, /TV metadata sources/);
 	assert.match(source, /Save Metadata Sources/);
@@ -94,6 +107,10 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Enable at least one movie metadata source\./);
 	assert.match(source, /Enable at least one TV metadata source\./);
 	assert.match(source, /Metadata source settings saved\./);
+	assert.match(source, /Sign in as the owner to update metadata\./);
+	assert.match(source, /No metadata review items right now\./);
+	assert.match(source, /No multiple-version groups right now\./);
+	assert.match(source, /No metadata records yet\. Try Refresh metadata to fetch another pass\./);
 	assert.match(source, /Save Playback Policy/);
 	assert.doesNotMatch(source, /legacy/i);
 	assert.doesNotMatch(source, /Admin Dashboard/);
@@ -101,6 +118,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.doesNotMatch(source, /<SettingsPanel title="Server"/);
 	assert.doesNotMatch(source, /Provider setup/);
 	assert.doesNotMatch(source, /API key/i);
+	assert.doesNotMatch(source, /rawJson/);
 	assert.doesNotMatch(source, /Transcode Workers/);
 	assert.doesNotMatch(source, /FFmpeg path/i);
 	assert.doesNotMatch(source, /FFprobe path/i);

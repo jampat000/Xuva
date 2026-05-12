@@ -1,6 +1,20 @@
 	<script lang="ts">
 	import { onMount } from 'svelte';
-	import { scanMovies, scanTV, refreshMetadataBatch } from '$lib/api/browse';
+	import {
+		applyMetadataMatch,
+		getMetadataRecords,
+		getReviewItems,
+		getVersionGroups,
+		refreshMetadataBatch,
+		refreshMetadataItem,
+		scanMovies,
+		scanTV,
+		type MetadataMatchRequest,
+		type MetadataRecord,
+		type MetadataRecordsResponse,
+		type ReviewItem,
+		type VersionGroup
+	} from '$lib/api/browse';
 	import {
 		getAuthSession,
 		getClientBootstrap,
@@ -116,6 +130,11 @@
 
 	type MetadataKind = 'movie' | 'series';
 
+	interface ReviewDraft {
+		title: string;
+		year: string;
+	}
+
 	let isLoading = $state(true);
 	let isScanningMovies = $state(false);
 	let isScanningTV = $state(false);
@@ -128,12 +147,14 @@
 	let isSavingMetadataSources = $state(false);
 	let isSigningOut = $state(false);
 	let isBrowsingStorage = $state(false);
+	let isLoadingMetadataReview = $state(false);
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let scanningSettingsError = $state('');
 	let serverNameError = $state('');
 	let storageSettingsError = $state('');
 	let metadataSourceError = $state('');
+	let metadataReviewError = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
@@ -156,6 +177,17 @@
 	let work = $state<WorkQueueItem[]>([]);
 	let downloads = $state<DownloadJobItem[]>([]);
 	let sessions = $state<SessionItem[]>([]);
+	let reviewItems = $state<ReviewItem[]>([]);
+	let versionGroups = $state<VersionGroup[]>([]);
+	let metadataRecordsByItem = $state<Record<string, MetadataRecordsResponse>>({});
+	let metadataRecordsLoading = $state<Record<string, boolean>>({});
+	let metadataRecordsError = $state<Record<string, string>>({});
+	let reviewDrafts = $state<Record<string, ReviewDraft>>({});
+	let reviewExpanded = $state<Record<string, boolean>>({});
+	let reviewRefreshState = $state<Record<string, boolean>>({});
+	let reviewApplyState = $state<Record<string, boolean>>({});
+	let reviewMessages = $state<Record<string, string>>({});
+	let reviewErrors = $state<Record<string, string>>({});
 	let buildInfo = $state<BuildInfo | null>(null);
 	let storageFolderBrowse = $state<FolderBrowseResponse | null>(null);
 	let activeStorageBrowseField = $state<EditableStorageFieldKey | ''>('');
@@ -543,6 +575,8 @@
 			isLoading = true;
 			loadError = '';
 		}
+		metadataReviewError = '';
+		isLoadingMetadataReview = true;
 		sessionsUnavailable = false;
 		try {
 			const [
@@ -558,7 +592,9 @@
 				probesPayload,
 				workPayload,
 				downloadsPayload,
-				sessionsPayload
+				sessionsPayload,
+				reviewPayload,
+				versionGroupPayload
 			] = await Promise.all([
 				getClientBootstrap(apiClient).catch(() => ({} as ClientBootstrapResponse)),
 				getAuthSession(apiClient).catch((error: unknown) => {
@@ -581,6 +617,14 @@
 						return { sessions: [] };
 					}
 					throw error;
+				}),
+				getReviewItems(apiClient).catch((error: unknown) => {
+					metadataReviewError = formatLoadError(error);
+					return { items: [] };
+				}),
+				getVersionGroups(apiClient).catch((error: unknown) => {
+					metadataReviewError = metadataReviewError || formatLoadError(error);
+					return { versions: [] };
 				})
 			]);
 
@@ -611,10 +655,14 @@
 			work = workPayload.work || [];
 			downloads = downloadsPayload.downloads || [];
 			sessions = sessionsPayload.sessions || [];
+			reviewItems = reviewPayload.items || [];
+			versionGroups = versionGroupPayload.versions || [];
+			syncReviewDrafts(reviewPayload.items || []);
 			lastUpdatedLabel = new Date().toLocaleTimeString();
 		} catch (error) {
 			loadError = formatLoadError(error);
 		} finally {
+			isLoadingMetadataReview = false;
 			isLoading = false;
 		}
 	}
@@ -682,6 +730,157 @@
 			actionMessage = formatLoadError(error);
 		} finally {
 			isRefreshingTV = false;
+		}
+	}
+
+	async function toggleReviewDetails(item: ReviewItem): Promise<void> {
+		const key = reviewItemKey(item);
+		if (!key) return;
+		const next = !Boolean(reviewExpanded[key]);
+		reviewExpanded[key] = next;
+		if (next && !metadataRecordsByItem[key] && !metadataRecordsLoading[key]) {
+			await loadMetadataRecords(item);
+		}
+	}
+
+	async function loadMetadataRecords(item: ReviewItem, force = false): Promise<void> {
+		const key = reviewItemKey(item);
+		const kind = asText(item.kind);
+		const id = asText(item.id);
+		if (!key || !kind || !id) return;
+		if (!force && metadataRecordsByItem[key]) return;
+		metadataRecordsLoading[key] = true;
+		metadataRecordsError[key] = '';
+		try {
+			metadataRecordsByItem[key] = await getMetadataRecords(kind, id, apiClient);
+		} catch (error) {
+			metadataRecordsError[key] = formatLoadError(error);
+		} finally {
+			metadataRecordsLoading[key] = false;
+		}
+	}
+
+	async function refreshReviewItem(item: ReviewItem): Promise<void> {
+		if (!canManageSettings) return;
+		const key = reviewItemKey(item);
+		const kind = asText(item.kind);
+		const id = asText(item.id);
+		const title = asText(reviewDrafts[key]?.title || item.title);
+		if (!key || !kind || !id) return;
+		reviewErrors[key] = '';
+		reviewMessages[key] = '';
+		if (!title) {
+			reviewErrors[key] = 'Enter a title before refreshing metadata.';
+			return;
+		}
+		const year = parseReviewYear(reviewDrafts[key]?.year);
+		if (reviewDraftSupportsYear(kind) && reviewDrafts[key]?.year && year === null) {
+			reviewErrors[key] = 'Enter a valid year or leave it blank.';
+			return;
+		}
+		reviewRefreshState[key] = true;
+		actionMessage = '';
+		try {
+			const result = await refreshMetadataItem(
+				{
+					kind,
+					id,
+					title,
+					...(year !== null ? { year } : {})
+				},
+				apiClient
+			);
+			reviewMessages[key] = metadataRefreshMessage(result.warnings, 'Metadata refresh finished.');
+			actionMessage = reviewMessages[key];
+			await loadMetadataRecords(item, true);
+			await loadSettingsSurface(true);
+		} catch (error) {
+			reviewErrors[key] = formatLoadError(error);
+		} finally {
+			reviewRefreshState[key] = false;
+		}
+	}
+
+	async function applyManualCorrection(item: ReviewItem): Promise<void> {
+		if (!canManageSettings) return;
+		const key = reviewItemKey(item);
+		const kind = asText(item.kind);
+		const id = asText(item.id);
+		const title = asText(reviewDrafts[key]?.title || item.title);
+		if (!key || !kind || !id) return;
+		reviewErrors[key] = '';
+		reviewMessages[key] = '';
+		if (!title) {
+			reviewErrors[key] = 'Enter a title before applying a manual correction.';
+			return;
+		}
+		const year = parseReviewYear(reviewDrafts[key]?.year);
+		if (reviewDraftSupportsYear(kind) && reviewDrafts[key]?.year && year === null) {
+			reviewErrors[key] = 'Enter a valid year or leave it blank.';
+			return;
+		}
+		reviewApplyState[key] = true;
+		actionMessage = '';
+		try {
+			await applyMetadataMatch(
+				{
+					kind,
+					id,
+					title,
+					...(year !== null ? { year } : {}),
+					provider: 'manual',
+					review: false
+				},
+				apiClient
+			);
+			reviewMessages[key] = 'Manual correction applied.';
+			actionMessage = 'Manual correction applied.';
+			await loadMetadataRecords(item, true);
+			await loadSettingsSurface(true);
+		} catch (error) {
+			reviewErrors[key] = formatLoadError(error);
+		} finally {
+			reviewApplyState[key] = false;
+		}
+	}
+
+	async function applyRecordMatch(item: ReviewItem, record: MetadataRecord): Promise<void> {
+		if (!canManageSettings) return;
+		const key = reviewItemKey(item);
+		const kind = asText(item.kind);
+		const id = asText(item.id);
+		const title = asText(record.title);
+		if (!key || !kind || !id || !title) return;
+		reviewApplyState[key] = true;
+		actionMessage = '';
+		reviewErrors[key] = '';
+		reviewMessages[key] = '';
+		const payload: MetadataMatchRequest = {
+			kind,
+			id,
+			title,
+			year: Number(record.year || 0) || undefined,
+			overview: asText(record.overview),
+			provider: asText(record.provider),
+			externalId: asText(record.externalId),
+			posterUrl: asText(record.posterUrl),
+			backdropUrl: asText(record.backdropUrl),
+			review: false
+		};
+		try {
+			await applyMetadataMatch(payload, apiClient);
+			reviewDrafts[key] = {
+				title,
+				year: Number(record.year || 0) > 0 ? String(record.year) : ''
+			};
+			reviewMessages[key] = 'Match applied.';
+			actionMessage = 'Match applied.';
+			await loadMetadataRecords(item, true);
+			await loadSettingsSurface(true);
+		} catch (error) {
+			reviewErrors[key] = formatLoadError(error);
+		} finally {
+			reviewApplyState[key] = false;
 		}
 	}
 
@@ -1370,6 +1569,118 @@
 		return index >= 0 && target >= 0 && target < order.length;
 	}
 
+	function syncReviewDrafts(items: ReviewItem[]): void {
+		for (const item of items) {
+			const key = reviewItemKey(item);
+			if (!key || reviewDrafts[key]) continue;
+			reviewDrafts[key] = {
+				title: asText(item.title),
+				year: ''
+			};
+		}
+	}
+
+	function reviewItemKey(item: ReviewItem): string {
+		const kind = asText(item.kind);
+		const id = asText(item.id);
+		if (!kind || !id) return '';
+		return `${kind}:${id}`;
+	}
+
+	function reviewKindLabel(kind: unknown): string {
+		const normalized = asText(kind).toLowerCase();
+		if (normalized === 'movie') return 'Movie';
+		if (normalized === 'series') return 'TV series';
+		if (normalized === 'episode') return 'TV episode';
+		return 'Media item';
+	}
+
+	function reviewReasonSummary(reason: unknown): string {
+		const normalized = asText(reason).toLowerCase();
+		if (
+			normalized.includes('unable to infer') ||
+			normalized.includes('missing') ||
+			normalized.includes('no metadata')
+		) {
+			return 'Missing metadata';
+		}
+		if (
+			normalized.includes('wrong') ||
+			normalized.includes('mismatch') ||
+			normalized.includes('match')
+		) {
+			return 'Wrong match';
+		}
+		return 'Needs review';
+	}
+
+	function reviewReasonDetail(reason: unknown): string {
+		const text = asText(reason);
+		if (!text) return 'Lorivo could not confirm this match automatically.';
+		return capitalize(text);
+	}
+
+	function reviewDraftFor(item: ReviewItem): ReviewDraft {
+		const key = reviewItemKey(item);
+		if (!reviewDrafts[key]) {
+			reviewDrafts[key] = {
+				title: asText(item.title),
+				year: ''
+			};
+		}
+		return reviewDrafts[key];
+	}
+
+	function parseReviewYear(value: unknown): number | null {
+		const text = asText(value);
+		if (!text) return null;
+		if (!/^\d{4}$/.test(text)) return null;
+		const parsed = Number(text);
+		if (!Number.isFinite(parsed) || parsed < 1888 || parsed > new Date().getFullYear() + 5) {
+			return null;
+		}
+		return Math.trunc(parsed);
+	}
+
+	function reviewDraftSupportsYear(kind: unknown): boolean {
+		return asText(kind).toLowerCase() === 'movie';
+	}
+
+	function providerLabel(id: unknown): string {
+		const normalized = asText(id).toLowerCase();
+		if (!normalized) return 'Metadata source';
+		const allSources = [...(metadataSourceCatalog.movie || []), ...(metadataSourceCatalog.series || [])];
+		const found = allSources.find((item) => asText(item.id).toLowerCase() === normalized);
+		if (found?.name) return found.name;
+		if (normalized === 'manual') return 'Manual correction';
+		if (normalized === 'artwork') return 'Local artwork';
+		if (normalized === 'nfo') return 'Local NFO';
+		if (normalized === 'filename') return 'Filename and folders';
+		if (normalized === 'tvdb') return 'TheTVDB';
+		if (normalized === 'tmdb') return 'TMDB';
+		if (normalized === 'omdb') return 'OMDb';
+		if (normalized === 'tvmaze') return 'TVMaze';
+		if (normalized === 'wikidata') return 'Wikidata';
+		if (normalized === 'wikipedia') return 'Wikipedia';
+		return capitalize(normalized);
+	}
+
+	function reviewRecordsForItem(item: ReviewItem): MetadataRecord[] {
+		return metadataRecordsByItem[reviewItemKey(item)]?.records || [];
+	}
+
+	function reviewBestRecordForItem(item: ReviewItem): MetadataRecord | null {
+		return (metadataRecordsByItem[reviewItemKey(item)]?.best as MetadataRecord | null | undefined) || null;
+	}
+
+	function versionGroupLink(item: VersionGroup): string {
+		const kind = asText(item.kind).toLowerCase();
+		const id = asText(item.id);
+		if (!id) return '';
+		if (kind === 'movie') return `/movies/${encodeURIComponent(id)}`;
+		return '';
+	}
+
 	function storageDiskFor(name: StorageFieldDefinition['diskName']): SystemDisk | undefined {
 		return (system.disks || []).find((disk) => asText(disk.name).toLowerCase() === name);
 	}
@@ -1436,7 +1747,7 @@
 			dashboard: 'Check whether your Lorivo library is ready and jump to the next useful setting.',
 			library: 'Media folders, setup status, and the current Library Setup flow.',
 			scanning: 'Choose how Lorivo checks libraries and review current scan activity.',
-			metadata: 'Choose metadata sources and refresh movie and TV information.',
+			metadata: 'Choose metadata sources, review matches, and refresh movie and TV information.',
 			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
 			storage: 'Choose where Lorivo keeps media processing files, library artwork, cache, and local data.',
 			access: 'See who is signed in and manage the current session.',
@@ -1854,27 +2165,7 @@
 
 			{:else if activeSection === 'metadata'}
 			<section id="metadata" class="settings-section" data-testid="settings-section-content" data-section="metadata">
-				<SettingsPanel title="Metadata" description="Refresh movie and TV information." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
-					<div class="settings-subsection">
-						<div class="settings-subsection__head">
-							<div>
-								<h3>Refresh media details</h3>
-								<p>Use these actions when movie or TV details need another pass.</p>
-							</div>
-						</div>
-						<div class="status-actions">
-							<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
-								{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movies'}
-							</LorivoButton>
-							<LorivoButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
-								{isRefreshingTV ? 'Refreshing TV...' : 'Refresh TV'}
-							</LorivoButton>
-						</div>
-					</div>
-					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} files pending media checks`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
-						<LorivoStat label="Subtitles Found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
-					</div>
+				<SettingsPanel title="Metadata" description="Choose metadata sources, review matches, and refresh movie and TV information." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
@@ -1954,6 +2245,224 @@
 									{/if}
 								</div>
 							</div>
+						{/if}
+					</div>
+
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Metadata Review</h3>
+								<p>Review items that still need metadata attention and fix missing metadata or a wrong match.</p>
+							</div>
+						</div>
+						<div class="stat-grid stat-grid--compact">
+							<LorivoStat label="Needs review" value={asCount(health.needsReview)} meta="Missing metadata or wrong matches that still need attention." tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
+							<LorivoStat label="Missing media checks" value={asCount(health.unprobed)} meta="Files still waiting for Lorivo's media check." tone={Number(health.unprobed || 0) > 0 ? 'warn' : 'good'} />
+							<LorivoStat label="Playback review" value={asCount(health.unsupported)} meta="Items that may need extra playback attention." tone={Number(health.unsupported || 0) > 0 ? 'warn' : 'good'} />
+							<LorivoStat label="High bitrate" value={asCount(health.highBitrate)} meta="Large files that may need stronger device support." />
+							<LorivoStat label="Subtitles found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
+						</div>
+						{#if requiresOwnerSignIn}
+							<div class="settings-auth-callout">
+								<p class="settings-note">Sign in as the owner to update metadata.</p>
+								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+								<div class="status-actions">
+									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+									<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+								</div>
+							</div>
+						{/if}
+						{#if metadataReviewError}
+							<p class="settings-error">{metadataReviewError}</p>
+						{/if}
+						<div class="metadata-review-list" data-testid="metadata-review-list">
+							{#if isLoadingMetadataReview}
+								<p class="settings-note">Loading metadata review items…</p>
+							{:else if reviewItems.length === 0}
+								<p class="settings-note">No metadata review items right now.</p>
+							{:else}
+								{#each reviewItems as item (reviewItemKey(item))}
+									<div class="review-card">
+										<div class="review-card__head">
+											<div>
+												<h4>{asText(item.title) || 'Metadata item'}</h4>
+												<p>{reviewKindLabel(item.kind)} · {reviewReasonSummary(item.reviewReason)}</p>
+											</div>
+											<span class="status-pill status-pill--warn">Needs review</span>
+										</div>
+										<p class="review-card__reason">{reviewReasonDetail(item.reviewReason)}</p>
+										<div class="status-actions review-card__actions">
+											<LorivoButton variant="ghost" size="sm" onclick={() => void toggleReviewDetails(item)}>
+												{reviewExpanded[reviewItemKey(item)] ? 'Hide records' : 'View records'}
+											</LorivoButton>
+											{#if canManageSettings}
+												<LorivoButton
+													variant="secondary"
+													size="sm"
+													disabled={Boolean(reviewRefreshState[reviewItemKey(item)])}
+													onclick={() => void refreshReviewItem(item)}
+												>
+													{reviewRefreshState[reviewItemKey(item)] ? 'Refreshing...' : 'Refresh metadata'}
+												</LorivoButton>
+											{/if}
+										</div>
+										{#if reviewExpanded[reviewItemKey(item)]}
+											<div class="review-card__details">
+												{#if metadataRecordsLoading[reviewItemKey(item)]}
+													<p class="settings-note">Loading records…</p>
+												{:else}
+													{#if metadataRecordsError[reviewItemKey(item)]}
+														<p class="settings-error">{metadataRecordsError[reviewItemKey(item)]}</p>
+													{/if}
+													{#if reviewRecordsForItem(item).length > 0}
+														<div class="review-records">
+															{#each reviewRecordsForItem(item) as record, index (`${reviewItemKey(item)}-${asText(record.provider)}-${index}`)}
+																<div class="review-record-card">
+																	<div class="review-record-card__head">
+																		<div>
+																			<strong>{providerLabel(record.provider)}</strong>
+																			<span>{asText(record.title) || 'Metadata record'}{#if Number(record.year || 0) > 0} ({record.year}){/if}</span>
+																		</div>
+																		{#if canManageSettings}
+																			<LorivoButton
+																				variant="ghost"
+																				size="sm"
+																				disabled={Boolean(reviewApplyState[reviewItemKey(item)])}
+																				onclick={() => void applyRecordMatch(item, record)}
+																			>
+																				Apply match
+																			</LorivoButton>
+																		{/if}
+																	</div>
+																	{#if asText(record.overview)}
+																		<p>{asText(record.overview)}</p>
+																	{/if}
+																</div>
+															{/each}
+														</div>
+													{:else}
+														<p class="settings-note">No metadata records yet. Try Refresh metadata to fetch another pass.</p>
+													{/if}
+												{/if}
+												{#if canManageSettings}
+													<form class="review-manual-form" onsubmit={(event) => { event.preventDefault(); void applyManualCorrection(item); }}>
+														<div class="settings-subsection__head settings-subsection__head--tight">
+															<div>
+																<h5>Manual correction</h5>
+																<p>Correct the title{#if reviewDraftSupportsYear(item.kind)} or year{/if}, then refresh or apply it directly.</p>
+															</div>
+														</div>
+														<div class="review-manual-form__fields">
+															<label class="settings-field">
+																<span>Title</span>
+																<input
+																	type="text"
+																	value={reviewDraftFor(item).title}
+																	placeholder="Enter a corrected title"
+																	oninput={(event) => {
+																		reviewDraftFor(item).title = (event.currentTarget as HTMLInputElement).value;
+																		reviewErrors[reviewItemKey(item)] = '';
+																		reviewMessages[reviewItemKey(item)] = '';
+																	}}
+																/>
+															</label>
+															{#if reviewDraftSupportsYear(item.kind)}
+																<label class="settings-field">
+																	<span>Year</span>
+																	<input
+																	type="number"
+																	min="1888"
+																	max="2100"
+																	inputmode="numeric"
+																	value={reviewDraftFor(item).year}
+																	placeholder="Optional"
+																	oninput={(event) => {
+																		reviewDraftFor(item).year = (event.currentTarget as HTMLInputElement).value;
+																		reviewErrors[reviewItemKey(item)] = '';
+																		reviewMessages[reviewItemKey(item)] = '';
+																	}}
+																/>
+															</label>
+															{/if}
+														</div>
+														<div class="status-actions">
+															<LorivoButton
+																variant="secondary"
+																type="button"
+																disabled={Boolean(reviewRefreshState[reviewItemKey(item)])}
+																onclick={() => void refreshReviewItem(item)}
+															>
+																{reviewRefreshState[reviewItemKey(item)] ? 'Refreshing...' : 'Refresh with correction'}
+															</LorivoButton>
+															<LorivoButton
+																variant="primary"
+																type="submit"
+																disabled={Boolean(reviewApplyState[reviewItemKey(item)])}
+															>
+																{reviewApplyState[reviewItemKey(item)] ? 'Applying...' : 'Apply correction'}
+															</LorivoButton>
+														</div>
+													</form>
+												{/if}
+												{#if reviewMessages[reviewItemKey(item)]}
+													<p class="settings-feedback">{reviewMessages[reviewItemKey(item)]}</p>
+												{/if}
+												{#if reviewErrors[reviewItemKey(item)]}
+													<p class="settings-error">{reviewErrors[reviewItemKey(item)]}</p>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+					</div>
+
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Version Groups</h3>
+								<p>Multiple versions found. Review items where Lorivo found more than one version.</p>
+							</div>
+						</div>
+						<div class="metadata-version-groups" data-testid="metadata-version-groups">
+							{#if versionGroups.length === 0}
+								<p class="settings-note">No multiple-version groups right now.</p>
+							{:else}
+								{#each versionGroups as item (`${asText(item.kind)}-${asText(item.id)}`)}
+									<div class="version-group-card">
+										<div>
+											<strong>{asText(item.title) || 'Version group'}</strong>
+											<span>{reviewKindLabel(item.kind)} · {asCount(item.versionCount)} versions</span>
+										</div>
+										{#if versionGroupLink(item)}
+											<LorivoButton variant="ghost" size="sm" href={versionGroupLink(item)}>
+												Open item
+											</LorivoButton>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+					</div>
+
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Refresh Metadata</h3>
+								<p>Use these actions when movie or TV details need another pass.</p>
+							</div>
+						</div>
+						<div class="status-actions">
+							<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+								{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movies'}
+							</LorivoButton>
+							<LorivoButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+								{isRefreshingTV ? 'Refreshing TV...' : 'Refresh TV'}
+							</LorivoButton>
+						</div>
+						{#if requiresOwnerSignIn}
+							<p class="settings-note">Sign in as the owner to update metadata.</p>
 						{/if}
 					</div>
 				</SettingsPanel>
@@ -2828,6 +3337,80 @@
 		line-height: 1.4;
 	}
 
+	.metadata-review-list,
+	.metadata-version-groups,
+	.review-records {
+		display: grid;
+		gap: 10px;
+	}
+
+	.review-card,
+	.review-record-card,
+	.version-group-card {
+		display: grid;
+		gap: 10px;
+		padding: 12px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+	}
+
+	.review-card__head,
+	.review-record-card__head,
+	.version-group-card {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
+	}
+
+	.review-card__head h4,
+	.review-record-card__head strong {
+		margin: 0;
+		font-size: 0.94rem;
+		font-weight: 760;
+	}
+
+	.review-card__head p,
+	.review-record-card__head span,
+	.version-group-card span {
+		margin: 4px 0 0;
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.8rem;
+		line-height: 1.4;
+	}
+
+	.review-card__reason,
+	.review-record-card p {
+		margin: 0;
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.82rem;
+		line-height: 1.45;
+	}
+
+	.review-card__details {
+		display: grid;
+		gap: 12px;
+		padding-top: 12px;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+	}
+
+	.review-manual-form {
+		display: grid;
+		gap: 10px;
+		padding: 12px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--settings-accent-soft) 24%, transparent);
+	}
+
+	.review-manual-form__fields {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 10px;
+	}
+
 	@media (max-width: 1120px) {
 		.settings-dashboard {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3055,6 +3638,10 @@
 
 		.stat-grid,
 		.stat-grid--compact {
+			grid-template-columns: 1fr;
+		}
+
+		.review-manual-form__fields {
 			grid-template-columns: 1fr;
 		}
 	}

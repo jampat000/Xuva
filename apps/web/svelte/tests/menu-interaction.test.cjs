@@ -116,7 +116,17 @@ function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/movies') return { movies: [] };
 	if (pathname === '/api/series') return { series: [] };
 	if (pathname === '/api/catalog/summary') return { movies: 42, series: 6, episodes: 48 };
-	if (pathname === '/api/catalog/health') return {};
+	if (pathname === '/api/catalog/health') {
+		return {
+			needsReview: state.reviewItems.length,
+			unprobed: 3,
+			unsupported: 1,
+			highBitrate: 2,
+			withSubtitles: 5
+		};
+	}
+	if (pathname === '/api/review') return { items: state.reviewItems || [] };
+	if (pathname === '/api/versions') return { versions: state.versionGroups || [] };
 	if (pathname === '/api/system/status') {
 		return {
 			cpu: {},
@@ -221,6 +231,54 @@ async function installApiMocks(page, options = {}) {
 			movie: ['nfo', 'artwork', 'tmdb', 'wikipedia', 'wikidata', 'omdb', 'filename'],
 			series: ['nfo', 'artwork', 'tvmaze', 'tmdb', 'wikipedia', 'wikidata', 'omdb', 'filename']
 		},
+		reviewItems: [
+			{ kind: 'movie', id: 'movie-heat', title: 'Heat', reviewReason: 'unable to infer movie year' },
+			{ kind: 'episode', id: 'episode-pilot', title: 'Pilot', reviewReason: 'unable to infer episode number' }
+		],
+		versionGroups: [
+			{ kind: 'movie', id: 'movie-heat', title: 'Heat', versionCount: 2 }
+		],
+		metadataRecords: {
+			'movie:movie-heat': {
+				best: {
+					kind: 'movie',
+					itemId: 'movie-heat',
+					provider: 'tmdb',
+					externalId: '603',
+					title: 'Heat',
+					year: 1995,
+					overview: 'A professional thief matches wits with a determined detective.',
+					posterUrl: 'https://image.tmdb.org/t/p/w500/heat.jpg',
+					backdropUrl: 'https://image.tmdb.org/t/p/w780/heat-bg.jpg'
+				},
+				records: [
+					{
+						kind: 'movie',
+						itemId: 'movie-heat',
+						provider: 'tmdb',
+						externalId: '603',
+						title: 'Heat',
+						year: 1995,
+						overview: 'A professional thief matches wits with a determined detective.',
+						posterUrl: 'https://image.tmdb.org/t/p/w500/heat.jpg',
+						backdropUrl: 'https://image.tmdb.org/t/p/w780/heat-bg.jpg'
+					},
+					{
+						kind: 'movie',
+						itemId: 'movie-heat',
+						provider: 'wikipedia',
+						externalId: 'Heat_(1995_film)',
+						title: 'Heat',
+						year: 1995,
+						overview: 'Wikipedia summary for Heat.'
+					}
+				]
+			},
+			'episode:episode-pilot': {
+				best: null,
+				records: []
+			}
+		},
 		scans: [
 			{ id: 'scan-tv-main', status: 'completed', libraryId: 'tv-main', updatedAt: '2026-05-12T18:20:00Z' }
 		],
@@ -284,6 +342,93 @@ async function installApiMocks(page, options = {}) {
 					writable: true,
 					message: 'Ready'
 				})
+			});
+		}
+		if (url.pathname.startsWith('/api/metadata/') && route.request().method() === 'GET') {
+			const parts = url.pathname.split('/');
+			if (parts.length >= 5 && parts[3] && parts[4]) {
+				const key = `${decodeURIComponent(parts[3])}:${decodeURIComponent(parts[4])}`;
+				return route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify(
+						state.metadataRecords[key] || {
+							best: null,
+							records: []
+						}
+					)
+				});
+			}
+		}
+		if (url.pathname === '/api/metadata/refresh' && route.request().method() === 'POST') {
+			const body = route.request().postDataJSON() || {};
+			const kind = String(body.kind || '').trim();
+			const id = String(body.id || '').trim();
+			const title = String(body.title || '').trim();
+			const key = `${kind}:${id}`;
+			if (!kind || !id || !title) {
+				return route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'kind, id, and title are required' })
+				});
+			}
+			const year = Number(body.year || 0) || undefined;
+			state.metadataRecords[key] = {
+				best: state.metadataRecords[key]?.best || null,
+				records: [
+					{
+						kind,
+						itemId: id,
+						provider: kind === 'movie' ? 'tmdb' : 'tvmaze',
+						externalId: kind === 'movie' ? '603' : '100',
+						title,
+						...(year ? { year } : {}),
+						overview: `${title} refreshed metadata.`,
+						posterUrl: 'https://image.tmdb.org/t/p/w500/placeholder.jpg'
+					},
+					...(state.metadataRecords[key]?.records || [])
+				]
+			};
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ kind, id, warnings: [] })
+			});
+		}
+		if (url.pathname === '/api/metadata/match' && route.request().method() === 'PUT') {
+			const body = route.request().postDataJSON() || {};
+			const kind = String(body.kind || '').trim();
+			const id = String(body.id || '').trim();
+			const title = String(body.title || '').trim();
+			const key = `${kind}:${id}`;
+			if (!kind || !id || !title) {
+				return route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'kind, id, and title are required' })
+				});
+			}
+			const record = {
+				kind,
+				itemId: id,
+				provider: String(body.provider || 'manual').trim(),
+				externalId: String(body.externalId || '').trim(),
+				title,
+				year: Number(body.year || 0) || undefined,
+				overview: String(body.overview || '').trim(),
+				posterUrl: String(body.posterUrl || '').trim(),
+				backdropUrl: String(body.backdropUrl || '').trim()
+			};
+			state.metadataRecords[key] = {
+				best: record,
+				records: [record, ...(state.metadataRecords[key]?.records || [])]
+			};
+			state.reviewItems = state.reviewItems.filter((item) => !(item.kind === kind && item.id === id));
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ match: body, records: state.metadataRecords[key].records })
 			});
 		}
 		if (url.pathname === '/api/settings/metadata-sources' && route.request().method() === 'PUT') {
@@ -1027,6 +1172,10 @@ async function assertPlaybackSection(page, state) {
 async function assertMetadataSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
 	assert.match(await selectedSection.innerText(), /Metadata Sources/);
+	assert.match(await selectedSection.innerText(), /Metadata Review/);
+	assert.match(await selectedSection.innerText(), /Version Groups/);
+	assert.match(await selectedSection.innerText(), /Refresh Metadata/);
+	assert.match(await selectedSection.innerText(), /Needs review/);
 	assert.match(await selectedSection.innerText(), /Movie metadata sources/);
 	assert.match(await selectedSection.innerText(), /TV metadata sources/);
 	assert.match(await selectedSection.innerText(), /Refresh Movies/);
@@ -1035,18 +1184,26 @@ async function assertMetadataSection(page, state) {
 	assert.match(await selectedSection.innerText(), /TheTVDB/);
 	assert.match(await selectedSection.innerText(), /OMDb/);
 	assert.doesNotMatch(await selectedSection.innerText(), /API key/i);
+	assert.doesNotMatch(await selectedSection.innerText(), /rawJson/i);
 
 	if (!state.signedIn && !state.devAuthBypass && !state.authDisabled) {
 		assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+		assert.match(await selectedSection.innerText(), /Sign in as the owner to update metadata\./);
 		assert.equal(await page.getByTestId('metadata-source-form').count(), 0);
+		assert.equal(await page.getByTestId('metadata-review-list').count(), 1);
 		await assertNoHorizontalOverflow(page);
 		return;
 	}
 
 	assert.equal(await page.getByTestId('metadata-source-form').count(), 1);
+	assert.equal(await page.getByTestId('metadata-review-list').count(), 1);
+	assert.equal(await page.getByTestId('metadata-version-groups').count(), 1);
 	assert.equal(await page.getByTestId('metadata-source-list-movie').count(), 1);
 	assert.equal(await page.getByTestId('metadata-source-list-series').count(), 1);
 	assert.match(await selectedSection.innerText(), /Unavailable in this build/);
+	assert.match(await selectedSection.innerText(), /Heat/);
+	assert.match(await selectedSection.innerText(), /Pilot/);
+	assert.match(await selectedSection.innerText(), /Multiple versions found/);
 
 	await selectedSection.getByRole('button', { name: 'Move Down', exact: true }).first().click();
 	await selectedSection
@@ -1062,6 +1219,22 @@ async function assertMetadataSection(page, state) {
 	assert.match(await page.locator('body').innerText(), /Metadata source settings saved\./);
 	assert.ok(state.metadataSourcePreferences.movie.length >= 1);
 	assert.ok(state.metadataSourcePreferences.series.length >= 1);
+
+	await selectedSection.getByRole('button', { name: 'View records', exact: true }).first().click();
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Current records') || document.body.innerText.includes('Apply match'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.match(await selectedSection.innerText(), /Apply match/);
+	assert.match(await selectedSection.innerText(), /Manual correction/);
+	await selectedSection.getByRole('button', { name: 'Apply match', exact: true }).first().click();
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Match applied.'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.equal(state.reviewItems.some((item) => item.id === 'movie-heat'), false);
 	await assertNoHorizontalOverflow(page);
 }
 
