@@ -1912,6 +1912,58 @@ func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
 	}
 }
 
+func TestSettingsServerNameIsUserDisplayName(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	update := requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"serverName": "  Living Room Lorivo  ",
+	})
+	configPayload, _ := update["config"].(map[string]any)
+	if configPayload["serverName"] != "Living Room Lorivo" {
+		t.Fatalf("expected trimmed server display name, got %#v", configPayload)
+	}
+
+	reloaded := getJSON(t, router, "/api/settings")
+	reloadedConfig, _ := reloaded["config"].(map[string]any)
+	if reloadedConfig["serverName"] != "Living Room Lorivo" {
+		t.Fatalf("expected saved server display name after reload, got %#v", reloadedConfig)
+	}
+}
+
+func TestSettingsServerNameValidation(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+
+	empty := httptest.NewRecorder()
+	router.ServeHTTP(empty, httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+		"serverName": "   ",
+	}))))
+	if empty.Code != http.StatusBadRequest {
+		t.Fatalf("expected empty server name to fail, got %d: %s", empty.Code, empty.Body.String())
+	}
+
+	longName := strings.Repeat("L", 61)
+	tooLong := httptest.NewRecorder()
+	router.ServeHTTP(tooLong, httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+		"serverName": longName,
+	}))))
+	if tooLong.Code != http.StatusBadRequest {
+		t.Fatalf("expected long server name to fail, got %d: %s", tooLong.Code, tooLong.Body.String())
+	}
+}
+
+func TestSettingsServerNameMigratesLegacyDefault(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	deps.Config.ServerName = "My Server"
+	router := NewRouter(deps)
+
+	settings := getJSON(t, router, "/api/settings")
+	configPayload, _ := settings["config"].(map[string]any)
+	if configPayload["serverName"] != "Lorivo" {
+		t.Fatalf("expected legacy default server name to display as Lorivo, got %#v", configPayload)
+	}
+}
+
 func TestSettingsManagedProviderOverridesIgnoreClientKeyInjection(t *testing.T) {
 	t.Setenv("LORIVO_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
 	deps := testDeps(t, time.Now())

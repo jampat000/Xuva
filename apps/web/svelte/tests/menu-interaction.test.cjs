@@ -46,7 +46,7 @@ async function launchDevServer() {
 	return { server, baseURL };
 }
 
-function apiPayload(pathname) {
+function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/auth/session') {
 		return { user: { id: 'local', username: 'local', displayName: 'Local User', role: 'admin' } };
 	}
@@ -59,7 +59,13 @@ function apiPayload(pathname) {
 	if (pathname === '/api/catalog/health') return {};
 	if (pathname === '/api/system/status') return { cpu: {}, memory: {} };
 	if (pathname === '/api/settings') {
-		return { config: { metadataProviders: { automatic: [], managedOverrides: [] } }, libraries: [] };
+		return {
+			config: {
+				serverName: state.serverName,
+				metadataProviders: { automatic: [], managedOverrides: [] }
+			},
+			libraries: []
+		};
 	}
 	if (pathname === '/api/settings/performance') return {};
 	if (pathname === '/api/scans') return { scans: [] };
@@ -70,15 +76,35 @@ function apiPayload(pathname) {
 	return {};
 }
 
-async function installApiMocks(page) {
+async function installApiMocks(page, options = {}) {
+	const state = {
+		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Lorivo'
+	};
 	await page.route('**/api/**', (route) => {
 		const url = new URL(route.request().url());
 		if (!url.pathname.startsWith('/api/')) return route.continue();
 		if (url.pathname === '/api/events') return route.fulfill({ status: 204, body: '' });
+		if (url.pathname === '/api/settings' && route.request().method() === 'PUT') {
+			const body = route.request().postDataJSON() || {};
+			const nextName = String(body.serverName ?? '').trim();
+			if (!nextName) {
+				return route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'server name is required' })
+				});
+			}
+			state.serverName = nextName;
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify(apiPayload('/api/settings', state))
+			});
+		}
 		return route.fulfill({
 			status: 200,
 			contentType: 'application/json',
-			body: JSON.stringify(apiPayload(url.pathname))
+			body: JSON.stringify(apiPayload(url.pathname, state))
 		});
 	});
 	await page.route('**/build-info.json', (route) =>
@@ -282,6 +308,8 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	await assertNoHorizontalOverflow(page);
 	assert.equal(await page.getByTestId('settings-dashboard').count(), 1);
 	assert.equal(await page.getByTestId('settings-section-content').count(), 0);
+	assert.equal(await page.title(), 'Living Room Lorivo · Lorivo');
+	assert.match(await page.getByTestId('settings-server-name').innerText(), /Living Room Lorivo/);
 	assert.match(await page.locator('body').innerText(), /Dashboard/);
 	await assertSettingsSafetyCopy(page);
 	if (viewport.width >= 981) {
@@ -355,6 +383,16 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		assert.equal(await selectedSection.getAttribute('data-section'), hash);
 		assert.equal(await page.locator(`section#${hash}`).count(), 1);
 		assert.equal(await page.getByTestId('settings-dashboard').count(), 0);
+		if (hash === 'about') {
+			assert.match(await selectedSection.innerText(), /Server name/);
+			const serverNameInput = selectedSection.locator('input[placeholder="Lorivo"]');
+			assert.equal(await serverNameInput.count(), 1);
+			await serverNameInput.fill('Family Library');
+			await selectedSection.getByRole('button', { name: 'Save Server Name', exact: true }).click();
+			await page.waitForFunction(() => document.title === 'Family Library · Lorivo', { timeout: 5000 });
+			assert.equal(await page.title(), 'Family Library · Lorivo');
+			assert.match(await page.getByTestId('settings-server-name').innerText(), /Family Library/);
+		}
 		await assertSettingsSafetyCopy(page);
 		for (const [, otherHash] of sections) {
 			if (otherHash === hash) continue;
@@ -386,7 +424,15 @@ async function assertSettingsSafetyCopy(page) {
 async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/setup`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
+	assert.match(await page.title(), /(?:Living Room Lorivo|Family Library) · Lorivo/);
 	assert.match(await page.locator('body').innerText(), /Library Setup/);
+	const setupServerName = page.locator('input[placeholder="Lorivo"]');
+	assert.equal(await setupServerName.count(), 1);
+	assert.match(await page.locator('body').innerText(), /This name helps identify this Lorivo library in your browser and settings\./);
+	await setupServerName.fill('   ');
+	await page.getByRole('button', { name: 'Save library', exact: true }).click();
+	assert.match(await page.locator('body').innerText(), /Enter a server name\./);
+	await setupServerName.fill('Living Room Lorivo');
 	if (viewport.width >= 981) {
 		const sidebar = page.getByTestId('settings-mode-sidebar');
 		assert.equal(await sidebar.count(), 1);
@@ -439,6 +485,14 @@ test('hamburger media and settings menus open and navigate across viewports', as
 		await page.waitForURL(`${baseURL}/settings#dashboard`, { timeout: 10000 });
 		assert.doesNotMatch(await page.locator('body').innerText(), /Admin/);
 		await page.close();
+
+		const fallbackPage = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+		await installApiMocks(fallbackPage, { serverName: '' });
+		await fallbackPage.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
+		await fallbackPage.waitForLoadState('networkidle', { timeout: 10000 });
+		assert.equal(await fallbackPage.title(), 'Lorivo');
+		assert.match(await fallbackPage.getByTestId('settings-server-name').innerText(), /Lorivo/);
+		await fallbackPage.close();
 	} finally {
 		await browser.close();
 		await server.close();

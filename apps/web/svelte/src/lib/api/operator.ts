@@ -173,6 +173,10 @@ export interface SettingsResponse {
 	}>;
 }
 
+export interface UpdateSettingsRequest {
+	serverName?: string;
+}
+
 export function getCatalogSummary(client: ApiClient = apiClient): Promise<CatalogSummaryResponse> {
 	return client.request<CatalogSummaryResponse>('/api/catalog/summary');
 }
@@ -187,6 +191,13 @@ export function getSystemStatus(client: ApiClient = apiClient): Promise<SystemSt
 
 export function getSettings(client: ApiClient = apiClient): Promise<SettingsResponse> {
 	return client.request<SettingsResponse>('/api/settings');
+}
+
+export function updateSettings(
+	payload: UpdateSettingsRequest,
+	client: ApiClient = apiClient
+): Promise<SettingsResponse> {
+	return client.send<SettingsResponse, UpdateSettingsRequest>('/api/settings', payload, 'PUT');
 }
 
 export function getPerformanceSettings(
