@@ -94,6 +94,13 @@ async function installApiMocks(page, options = {}) {
 					body: JSON.stringify({ error: 'server name is required' })
 				});
 			}
+			if ([...nextName].length > 50) {
+				return route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'server name must be 50 characters or fewer' })
+				});
+			}
 			state.serverName = nextName;
 			return route.fulfill({
 				status: 200,
@@ -428,7 +435,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	assert.match(await page.locator('body').innerText(), /Library Setup/);
 	const setupServerName = page.locator('input[placeholder="Lorivo"]');
 	assert.equal(await setupServerName.count(), 1);
-	assert.match(await page.locator('body').innerText(), /This name helps identify this Lorivo library in your browser and settings\./);
+	assert.match(await page.locator('body').innerText(), /This is the name devices on your home network will use to identify this Lorivo server\./);
 	await setupServerName.fill('   ');
 	await page.getByRole('button', { name: 'Save library', exact: true }).click();
 	assert.match(await page.locator('body').innerText(), /Enter a server name\./);

@@ -819,6 +819,7 @@ func metricsHandler(deps Deps) http.HandlerFunc {
 
 func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := currentConfig(deps)
 		profileID := firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv")
 		profile, ok := deps.Devices.GetProfile(profileID)
 		if !ok {
@@ -830,7 +831,7 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 		}
 		authRequired := deps.Auth != nil && !deps.Auth.Disabled()
 		bootstrapAllowed := false
-		defaultAdminUsername := strings.TrimSpace(deps.Config.AdminUsername)
+		defaultAdminUsername := strings.TrimSpace(cfg.AdminUsername)
 		if defaultAdminUsername == "" {
 			defaultAdminUsername = "admin"
 		}
@@ -842,10 +843,10 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"server": map[string]any{
 				"product":      "lorivo",
-				"name":         firstNonEmpty(strings.TrimSpace(deps.Config.ServerName), "My Server"),
-				"baseUrl":      requestBaseURL(r, deps.Config.HTTPAddr),
-				"httpAddr":     deps.Config.HTTPAddr,
-				"lanAddresses": lanAddresses(deps.Config.HTTPAddr),
+				"name":         configDisplayName(cfg.ServerName),
+				"baseUrl":      requestBaseURL(r, cfg.HTTPAddr),
+				"httpAddr":     cfg.HTTPAddr,
+				"lanAddresses": lanAddresses(cfg.HTTPAddr),
 				"startedAt":    startedAt.UTC().Format(time.RFC3339),
 			},
 			"auth": map[string]any{

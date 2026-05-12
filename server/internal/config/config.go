@@ -261,8 +261,8 @@ func NormalizeServerName(value string) (string, error) {
 	if trimmed == "" {
 		return "", errors.New("server name is required")
 	}
-	if utf8.RuneCountInString(trimmed) > 60 {
-		return "", errors.New("server name must be 60 characters or fewer")
+	if utf8.RuneCountInString(trimmed) > 50 {
+		return "", errors.New("server name must be 50 characters or fewer")
 	}
 	for _, char := range trimmed {
 		if unicode.IsControl(char) {

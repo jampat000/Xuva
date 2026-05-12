@@ -349,7 +349,7 @@ func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
 		t.Fatalf("decode bootstrap: %v", err)
 	}
 	server := payload["server"].(map[string]any)
-	if server["baseUrl"] != "http://lorivo.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
+	if server["name"] != "Lorivo" || server["baseUrl"] != "http://lorivo.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
 		t.Fatalf("expected server identity, got %#v", server)
 	}
 	client := payload["client"].(map[string]any)
@@ -1912,7 +1912,7 @@ func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
 	}
 }
 
-func TestSettingsServerNameIsUserDisplayName(t *testing.T) {
+func TestSettingsServerNameIsUserFacingServerIdentity(t *testing.T) {
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 
@@ -1921,13 +1921,28 @@ func TestSettingsServerNameIsUserDisplayName(t *testing.T) {
 	})
 	configPayload, _ := update["config"].(map[string]any)
 	if configPayload["serverName"] != "Living Room Lorivo" {
-		t.Fatalf("expected trimmed server display name, got %#v", configPayload)
+		t.Fatalf("expected trimmed server name, got %#v", configPayload)
 	}
 
 	reloaded := getJSON(t, router, "/api/settings")
 	reloadedConfig, _ := reloaded["config"].(map[string]any)
 	if reloadedConfig["serverName"] != "Living Room Lorivo" {
-		t.Fatalf("expected saved server display name after reload, got %#v", reloadedConfig)
+		t.Fatalf("expected saved server name after reload, got %#v", reloadedConfig)
+	}
+}
+
+func TestClientBootstrapUsesSavedServerName(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+		"serverName": "Family Library",
+	})
+
+	bootstrap := getJSON(t, router, "/api/client/bootstrap")
+	serverPayload, _ := bootstrap["server"].(map[string]any)
+	if serverPayload["name"] != "Family Library" {
+		t.Fatalf("expected client bootstrap to use saved server name, got %#v", serverPayload)
 	}
 }
 
@@ -1942,7 +1957,7 @@ func TestSettingsServerNameValidation(t *testing.T) {
 		t.Fatalf("expected empty server name to fail, got %d: %s", empty.Code, empty.Body.String())
 	}
 
-	longName := strings.Repeat("L", 61)
+	longName := strings.Repeat("L", 51)
 	tooLong := httptest.NewRecorder()
 	router.ServeHTTP(tooLong, httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
 		"serverName": longName,

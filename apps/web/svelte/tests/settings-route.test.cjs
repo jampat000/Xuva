@@ -37,7 +37,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Dashboard/);
 	assert.match(source, /Library Setup/);
 	assert.match(source, /Server name/);
-	assert.match(source, /This name helps identify this Lorivo library in your browser and settings\./);
+	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
+	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Sign Out/);
 	assert.match(source, /Playback preference editing is not available in this build\./);
 	assert.match(source, /<ServerShell/);
@@ -53,7 +54,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 test('setup route asks for a user-facing server name', () => {
 	const source = read('src/routes/setup/+page.svelte');
 	assert.match(source, /Server name/);
-	assert.match(source, /This name helps identify this Lorivo library in your browser and settings\./);
+	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
+	assert.match(source, /maxlength="50"/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*serverNameValue\s*\}/);
 	assert.match(source, /serverName = \$state\('Lorivo'\)/);
 	assert.match(source, /!session\?\.user && !session\?\.authDisabled/);

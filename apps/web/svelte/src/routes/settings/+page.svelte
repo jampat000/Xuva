@@ -332,8 +332,8 @@
 			serverNameError = 'Enter a server name.';
 			return;
 		}
-		if ([...nextName].length > 60) {
-			serverNameError = 'Server name must be 60 characters or fewer.';
+		if ([...nextName].length > 50) {
+			serverNameError = 'Server name must be 50 characters or fewer.';
 			return;
 		}
 		isSavingServerName = true;
@@ -769,7 +769,7 @@
 
 			{:else if activeSection === 'about'}
 			<section id="about" class="settings-section" data-testid="settings-section-content" data-section="about">
-				<SettingsPanel title="About" description="Lorivo build and application identity." status="healthy">
+				<SettingsPanel title="About" description="Lorivo server identity and build information." status="healthy">
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
 						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Unavailable'} meta={asText(buildInfo?.publishedAt) || 'Build metadata is not available.'} />
@@ -782,12 +782,12 @@
 							<span>Server name</span>
 							<input
 								bind:value={serverNameDraft}
-								maxlength="60"
+								maxlength="50"
 								required
 								placeholder="Lorivo"
 								aria-describedby="settings-server-name-help"
 							/>
-							<small id="settings-server-name-help">This name helps identify this Lorivo library in your browser and settings.</small>
+							<small id="settings-server-name-help">This is the name devices on your home network will use to identify this Lorivo server.</small>
 						</label>
 						<div class="status-actions">
 							<LorivoButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
