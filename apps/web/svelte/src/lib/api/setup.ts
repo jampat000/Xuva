@@ -51,3 +51,14 @@ export function startLibraryScan(
 		'POST'
 	);
 }
+
+export function deleteLibrary(
+	libraryID: string,
+	client: ApiClient = apiClient
+): Promise<{ id?: string }> {
+	return client.send<{ id?: string }, Record<string, never>>(
+		`/api/libraries/${encodeURIComponent(libraryID)}`,
+		{},
+		'DELETE'
+	);
+}

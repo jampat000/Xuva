@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { ArrowLeft, Database, Gauge, Info, Menu, Play, RefreshCw, Tags } from 'lucide-svelte';
+	import { ArrowLeft, Database, Gauge, Info, Menu, Play, RefreshCw, Tags, UserRound } from 'lucide-svelte';
 	import AppDrawer from './AppDrawer.svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoShell from './LorivoShell.svelte';
@@ -14,7 +14,7 @@
 		userInitials = 'U',
 		children
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 		userInitials?: string;
@@ -71,6 +71,10 @@
 			<a class="app-drawer__link" href="/settings#playback" aria-current={active === 'playback' ? 'page' : undefined}>
 				<Play size={19} />
 				Playback
+			</a>
+			<a class="app-drawer__link" href="/settings#access" aria-current={active === 'access' ? 'page' : undefined}>
+				<UserRound size={19} />
+				Access
 			</a>
 			<a class="app-drawer__link" href="/settings#about" aria-current={active === 'about' ? 'page' : undefined}>
 				<Info size={19} />

@@ -149,6 +149,7 @@ export interface PerformanceSettingsResponse {
 }
 
 export interface SettingsResponse {
+	restartRequired?: boolean;
 	config?: {
 		serverName?: string;
 		librarySyncMode?: string;
@@ -175,6 +176,7 @@ export interface SettingsResponse {
 
 export interface UpdateSettingsRequest {
 	serverName?: string;
+	playbackPolicy?: string;
 }
 
 export function getCatalogSummary(client: ApiClient = apiClient): Promise<CatalogSummaryResponse> {
