@@ -153,22 +153,23 @@ Lorivo now advertises itself over mDNS / Bonjour, but does not implement SSDP, U
 - clear keep/defer/reject decision for SSDP / UPnP / DLNA
 - if kept, tracked as future platform work instead of implied support
 
-### 3. Design Advanced owner tools
+### 3. Design Advanced hardware owner tools
 
 **Title**  
-Decide whether Lorivo needs an Advanced owner tools section
+Decide whether Lorivo needs advanced hardware owner tools
 
 **Problem**  
-Old Vyrden exposed several technical/operator tools. Lorivo has intentionally avoided bringing those back into normal Settings.
+Old Vyrden exposed hardware acceleration status, GPU worker controls, and hardware tests. Lorivo has intentionally kept those out of normal Settings.
 
 **Scope**
-- decide whether Lorivo should have an Advanced section at all
-- classify hardware, diagnostics, runtime controls, and source tools
+- decide whether Lorivo should surface hardware tools at all
+- classify hardware status, testing, and worker controls
 - keep normal Settings owner-friendly
+- only consider a future Advanced area if the product still needs one
 
 **Acceptance**
-- documented product decision on Advanced area
-- each remaining advanced Vyrden item is either mapped, rejected, or deferred
+- documented product decision on hardware owner tooling
+- clear keep/defer/reject decision for GPU worker controls and hardware test flow
 
 ### 4. Redesign Source Compatibility tools
 
