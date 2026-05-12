@@ -13,6 +13,7 @@ import (
 	"github.com/jampat000/Lorivo/server/internal/config"
 	"github.com/jampat000/Lorivo/server/internal/database"
 	"github.com/jampat000/Lorivo/server/internal/devices"
+	"github.com/jampat000/Lorivo/server/internal/discovery"
 	"github.com/jampat000/Lorivo/server/internal/downloads"
 	"github.com/jampat000/Lorivo/server/internal/events"
 	"github.com/jampat000/Lorivo/server/internal/jobs"
@@ -50,6 +51,7 @@ type Application struct {
 	Observe   *observability.Service
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
+	Discovery *discovery.Service
 
 	Libraries *libraries.Service
 	Scanner   *scanner.Service
@@ -190,6 +192,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		return nil, err
 	}
 	startRuntimeMaintenance(appCtx, sessionService, transcodeService, probesService, downloadService)
+	discoveryService := discovery.NewService(cfg)
+	discoveryService.Start(appCtx)
 
 	return &Application{
 		Config:    cfg,
@@ -202,6 +206,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Observe:   observe,
 		Resources: manager,
 		Jobs:      jobRegistry,
+		Discovery: discoveryService,
 		Libraries: libraryService,
 		Scanner:   scannerService,
 		Scans:     scanService,
@@ -339,6 +344,7 @@ func (a *Application) Router() http.Handler {
 		Observe:   a.Observe,
 		Resources: a.Resources,
 		Jobs:      a.Jobs,
+		Discovery: a.Discovery,
 		Libraries: a.Libraries,
 		Scanner:   a.Scanner,
 		Scans:     a.Scans,
@@ -363,6 +369,9 @@ func (a *Application) Router() http.Handler {
 
 func (a *Application) Shutdown(context.Context) {
 	a.cancel()
+	if a.Discovery != nil {
+		a.Discovery.Shutdown()
+	}
 	a.Events.Close()
 	_ = a.Database.Close()
 }

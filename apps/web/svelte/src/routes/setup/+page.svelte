@@ -205,7 +205,7 @@
 							placeholder="Lorivo"
 							aria-describedby="server-name-help"
 						/>
-						<small id="server-name-help">Lorivo uses this name in the browser title and shares it with local clients. Local network discovery is not available in this build yet.</small>
+						<small id="server-name-help">Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running.</small>
 					</label>
 
 					<label class="field">

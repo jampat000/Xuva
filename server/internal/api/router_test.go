@@ -23,6 +23,7 @@ import (
 	"github.com/jampat000/Lorivo/server/internal/config"
 	"github.com/jampat000/Lorivo/server/internal/database"
 	"github.com/jampat000/Lorivo/server/internal/devices"
+	"github.com/jampat000/Lorivo/server/internal/discovery"
 	"github.com/jampat000/Lorivo/server/internal/downloads"
 	"github.com/jampat000/Lorivo/server/internal/events"
 	"github.com/jampat000/Lorivo/server/internal/jobs"
@@ -379,6 +380,60 @@ func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
 	endpoints := payload["endpoints"].(map[string]any)
 	if endpoints["adaptiveMaster"] != "/api/media-sources/{id}/adaptive/master.m3u8" || endpoints["sessions"] != "/api/sessions" {
 		t.Fatalf("expected tv playback endpoints, got %#v", endpoints)
+	}
+}
+
+func TestClientBootstrapKeepsConfiguredServerName(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	deps.Config.ServerName = "Family Library"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "/api/client/bootstrap", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bootstrap 200, got %d", response.Code)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+	server := payload["server"].(map[string]any)
+	if server["name"] != "Family Library" {
+		t.Fatalf("expected configured server name, got %#v", server)
+	}
+}
+
+func TestDiscoveryStatusReturnsSafeFields(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	deps.Config.ServerName = "Family Library"
+	deps.Config.DataDir = filepath.Join(t.TempDir(), "data")
+	deps.Config.DiscoveryEnabled = true
+	deps.Config.DiscoveryServiceType = "_lorivo._tcp"
+	deps.Discovery = discovery.NewService(deps.Config)
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "/api/discovery/status", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected discovery status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if strings.Contains(body, deps.Config.DataDir) || strings.Contains(strings.ToLower(body), "ffmpeg") {
+		t.Fatalf("expected discovery status to avoid paths and runtime secrets, got %s", body)
+	}
+	payload := decodeBody(t, response.Body.Bytes())
+	if payload["serviceName"] != "Family Library" {
+		t.Fatalf("expected discovery status service name, got %#v", payload)
+	}
+	if payload["serviceType"] != "_lorivo._tcp.local." {
+		t.Fatalf("expected discovery service type, got %#v", payload)
+	}
+	if _, ok := payload["txtRecords"]; !ok {
+		t.Fatalf("expected txtRecords field, got %#v", payload)
 	}
 }
 

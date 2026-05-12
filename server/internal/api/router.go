@@ -32,6 +32,7 @@ import (
 	"github.com/jampat000/Lorivo/server/internal/catalog"
 	"github.com/jampat000/Lorivo/server/internal/config"
 	"github.com/jampat000/Lorivo/server/internal/devices"
+	"github.com/jampat000/Lorivo/server/internal/discovery"
 	"github.com/jampat000/Lorivo/server/internal/downloads"
 	"github.com/jampat000/Lorivo/server/internal/events"
 	"github.com/jampat000/Lorivo/server/internal/jobs"
@@ -68,6 +69,7 @@ type Deps struct {
 	Observe   *observability.Service
 	Resources *resources.Manager
 	Jobs      *jobs.Registry
+	Discovery *discovery.Service
 	Libraries *libraries.Service
 	Scanner   *scanner.Service
 	Scans     *scans.Service
@@ -96,6 +98,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/ready", readinessHandler(deps))
 	mux.HandleFunc("GET /api/metrics", metricsHandler(deps))
 	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))
+	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))
 	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))
 	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))
 	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))
@@ -920,6 +923,31 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 				"subtitles":        "/api/media-sources/{id}/subtitles",
 				"remoteAccess":     "/api/remote/access",
 			},
+		})
+	}
+}
+
+func discoveryStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := currentConfig(deps)
+		status := discovery.Status{
+			Enabled:     cfg.DiscoveryEnabled,
+			ServiceName: configDisplayName(cfg.ServerName),
+			ServiceType: "_lorivo._tcp.local.",
+			Note:        "Local discovery is not running.",
+		}
+		if deps.Discovery != nil {
+			status = deps.Discovery.Status()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"enabled":     status.Enabled,
+			"running":     status.Running,
+			"serviceName": status.ServiceName,
+			"serviceType": status.ServiceType,
+			"port":        status.Port,
+			"txtRecords":  status.TXTRecords,
+			"lastError":   status.LastError,
+			"note":        status.Note,
 		})
 	}
 }

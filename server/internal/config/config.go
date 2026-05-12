@@ -17,6 +17,8 @@ const legacyDefaultServerName = "My Server"
 type Config struct {
 	ServerName            string   `json:"serverName,omitempty"`
 	HTTPAddr              string   `json:"httpAddr"`
+	DiscoveryEnabled      bool     `json:"-"`
+	DiscoveryServiceType  string   `json:"-"`
 	DataDir               string   `json:"dataDir"`
 	TranscodeDir          string   `json:"transcodeDir,omitempty"`
 	DownloadsDir          string   `json:"downloadsDir,omitempty"`
@@ -53,42 +55,46 @@ type Config struct {
 func FromEnv() Config {
 	dataDir := envString("LORIVO_DATA_DIR", "data")
 	cfg := Config{
-		ServerName:        envString("LORIVO_SERVER_NAME", "Lorivo"),
-		HTTPAddr:          envString("LORIVO_HTTP_ADDR", "127.0.0.1:8097"),
-		DataDir:           dataDir,
-		TranscodeDir:      envString("LORIVO_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
-		DownloadsDir:      envString("LORIVO_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
-		MetadataDir:       envString("LORIVO_METADATA_DIR", filepath.Join(dataDir, "metadata")),
-		CacheDir:          envString("LORIVO_CACHE_DIR", filepath.Join(dataDir, "cache")),
-		TempDir:           envString("LORIVO_TEMP_DIR", filepath.Join(dataDir, "temp")),
-		MovieLibraryPath:  envString("LORIVO_MOVIES_PATH", ""),
-		TVLibraryPath:     envString("LORIVO_TV_PATH", ""),
-		FFprobePath:       envString("LORIVO_FFPROBE_PATH", "ffprobe"),
-		FFmpegPath:        envString("LORIVO_FFMPEG_PATH", "ffmpeg"),
-		OMDbAPIKey:        envString("LORIVO_OMDB_API_KEY", ""),
-		TMDBAPIKey:        envString("LORIVO_TMDB_API_KEY", ""),
-		TVDBAPIKey:        envString("LORIVO_TVDB_API_KEY", ""),
-		EventBuffer:       envInt("LORIVO_EVENT_BUFFER", 128),
-		ScanWorkers:       envInt("LORIVO_SCAN_WORKERS", 1),
-		ProbeWorkers:      envInt("LORIVO_PROBE_WORKERS", 2),
-		TranscodeWorkers:  envInt("LORIVO_TRANSCODE_WORKERS", 1),
-		GPUWorkers:        envInt("LORIVO_GPU_WORKERS", 1),
-		HardwareUnlocked:  envBool("LORIVO_HARDWARE_UNLOCKED", false),
-		PlaybackPolicy:    envString("LORIVO_PLAYBACK_POLICY", "original_only"),
-		LibrarySyncMode:   envString("LORIVO_LIBRARY_SYNC_MODE", "daily"),
-		SyncIntervalMins:  envInt("LORIVO_SYNC_INTERVAL_MINS", 1440),
-		WatchDebounceSecs: envInt("LORIVO_WATCH_DEBOUNCE_SECS", 30),
-		ProbeBatchLimit:   envInt("LORIVO_PROBE_BATCH_LIMIT", 50),
-		AllowedOrigins:    envCSV("LORIVO_ALLOWED_ORIGINS", nil),
-		AuthDisabled:      envBool("LORIVO_AUTH_DISABLED", false),
-		DevAuthBypass:     envBool("LORIVO_DEV_AUTH_BYPASS", false),
-		AdminUsername:     envString("LORIVO_ADMIN_USERNAME", "admin"),
-		AdminPassword:     envString("LORIVO_ADMIN_PASSWORD", ""),
+		ServerName:           envString("LORIVO_SERVER_NAME", "Lorivo"),
+		HTTPAddr:             envString("LORIVO_HTTP_ADDR", "127.0.0.1:8097"),
+		DiscoveryEnabled:     envBool("LORIVO_DISCOVERY_ENABLED", true),
+		DiscoveryServiceType: envString("LORIVO_DISCOVERY_SERVICE_TYPE", "_lorivo._tcp"),
+		DataDir:              dataDir,
+		TranscodeDir:         envString("LORIVO_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
+		DownloadsDir:         envString("LORIVO_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
+		MetadataDir:          envString("LORIVO_METADATA_DIR", filepath.Join(dataDir, "metadata")),
+		CacheDir:             envString("LORIVO_CACHE_DIR", filepath.Join(dataDir, "cache")),
+		TempDir:              envString("LORIVO_TEMP_DIR", filepath.Join(dataDir, "temp")),
+		MovieLibraryPath:     envString("LORIVO_MOVIES_PATH", ""),
+		TVLibraryPath:        envString("LORIVO_TV_PATH", ""),
+		FFprobePath:          envString("LORIVO_FFPROBE_PATH", "ffprobe"),
+		FFmpegPath:           envString("LORIVO_FFMPEG_PATH", "ffmpeg"),
+		OMDbAPIKey:           envString("LORIVO_OMDB_API_KEY", ""),
+		TMDBAPIKey:           envString("LORIVO_TMDB_API_KEY", ""),
+		TVDBAPIKey:           envString("LORIVO_TVDB_API_KEY", ""),
+		EventBuffer:          envInt("LORIVO_EVENT_BUFFER", 128),
+		ScanWorkers:          envInt("LORIVO_SCAN_WORKERS", 1),
+		ProbeWorkers:         envInt("LORIVO_PROBE_WORKERS", 2),
+		TranscodeWorkers:     envInt("LORIVO_TRANSCODE_WORKERS", 1),
+		GPUWorkers:           envInt("LORIVO_GPU_WORKERS", 1),
+		HardwareUnlocked:     envBool("LORIVO_HARDWARE_UNLOCKED", false),
+		PlaybackPolicy:       envString("LORIVO_PLAYBACK_POLICY", "original_only"),
+		LibrarySyncMode:      envString("LORIVO_LIBRARY_SYNC_MODE", "daily"),
+		SyncIntervalMins:     envInt("LORIVO_SYNC_INTERVAL_MINS", 1440),
+		WatchDebounceSecs:    envInt("LORIVO_WATCH_DEBOUNCE_SECS", 30),
+		ProbeBatchLimit:      envInt("LORIVO_PROBE_BATCH_LIMIT", 50),
+		AllowedOrigins:       envCSV("LORIVO_ALLOWED_ORIGINS", nil),
+		AuthDisabled:         envBool("LORIVO_AUTH_DISABLED", false),
+		DevAuthBypass:        envBool("LORIVO_DEV_AUTH_BYPASS", false),
+		AdminUsername:        envString("LORIVO_ADMIN_USERNAME", "admin"),
+		AdminPassword:        envString("LORIVO_ADMIN_PASSWORD", ""),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
 	}
 	cfg.HTTPAddr = envString("LORIVO_HTTP_ADDR", cfg.HTTPAddr)
+	cfg.DiscoveryEnabled = envBool("LORIVO_DISCOVERY_ENABLED", cfg.DiscoveryEnabled)
+	cfg.DiscoveryServiceType = envString("LORIVO_DISCOVERY_SERVICE_TYPE", defaultDiscoveryServiceType(cfg.DiscoveryServiceType))
 	cfg.ServerName = envString("LORIVO_SERVER_NAME", defaultServerName(cfg.ServerName))
 	cfg.DataDir = envString("LORIVO_DATA_DIR", cfg.DataDir)
 	cfg.TranscodeDir = envString("LORIVO_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
@@ -268,6 +274,14 @@ func defaultServerName(value string) string {
 	return "Lorivo"
 }
 
+func defaultDiscoveryServiceType(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "_lorivo._tcp"
+	}
+	return trimmed
+}
+
 func NormalizeServerName(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -347,6 +361,10 @@ func envBool(key string, fallback bool) bool {
 
 func DevAuthBypassActive(cfg Config) bool {
 	return cfg.DevAuthBypass && !cfg.AuthDisabled && loopbackHTTPAddr(cfg.HTTPAddr)
+}
+
+func HTTPAddrLoopbackOnly(addr string) bool {
+	return loopbackHTTPAddr(addr)
 }
 
 func loopbackHTTPAddr(addr string) bool {
