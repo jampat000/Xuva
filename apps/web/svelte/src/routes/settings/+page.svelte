@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { scanMovies, scanTV, refreshMetadataBatch } from '$lib/api/browse';
-	import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+	import { getAuthSession, logout, type AuthSessionUser } from '$lib/api/auth';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import {
@@ -38,8 +38,7 @@
 	} from '$lib/components';
 	import SettingsPanel from '$lib/components/operator/SettingsPanel.svelte';
 
-	type SettingsSection = 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
-	type SettingsView = 'overview' | SettingsSection;
+	type SettingsSection = 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
 
 	interface BuildInfo {
 		buildID?: string;
@@ -53,12 +52,13 @@
 	let isScanningTV = $state(false);
 	let isRefreshingMovies = $state(false);
 	let isRefreshingTV = $state(false);
+	let isSigningOut = $state(false);
 	let loadError = $state('');
 	let searchValue = $state('');
 	let actionMessage = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
-	let activeSection = $state<SettingsView>('overview');
+	let activeSection = $state<SettingsSection>('dashboard');
 
 	let user = $state<AuthSessionUser | null>(null);
 	let libraries = $state<LibraryRecord[]>([]);
@@ -77,12 +77,13 @@
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
+	const userRoleLabel = $derived.by(() => accountTypeLabel(user?.role));
 	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const activeQueueCount = $derived.by(
 		() => [...scans, ...probes, ...work, ...downloads].filter((item) => isActiveStatus(item.status)).length
 	);
 	const activeSessionCount = $derived.by(() => sessions.filter((item) => Boolean(asText(item.id))).length);
-	const serverStatus = $derived.by(() => {
+	const appStatus = $derived.by(() => {
 		const cpu = Number(system.cpu?.percent || 0);
 		const memory = Number(system.memory?.usedPercent || 0);
 		if (cpu >= 90 || memory >= 92) return 'critical';
@@ -90,30 +91,14 @@
 		if (cpu > 0 || memory > 0) return 'healthy';
 		return 'idle';
 	});
-	const providerStates = $derived.by(() => {
-		const automatic = settings.config?.metadataProviders?.automatic || [];
-		const managed = settings.config?.metadataProviders?.managedOverrides || [];
-		return [...automatic, ...managed].map((item, index) => ({
-			id: asText(item.id) || `provider-${index}`,
-			name: asText(item.name) || asText(item.id) || 'Provider',
-			status: managedStateLabel(item)
-		}));
-	});
 	const libraryRows = $derived.by(() =>
 		(settings.libraries || libraries || []).map((item) => ({
 			id: asText(item.id) || asText(item.path) || asText(item.name),
 			label: asText(item.name) || libraryKindLabel(asText(item.kind)),
-			description: [asText(item.kind), asText(item.storageType), asText(item.path)].filter(Boolean).join(' - ')
+			description: libraryDescription(item)
 		}))
 	);
-	const queueItems = $derived.by(() => [
-		...scans.map((item) => queueListItem('Scan', item.id, item.status, item.libraryId || item.kind)),
-		...probes.map((item) => queueListItem('Probe', item.id, item.status)),
-		...work.map((item) => queueListItem('Work', item.id, item.status, item.mode)),
-		...downloads.map((item) =>
-			queueListItem('Download', item.id, item.status, item.targetProfile || item.mediaSourceId)
-		)
-	]);
+	const scanItems = $derived.by(() => scans.map((item) => scanListItem(item)));
 	const sessionItems = $derived.by(() =>
 		sessions.map((item, index) => ({
 			id: asText(item.id) || `session-${index}`,
@@ -124,40 +109,44 @@
 	);
 	const warningItems = $derived.by(() => {
 		const output: Array<{ id: string; label: string; description: string; status: string }> = [];
+		if (libraryRows.length === 0) {
+			output.push({
+				id: 'warn-library',
+				label: 'Library setup needed',
+				description: 'Add a Movies or TV folder so Lorivo can build your media library.',
+				status: 'Action needed'
+			});
+		}
 		if (Number(health.needsReview || 0) > 0) {
 			output.push({
 				id: 'warn-review',
 				label: 'Metadata review pending',
-				description: `${asCount(health.needsReview)} items need review in catalog health.`,
+				description: `${asCount(health.needsReview)} items may need metadata attention.`,
 				status: 'Warning'
 			});
 		}
 		if (Number(health.unprobed || 0) > 0) {
 			output.push({
 				id: 'warn-unprobed',
-				label: 'Unprobed media sources',
-				description: `${asCount(health.unprobed)} sources still need probe metadata.`,
+				label: 'Media check pending',
+				description: `${asCount(health.unprobed)} files still need Lorivo's media check.`,
 				status: 'Warning'
 			});
 		}
 		if (Number(health.unsupported || 0) > 0) {
 			output.push({
 				id: 'warn-unsupported',
-				label: 'Playback compatibility risk',
-				description: `${asCount(health.unsupported)} items are flagged unsupported.`,
+				label: 'Playback review needed',
+				description: `${asCount(health.unsupported)} items may need review before playback.`,
 				status: 'Critical'
 			});
 		}
 		return output;
 	});
 	const selectedTitle = $derived.by(() => {
-		if (activeSection === 'overview') return 'Settings';
 		return sectionTitle(activeSection);
 	});
 	const selectedDescription = $derived.by(() => {
-		if (activeSection === 'overview') {
-			return 'Choose a settings category to manage Lorivo without leaving the control area.';
-		}
 		return sectionDescription(activeSection);
 	});
 
@@ -313,14 +302,28 @@
 		}
 	}
 
+	async function signOut(): Promise<void> {
+		if (isSigningOut) return;
+		isSigningOut = true;
+		actionMessage = '';
+		try {
+			await logout(apiClient);
+			window.location.href = '/signin';
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			isSigningOut = false;
+		}
+	}
+
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
-		activeSection = isSettingsSection(candidate) ? candidate : 'overview';
+		activeSection = isSettingsSection(candidate) ? candidate : 'dashboard';
 	}
 
 	function isSettingsSection(value: string): value is SettingsSection {
-		return ['library', 'scanning', 'metadata', 'playback', 'server', 'about'].includes(value);
+		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'access', 'about'].includes(value);
 	}
 
 	function queueSilentRefresh(): void {
@@ -347,25 +350,22 @@
 		);
 	}
 
-	function queueListItem(
-		kind: string,
-		id: string | undefined,
-		status: string | undefined,
-		context = ''
-	): { id: string; label: string; description: string; status: string } {
-		const normalizedStatus = humanStatus(status);
+	function scanListItem(item: ScanJobItem): { id: string; label: string; description: string; status: string } {
+		const kind = libraryKindLabel(asText(item.kind));
 		return {
-			id: `${kind.toLowerCase()}-${asText(id) || randomId(kind)}`,
-			label: `${kind} ${asText(id).slice(0, 8) || 'task'}`,
-			description: context ? `Context: ${context}` : 'Background queue task.',
-			status: normalizedStatus
+			id: `scan-${asText(item.id) || randomId('scan')}`,
+			label: `${kind} scan`,
+			description: scanProgressLabel(item),
+			status: humanStatus(item.status)
 		};
 	}
 
-	function managedStateLabel(item: { configured?: boolean; note?: string }): string {
-		if (item.configured === true) return 'Configured';
-		if (item.configured === false) return 'Not provisioned';
-		return asText(item.note) || 'Available';
+	function scanProgressLabel(item: ScanJobItem): string {
+		const progress = Number(item.progress || 0);
+		if (Number.isFinite(progress) && progress > 0) return `${Math.round(progress * 100)}% complete`;
+		const updated = asText(item.updatedAt || item.createdAt);
+		if (updated) return `Updated ${updated}`;
+		return 'Scan activity from the current library.';
 	}
 
 	function metadataRefreshMessage(warnings: string[] | undefined, fallback: string): string {
@@ -387,6 +387,7 @@
 	function humanStatus(value: unknown): string {
 		const normalized = asText(value).toLowerCase();
 		if (!normalized) return 'Unknown';
+		if (normalized === 'queued') return 'Waiting';
 		if (normalized === 'in_progress') return 'In Progress';
 		return normalized
 			.split('_')
@@ -464,24 +465,40 @@
 		return 'Settings could not load.';
 	}
 
+	function libraryDescription(item: LibraryRecord | { kind?: string; path?: string }): string {
+		const kind = libraryKindLabel(asText(item.kind));
+		const path = asText(item.path);
+		return path ? `${kind} folder: ${path}` : `${kind} folder`;
+	}
+
+	function accountTypeLabel(role: unknown): string {
+		const normalized = asText(role).toLowerCase();
+		if (!normalized) return 'Local Account';
+		if (normalized === 'admin') return 'Owner account';
+		if (normalized === 'standard') return 'Standard account';
+		return 'Local Account';
+	}
+
 	function sectionTitle(section: SettingsSection): string {
 		return {
+			dashboard: 'Dashboard',
 			library: 'Library',
 			scanning: 'Scanning',
 			metadata: 'Metadata',
 			playback: 'Playback',
-			server: 'Server',
+			access: 'Access',
 			about: 'About'
 		}[section];
 	}
 
 	function sectionDescription(section: SettingsSection): string {
 		return {
+			dashboard: 'Check whether your Lorivo library is ready and jump to the next useful setting.',
 			library: 'Media folders, setup status, and the current Library Setup flow.',
-			scanning: 'Run library scans and review current scan queue state.',
-			metadata: 'Refresh metadata and check provider availability.',
-			playback: 'Review playback policy, hardware status, and active sessions.',
-			server: 'Check server status, catalog health, queues, and runtime settings.',
+			scanning: 'Run library scans and review current scan activity.',
+			metadata: 'Refresh movie and TV information and review items that need attention.',
+			playback: 'Review playback behavior and active viewing sessions.',
+			access: 'Review the current signed-in account and session actions.',
 			about: 'Lorivo identity, build, and local-first details.'
 		}[section];
 	}
@@ -495,12 +512,12 @@
 	active={activeSection}
 	bind:searchValue
 	{userDisplayName}
-	userRole={user?.role || 'Local Account'}
+	userRole={userRoleLabel}
 	{userInitials}
 >
 	<div class="settings-page">
 		{#if isLoading}
-			<LorivoPanel title="Loading Settings" subtitle="Reading server configuration and runtime data." />
+			<LorivoPanel title="Loading Settings" subtitle="Checking your Lorivo library." />
 		{:else if loadError}
 			<LorivoPanel title="Settings could not load" subtitle={loadError}>
 				<div class="status-actions">
@@ -524,32 +541,42 @@
 				<LorivoPanel title="Latest action" subtitle={actionMessage} />
 			{/if}
 
-			{#if activeSection === 'overview'}
+			{#if activeSection === 'dashboard'}
 				<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
 					<a class="settings-dashboard-card" href="#library">
 						<span>Library</span>
 						<strong>{asCount(libraryRows.length)}</strong>
-						<small>{libraryRows.length === 1 ? 'configured library' : 'configured libraries'}</small>
+						<small>{libraryRows.length > 0 ? 'folders configured' : 'setup needed'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#library">
+						<span>Media</span>
+						<strong>{asCount(summary.movies)} movies</strong>
+						<small>{asCount(summary.series)} shows / {asCount(summary.episodes)} episodes</small>
 					</a>
 					<a class="settings-dashboard-card" href="#scanning">
 						<span>Scanning</span>
-						<strong>{asCount(scans.length)}</strong>
-						<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'ready for scans'}</small>
+						<strong>{activeQueueCount > 0 ? 'Running' : 'Idle'}</strong>
+						<small>{activeQueueCount > 0 ? `${asCount(activeQueueCount)} active tasks` : 'no scans running'}</small>
 					</a>
 					<a class="settings-dashboard-card" href="#metadata">
 						<span>Metadata</span>
-						<strong>{asCount(providerStates.length)}</strong>
-						<small>{Number(health.needsReview || 0) > 0 ? 'review needed' : 'providers listed'}</small>
+						<strong>{Number(health.needsReview || 0) > 0 ? 'Review' : 'Ready'}</strong>
+						<small>{Number(health.needsReview || 0) > 0 ? `${asCount(health.needsReview)} items need attention` : 'no review needed'}</small>
 					</a>
 					<a class="settings-dashboard-card" href="#playback">
 						<span>Playback</span>
 						<strong>{asCount(activeSessionCount)}</strong>
 						<small>{activeSessionCount === 1 ? 'active session' : 'active sessions'}</small>
 					</a>
-					<a class="settings-dashboard-card" href="#server">
-						<span>Server</span>
-						<strong>{capitalize(serverStatus)}</strong>
-						<small>{activeQueueCount > 0 ? 'activity in progress' : 'status snapshot'}</small>
+					<a class="settings-dashboard-card" href="#dashboard">
+						<span>Needs attention</span>
+						<strong>{warningItems.length > 0 ? asCount(warningItems.length) : 'Ready'}</strong>
+						<small>{warningItems.length > 0 ? 'items to review' : 'everything looks ready'}</small>
+					</a>
+					<a class="settings-dashboard-card" href="#access">
+						<span>Access</span>
+						<strong>{user ? 'Signed in' : 'Local'}</strong>
+						<small>{user ? userDisplayName : 'no active account'}</small>
 					</a>
 					<a class="settings-dashboard-card" href="#about">
 						<span>About</span>
@@ -557,6 +584,22 @@
 						<small>{asText(buildInfo?.buildID) || 'build details'}</small>
 					</a>
 				</section>
+				<div class="settings-grid">
+					<ActivityListShell title="Next Steps">
+						<LorivoActionList
+							items={warningItems}
+							emptyLabel="Everything looks ready."
+						/>
+					</ActivityListShell>
+					<SettingsPanel title="App Readiness" description="A quiet summary of the local app health that affects daily use." status={appStatus}>
+						<div class="stat-grid stat-grid--compact">
+							<LorivoStat label="Library" value={libraryRows.length > 0 ? 'Ready' : 'Setup needed'} meta={`${asCount(libraryRows.length)} folders configured`} tone={libraryRows.length > 0 ? 'good' : 'warn'} />
+							<LorivoStat label="Activity" value={activeQueueCount > 0 ? 'Busy' : 'Idle'} meta={activeQueueCount > 0 ? `${asCount(activeQueueCount)} tasks running` : 'No active scans or refreshes'} tone={activeQueueCount > 0 ? 'warn' : 'good'} />
+							<LorivoStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={formatBytes(system.memory?.usedBytes)} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
+							<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Unavailable'} meta="Current installed web app." />
+						</div>
+					</SettingsPanel>
+				</div>
 			{:else if activeSection === 'library'}
 				<section id="library" class="settings-section" data-testid="settings-section-content" data-section="library">
 				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryRows.length > 0 ? 'healthy' : 'idle'}>
@@ -583,7 +626,7 @@
 
 			{:else if activeSection === 'scanning'}
 			<section id="scanning" class="settings-section" data-testid="settings-section-content" data-section="scanning">
-				<SettingsPanel title="Scanning" description="Start real library scans and review current scan queue state." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Scanning" description="Start real library scans and review current scan activity." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
 					{#snippet actions()}
 						<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
 							{isScanningMovies ? 'Scanning Movies...' : 'Scan Movies'}
@@ -592,10 +635,10 @@
 							{isScanningTV ? 'Scanning TV...' : 'Scan TV'}
 						</LorivoButton>
 					{/snippet}
-					<ActivityListShell title="Scan Queue">
+					<ActivityListShell title="Recent Scans">
 						<LorivoActionList
-							items={scans.map((item) => queueListItem('Scan', item.id, item.status, item.libraryId || item.kind))}
-							emptyLabel="No scan jobs right now."
+							items={scanItems}
+							emptyLabel="No scan activity right now."
 						/>
 					</ActivityListShell>
 				</SettingsPanel>
@@ -603,7 +646,7 @@
 
 			{:else if activeSection === 'metadata'}
 			<section id="metadata" class="settings-section" data-testid="settings-section-content" data-section="metadata">
-				<SettingsPanel title="Metadata" description="Refresh metadata and review provider availability." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Metadata" description="Refresh movie and TV information." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
 					{#snippet actions()}
 						<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
 							{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movie Metadata'}
@@ -613,19 +656,13 @@
 						</LorivoButton>
 					{/snippet}
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} unprobed`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
-						<LorivoStat label="With Subtitles" value={asCount(health.withSubtitles)} meta="Detected by current catalog health payload." />
+						<LorivoStat label="Review Needed" value={asCount(health.needsReview)} meta={`${asCount(health.unprobed)} files pending media checks`} tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
+						<LorivoStat label="Subtitles Found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
 					</div>
-					<ActivityListShell title="Metadata Providers">
-						<LorivoActionList
-							items={providerStates.map((provider) => ({
-								id: provider.id,
-								label: provider.name,
-								status: provider.status
-							}))}
-							emptyLabel="No providers listed by current settings payload."
-						/>
-					</ActivityListShell>
+					<LorivoEmptyState
+						title="Metadata preferences"
+						message="Artwork and title lookup are managed by Lorivo in this build. Use refresh actions here when media details need another pass."
+					/>
 				</SettingsPanel>
 			</section>
 
@@ -636,47 +673,43 @@
 						<LorivoStat
 							label="Playback Policy"
 							value={displayText(performance.playbackPolicy?.label) || displayText(settings.config?.playbackPolicy) || 'Unknown'}
-							meta={displayText(performance.playbackPolicy?.description) || 'Current policy from server settings.'}
+							meta={displayText(performance.playbackPolicy?.description) || 'Current playback behavior.'}
 						/>
-						<LorivoStat label="Hardware" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta={`GPU workers: ${asCount(settings.config?.gpuWorkers)}`} />
-						<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Session endpoint requires authenticated access.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
-						<LorivoStat label="Transcode Workers" value={asCount(performance.limits?.transcodeWorkers || settings.config?.transcodeWorkers)} meta="Current runtime limit." />
+						<LorivoStat label="Conversion Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Lorivo can reduce playback load when conversion is needed." />
+						<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
 					</div>
 					<ActivityListShell title="Playback Sessions">
 						<LorivoActionList
 							items={sessionItems}
-							emptyLabel={sessionsUnavailable ? 'Session endpoint is protected for this account.' : 'No active playback sessions right now.'}
+							emptyLabel={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'No active playback sessions right now.'}
 						/>
 					</ActivityListShell>
 					<LorivoEmptyState
 						title="Playback controls"
-						message="Playback policy editing is not available in this build. Current policy and session state are shown from existing server APIs."
+						message="Playback preference editing is not available in this build. Current playback behavior is shown here for clarity."
 					/>
 				</SettingsPanel>
 			</section>
 
-			{:else if activeSection === 'server'}
-			<section id="server" class="settings-section" data-testid="settings-section-content" data-section="server">
-				<SettingsPanel title="Server" description="Server status, queue activity, and runtime configuration snapshot." status={serverStatus}>
-					<div class="stat-grid">
-						<LorivoStat label="Server Name" value={asText(settings.config?.serverName) || 'My Server'} />
-						<LorivoStat label="CPU" value={asPercent(system.cpu?.percent)} meta={`${asCount(system.cpu?.cores)} cores`} tone={Number(system.cpu?.percent || 0) >= 75 ? 'warn' : 'neutral'} />
-						<LorivoStat label="Memory" value={asPercent(system.memory?.usedPercent)} meta={`${formatBytes(system.memory?.usedBytes)} used`} tone={Number(system.memory?.usedPercent || 0) >= 85 ? 'warn' : 'neutral'} />
-						<LorivoStat label="Catalog" value={`${asCount(summary.movies)} movies`} meta={`${asCount(summary.series)} shows / ${asCount(summary.episodes)} episodes`} />
-						<LorivoStat label="Queue Jobs" value={asCount(activeQueueCount)} meta="Scans, probes, work, and downloads in progress." tone={activeQueueCount > 0 ? 'warn' : 'good'} />
-						<LorivoStat label="Sync Mode" value={asText(settings.config?.librarySyncMode) || 'Unknown'} meta={`Every ${asCount(settings.config?.syncIntervalMins)} minutes`} />
-					</div>
-					<div class="settings-grid">
-						<ActivityListShell title="Queue Activity">
-							<LorivoActionList items={queueItems.slice(0, 16)} emptyLabel="No queue activity right now." />
-						</ActivityListShell>
-						<ActivityListShell title="Server Warnings">
-							<LorivoActionList items={warningItems} emptyLabel="No server warnings right now." />
-						</ActivityListShell>
+			{:else if activeSection === 'access'}
+			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
+				<SettingsPanel title="Access" description="Current account and session actions." status={user ? 'healthy' : 'idle'}>
+					{#snippet actions()}
+						{#if user}
+							<LorivoButton variant="secondary" onclick={signOut} disabled={isSigningOut}>
+								{isSigningOut ? 'Signing out...' : 'Sign Out'}
+							</LorivoButton>
+						{:else}
+							<LorivoButton variant="primary" href="/signin">Sign In</LorivoButton>
+						{/if}
+					{/snippet}
+					<div class="stat-grid stat-grid--compact">
+						<LorivoStat label="Account" value={user ? userDisplayName : 'Not signed in'} meta={userRoleLabel} />
+						<LorivoStat label="Session" value={user ? 'Active' : 'Local browsing'} meta={user ? 'This browser has an active Lorivo session.' : 'Sign in to manage protected actions.'} tone={user ? 'good' : 'neutral'} />
 					</div>
 					<LorivoEmptyState
-						title="Controls"
-						message="Controls are not available in this build. Server status and queue data are read from existing APIs."
+						title="User management"
+						message="Creating and managing additional users is not available from this Settings page yet."
 					/>
 				</SettingsPanel>
 			</section>
@@ -685,9 +718,10 @@
 			<section id="about" class="settings-section" data-testid="settings-section-content" data-section="about">
 				<SettingsPanel title="About" description="Lorivo build and application identity." status="healthy">
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media server." />
+						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
 						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Unavailable'} meta={asText(buildInfo?.publishedAt) || 'Build metadata is not available.'} />
 						<LorivoStat label="Commit" value={asText(buildInfo?.gitCommit) || 'Unavailable'} meta={asText(buildInfo?.sourceApp) || 'apps/web/svelte'} />
+						<LorivoStat label="App Health" value={capitalize(appStatus)} meta="Small readiness signal based on local activity and system load." tone={appStatus === 'warning' || appStatus === 'critical' ? 'warn' : 'good'} />
 						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
 					</div>
 				</SettingsPanel>

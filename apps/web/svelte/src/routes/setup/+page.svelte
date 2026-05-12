@@ -104,8 +104,8 @@
 			actionMessage = `${created.name || 'Library'} saved.`;
 
 			if (runScanAfterSave && created.id) {
-				const scan = await startLibraryScan(created.id);
-				actionMessage = `${created.name || 'Library'} saved. Scan started (${asText(scan.id) || 'queued'}).`;
+				await startLibraryScan(created.id);
+				actionMessage = `${created.name || 'Library'} saved. Scan started.`;
 			}
 
 			libraryName = '';
