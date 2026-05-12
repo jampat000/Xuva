@@ -1,7 +1,14 @@
 	<script lang="ts">
 	import { onMount } from 'svelte';
 	import { scanMovies, scanTV, refreshMetadataBatch } from '$lib/api/browse';
-	import { getAuthSession, logout, type AuthSessionResponse, type AuthSessionUser } from '$lib/api/auth';
+	import {
+		getAuthSession,
+		getClientBootstrap,
+		logout,
+		type AuthSessionResponse,
+		type AuthSessionUser,
+		type ClientBootstrapResponse
+	} from '$lib/api/auth';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import { deleteLibrary, startLibraryScan } from '$lib/api/setup';
@@ -85,6 +92,7 @@
 	let activeLibraryActionKind = $state<LibraryActionKind>('');
 
 	let user = $state<AuthSessionUser | null>(null);
+	let clientBootstrap = $state<ClientBootstrapResponse>({});
 	let libraries = $state<LibraryRecord[]>([]);
 	let summary = $state<CatalogSummaryResponse>({});
 	let health = $state<CatalogHealthResponse>({});
@@ -154,6 +162,19 @@
 	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
 	const canManageSettings = $derived.by(() => authDisabled || asText(user?.role).toLowerCase() === 'admin');
 	const canShowSignIn = $derived.by(() => !authDisabled && !user);
+	const ownerSetupPending = $derived.by(() => !authDisabled && !user && Boolean(clientBootstrap.auth?.bootstrapAllowed));
+	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !canManageSettings);
+	const ownerAccessMessage = $derived.by(() => 'Sign in as the owner to manage Lorivo settings.');
+	const ownerActionLabel = $derived.by(() => (ownerSetupPending ? 'Create Owner Account' : 'Sign In'));
+	const ownerActionDetail = $derived.by(() => {
+		const defaultUsername = asText(clientBootstrap.auth?.defaultUsername);
+		if (ownerSetupPending) {
+			return defaultUsername
+				? `This server still needs its first owner account. Open Sign In to create ${defaultUsername}.`
+				: 'This server still needs its first owner account. Open Sign In to create it.';
+		}
+		return 'Open Sign In to continue with the owner account.';
+	});
 	const activeQueueCount = $derived.by(
 		() => [...scans, ...probes, ...work, ...downloads].filter((item) => isActiveStatus(item.status)).length
 	);
@@ -267,6 +288,7 @@
 		sessionsUnavailable = false;
 		try {
 			const [
+				bootstrapPayload,
 				sessionPayload,
 				librariesPayload,
 				summaryPayload,
@@ -280,6 +302,7 @@
 				downloadsPayload,
 				sessionsPayload
 			] = await Promise.all([
+				getClientBootstrap(apiClient).catch(() => ({} as ClientBootstrapResponse)),
 				getAuthSession(apiClient).catch((error: unknown) => {
 					if (isApiStatus(error, 401)) return {} as AuthSessionResponse;
 					throw error;
@@ -303,6 +326,7 @@
 				})
 			]);
 
+			clientBootstrap = bootstrapPayload || {};
 			authDisabled = Boolean(sessionPayload?.authDisabled);
 			user = sessionPayload?.user || null;
 			sessionExpiresAt = asText(sessionPayload?.session?.expiresAt);
@@ -899,6 +923,16 @@
 				<LorivoPanel title="Latest action" subtitle={actionMessage} />
 			{/if}
 
+			{#if requiresOwnerSignIn}
+				<LorivoPanel title="Owner sign-in required" subtitle={ownerAccessMessage}>
+					<p class="settings-note settings-note--inline">{ownerActionDetail}</p>
+					<div class="status-actions">
+						<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
+						<LorivoButton variant="ghost" href="#access">Open Access</LorivoButton>
+					</div>
+				</LorivoPanel>
+			{/if}
+
 			{#if activeSection === 'dashboard'}
 				<section class="settings-dashboard" aria-label="Settings dashboard" data-testid="settings-dashboard">
 					<article class="settings-dashboard-card settings-dashboard-card--identity">
@@ -965,8 +999,8 @@
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Access</span>
-						<strong>{user ? 'Signed in' : authDisabled ? 'Local access' : 'Sign in'}</strong>
-						<small>{user ? userDisplayName : authDisabled ? 'sign-in is not required on this server' : 'owner account needed for changes'}</small>
+						<strong>{user ? 'Signed in' : authDisabled ? 'Local access' : ownerSetupPending ? 'Create owner account' : 'Sign in'}</strong>
+						<small>{user ? userDisplayName : authDisabled ? 'sign-in is not required on this server' : ownerSetupPending ? 'first owner account needed for changes' : 'owner account needed for changes'}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="secondary" size="sm" href="#access">Access</LorivoButton>
 						</div>
@@ -1063,7 +1097,14 @@
 						/>
 					{/if}
 					{#if !canManageSettings && !authDisabled}
-						<p class="settings-note">Sign in with the owner account to scan or remove libraries.</p>
+						<div class="settings-auth-callout">
+							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+							<div class="status-actions">
+								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+							</div>
+						</div>
 					{/if}
 				</SettingsPanel>
 			</section>
@@ -1192,7 +1233,14 @@
 							{/if}
 						</form>
 					{:else if !authDisabled}
-						<p class="settings-note">Sign in with the owner account to change scanning settings.</p>
+						<div class="settings-auth-callout">
+							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+							<div class="status-actions">
+								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+							</div>
+						</div>
 					{/if}
 					<ActivityListShell title="Recent Scans">
 						<LorivoActionList
@@ -1267,7 +1315,14 @@
 							</div>
 						</form>
 					{:else if !authDisabled}
-						<p class="settings-note">Sign in with the owner account to change playback settings.</p>
+						<div class="settings-auth-callout">
+							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+							<div class="status-actions">
+								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+							</div>
+						</div>
 					{/if}
 					<ActivityListShell title="Playback Sessions">
 						<LorivoActionList
@@ -1287,13 +1342,19 @@
 								{isSigningOut ? 'Signing out...' : 'Sign Out'}
 							</LorivoButton>
 						{:else if canShowSignIn}
-							<LorivoButton variant="primary" href="/signin">Sign In</LorivoButton>
+							<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
 						{/if}
 					{/snippet}
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="Account" value={user ? userDisplayName : authDisabled ? 'Local access' : 'Not signed in'} meta={user ? userRoleLabel : authDisabled ? 'Sign-in is not required on this server.' : 'Sign in to change protected settings.'} tone={user ? 'good' : 'neutral'} />
 						<LorivoStat label="Session" value={user ? 'Active' : authDisabled ? 'Local' : 'Signed out'} meta={user && sessionExpiresAt ? `Current session expires ${formatDateTime(sessionExpiresAt)}.` : user ? 'This browser has an active Lorivo session.' : authDisabled ? 'This server is running without account sign-in.' : 'Open Sign In to continue.'} tone={user ? 'good' : 'neutral'} />
 					</div>
+					{#if !user && !authDisabled}
+						<div class="settings-auth-callout">
+							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+						</div>
+					{/if}
 				</SettingsPanel>
 			</section>
 
@@ -1330,7 +1391,14 @@
 							{/if}
 						</form>
 					{:else if !authDisabled}
-						<p class="settings-note">Sign in with the owner account to change the server name.</p>
+						<div class="settings-auth-callout">
+							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+							<div class="status-actions">
+								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+							</div>
+						</div>
 					{/if}
 				</SettingsPanel>
 			</section>
@@ -1542,6 +1610,10 @@
 		line-height: 1.4;
 	}
 
+	.settings-note--inline {
+		margin-bottom: 4px;
+	}
+
 	.library-card__status {
 		display: inline-flex;
 		align-items: center;
@@ -1585,6 +1657,22 @@
 		flex-wrap: wrap;
 		gap: 8px;
 		align-items: center;
+	}
+
+	.settings-auth-callout {
+		display: grid;
+		gap: 8px;
+		padding: 12px 14px;
+		border: 1px solid var(--lorivo-color-border-soft);
+		border-radius: var(--lorivo-radius-md);
+		background: color-mix(in srgb, var(--settings-accent-soft) 52%, transparent);
+	}
+
+	.settings-auth-callout__detail {
+		margin: 0;
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.88rem;
+		line-height: 1.45;
 	}
 
 	.scanning-automation-form,

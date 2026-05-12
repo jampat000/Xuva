@@ -13,6 +13,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	const source = read('src/routes/settings/+page.svelte');
 
 	assert.match(source, /getSettings\(apiClient\)/);
+	assert.match(source, /getClientBootstrap\(apiClient\)/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*nextName\s*\},\s*apiClient\)/);
 	assert.match(source, /updateSettings\(\s*\{\s*librarySyncMode,\s*syncIntervalMins:\s*syncIntervalMins\s*\?\?\s*1440,\s*watchDebounceSecs:\s*watchDebounceSecs\s*\?\?\s*30,\s*probeBatchLimit\s*\}\s*,\s*apiClient\s*\)/);
 	assert.match(source, /updateSettings\(\{\s*playbackPolicy:\s*playbackPolicyDraft\s*\},\s*apiClient\)/);
@@ -54,14 +55,15 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Remove/);
 	assert.match(source, /Save Playback Setting/);
 	assert.match(source, /Sign Out|Sign In/);
+	assert.match(source, /Create Owner Account/);
+	assert.match(source, /Open Access/);
+	assert.match(source, /Sign in as the owner to manage Lorivo settings\./);
 	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
 	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Playback setting saved\. Restart Lorivo to apply it\./);
 	assert.match(source, /Saved\. Restart Lorivo for this change to fully take effect\./);
 	assert.match(source, /Enter a scan interval of at least 15 minutes\./);
-	assert.match(source, /Sign in with the owner account to scan or remove libraries\./);
-	assert.match(source, /Sign in with the owner account to change scanning settings\./);
-	assert.match(source, /Sign in with the owner account to change playback settings\./);
+	assert.match(source, /This server still needs its first owner account\./);
 	assert.match(source, /<ServerShell/);
 	assert.match(source, /Needs attention|everything looks ready/i);
 	assert.doesNotMatch(source, /legacy/i);

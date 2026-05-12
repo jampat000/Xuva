@@ -82,6 +82,19 @@ function apiPayload(pathname, state = {}) {
 			session: { id: 'session-local', expiresAt: '2026-05-12T21:15:00Z' }
 		};
 	}
+	if (pathname === '/api/client/bootstrap') {
+		return {
+			auth: {
+				required: !state.authDisabled,
+				bootstrapAllowed: Boolean(state.bootstrapAllowed),
+				defaultUsername: state.defaultUsername || 'owner',
+				bootstrapEndpoint: '/api/auth/bootstrap'
+			},
+			server: {
+				name: state.serverName
+			}
+		};
+	}
 	if (pathname === '/api/client/home') return { rows: [], actions: {} };
 	if (pathname === '/api/playback/recent') return { recent: [] };
 	if (pathname === '/api/libraries') return { libraries: state.libraries || [] };
@@ -132,6 +145,8 @@ async function installApiMocks(page, options = {}) {
 		restartRequired: true,
 		signedIn: !options.signedOut,
 		authDisabled: Boolean(options.authDisabled),
+		bootstrapAllowed: Boolean(options.bootstrapAllowed),
+		defaultUsername: 'owner',
 		libraries: [
 			{ id: 'movies-main', name: 'Movies', kind: 'movies', path: 'D:\\Media\\Movies', storageType: 'local' },
 			{ id: 'tv-main', name: 'TV', kind: 'tv', path: 'D:\\Media\\TV', storageType: 'network' }
@@ -835,6 +850,7 @@ async function assertAccessSection(page, state) {
 	await waitForCondition(() => state.logoutCount === 1, 'expected logout to be recorded');
 	await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
+	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
 	assert.doesNotMatch(await selectedSection.innerText(), /Create User|Delete User|User management/i);
 	await assertNoHorizontalOverflow(page);
 }
@@ -857,7 +873,8 @@ async function verifySignedOutLibraryState(page, baseURL, reopensDrawer) {
 	await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
 	assert.equal(await selectedSection.getByRole('button', { name: 'Scan', exact: true }).count(), 0);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 0);
-	assert.match(await selectedSection.innerText(), /Sign in with the owner account to scan or remove libraries\./);
+	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+	assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 1);
 	await assertNoHorizontalOverflow(page);
 }
 
@@ -929,6 +946,54 @@ test('hamburger media and settings menus open and navigate across viewports', as
 		assert.equal(await fallbackPage.title(), 'Lorivo');
 		assert.match(await fallbackPage.getByTestId('settings-server-name').innerText(), /Lorivo/);
 		await fallbackPage.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('settings shows owner access guidance when the server still needs its first account', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, { signedOut: true, bootstrapAllowed: true });
+		await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+
+		const body = page.locator('body');
+		await body.getByRole('link', { name: 'Create Owner Account', exact: true }).waitFor({
+			state: 'visible',
+			timeout: 5000
+		});
+		assert.match(await body.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+		assert.match(await body.innerText(), /This server still needs its first owner account\./);
+
+		for (const [label, hash] of [
+			['Library', 'library'],
+			['Scanning', 'scanning'],
+			['Playback', 'playback'],
+			['Access', 'access'],
+			['About', 'about']
+		]) {
+			await page.getByTestId('settings-mode-sidebar').getByRole('link', { name: label, exact: true }).click();
+			await page.waitForURL(`${baseURL}/settings#${hash}`, { timeout: 10000 });
+			await page.waitForFunction(
+				(expected) =>
+					document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === expected,
+				hash,
+				{ timeout: 5000 }
+			);
+			const selectedSection = page.getByTestId('settings-section-content');
+			await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
+			assert.equal(await selectedSection.getAttribute('data-section'), hash);
+			assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+			assert.equal(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count(), 1);
+		}
+
+		await assertNoHorizontalOverflow(page);
+		await page.close();
 	} finally {
 		await browser.close();
 		await server.close();
