@@ -14,6 +14,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 
 	assert.match(source, /getSettings\(apiClient\)/);
 	assert.match(source, /getClientBootstrap\(apiClient\)/);
+	assert.match(source, /browseFolder\(/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*nextName\s*\},\s*apiClient\)/);
 	assert.match(source, /updateSettings\(\s*\{\s*librarySyncMode,\s*syncIntervalMins:\s*syncIntervalMins\s*\?\?\s*1440,\s*watchDebounceSecs:\s*watchDebounceSecs\s*\?\?\s*30,\s*probeBatchLimit\s*\}\s*,\s*apiClient\s*\)/);
 	assert.match(source, /updateSettings\(\{\s*playbackPolicy:\s*playbackPolicyDraft\s*\},\s*apiClient\)/);
@@ -43,6 +44,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Save Scanning Settings/);
 	assert.match(source, /Metadata/);
 	assert.match(source, /Playback/);
+	assert.match(source, /Storage/);
 	assert.match(source, /Access/);
 	assert.match(source, /About/);
 	assert.match(source, /Dashboard/);
@@ -54,6 +56,13 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Scan/);
 	assert.match(source, /Remove/);
 	assert.match(source, /Save Playback Policy/);
+	assert.match(source, /Transcoding folder/);
+	assert.match(source, /Optimized versions folder/);
+	assert.match(source, /Metadata folder/);
+	assert.match(source, /Cache folder/);
+	assert.match(source, /Scratch\/temp folder/);
+	assert.match(source, /Data folder/);
+	assert.match(source, /Save Storage Settings/);
 	assert.match(source, /Sign Out|Sign In/);
 	assert.match(source, /Create Owner Account/);
 	assert.match(source, /Open Access/);
@@ -66,7 +75,9 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Playback setting saved\. Restart Lorivo to apply it\./);
 	assert.match(source, /Saved\. Restart Lorivo for this change to fully take effect\./);
+	assert.match(source, /Saved\. Restart Lorivo for these folder changes to fully take effect\./);
 	assert.match(source, /Enter a scan interval of at least 15 minutes\./);
+	assert.match(source, /Changing this folder can move where Lorivo expects its settings and local data after restart\./);
 	assert.match(source, /This server still needs its first owner account\./);
 	assert.match(source, /<ServerShell/);
 	assert.match(source, /Needs attention|everything looks ready/i);
@@ -81,6 +92,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.doesNotMatch(source, /<SettingsPanel title="Server"/);
 	assert.doesNotMatch(source, /Provider setup/);
 	assert.doesNotMatch(source, /Transcode Workers/);
+	assert.doesNotMatch(source, /FFmpeg path/i);
+	assert.doesNotMatch(source, /FFprobe path/i);
 	assert.doesNotMatch(source, /Editing existing folders is not available here yet\./);
 	assert.doesNotMatch(source, /Playback preference editing is not available in this build\./);
 	assert.doesNotMatch(source, /Provider API/i);
@@ -99,6 +112,7 @@ test('setup route asks for a user-facing server name', () => {
 	assert.match(source, /maxlength="50"/);
 	assert.match(source, /updateSettings\(\{\s*serverName:\s*serverNameValue\s*\}/);
 	assert.match(source, /serverName = \$state\('Lorivo'\)/);
+	assert.match(source, /showStorage=\{!authRequired\}/);
 	assert.match(source, /!session\?\.user && !session\?\.authDisabled/);
 	assert.doesNotMatch(source, /hostname/i);
 });
@@ -109,10 +123,10 @@ test('settings navigation stays shared across desktop sidebar and settings drawe
 	const shellSource = read('src/lib/components/shell/ServerShell.svelte');
 
 	assert.match(sidebarSource, /<SettingsBrand/);
-	assert.match(sidebarSource, /<SettingsNav\s+\{active\}\s*\/>/);
+	assert.match(sidebarSource, /<SettingsNav\s+\{active\}\s+\{showStorage\}\s*\/>/);
 	assert.match(sidebarSource, /<SettingsNav section="secondary"\s*\/>/);
 	assert.match(shellSource, /<SettingsBrand/);
-	assert.match(shellSource, /<SettingsNav\s+\{active\}\s*\/>/);
+	assert.match(shellSource, /<SettingsNav\s+\{active\}\s+\{showStorage\}\s*\/>/);
 	assert.match(shellSource, /<SettingsNav section="secondary"\s*\/>/);
 	assert.doesNotMatch(shellSource, /class="app-drawer__link"\s+href="\/settings#/);
 
@@ -121,6 +135,7 @@ test('settings navigation stays shared across desktop sidebar and settings drawe
 	assert.match(navSource, /label="Scanning"\s+href="\/settings#scanning"/);
 	assert.match(navSource, /label="Metadata"\s+href="\/settings#metadata"/);
 	assert.match(navSource, /label="Playback"\s+href="\/settings#playback"/);
+	assert.match(navSource, /label="Storage"\s+href="\/settings#storage"/);
 	assert.match(navSource, /label="Access"\s+href="\/settings#access"/);
 	assert.match(navSource, /label="About"\s+href="\/settings#about"/);
 	assert.match(navSource, /label="Back to Media"\s+href="\/"/);

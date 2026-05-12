@@ -7,11 +7,13 @@
 	let {
 		active = 'dashboard',
 		userDisplayName = 'Local User',
-		userRole = 'Local Account'
+		userRole = 'Local Account',
+		showStorage = true
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'storage' | 'access' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
+		showStorage?: boolean;
 	}>();
 </script>
 
@@ -21,7 +23,7 @@
 	{/snippet}
 
 	{#snippet primary()}
-		<SettingsNav {active} />
+		<SettingsNav {active} {showStorage} />
 	{/snippet}
 
 	{#snippet secondary()}

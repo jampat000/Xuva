@@ -13,12 +13,14 @@
 		userDisplayName = 'Local User',
 		userRole = 'Local Account',
 		userInitials = 'U',
+		showStorage = true,
 		children
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'storage' | 'access' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 		userInitials?: string;
+		showStorage?: boolean;
 		children?: Snippet;
 	}>();
 
@@ -50,7 +52,7 @@
 			<SettingsBrand />
 		{/snippet}
 		{#snippet main()}
-			<SettingsNav {active} />
+			<SettingsNav {active} {showStorage} />
 		{/snippet}
 		{#snippet bottom()}
 			<SettingsNav section="secondary" />
@@ -61,7 +63,7 @@
 		<LorivoShell density="default">
 			{#snippet sidebar()}
 				<div class="server-shell__sidebar-panel" data-testid="settings-mode-sidebar">
-					<ServerSidebar {active} {userDisplayName} {userRole} />
+					<ServerSidebar {active} {userDisplayName} {userRole} {showStorage} />
 				</div>
 			{/snippet}
 

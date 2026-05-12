@@ -7,6 +7,7 @@
 	import { getSettings, updateSettings } from '$lib/api/operator';
 	import { browseFolder, saveLibrary, startLibraryScan, type FolderBrowseResponse } from '$lib/api/setup';
 	import { lorivoTitle, normalizeServerName } from '$lib/server-name';
+	import FolderBrowserPanel from '$lib/components/operator/FolderBrowserPanel.svelte';
 
 	let isLoading = $state(true);
 	let isSubmitting = $state(false);
@@ -175,7 +176,7 @@
 	<title>{lorivoTitle(serverName)}</title>
 </svelte:head>
 
-<ServerShell active="library" {userInitials} userDisplayName={userDisplayName}>
+<ServerShell active="library" showStorage={!authRequired} {userInitials} userDisplayName={userDisplayName}>
 	<div class="setup-page">
 		{#if isLoading}
 			<LorivoPanel title="Loading Library Setup" subtitle="Checking account and library status." />
@@ -248,40 +249,12 @@
 				</form>
 			</LorivoPanel>
 
-			{#if folderBrowse}
-				<LorivoPanel
-					title="Folder browser"
-					subtitle={folderBrowse.path || 'Select a folder path for your library.'}
-				>
-					<div class="browser-actions">
-						{#if folderBrowse.parent}
-							<LorivoButton variant="ghost" onclick={() => openBrowser(folderBrowse?.parent || '')}>Up one folder</LorivoButton>
-						{/if}
-						{#if folderBrowse.path}
-							<LorivoButton variant="secondary" onclick={() => useEntryPath(folderBrowse?.path || '')}>Use this folder</LorivoButton>
-						{/if}
-					</div>
-
-					{#if folderBrowse.error}
-						<p class="error">{folderBrowse.error}</p>
-					{:else if (folderBrowse.entries || []).length === 0}
-						<p class="muted">No child folders here. Use this folder path if it contains media.</p>
-					{:else}
-						<div class="folder-list">
-							{#each folderBrowse.entries || [] as entry}
-								<button
-									type="button"
-									class="folder-entry"
-									onclick={() => openBrowser(asText(entry.path))}
-								>
-									<span>{asText(entry.name) || 'Folder'}</span>
-									<small>{asText(entry.path)}</small>
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</LorivoPanel>
-			{/if}
+			<FolderBrowserPanel
+				browser={folderBrowse}
+				subtitle={folderBrowse?.path || 'Select a folder path for your library.'}
+				onBrowse={openBrowser}
+				onUsePath={useEntryPath}
+			/>
 
 			{#if hasLibraries}
 				<LorivoPanel title="Libraries configured" subtitle="Your server is ready for media browsing.">
@@ -337,8 +310,7 @@
 		font: inherit;
 	}
 
-	.actions,
-	.browser-actions {
+	.actions {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
@@ -364,34 +336,4 @@
 		font-size: 0.85rem;
 	}
 
-	.muted {
-		margin: 0;
-		color: var(--lorivo-color-text-muted);
-		font-size: 0.88rem;
-	}
-
-	.folder-list {
-		display: grid;
-		gap: 6px;
-		max-height: 260px;
-		overflow: auto;
-		padding-right: 2px;
-	}
-
-	.folder-entry {
-		border: 1px solid var(--lorivo-color-border-soft);
-		background: var(--lorivo-color-surface-elevated);
-		color: var(--lorivo-color-text);
-		border-radius: var(--lorivo-radius-md);
-		padding: 8px 10px;
-		text-align: left;
-		display: grid;
-		gap: 3px;
-		cursor: pointer;
-	}
-
-	.folder-entry small {
-		color: var(--lorivo-color-text-muted);
-		font-size: 0.75rem;
-	}
 </style>

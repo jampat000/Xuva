@@ -43,10 +43,13 @@ export interface SystemStatusResponse {
 	disks?: Array<{
 		name?: string;
 		path?: string;
+		usedBytes?: number;
 		usedPercent?: number;
 		freeBytes?: number;
 		totalBytes?: number;
 		writable?: boolean;
+		error?: string;
+		sharedWithData?: boolean;
 	}>;
 }
 
@@ -152,6 +155,12 @@ export interface SettingsResponse {
 	restartRequired?: boolean;
 	config?: {
 		serverName?: string;
+		dataDir?: string;
+		transcodeDir?: string;
+		downloadsDir?: string;
+		metadataDir?: string;
+		cacheDir?: string;
+		tempDir?: string;
 		librarySyncMode?: string;
 		syncIntervalMins?: number;
 		watchDebounceSecs?: number;
@@ -178,6 +187,12 @@ export interface SettingsResponse {
 
 export interface UpdateSettingsRequest {
 	serverName?: string;
+	dataDir?: string;
+	transcodeDir?: string;
+	downloadsDir?: string;
+	metadataDir?: string;
+	cacheDir?: string;
+	tempDir?: string;
 	librarySyncMode?: string;
 	syncIntervalMins?: number;
 	watchDebounceSecs?: number;
