@@ -5,18 +5,26 @@
 		label,
 		active = false,
 		href = '#',
+		variant = 'default',
 		icon,
 		trailing
 	} = $props<{
 		label: string;
 		active?: boolean;
 		href?: string;
+		variant?: 'default' | 'back';
 		icon?: Snippet;
 		trailing?: Snippet;
 	}>();
 </script>
 
-<a class="sidebar-item" data-active={active} href={href} aria-current={active ? 'page' : undefined}>
+<a
+	class="sidebar-item"
+	class:sidebar-item--back={variant === 'back'}
+	data-active={active}
+	href={href}
+	aria-current={active ? 'page' : undefined}
+>
 	<span class="sidebar-item__icon">
 		{@render icon?.()}
 	</span>
@@ -65,6 +73,28 @@
 
 	.sidebar-item[data-active='true'] .sidebar-item__icon {
 		color: var(--lorivo-color-accent-teal);
+	}
+
+	.sidebar-item--back {
+		min-height: 48px;
+		border-color: rgb(255 255 255 / 13%);
+		background:
+			linear-gradient(90deg, rgb(255 255 255 / 7%), rgb(255 255 255 / 3%)),
+			rgb(154 167 255 / 4%);
+		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 7%);
+	}
+
+	.sidebar-item--back:hover,
+	.sidebar-item--back:focus-visible {
+		border-color: rgb(154 167 255 / 28%);
+		background:
+			linear-gradient(90deg, rgb(154 167 255 / 12%), rgb(255 255 255 / 4%)),
+			rgb(255 255 255 / 4%);
+	}
+
+	.sidebar-item--back .sidebar-item__icon {
+		color: color-mix(in srgb, var(--lorivo-color-text) 82%, var(--lorivo-settings-accent, #9aa7ff) 18%);
 	}
 
 	.sidebar-item__icon {

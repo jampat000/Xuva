@@ -147,6 +147,50 @@ async function assertNoHorizontalOverflow(page) {
 	assert.equal(overflow, false);
 }
 
+async function readTopbarBrandState(page) {
+	const brand = page.getByTestId('topbar-brand');
+	assert.equal(await brand.count(), 1);
+	return brand.evaluate((element) => {
+		const style = window.getComputedStyle(element);
+		const rect = element.getBoundingClientRect();
+		return {
+			ariaHidden: element.getAttribute('aria-hidden'),
+			opacity: Number(style.opacity),
+			width: rect.width,
+			text: element.textContent?.trim() || ''
+		};
+	});
+}
+
+async function assertTopbarBrandVisible(page) {
+	const startedAt = Date.now();
+	let state = await readTopbarBrandState(page);
+	while (Date.now() - startedAt < 1200) {
+		if (state.ariaHidden !== 'true' && state.opacity > 0.8 && state.width > 60) break;
+		await page.waitForTimeout(40);
+		state = await readTopbarBrandState(page);
+	}
+	assert.equal(state.ariaHidden === 'true', false);
+	assert.ok(state.opacity > 0.8, `top bar brand should be visible, got opacity ${state.opacity}`);
+	assert.ok(state.width > 60, `top bar brand should occupy space, got width ${state.width}`);
+	assert.match(state.text, /LORIVO/i);
+}
+
+async function assertTopbarBrandCollapsed(page) {
+	const startedAt = Date.now();
+	let state = await readTopbarBrandState(page);
+	while (Date.now() - startedAt < 1200) {
+		if (state.ariaHidden === 'true' && (state.opacity < 0.25 || state.width < 12)) break;
+		await page.waitForTimeout(40);
+		state = await readTopbarBrandState(page);
+	}
+	assert.equal(state.ariaHidden, 'true');
+	assert.ok(
+		state.opacity < 0.25 || state.width < 12,
+		`top bar brand should collapse while drawer brand is visible, got opacity ${state.opacity} and width ${state.width}`
+	);
+}
+
 async function assertSurfaceLayout(page, surface, beforeBox, viewport, shouldShift) {
 	let box = await surface.boundingBox();
 	assert.ok(box, 'app surface should have a bounding box');
@@ -192,6 +236,7 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoPersistentMediaPills(page);
 	await assertNoHorizontalOverflow(page);
+	await assertTopbarBrandVisible(page);
 	const shouldShift = viewport.width >= 768;
 	const surface = page.getByTestId('lorivo-app-surface');
 	const beforeSurface = await surface.boundingBox();
@@ -203,18 +248,24 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	const mediaDrawer = page.getByTestId('media-menu-drawer');
 	await waitForDrawerState(mediaDrawer, 'open');
 	await assertLeftDrawer(page, mediaDrawer, viewport);
+	const drawerBrand = mediaDrawer.getByTestId('drawer-brand');
+	assert.equal(await drawerBrand.count(), 1);
+	assert.match(await drawerBrand.innerText(), /LORIVO/i);
+	await assertTopbarBrandCollapsed(page);
 	await assertSurfaceLayout(page, surface, beforeSurface, viewport, shouldShift);
 	for (const label of ['Home', 'Movies', 'TV', 'Libraries', 'Settings']) {
 		assert.equal(await mediaDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 	}
 	await page.mouse.click(viewport.width - 12, 12);
 	await waitForDrawerState(mediaDrawer, 'closed');
+	await assertTopbarBrandVisible(page);
 	await assertSurfaceLayout(page, surface, beforeSurface, viewport, false);
 
 	await mediaButton.click();
 	await waitForDrawerState(mediaDrawer, 'open');
 	await page.keyboard.press('Escape');
 	await waitForDrawerState(mediaDrawer, 'closed');
+	await assertTopbarBrandVisible(page);
 	await assertSurfaceLayout(page, surface, beforeSurface, viewport, false);
 
 	await mediaButton.click();
@@ -244,6 +295,9 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		}
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		assert.equal(await sidebar.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
+		const backToMedia = sidebar.getByRole('link', { name: 'Back to Media', exact: true });
+		assert.equal(await backToMedia.count(), 1);
+		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('sidebar-item--back')), true);
 		await verifySettingsSections(page, sidebar, baseURL, false);
 		await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).click();
 	} else {
@@ -256,11 +310,15 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		await assertLeftDrawer(page, settingsDrawer, viewport);
 		assert.match(await settingsDrawer.innerText(), /LORIVO/);
 		assert.match(await settingsDrawer.innerText(), /Settings/i);
+		assert.equal(await settingsDrawer.getByTestId('drawer-brand').count(), 1);
 		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
+		const backToMedia = settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true });
+		assert.equal(await backToMedia.count(), 1);
+		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('app-drawer__link--back')), true);
 		await verifySettingsSections(page, settingsDrawer, baseURL, true);
 		await settingsButton.click();
 		await waitForDrawerState(settingsDrawer, 'open');

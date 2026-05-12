@@ -26,7 +26,16 @@
 		>
 			<Menu size={20} />
 		</button>
-		<a href="/" class="shrink-0" aria-label="Go to Home" onclick={onMenuClose}>
+		<a
+			href="/"
+			class="topbar-brand"
+			class:topbar-brand--drawer-open={menuOpen}
+			aria-label="Go to Home"
+			aria-hidden={menuOpen}
+			tabindex={menuOpen ? -1 : undefined}
+			data-testid="topbar-brand"
+			onclick={onMenuClose}
+		>
 			<Logo />
 		</a>
 	</div>
@@ -56,3 +65,43 @@
 		</div>
 	</div>
 </header>
+
+<style>
+	.topbar-brand {
+		display: inline-flex;
+		align-items: center;
+		max-width: 190px;
+		min-width: 0;
+		overflow: hidden;
+		text-decoration: none;
+		opacity: 1;
+		transform: translateX(0);
+		transition:
+			opacity 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			transform 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			max-width 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
+		will-change: opacity, transform, max-width;
+	}
+
+	.topbar-brand--drawer-open {
+		max-width: 0;
+		opacity: 0;
+		pointer-events: none;
+		transform: translateX(-10px);
+	}
+
+	.topbar-brand :global(.v-brand) {
+		min-height: 34px;
+		justify-content: flex-start;
+	}
+
+	.topbar-brand :global(.v-brand__wordmark) {
+		font-size: 1.04rem;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.topbar-brand {
+			transition: none;
+		}
+	}
+</style>

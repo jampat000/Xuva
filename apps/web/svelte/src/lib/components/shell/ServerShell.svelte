@@ -85,7 +85,7 @@
 			</a>
 		{/snippet}
 		{#snippet bottom()}
-			<a class="app-drawer__link" href="/">
+			<a class="app-drawer__link app-drawer__link--back" href="/">
 				<ArrowLeft size={19} />
 				Back to Media
 			</a>
