@@ -5,11 +5,11 @@
 	import LorivoSidebar from './LorivoSidebar.svelte';
 
 	let {
-		active = 'overview',
+		active = 'dashboard',
 		userDisplayName = 'Local User',
 		userRole = 'Local Account'
 	} = $props<{
-		active?: 'overview' | 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 	}>();
@@ -24,6 +24,13 @@
 	{/snippet}
 
 	{#snippet primary()}
+		<SidebarItem label="Dashboard" href="/settings#dashboard" active={active === 'dashboard'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M5 13.5h5.5V6H5zM13.5 18H19V6h-5.5zM5 18h5.5v-1.8H5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
 		<SidebarItem label="Library" href="/settings#library" active={active === 'library'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -66,12 +73,11 @@
 				</svg>
 			{/snippet}
 		</SidebarItem>
-		<SidebarItem label="Server" href="/settings#server" active={active === 'server'}>
+		<SidebarItem label="Access" href="/settings#access" active={active === 'access'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<rect x="5" y="5" width="14" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5" />
-					<rect x="5" y="13.5" width="14" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5" />
-					<path d="M8 7.8h.1M8 16.3h.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+					<path d="M12 4.8 18 7v4.8c0 3.6-2.3 6.4-6 7.4-3.7-1-6-3.8-6-7.4V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+					<path d="M9.5 12.3 11.2 14l3.3-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 				</svg>
 			{/snippet}
 		</SidebarItem>

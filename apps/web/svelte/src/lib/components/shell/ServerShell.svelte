@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { ArrowLeft, Database, Info, Menu, Play, RefreshCw, Server, Tags } from 'lucide-svelte';
+	import { ArrowLeft, Database, Gauge, Info, Menu, Play, RefreshCw, Shield, Tags } from 'lucide-svelte';
 	import AppTopbar from './AppTopbar.svelte';
 	import AppDrawer from './AppDrawer.svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
@@ -9,14 +9,14 @@
 	import ServerSidebar from './ServerSidebar.svelte';
 
 	let {
-		active = 'overview',
+		active = 'dashboard',
 		searchValue = $bindable(''),
 		userDisplayName = 'Local User',
 		userRole = 'Local Account',
 		userInitials = 'U',
 		children
 	} = $props<{
-		active?: 'overview' | 'library' | 'scanning' | 'metadata' | 'playback' | 'server' | 'about';
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
 		searchValue?: string;
 		userDisplayName?: string;
 		userRole?: string;
@@ -55,6 +55,10 @@
 			</div>
 		{/snippet}
 		{#snippet main()}
+			<a class="app-drawer__link" href="/settings#dashboard" aria-current={active === 'dashboard' ? 'page' : undefined}>
+				<Gauge size={19} />
+				Dashboard
+			</a>
 			<a class="app-drawer__link" href="/settings#library" aria-current={active === 'library' ? 'page' : undefined}>
 				<Database size={19} />
 				Library
@@ -71,9 +75,9 @@
 				<Play size={19} />
 				Playback
 			</a>
-			<a class="app-drawer__link" href="/settings#server" aria-current={active === 'server' ? 'page' : undefined}>
-				<Server size={19} />
-				Server
+			<a class="app-drawer__link" href="/settings#access" aria-current={active === 'access' ? 'page' : undefined}>
+				<Shield size={19} />
+				Access
 			</a>
 			<a class="app-drawer__link" href="/settings#about" aria-current={active === 'about' ? 'page' : undefined}>
 				<Info size={19} />

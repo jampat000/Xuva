@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 
 	onMount(() => {
-		window.location.replace('/settings#server');
+		window.location.replace('/settings#dashboard');
 	});
 </script>
 
@@ -14,7 +14,7 @@
 	<div>
 		<h1>Opening Settings</h1>
 		<p>This area has moved into Settings.</p>
-		<a href="/settings#server">Open Settings</a>
+		<a href="/settings#dashboard">Open Settings</a>
 	</div>
 </div>
 

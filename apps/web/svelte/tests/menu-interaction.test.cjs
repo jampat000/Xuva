@@ -48,7 +48,7 @@ async function launchDevServer() {
 
 function apiPayload(pathname) {
 	if (pathname === '/api/auth/session') {
-		return { user: { id: 'local', username: 'local', displayName: 'Local User', role: 'Local Account' } };
+		return { user: { id: 'local', username: 'local', displayName: 'Local User', role: 'admin' } };
 	}
 	if (pathname === '/api/client/home') return { rows: [], actions: {} };
 	if (pathname === '/api/playback/recent') return { recent: [] };
@@ -231,15 +231,19 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	await assertNoHorizontalOverflow(page);
 	assert.equal(await page.getByTestId('settings-dashboard').count(), 1);
 	assert.equal(await page.getByTestId('settings-section-content').count(), 0);
+	assert.match(await page.locator('body').innerText(), /Dashboard/);
+	await assertSettingsSafetyCopy(page);
 	if (viewport.width >= 981) {
 		const sidebar = page.getByTestId('settings-mode-sidebar');
 		assert.equal(await sidebar.count(), 1);
 		assert.equal(await sidebar.isVisible(), true);
 		assert.match(await sidebar.innerText(), /LORIVO/);
 		assert.match(await sidebar.innerText(), /Settings/i);
-		for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
+		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
 			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
+		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
+		assert.equal(await sidebar.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
 		await verifySettingsSections(page, sidebar, baseURL, false);
 		await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).click();
 	} else {
@@ -252,9 +256,11 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 		await assertLeftDrawer(page, settingsDrawer, viewport);
 		assert.match(await settingsDrawer.innerText(), /LORIVO/);
 		assert.match(await settingsDrawer.innerText(), /Settings/i);
-		for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
+		for (const label of ['Dashboard', 'Library', 'Scanning', 'Metadata', 'Playback', 'Access', 'About', 'Back to Media']) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Appearance', exact: true }).count(), 0);
 		await verifySettingsSections(page, settingsDrawer, baseURL, true);
 		await settingsButton.click();
 		await waitForDrawerState(settingsDrawer, 'open');
@@ -270,7 +276,7 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		['Scanning', 'scanning'],
 		['Metadata', 'metadata'],
 		['Playback', 'playback'],
-		['Server', 'server'],
+		['Access', 'access'],
 		['About', 'about']
 	];
 	for (let index = 0; index < sections.length; index += 1) {
@@ -291,6 +297,7 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		assert.equal(await selectedSection.getAttribute('data-section'), hash);
 		assert.equal(await page.locator(`section#${hash}`).count(), 1);
 		assert.equal(await page.getByTestId('settings-dashboard').count(), 0);
+		await assertSettingsSafetyCopy(page);
 		for (const [, otherHash] of sections) {
 			if (otherHash === hash) continue;
 			assert.equal(await page.locator(`section#${otherHash}`).count(), 0);
@@ -305,6 +312,19 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 	}
 }
 
+async function assertSettingsSafetyCopy(page) {
+	const body = await page.locator('body').innerText();
+	assert.doesNotMatch(body, /\bAdmin\b/i);
+	assert.doesNotMatch(body, /\bOperator\b/i);
+	assert.doesNotMatch(body, /Operational telemetry/i);
+	assert.doesNotMatch(body, /Manage Server/i);
+	assert.doesNotMatch(body, /Write Controls/i);
+	assert.doesNotMatch(body, /\bAPI\b/i);
+	assert.doesNotMatch(body, /endpoint/i);
+	assert.doesNotMatch(body, /provider internals/i);
+	assert.doesNotMatch(body, /Transcode Workers/i);
+}
+
 async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/setup`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
@@ -315,6 +335,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		assert.equal(await sidebar.isVisible(), true);
 		assert.equal(await sidebar.getByRole('link', { name: 'Library', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
+		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 	} else {
 		const settingsButton = page.getByTestId('settings-menu-button');
 		assert.equal(await settingsButton.count(), 1);
@@ -323,6 +344,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		const settingsDrawer = page.getByTestId('settings-menu-drawer');
 		await waitForDrawerState(settingsDrawer, 'open');
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await page.waitForURL(`${baseURL}/`, { timeout: 10000 });
 	}
@@ -356,7 +378,7 @@ test('hamburger media and settings menus open and navigate across viewports', as
 		const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 		await installApiMocks(page);
 		await page.goto(`${baseURL}/admin`, { waitUntil: 'domcontentloaded' });
-		await page.waitForURL(`${baseURL}/settings#server`, { timeout: 10000 });
+		await page.waitForURL(`${baseURL}/settings#dashboard`, { timeout: 10000 });
 		assert.doesNotMatch(await page.locator('body').innerText(), /Admin/);
 		await page.close();
 	} finally {

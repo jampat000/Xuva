@@ -12,10 +12,9 @@ function read(file) {
 test('admin route redirects to settings compatibility surface', () => {
 	const source = read('src/routes/admin/+page.svelte');
 
-	assert.match(source, /window\.location\.replace\('\/settings#server'\)/);
+	assert.match(source, /window\.location\.replace\('\/settings#dashboard'\)/);
 	assert.match(source, /Opening Settings/);
 	assert.match(source, /Open Settings/);
-	assert.doesNotMatch(source, /Dashboard/);
 	assert.doesNotMatch(source, /Controls/);
 	assert.doesNotMatch(source, /legacy/i);
 });
