@@ -76,6 +76,20 @@ function playbackPolicyInfo(id) {
 function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/auth/session') {
 		if (state.authDisabled) return { authDisabled: true };
+		if (state.devAuthBypass) {
+			return {
+				devAuthBypass: true,
+				devAuthBypassMessage:
+					'Development access is active. User management will be enabled before production.',
+				user: {
+					id: 'dev-owner',
+					username: 'development-owner',
+					displayName: 'Development Owner',
+					role: 'admin'
+				},
+				session: { id: 'dev-auth-bypass' }
+			};
+		}
 		if (!state.signedIn) return { user: null };
 		return {
 			user: { id: 'local', username: 'local', displayName: 'Local User', role: 'admin' },
@@ -86,6 +100,7 @@ function apiPayload(pathname, state = {}) {
 		return {
 			auth: {
 				required: !state.authDisabled,
+				devAuthBypass: Boolean(state.devAuthBypass),
 				bootstrapAllowed: Boolean(state.bootstrapAllowed),
 				defaultUsername: state.defaultUsername || 'owner',
 				bootstrapEndpoint: '/api/auth/bootstrap'
@@ -128,7 +143,7 @@ function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/work') return { work: [] };
 	if (pathname === '/api/downloads') return { downloads: [] };
 	if (pathname === '/api/sessions') {
-		if (!state.signedIn && !state.authDisabled) return { error: 'authentication required' };
+		if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) return { error: 'authentication required' };
 		return { sessions: state.sessions || [] };
 	}
 	return {};
@@ -144,6 +159,7 @@ async function installApiMocks(page, options = {}) {
 		playbackPolicy: 'original_only',
 		restartRequired: true,
 		signedIn: !options.signedOut,
+		devAuthBypass: Boolean(options.devAuthBypass),
 		authDisabled: Boolean(options.authDisabled),
 		bootstrapAllowed: Boolean(options.bootstrapAllowed),
 		defaultUsername: 'owner',
@@ -312,6 +328,19 @@ async function installApiMocks(page, options = {}) {
 			});
 		}
 		if (url.pathname === '/api/auth/logout' && route.request().method() === 'POST') {
+			if (state.devAuthBypass) {
+				state.logoutCount += 1;
+				return route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						status: 'dev_bypass_active',
+						devAuthBypass: true,
+						devAuthBypassMessage:
+							'Development access bypass remains active until LORIVO_DEV_AUTH_BYPASS is turned off.'
+					})
+				});
+			}
 			state.signedIn = false;
 			state.logoutCount += 1;
 			return route.fulfill({
@@ -320,7 +349,7 @@ async function installApiMocks(page, options = {}) {
 				body: JSON.stringify({ status: 'logged_out' })
 			});
 		}
-		if (url.pathname === '/api/sessions' && !state.signedIn && !state.authDisabled) {
+		if (url.pathname === '/api/sessions' && !state.signedIn && !state.authDisabled && !state.devAuthBypass) {
 			return route.fulfill({
 				status: 401,
 				contentType: 'application/json',
@@ -842,6 +871,23 @@ async function assertPlaybackSection(page, state) {
 
 async function assertAccessSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
+	if (state.devAuthBypass) {
+		assert.match(await selectedSection.innerText(), /Development Owner/);
+		assert.match(
+			await selectedSection.innerText(),
+			/Development access is active\. User management will be enabled before production\./
+		);
+		assert.match(await selectedSection.innerText(), /User management is not available yet\./);
+		assert.match(
+			await selectedSection.innerText(),
+			/Device pairing will appear here when client pairing is implemented\./
+		);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
+		assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 0);
+		assert.equal(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count(), 0);
+		await assertNoHorizontalOverflow(page);
+		return;
+	}
 	assert.match(await selectedSection.innerText(), /Local User/);
 	assert.match(await selectedSection.innerText(), /Owner account/);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 1);
@@ -851,7 +897,7 @@ async function assertAccessSection(page, state) {
 	await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
 	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
-	assert.doesNotMatch(await selectedSection.innerText(), /Create User|Delete User|User management/i);
+	assert.doesNotMatch(await selectedSection.innerText(), /Create User|Delete User/i);
 	await assertNoHorizontalOverflow(page);
 }
 
@@ -993,6 +1039,21 @@ test('settings shows owner access guidance when the server still needs its first
 		}
 
 		await assertNoHorizontalOverflow(page);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('settings shows development owner controls when dev auth bypass is active', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		const state = await installApiMocks(page, { signedOut: true, devAuthBypass: true });
+		await verifySettingsMenu(page, baseURL, { width: 1600, height: 1000 }, state);
 		await page.close();
 	} finally {
 		await browser.close();

@@ -14,6 +14,8 @@ export interface AuthSession {
 
 export interface AuthSessionResponse {
 	authDisabled?: boolean;
+	devAuthBypass?: boolean;
+	devAuthBypassMessage?: string;
 	user?: AuthSessionUser;
 	session?: AuthSession;
 	csrfToken?: string;
@@ -26,6 +28,7 @@ export interface ClientBootstrapAuthInfo {
 	bootstrapAllowed?: boolean;
 	defaultUsername?: string;
 	bootstrapEndpoint?: string;
+	devAuthBypass?: boolean;
 }
 
 export interface ClientBootstrapResponse {

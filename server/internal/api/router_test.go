@@ -1477,6 +1477,102 @@ func TestAuthProtectedRouteRequiresSession(t *testing.T) {
 	}
 }
 
+func TestDevAuthBypassProtectedSettingsRequireAuthByDefault(t *testing.T) {
+	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
+	request := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:8097/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+		"serverName": "Family Room",
+	})))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when dev auth bypass is off, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDevAuthBypassSessionReturnsDevelopmentOwnerOnLoopback(t *testing.T) {
+	deps := testDepsWithAuthNoBootstrap(t, time.Now())
+	deps.Config.DevAuthBypass = true
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/auth/session", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 with dev auth bypass, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := decodeBody(t, response.Body.Bytes())
+	user, _ := payload["user"].(map[string]any)
+	session, _ := payload["session"].(map[string]any)
+	if user["username"] != "development-owner" || user["displayName"] != "Development Owner" || user["role"] != "admin" {
+		t.Fatalf("expected development owner payload, got %#v", payload)
+	}
+	if payload["devAuthBypass"] != true {
+		t.Fatalf("expected devAuthBypass=true, got %#v", payload)
+	}
+	if payload["csrfToken"] != nil {
+		t.Fatalf("expected no csrf token in dev bypass session payload, got %#v", payload)
+	}
+	if session["id"] != devAuthBypassSessionID || session["expiresAt"] != nil {
+		t.Fatalf("expected synthetic dev bypass session without expiry, got %#v", session)
+	}
+}
+
+func TestDevAuthBypassAllowsProtectedSettingsUpdateOnLoopback(t *testing.T) {
+	deps := testDepsWithAuthNoBootstrap(t, time.Now())
+	deps.Config.DevAuthBypass = true
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:8097/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+		"serverName": "Family Room",
+	})))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 with dev auth bypass settings update, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := decodeBody(t, response.Body.Bytes())
+	configPayload, _ := payload["config"].(map[string]any)
+	if configPayload["serverName"] != "Family Room" {
+		t.Fatalf("expected updated server name, got %#v", payload)
+	}
+}
+
+func TestDevAuthBypassIgnoredOnNonLoopbackBind(t *testing.T) {
+	deps := testDepsWithAuthNoBootstrap(t, time.Now())
+	deps.Config.DevAuthBypass = true
+	deps.Config.HTTPAddr = "0.0.0.0:8097"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/auth/session", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when dev auth bypass is configured on a non-loopback bind, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDevAuthBypassIgnoredForExternalHost(t *testing.T) {
+	deps := testDepsWithAuthNoBootstrap(t, time.Now())
+	deps.Config.DevAuthBypass = true
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://lorivo.example/api/auth/session", nil)
+	request.Header.Set("X-Forwarded-Host", "lorivo.example")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when dev auth bypass is accessed through a non-loopback host, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestAuthLoginAndProtectedRouteAccess(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 	client := newAuthTestClient(t)

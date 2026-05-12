@@ -243,10 +243,18 @@ func withObservability(deps Deps, next http.Handler) http.Handler {
 }
 
 func withResolvedSession(deps Deps, next http.Handler) http.Handler {
-	if deps.Auth == nil || deps.Auth.Disabled() {
+	if (deps.Auth == nil || deps.Auth.Disabled()) && !devAuthBypassEnabled(deps) {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if devAuthBypassEnabled(deps) && devAuthBypassAllowsRequest(r) {
+			next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), devAuthBypassSession())))
+			return
+		}
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			next.ServeHTTP(w, r)
+			return
+		}
 		cookieToken := ""
 		if cookie, err := r.Cookie(auth.SessionCookieName); err == nil {
 			cookieToken = strings.TrimSpace(cookie.Value)
@@ -499,24 +507,40 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		payload := map[string]any{
 			"user": map[string]any{
 				"id":          resolved.Principal.ID,
 				"username":    resolved.Principal.Username,
 				"displayName": resolved.Principal.DisplayName,
 				"role":        resolved.Principal.Role,
 			},
-			"session": map[string]any{
-				"id":        resolved.Session.ID,
-				"expiresAt": resolved.Session.ExpiresAt.Format(time.RFC3339),
-			},
-			"csrfToken": resolved.Session.CSRFToken,
-		})
+		}
+		sessionPayload := map[string]any{
+			"id": resolved.Session.ID,
+		}
+		if resolved.DevBypass {
+			payload["devAuthBypass"] = true
+			payload["devAuthBypassMessage"] = "Development access is active. User management will be enabled before production."
+		} else {
+			sessionPayload["expiresAt"] = resolved.Session.ExpiresAt.Format(time.RFC3339)
+			payload["csrfToken"] = resolved.Session.CSRFToken
+		}
+		payload["session"] = sessionPayload
+		writeJSON(w, http.StatusOK, payload)
 	}
 }
 
 func authLogoutHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok && resolved.DevBypass {
+			clearAuthCookies(w)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"status":               "dev_bypass_active",
+				"devAuthBypass":        true,
+				"devAuthBypassMessage": "Development access bypass remains active until LORIVO_DEV_AUTH_BYPASS is turned off.",
+			})
+			return
+		}
 		if deps.Auth != nil && !deps.Auth.Disabled() {
 			if cookie, err := r.Cookie(auth.SessionCookieName); err == nil && cookie.Value != "" {
 				_ = deps.Auth.Revoke(r.Context(), cookie.Value)
@@ -830,6 +854,7 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 			startedAt = time.Now().UTC()
 		}
 		authRequired := deps.Auth != nil && !deps.Auth.Disabled()
+		devBypassActive := devAuthBypassEnabled(deps) && requestHostIsLoopback(r)
 		bootstrapAllowed := false
 		defaultAdminUsername := strings.TrimSpace(cfg.AdminUsername)
 		if defaultAdminUsername == "" {
@@ -854,6 +879,7 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 				"bootstrapAllowed":  bootstrapAllowed,
 				"defaultUsername":   defaultAdminUsername,
 				"bootstrapEndpoint": "/api/auth/bootstrap",
+				"devAuthBypass":     devBypassActive,
 				"methods":           []string{"session_cookie", "local_pairing_code"},
 			},
 			"client": map[string]any{

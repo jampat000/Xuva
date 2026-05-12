@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -42,6 +43,7 @@ type Config struct {
 	ProbeBatchLimit   int      `json:"probeBatchLimit,omitempty"`
 	AllowedOrigins    []string `json:"allowedOrigins,omitempty"`
 	AuthDisabled      bool     `json:"-"`
+	DevAuthBypass     bool     `json:"-"`
 	AdminUsername     string   `json:"-"`
 	AdminPassword     string   `json:"-"`
 }
@@ -77,6 +79,7 @@ func FromEnv() Config {
 		ProbeBatchLimit:   envInt("LORIVO_PROBE_BATCH_LIMIT", 50),
 		AllowedOrigins:    envCSV("LORIVO_ALLOWED_ORIGINS", nil),
 		AuthDisabled:      envBool("LORIVO_AUTH_DISABLED", false),
+		DevAuthBypass:     envBool("LORIVO_DEV_AUTH_BYPASS", false),
 		AdminUsername:     envString("LORIVO_ADMIN_USERNAME", "admin"),
 		AdminPassword:     envString("LORIVO_ADMIN_PASSWORD", ""),
 	}
@@ -111,6 +114,7 @@ func FromEnv() Config {
 	cfg.ProbeBatchLimit = envInt("LORIVO_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
 	cfg.AllowedOrigins = envCSV("LORIVO_ALLOWED_ORIGINS", cfg.AllowedOrigins)
 	cfg.AuthDisabled = envBool("LORIVO_AUTH_DISABLED", cfg.AuthDisabled)
+	cfg.DevAuthBypass = envBool("LORIVO_DEV_AUTH_BYPASS", cfg.DevAuthBypass)
 	cfg.AdminUsername = envString("LORIVO_ADMIN_USERNAME", cfg.AdminUsername)
 	cfg.AdminPassword = envString("LORIVO_ADMIN_PASSWORD", cfg.AdminPassword)
 	return cfg
@@ -331,4 +335,29 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func DevAuthBypassActive(cfg Config) bool {
+	return cfg.DevAuthBypass && !cfg.AuthDisabled && loopbackHTTPAddr(cfg.HTTPAddr)
+}
+
+func loopbackHTTPAddr(addr string) bool {
+	host := strings.TrimSpace(addr)
+	if host == "" {
+		return false
+	}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }

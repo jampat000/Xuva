@@ -87,6 +87,8 @@
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
+	let devAuthBypass = $state(false);
+	let devAuthBypassMessage = $state('');
 	let activeSection = $state<SettingsSection>('dashboard');
 	let activeLibraryActionID = $state('');
 	let activeLibraryActionKind = $state<LibraryActionKind>('');
@@ -156,14 +158,15 @@
 		}
 	];
 
+	const devOwnerActive = $derived.by(() => devAuthBypass && Boolean(user));
 	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
-	const userRoleLabel = $derived.by(() => accountTypeLabel(user?.role));
+	const userRoleLabel = $derived.by(() => (devOwnerActive ? 'Development Owner' : accountTypeLabel(user?.role)));
 	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
-	const canManageSettings = $derived.by(() => authDisabled || asText(user?.role).toLowerCase() === 'admin');
-	const canShowSignIn = $derived.by(() => !authDisabled && !user);
-	const ownerSetupPending = $derived.by(() => !authDisabled && !user && Boolean(clientBootstrap.auth?.bootstrapAllowed));
-	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !canManageSettings);
+	const canManageSettings = $derived.by(() => authDisabled || devOwnerActive || asText(user?.role).toLowerCase() === 'admin');
+	const canShowSignIn = $derived.by(() => !authDisabled && !devAuthBypass && !user);
+	const ownerSetupPending = $derived.by(() => !authDisabled && !devAuthBypass && !user && Boolean(clientBootstrap.auth?.bootstrapAllowed));
+	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !devAuthBypass && !canManageSettings);
 	const ownerAccessMessage = $derived.by(() => 'Sign in as the owner to manage Lorivo settings.');
 	const ownerActionLabel = $derived.by(() => (ownerSetupPending ? 'Create Owner Account' : 'Sign In'));
 	const ownerActionDetail = $derived.by(() => {
@@ -174,6 +177,49 @@
 				: 'This server still needs its first owner account. Open Sign In to create it.';
 		}
 		return 'Open Sign In to continue with the owner account.';
+	});
+	const devAccessMessage = $derived.by(
+		() =>
+			asText(devAuthBypassMessage) ||
+			'Development access is active. User management will be enabled before production.'
+	);
+	const accessCardLabel = $derived.by(() => {
+		if (devOwnerActive) return 'Development owner';
+		if (user) return 'Signed in';
+		if (authDisabled) return 'Local access';
+		if (ownerSetupPending) return 'Create owner account';
+		return 'Sign in';
+	});
+	const accessCardDetail = $derived.by(() => {
+		if (devOwnerActive) return 'owner controls are unlocked for local development';
+		if (user) return userDisplayName;
+		if (authDisabled) return 'sign-in is not required on this server';
+		if (ownerSetupPending) return 'first owner account needed for changes';
+		return 'owner account needed for changes';
+	});
+	const accessAccountValue = $derived.by(() => {
+		if (user) return userDisplayName;
+		if (authDisabled) return 'Local access';
+		return 'Not signed in';
+	});
+	const accessAccountMeta = $derived.by(() => {
+		if (devOwnerActive) return 'Development Owner';
+		if (user) return userRoleLabel;
+		if (authDisabled) return 'Sign-in is not required on this server.';
+		return 'Sign in to change protected settings.';
+	});
+	const accessSessionValue = $derived.by(() => {
+		if (devOwnerActive) return 'Development access';
+		if (user) return 'Active';
+		if (authDisabled) return 'Local';
+		return 'Signed out';
+	});
+	const accessSessionMeta = $derived.by(() => {
+		if (devOwnerActive) return devAccessMessage;
+		if (user && sessionExpiresAt) return `Current session expires ${formatDateTime(sessionExpiresAt)}.`;
+		if (user) return 'This browser has an active Lorivo session.';
+		if (authDisabled) return 'This server is running without account sign-in.';
+		return 'Open Sign In to continue.';
 	});
 	const activeQueueCount = $derived.by(
 		() => [...scans, ...probes, ...work, ...downloads].filter((item) => isActiveStatus(item.status)).length
@@ -328,6 +374,8 @@
 
 			clientBootstrap = bootstrapPayload || {};
 			authDisabled = Boolean(sessionPayload?.authDisabled);
+			devAuthBypass = Boolean(sessionPayload?.devAuthBypass);
+			devAuthBypassMessage = asText(sessionPayload?.devAuthBypassMessage);
 			user = sessionPayload?.user || null;
 			sessionExpiresAt = asText(sessionPayload?.session?.expiresAt);
 			libraries = librariesPayload.libraries || [];
@@ -558,7 +606,7 @@
 	}
 
 	async function signOut(): Promise<void> {
-		if (isSigningOut || authDisabled || !user) return;
+		if (isSigningOut || authDisabled || devOwnerActive || !user) return;
 		isSigningOut = true;
 		actionMessage = '';
 		try {
@@ -999,8 +1047,8 @@
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Access</span>
-						<strong>{user ? 'Signed in' : authDisabled ? 'Local access' : ownerSetupPending ? 'Create owner account' : 'Sign in'}</strong>
-						<small>{user ? userDisplayName : authDisabled ? 'sign-in is not required on this server' : ownerSetupPending ? 'first owner account needed for changes' : 'owner account needed for changes'}</small>
+						<strong>{accessCardLabel}</strong>
+						<small>{accessCardDetail}</small>
 						<div class="dashboard-card-actions">
 							<LorivoButton variant="secondary" size="sm" href="#access">Access</LorivoButton>
 						</div>
@@ -1337,7 +1385,7 @@
 			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
 				<SettingsPanel title="Access" description="Current account and session." status={user ? 'healthy' : 'idle'}>
 					{#snippet actions()}
-						{#if user && !authDisabled}
+						{#if user && !authDisabled && !devOwnerActive}
 							<LorivoButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
 								{isSigningOut ? 'Signing out...' : 'Sign Out'}
 							</LorivoButton>
@@ -1346,9 +1394,20 @@
 						{/if}
 					{/snippet}
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Account" value={user ? userDisplayName : authDisabled ? 'Local access' : 'Not signed in'} meta={user ? userRoleLabel : authDisabled ? 'Sign-in is not required on this server.' : 'Sign in to change protected settings.'} tone={user ? 'good' : 'neutral'} />
-						<LorivoStat label="Session" value={user ? 'Active' : authDisabled ? 'Local' : 'Signed out'} meta={user && sessionExpiresAt ? `Current session expires ${formatDateTime(sessionExpiresAt)}.` : user ? 'This browser has an active Lorivo session.' : authDisabled ? 'This server is running without account sign-in.' : 'Open Sign In to continue.'} tone={user ? 'good' : 'neutral'} />
+						<LorivoStat label="Account" value={accessAccountValue} meta={accessAccountMeta} tone={user ? 'good' : 'neutral'} />
+						<LorivoStat label="Session" value={accessSessionValue} meta={accessSessionMeta} tone={user ? 'good' : 'neutral'} />
 					</div>
+					{#if devOwnerActive}
+						<div class="settings-auth-callout">
+							<p class="settings-note">{devAccessMessage}</p>
+							<p class="settings-auth-callout__detail">User management is not available yet. Device pairing will appear here when client pairing is implemented.</p>
+						</div>
+					{:else}
+						<div class="settings-auth-callout">
+							<p class="settings-note">User management is not available yet.</p>
+							<p class="settings-auth-callout__detail">Device pairing will appear here when client pairing is implemented.</p>
+						</div>
+					{/if}
 					{#if !user && !authDisabled}
 						<div class="settings-auth-callout">
 							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
