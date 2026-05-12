@@ -6,8 +6,9 @@ Recommended status: **Safe to archive but not delete**
 
 Reason:
 - Lorivo now covers the core owner settings that were still product-relevant from old Vyrden.
-- The remaining Vyrden surfaces are either advanced/operator tools, future platform work, or product directions that Lorivo has already rejected.
-- It is still premature to delete Vyrden outright until the remaining advanced/future items are either tracked explicitly or deliberately closed out, and until there is one final pass confirming no required assets, docs, or code references exist only in Vyrden.
+- Local discovery is now implemented in Lorivo with mDNS / Bonjour using the configured Server Name.
+- The remaining Vyrden surfaces are either advanced-only owner tools, future platform work, or product directions Lorivo has already rejected.
+- It is still premature to delete Vyrden outright until the remaining advanced/future items are tracked explicitly and one final pass confirms nothing required still lives only in Vyrden.
 
 ## Already restored in Lorivo
 
@@ -39,6 +40,9 @@ Reason:
   - `765af27` Restore Lorivo metadata review settings
 - [x] Pairing review
   - `17f97bd` Restore Lorivo pairing review settings
+- [x] Local network discovery using Lorivo Server Name
+  - `5ab69a0` Add Lorivo local network discovery
+  - Implemented as mDNS / Bonjour over `_lorivo._tcp.local.`
 
 ## Backlogged / deliberately deferred
 
@@ -52,8 +56,8 @@ Reason:
 
 ### Backlog / future
 
-- [ ] LAN discovery using Lorivo Server Name
 - [ ] Persistent device registry
+- [ ] SSDP / UPnP / DLNA discovery, if Lorivo later needs more than mDNS / Bonjour
 - [ ] Source compatibility tools redesigned for Lorivo
 - [ ] Advanced hardware owner tools
 - [ ] Optional diagnostics page
@@ -82,8 +86,8 @@ Reason:
 
 ### Keep as tracked future platform work
 
-- LAN discovery
 - Persistent device registry
+- SSDP / UPnP / DLNA discovery expansion, if product needs it
 
 ### Do not restore
 
@@ -96,7 +100,7 @@ Reason:
 
 - [x] all core owner settings restored
 - [ ] advanced/operator items either restored, rejected, or tracked as issues
-- [ ] LAN discovery/device registry tracked as future issue
+- [x] LAN discovery implemented and device registry tracked as future work
 - [ ] no required code/assets/docs remain only in Vyrden
 - [x] final Lorivo validation passed
 - [ ] optional final archive/tag created
@@ -110,26 +114,7 @@ That is the safer sequence because Lorivo has reached practical owner-settings p
 
 ## Optional issue drafts
 
-### 1. Implement LAN discovery using Server Name
-
-**Title**  
-Implement LAN discovery using Lorivo Server Name
-
-**Problem**  
-Lorivo exposes a configurable server name, but it does not yet advertise itself automatically on the local network.
-
-**Scope**
-- advertise Lorivo over the local network
-- use configured Server Name consistently
-- define client discovery behavior and failure states
-- do not add fake discovery UI before backend support exists
-
-**Acceptance**
-- Lorivo can be discovered by supported local clients without manual URL entry
-- discovery naming matches Server Name
-- settings/docs do not overclaim unsupported platforms
-
-### 2. Add persistent device registry
+### 1. Add persistent device registry
 
 **Title**  
 Add persistent device registry for approved clients
@@ -146,7 +131,25 @@ Current pairing review is real, but pairing requests are runtime-only and there 
 **Acceptance**
 - approved devices survive restart
 - Lorivo can show a truthful owner-facing device list
-- no fake “connected devices” UI before persistence exists
+- no fake connected devices UI before persistence exists
+
+### 2. Extend local discovery beyond mDNS / Bonjour
+
+**Title**  
+Decide whether Lorivo needs SSDP / UPnP / DLNA discovery
+
+**Problem**  
+Lorivo now advertises itself over mDNS / Bonjour, but does not implement SSDP, UPnP, or DLNA-style discovery.
+
+**Scope**
+- decide whether non-Bonjour discovery protocols are needed at all
+- define protocol scope if broader client support is required
+- keep settings and docs honest about what is and is not discoverable
+- do not add fake discovery UI before backend support exists
+
+**Acceptance**
+- clear keep/defer/reject decision for SSDP / UPnP / DLNA
+- if kept, tracked as future platform work instead of implied support
 
 ### 3. Design Advanced owner tools
 
@@ -171,7 +174,7 @@ Old Vyrden exposed several technical/operator tools. Lorivo has intentionally av
 Redesign Source Compatibility tools for Lorivo
 
 **Problem**  
-Old Vyrden Source Inspector was useful but too diagnostic and internal for Lorivo’s current product direction.
+Old Vyrden Source Inspector was useful but too diagnostic and internal for Lorivo's current product direction.
 
 **Scope**
 - decide which compatibility facts are owner-useful
@@ -212,6 +215,7 @@ Lorivo has restored the core owner-settings surface that justified keeping old V
 - metadata review
 - access basics
 - pairing review
+- local network discovery via mDNS / Bonjour
 
 What remains from Vyrden is not a blocking parity gap for normal owner settings. It is either:
 
