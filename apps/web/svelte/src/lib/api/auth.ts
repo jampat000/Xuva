@@ -33,6 +33,10 @@ export interface ClientBootstrapAuthInfo {
 
 export interface ClientBootstrapResponse {
 	auth?: ClientBootstrapAuthInfo;
+	profiles?: Array<{
+		id?: string;
+		name?: string;
+	}>;
 	[key: string]: unknown;
 }
 

@@ -27,9 +27,12 @@
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import { browseFolder, deleteLibrary, startLibraryScan, type FolderBrowseResponse } from '$lib/api/setup';
 	import {
+		approvePairingRequest,
+		denyPairingRequest,
 		getCatalogHealth,
 		getCatalogSummary,
 		getDownloads,
+		getPairingRequests,
 		getPerformanceSettings,
 		getProbes,
 		getScans,
@@ -43,6 +46,7 @@
 		type CatalogSummaryResponse,
 		type DownloadJobItem,
 		type PerformanceSettingsResponse,
+		type PairingRequestItem,
 		type ProbeJobItem,
 		type ScanJobItem,
 		type SessionItem,
@@ -75,6 +79,7 @@
 		| 'about';
 
 	type LibraryActionKind = 'scan' | 'remove' | '';
+	type PairingActionKind = 'approve' | 'deny' | '';
 
 	type StorageFieldKey =
 		| 'dataDir'
@@ -148,6 +153,7 @@
 	let isSigningOut = $state(false);
 	let isBrowsingStorage = $state(false);
 	let isLoadingMetadataReview = $state(false);
+	let isLoadingPairingRequests = $state(false);
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let scanningSettingsError = $state('');
@@ -155,6 +161,8 @@
 	let storageSettingsError = $state('');
 	let metadataSourceError = $state('');
 	let metadataReviewError = $state('');
+	let pairingRequestsError = $state('');
+	let pairingActionMessage = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
@@ -163,6 +171,8 @@
 	let activeSection = $state<SettingsSection>('dashboard');
 	let activeLibraryActionID = $state('');
 	let activeLibraryActionKind = $state<LibraryActionKind>('');
+	let activePairingRequestID = $state('');
+	let activePairingActionKind = $state<PairingActionKind>('');
 
 	let user = $state<AuthSessionUser | null>(null);
 	let clientBootstrap = $state<ClientBootstrapResponse>({});
@@ -177,6 +187,7 @@
 	let work = $state<WorkQueueItem[]>([]);
 	let downloads = $state<DownloadJobItem[]>([]);
 	let sessions = $state<SessionItem[]>([]);
+	let pairingRequests = $state<PairingRequestItem[]>([]);
 	let reviewItems = $state<ReviewItem[]>([]);
 	let versionGroups = $state<VersionGroup[]>([]);
 	let metadataRecordsByItem = $state<Record<string, MetadataRecordsResponse>>({});
@@ -576,7 +587,9 @@
 			loadError = '';
 		}
 		metadataReviewError = '';
+		pairingRequestsError = '';
 		isLoadingMetadataReview = true;
+		isLoadingPairingRequests = true;
 		sessionsUnavailable = false;
 		try {
 			const [
@@ -658,11 +671,26 @@
 			reviewItems = reviewPayload.items || [];
 			versionGroups = versionGroupPayload.versions || [];
 			syncReviewDrafts(reviewPayload.items || []);
+			const canLoadPairingRequests = Boolean(sessionPayload?.authDisabled || sessionPayload?.user);
+			if (canLoadPairingRequests) {
+				const pairingPayload = await getPairingRequests(apiClient).catch((error: unknown) => {
+					if (isApiStatus(error, 401) || isApiStatus(error, 403)) {
+						pairingRequestsError = '';
+						return { requests: [] };
+					}
+					pairingRequestsError = formatLoadError(error);
+					return { requests: [] };
+				});
+				pairingRequests = pairingPayload.requests || [];
+			} else {
+				pairingRequests = [];
+			}
 			lastUpdatedLabel = new Date().toLocaleTimeString();
 		} catch (error) {
 			loadError = formatLoadError(error);
 		} finally {
 			isLoadingMetadataReview = false;
+			isLoadingPairingRequests = false;
 			isLoading = false;
 		}
 	}
@@ -1160,6 +1188,33 @@
 		}
 	}
 
+	async function updatePairingRequest(
+		request: PairingRequestItem,
+		action: Exclude<PairingActionKind, ''>
+	): Promise<void> {
+		const id = asText(request.id);
+		if (!id || !canManageSettings) return;
+		activePairingRequestID = id;
+		activePairingActionKind = action;
+		pairingActionMessage = '';
+		pairingRequestsError = '';
+		try {
+			if (action === 'approve') {
+				await approvePairingRequest(id, apiClient);
+				pairingActionMessage = `${pairingDeviceName(request)} approved.`;
+			} else {
+				await denyPairingRequest(id, apiClient);
+				pairingActionMessage = `${pairingDeviceName(request)} denied.`;
+			}
+			await loadSettingsSurface(true);
+		} catch (error) {
+			pairingRequestsError = formatLoadError(error);
+		} finally {
+			activePairingRequestID = '';
+			activePairingActionKind = '';
+		}
+	}
+
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
@@ -1249,6 +1304,40 @@
 			.split('_')
 			.map((part) => capitalize(part))
 			.join(' ');
+	}
+
+	function pairingDeviceName(item: PairingRequestItem): string {
+		return asText(item.deviceName) || 'Device';
+	}
+
+	function pairingProfileLabel(value: unknown): string {
+		const id = asText(value).toLowerCase();
+		if (!id) return 'Unknown device';
+		const knownProfiles = Array.isArray(clientBootstrap.profiles) ? clientBootstrap.profiles : [];
+		const matched = knownProfiles.find((profile) => asText(profile?.id).toLowerCase() === id);
+		if (matched) return asText(matched.name) || capitalize(id);
+		if (id === 'apple-tv') return 'Apple TV';
+		if (id === 'android-tv') return 'Android TV';
+		if (id === 'ios') return 'iPhone / iPad';
+		if (id === 'chromecast') return 'Chromecast';
+		if (id === 'web') return 'Web Player';
+		return id
+			.split(/[-_]/)
+			.map((part) => capitalize(part))
+			.join(' ');
+	}
+
+	function pairingStatusSummary(item: PairingRequestItem): string {
+		const status = asText(item.status).toLowerCase();
+		if (status === 'pending') return 'Waiting for your approval.';
+		if (status === 'approved') return 'Approved for this server.';
+		if (status === 'denied') return 'Request denied.';
+		if (status === 'expired') return 'Pairing request expired.';
+		return 'Request status is not available.';
+	}
+
+	function canUpdatePairingRequest(item: PairingRequestItem): boolean {
+		return canManageSettings && asText(item.status).toLowerCase() === 'pending';
 	}
 
 	function asCount(value: unknown): string {
@@ -2740,7 +2829,7 @@
 
 			{:else if activeSection === 'access'}
 			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
-				<SettingsPanel title="Access" description="Current account and session." status={user ? 'healthy' : 'idle'}>
+				<SettingsPanel title="Access" description="Current account, session, and device pairing requests." status={user ? 'healthy' : 'idle'}>
 					{#snippet actions()}
 						{#if user && !authDisabled && !devOwnerActive}
 							<LorivoButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
@@ -2758,8 +2847,99 @@
 						<p class="settings-note">{devOwnerActive ? devAccessMessage : 'Access is limited to the current owner session in this build.'}</p>
 						<ul class="settings-placeholder-list">
 							<li>User management is not available yet.</li>
-							<li>Device pairing will appear here when client pairing is implemented.</li>
+							<li>Persistent connected-device registry is not implemented yet.</li>
 						</ul>
+					</div>
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Device Pairing</h3>
+								<p>Approve devices that ask to connect to this Lorivo server.</p>
+							</div>
+						</div>
+						<p class="settings-note">Automatic local network discovery is not available in this build.</p>
+						{#if canManageSettings || authDisabled}
+							{#if isLoadingPairingRequests}
+								<p class="settings-note">Loading pairing requests…</p>
+							{:else if pairingRequests.length > 0}
+								<div class="pairing-request-list" data-testid="pairing-request-list">
+									{#each pairingRequests as request (request.id)}
+										<article class="pairing-request-card">
+											<div class="pairing-request-card__head">
+												<div>
+													<h4>{pairingDeviceName(request)}</h4>
+													<p>{pairingProfileLabel(request.clientProfile)}</p>
+												</div>
+												<span
+													class="storage-status-pill"
+													class:storage-status-pill--warn={asText(request.status).toLowerCase() === 'expired'}
+													class:storage-status-pill--neutral={asText(request.status).toLowerCase() !== 'pending' && asText(request.status).toLowerCase() !== 'expired'}
+												>
+													{humanStatus(request.status)}
+												</span>
+											</div>
+											<p class="review-card__reason">{pairingStatusSummary(request)}</p>
+											<dl class="pairing-request-facts">
+												{#if asText(request.code)}
+													<div>
+														<dt>Pairing code</dt>
+														<dd>{asText(request.code)}</dd>
+													</div>
+												{/if}
+												{#if asText(request.expiresAt)}
+													<div>
+														<dt>Expires</dt>
+														<dd>{formatDateTime(request.expiresAt)}</dd>
+													</div>
+												{/if}
+												{#if asText(request.updatedAt) && asText(request.status).toLowerCase() !== 'pending'}
+													<div>
+														<dt>Updated</dt>
+														<dd>{formatDateTime(request.updatedAt)}</dd>
+													</div>
+												{/if}
+											</dl>
+											{#if canUpdatePairingRequest(request)}
+												<div class="status-actions">
+													<LorivoButton
+														variant="primary"
+														size="sm"
+														disabled={activePairingRequestID === asText(request.id)}
+														onclick={() => updatePairingRequest(request, 'approve')}
+													>
+														{activePairingRequestID === asText(request.id) && activePairingActionKind === 'approve' ? 'Approving...' : 'Approve'}
+													</LorivoButton>
+													<LorivoButton
+														variant="danger"
+														size="sm"
+														disabled={activePairingRequestID === asText(request.id)}
+														onclick={() => updatePairingRequest(request, 'deny')}
+													>
+														{activePairingRequestID === asText(request.id) && activePairingActionKind === 'deny' ? 'Denying...' : 'Deny'}
+													</LorivoButton>
+												</div>
+											{/if}
+										</article>
+									{/each}
+								</div>
+							{:else}
+								<p class="settings-note">No pairing requests right now.</p>
+							{/if}
+							{#if pairingActionMessage}
+								<p class="settings-feedback">{pairingActionMessage}</p>
+							{/if}
+							{#if pairingRequestsError}
+								<p class="settings-error">{pairingRequestsError}</p>
+							{/if}
+						{:else}
+							<div class="settings-auth-callout">
+								<p class="settings-note">Sign in as the owner to update device pairing.</p>
+								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+								<div class="status-actions">
+									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								</div>
+							</div>
+						{/if}
 					</div>
 					{#if !user && !authDisabled}
 						<div class="settings-auth-callout">
@@ -3339,14 +3519,16 @@
 
 	.metadata-review-list,
 	.metadata-version-groups,
-	.review-records {
+	.review-records,
+	.pairing-request-list {
 		display: grid;
 		gap: 10px;
 	}
 
 	.review-card,
 	.review-record-card,
-	.version-group-card {
+	.version-group-card,
+	.pairing-request-card {
 		display: grid;
 		gap: 10px;
 		padding: 12px;
@@ -3357,7 +3539,8 @@
 
 	.review-card__head,
 	.review-record-card__head,
-	.version-group-card {
+	.version-group-card,
+	.pairing-request-card__head {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: flex-start;
@@ -3366,7 +3549,8 @@
 	}
 
 	.review-card__head h4,
-	.review-record-card__head strong {
+	.review-record-card__head strong,
+	.pairing-request-card__head h4 {
 		margin: 0;
 		font-size: 0.94rem;
 		font-weight: 760;
@@ -3374,7 +3558,8 @@
 
 	.review-card__head p,
 	.review-record-card__head span,
-	.version-group-card span {
+	.version-group-card span,
+	.pairing-request-card__head p {
 		margin: 4px 0 0;
 		color: var(--lorivo-color-text-soft);
 		font-size: 0.8rem;
@@ -3382,11 +3567,38 @@
 	}
 
 	.review-card__reason,
-	.review-record-card p {
+	.review-record-card p,
+	.pairing-request-card > p {
 		margin: 0;
 		color: var(--lorivo-color-text-soft);
 		font-size: 0.82rem;
 		line-height: 1.45;
+	}
+
+	.pairing-request-facts {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+		gap: 10px;
+		margin: 0;
+	}
+
+	.pairing-request-facts div {
+		display: grid;
+		gap: 4px;
+	}
+
+	.pairing-request-facts dt {
+		color: var(--lorivo-color-text-muted);
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0;
+		text-transform: uppercase;
+	}
+
+	.pairing-request-facts dd {
+		margin: 0;
+		color: var(--lorivo-color-text);
+		font-size: 0.82rem;
 	}
 
 	.review-card__details {

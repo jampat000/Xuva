@@ -28,6 +28,9 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /getWork\(apiClient\)/);
 	assert.match(source, /getDownloads\(apiClient\)/);
 	assert.match(source, /getSessions\(apiClient\)/);
+	assert.match(source, /getPairingRequests\(apiClient\)/);
+	assert.match(source, /approvePairingRequest\(id,\s*apiClient\)/);
+	assert.match(source, /denyPairingRequest\(id,\s*apiClient\)/);
 	assert.match(source, /logout\(apiClient\)/);
 	assert.match(source, /startLibraryScan\(id,\s*apiClient\)/);
 	assert.match(source, /deleteLibrary\(id,\s*apiClient\)/);
@@ -86,9 +89,16 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Create Owner Account/);
 	assert.match(source, /Open Access/);
 	assert.match(source, /Sign in as the owner to manage Lorivo settings\./);
+	assert.match(source, /Sign in as the owner to update device pairing\./);
 	assert.match(source, /Development access is active\. User management will be enabled before production\./);
 	assert.match(source, /User management is not available yet\./);
-	assert.match(source, /Device pairing will appear here when client pairing is implemented\./);
+	assert.match(source, /Device Pairing/);
+	assert.match(source, /Approve devices that ask to connect to this Lorivo server\./);
+	assert.match(source, /Automatic local network discovery is not available in this build\./);
+	assert.match(source, /Persistent connected-device registry is not implemented yet\./);
+	assert.match(source, /No pairing requests right now\./);
+	assert.match(source, /Approve/);
+	assert.match(source, /Deny/);
 	assert.match(source, /Lorivo uses this name in the browser title and shares it with local clients\./);
 	assert.match(source, /Local network discovery is not available in this build yet\./);
 	assert.match(source, /Server name must be 50 characters or fewer\./);
@@ -125,6 +135,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.doesNotMatch(source, /Editing existing folders is not available here yet\./);
 	assert.doesNotMatch(source, /Playback preference editing is not available in this build\./);
 	assert.doesNotMatch(source, /Provider API/i);
+	assert.doesNotMatch(source, /Discovery section/i);
 	assert.doesNotMatch(source, /\bLibrarySyncMode\b/);
 	assert.doesNotMatch(source, /\bSyncIntervalMins\b/);
 	assert.doesNotMatch(source, /\bWatchDebounceSecs\b/);
