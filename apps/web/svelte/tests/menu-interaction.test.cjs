@@ -229,23 +229,85 @@ async function verifySettingsMenu(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertNoHorizontalOverflow(page);
-	const shouldShift = viewport.width >= 768;
-	const surface = page.getByTestId('settings-shell-surface');
-	const beforeSurface = await surface.boundingBox();
-	assert.ok(beforeSurface, 'settings app surface should exist');
-	const settingsButton = page.getByTestId('settings-menu-button');
-	assert.equal(await settingsButton.count(), 1);
-	await settingsButton.click();
-	const settingsDrawer = page.getByTestId('settings-menu-drawer');
-	await waitForDrawerState(settingsDrawer, 'open');
-	await assertLeftDrawer(page, settingsDrawer, viewport);
-	await assertSurfaceLayout(page, surface, beforeSurface, viewport, shouldShift);
-	for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
-		assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
+	assert.equal(await page.getByTestId('settings-dashboard').count(), 1);
+	assert.match(await page.locator('body').innerText(), /Settings Mode/i);
+	if (viewport.width >= 981) {
+		const sidebar = page.getByTestId('settings-mode-sidebar');
+		assert.equal(await sidebar.count(), 1);
+		assert.equal(await sidebar.isVisible(), true);
+		for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
+			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
+		}
+		await verifySettingsSections(page, sidebar, baseURL, false);
+		await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).click();
+	} else {
+		const settingsButton = page.getByTestId('settings-menu-button');
+		assert.equal(await settingsButton.count(), 1);
+		assert.equal(await settingsButton.isVisible(), true);
+		await settingsButton.click();
+		const settingsDrawer = page.getByTestId('settings-menu-drawer');
+		await waitForDrawerState(settingsDrawer, 'open');
+		await assertLeftDrawer(page, settingsDrawer, viewport);
+		for (const label of ['Library', 'Scanning', 'Metadata', 'Playback', 'Server', 'About', 'Back to Media']) {
+			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
+		}
+		await verifySettingsSections(page, settingsDrawer, baseURL, true);
+		await settingsButton.click();
+		await waitForDrawerState(settingsDrawer, 'open');
+		await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
 	}
-	await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
 	await page.waitForURL(`${baseURL}/`, { timeout: 10000 });
-	assert.equal(await page.getByTestId('settings-menu-drawer').count(), 0);
+	await assertNoHorizontalOverflow(page);
+}
+
+async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer) {
+	const sections = [
+		['Library', 'library'],
+		['Scanning', 'scanning'],
+		['Metadata', 'metadata'],
+		['Playback', 'playback'],
+		['Server', 'server'],
+		['About', 'about']
+	];
+	for (let index = 0; index < sections.length; index += 1) {
+		const [label, hash] = sections[index];
+		const link = navContainer.getByRole('link', { name: label, exact: true });
+		assert.equal(await link.count(), 1);
+		await link.click();
+		await page.waitForURL(`${baseURL}/settings#${hash}`, { timeout: 10000 });
+		assert.equal(await page.locator(`#${hash}`).count(), 1);
+		await assertNoHorizontalOverflow(page);
+		if (reopensDrawer && index < sections.length - 1) {
+			const settingsButton = page.getByTestId('settings-menu-button');
+			await waitForDrawerState(page.getByTestId('settings-menu-drawer'), 'closed');
+			await settingsButton.click();
+			await waitForDrawerState(page.getByTestId('settings-menu-drawer'), 'open');
+		}
+	}
+}
+
+async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
+	await page.goto(`${baseURL}/setup`, { waitUntil: 'domcontentloaded' });
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
+	assert.match(await page.locator('body').innerText(), /Library Setup/);
+	if (viewport.width >= 981) {
+		const sidebar = page.getByTestId('settings-mode-sidebar');
+		assert.equal(await sidebar.count(), 1);
+		assert.equal(await sidebar.isVisible(), true);
+		assert.equal(await sidebar.getByRole('link', { name: 'Library', exact: true }).count(), 1);
+		assert.equal(await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
+	} else {
+		const settingsButton = page.getByTestId('settings-menu-button');
+		assert.equal(await settingsButton.count(), 1);
+		assert.equal(await settingsButton.isVisible(), true);
+		await settingsButton.click();
+		const settingsDrawer = page.getByTestId('settings-menu-drawer');
+		await waitForDrawerState(settingsDrawer, 'open');
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
+		await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
+		await page.waitForURL(`${baseURL}/`, { timeout: 10000 });
+	}
+	await assertNoHorizontalOverflow(page);
 }
 
 test('hamburger media and settings menus open and navigate across viewports', async () => {
@@ -268,6 +330,7 @@ test('hamburger media and settings menus open and navigate across viewports', as
 			await installApiMocks(page);
 			await verifyMediaMenu(page, baseURL, viewport);
 			await verifySettingsMenu(page, baseURL, viewport);
+			await verifySetupBelongsToSettingsMode(page, baseURL, viewport);
 			await page.close();
 		}
 
