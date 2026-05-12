@@ -103,20 +103,31 @@ test('setup route asks for a user-facing server name', () => {
 	assert.doesNotMatch(source, /hostname/i);
 });
 
-test('server shell keeps settings mode section navigation', () => {
-	const source = read('src/lib/components/shell/ServerSidebar.svelte');
-	assert.match(source, /label="Dashboard"\s+href="\/settings#dashboard"/);
-	assert.match(source, /label="Library"\s+href="\/settings#library"/);
-	assert.match(source, /label="Scanning"\s+href="\/settings#scanning"/);
-	assert.match(source, /label="Metadata"\s+href="\/settings#metadata"/);
-	assert.match(source, /label="Playback"\s+href="\/settings#playback"/);
-	assert.match(source, /label="Access"\s+href="\/settings#access"/);
-	assert.match(source, /label="About"\s+href="\/settings#about"/);
-	assert.match(source, /label="Back to Media"\s+href="\/"/);
-	assert.doesNotMatch(source, /label="Server"\s+href="\/settings#server"/);
-	assert.doesNotMatch(source, /label="Appearance"/);
-	assert.doesNotMatch(source, /label="Diagnostics"/);
-	assert.doesNotMatch(source, /href="\/admin"/);
+test('settings navigation stays shared across desktop sidebar and settings drawer', () => {
+	const navSource = read('src/lib/components/shell/SettingsNav.svelte');
+	const sidebarSource = read('src/lib/components/shell/ServerSidebar.svelte');
+	const shellSource = read('src/lib/components/shell/ServerShell.svelte');
+
+	assert.match(sidebarSource, /<SettingsBrand/);
+	assert.match(sidebarSource, /<SettingsNav\s+\{active\}\s*\/>/);
+	assert.match(sidebarSource, /<SettingsNav section="secondary"\s*\/>/);
+	assert.match(shellSource, /<SettingsBrand/);
+	assert.match(shellSource, /<SettingsNav\s+\{active\}\s*\/>/);
+	assert.match(shellSource, /<SettingsNav section="secondary"\s*\/>/);
+	assert.doesNotMatch(shellSource, /class="app-drawer__link"\s+href="\/settings#/);
+
+	assert.match(navSource, /label="Dashboard"\s+href="\/settings#dashboard"/);
+	assert.match(navSource, /label="Library"\s+href="\/settings#library"/);
+	assert.match(navSource, /label="Scanning"\s+href="\/settings#scanning"/);
+	assert.match(navSource, /label="Metadata"\s+href="\/settings#metadata"/);
+	assert.match(navSource, /label="Playback"\s+href="\/settings#playback"/);
+	assert.match(navSource, /label="Access"\s+href="\/settings#access"/);
+	assert.match(navSource, /label="About"\s+href="\/settings#about"/);
+	assert.match(navSource, /label="Back to Media"\s+href="\/"/);
+	assert.doesNotMatch(navSource, /label="Server"\s+href="\/settings#server"/);
+	assert.doesNotMatch(navSource, /label="Appearance"/);
+	assert.doesNotMatch(navSource, /label="Diagnostics"/);
+	assert.doesNotMatch(navSource, /href="\/admin"/);
 });
 
 test('settings shell does not render media search', () => {

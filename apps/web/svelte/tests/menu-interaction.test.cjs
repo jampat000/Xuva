@@ -618,7 +618,7 @@ async function verifySettingsMenu(page, baseURL, viewport, state) {
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Diagnostics', exact: true }).count(), 0);
 		const backToMedia = settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true });
 		assert.equal(await backToMedia.count(), 1);
-		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('app-drawer__link--back')), true);
+		assert.equal(await backToMedia.evaluate((element) => element.classList.contains('sidebar-item--back')), true);
 		await verifySettingsSections(page, settingsDrawer, baseURL, true, state);
 		await settingsButton.click();
 		await waitForDrawerState(settingsDrawer, 'open');

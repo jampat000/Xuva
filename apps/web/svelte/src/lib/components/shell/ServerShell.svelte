@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { ArrowLeft, Database, Gauge, Info, Menu, Play, RefreshCw, Tags, UserRound } from 'lucide-svelte';
+	import { Menu } from 'lucide-svelte';
 	import AppDrawer from './AppDrawer.svelte';
-	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoShell from './LorivoShell.svelte';
 	import ServerSidebar from './ServerSidebar.svelte';
+	import SettingsBrand from './SettingsBrand.svelte';
+	import SettingsNav from './SettingsNav.svelte';
 
 	let {
 		active = 'dashboard',
@@ -46,46 +47,13 @@
 		onClose={closeSettingsMenu}
 	>
 		{#snippet brand()}
-			<div class="server-shell__drawer-brand">
-				<LorivoBrand />
-				<span>Settings</span>
-			</div>
+			<SettingsBrand />
 		{/snippet}
 		{#snippet main()}
-			<a class="app-drawer__link" href="/settings#dashboard" aria-current={active === 'dashboard' ? 'page' : undefined}>
-				<Gauge size={19} />
-				Dashboard
-			</a>
-			<a class="app-drawer__link" href="/settings#library" aria-current={active === 'library' ? 'page' : undefined}>
-				<Database size={19} />
-				Library
-			</a>
-			<a class="app-drawer__link" href="/settings#scanning" aria-current={active === 'scanning' ? 'page' : undefined}>
-				<RefreshCw size={19} />
-				Scanning
-			</a>
-			<a class="app-drawer__link" href="/settings#metadata" aria-current={active === 'metadata' ? 'page' : undefined}>
-				<Tags size={19} />
-				Metadata
-			</a>
-			<a class="app-drawer__link" href="/settings#playback" aria-current={active === 'playback' ? 'page' : undefined}>
-				<Play size={19} />
-				Playback
-			</a>
-			<a class="app-drawer__link" href="/settings#access" aria-current={active === 'access' ? 'page' : undefined}>
-				<UserRound size={19} />
-				Access
-			</a>
-			<a class="app-drawer__link" href="/settings#about" aria-current={active === 'about' ? 'page' : undefined}>
-				<Info size={19} />
-				About
-			</a>
+			<SettingsNav {active} />
 		{/snippet}
 		{#snippet bottom()}
-			<a class="app-drawer__link app-drawer__link--back" href="/">
-				<ArrowLeft size={19} />
-				Back to Media
-			</a>
+			<SettingsNav section="secondary" />
 		{/snippet}
 	</AppDrawer>
 
@@ -278,39 +246,6 @@
 			radial-gradient(circle at 20% -12%, rgb(124 92 255 / 12%) 0%, transparent 38%),
 			radial-gradient(circle at 84% 112%, rgb(80 111 160 / 10%) 0%, transparent 40%),
 			color-mix(in srgb, var(--lorivo-color-bg-sidebar) 95%, #101827 5%);
-	}
-
-	:global([data-shell='server'] .app-drawer__link[aria-current='page']) {
-		border-color: var(--lorivo-settings-accent-border);
-		background:
-			linear-gradient(90deg, rgb(154 167 255 / 14%), rgb(154 167 255 / 4%)),
-			rgb(255 255 255 / 3%);
-		box-shadow:
-			inset 3px 0 0 rgb(154 167 255 / 64%),
-			0 12px 30px rgb(33 45 86 / 12%);
-	}
-
-	.server-shell__drawer-brand {
-		display: flex;
-		align-items: center;
-		gap: 11px;
-		min-width: 0;
-	}
-
-	.server-shell__drawer-brand span {
-		padding: 4px 8px;
-		border: 1px solid rgb(154 167 255 / 16%);
-		border-radius: 999px;
-		background: rgb(154 167 255 / 7%);
-		color: color-mix(in srgb, var(--lorivo-settings-accent) 76%, white 24%);
-		font-size: 0.68rem;
-		font-weight: 760;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	:global([data-shell='server'] .app-drawer__link svg) {
-		color: color-mix(in srgb, currentColor 88%, var(--lorivo-settings-accent) 12%);
 	}
 
 	@media (max-width: 980px) {
