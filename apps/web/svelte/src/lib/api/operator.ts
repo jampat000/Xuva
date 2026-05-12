@@ -102,6 +102,19 @@ export interface SessionItem {
 	updatedAt?: string;
 }
 
+export interface PairingRequestItem {
+	id?: string;
+	code?: string;
+	deviceName?: string;
+	clientProfile?: string;
+	deviceId?: string;
+	status?: string;
+	approvedBy?: string;
+	expiresAt?: string;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
 export interface ScansResponse {
 	scans?: ScanJobItem[];
 }
@@ -120,6 +133,10 @@ export interface DownloadsResponse {
 
 export interface SessionsResponse {
 	sessions?: SessionItem[];
+}
+
+export interface PairingRequestsResponse {
+	requests?: PairingRequestItem[];
 }
 
 export interface PerformanceSettingsResponse {
@@ -295,4 +312,30 @@ export function getDownloads(client: ApiClient = apiClient): Promise<DownloadsRe
 
 export function getSessions(client: ApiClient = apiClient): Promise<SessionsResponse> {
 	return client.request<SessionsResponse>('/api/sessions');
+}
+
+export function getPairingRequests(client: ApiClient = apiClient): Promise<PairingRequestsResponse> {
+	return client.request<PairingRequestsResponse>('/api/pairing/requests');
+}
+
+export function approvePairingRequest(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<PairingRequestItem> {
+	return client.send<PairingRequestItem, Record<string, never>>(
+		`/api/pairing/requests/${encodeURIComponent(id)}/approve`,
+		{},
+		'POST'
+	);
+}
+
+export function denyPairingRequest(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<PairingRequestItem> {
+	return client.send<PairingRequestItem, Record<string, never>>(
+		`/api/pairing/requests/${encodeURIComponent(id)}/deny`,
+		{},
+		'POST'
+	);
 }

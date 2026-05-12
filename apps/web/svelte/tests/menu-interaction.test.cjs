@@ -177,6 +177,10 @@ function apiPayload(pathname, state = {}) {
 		if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) return { error: 'authentication required' };
 		return { sessions: state.sessions || [] };
 	}
+	if (pathname === '/api/pairing/requests') {
+		if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) return { error: 'authentication required' };
+		return { requests: state.pairingRequests || [] };
+	}
 	return {};
 }
 
@@ -292,6 +296,20 @@ async function installApiMocks(page, options = {}) {
 				route: 'direct'
 			}
 		],
+		pairingRequests: Array.isArray(options.pairingRequests)
+			? options.pairingRequests
+			: [
+					{
+						id: 'pair-apple-tv',
+						code: '123456',
+						deviceName: 'Living Room Apple TV',
+						clientProfile: 'apple-tv',
+						status: 'pending',
+						expiresAt: '2026-05-12T21:00:00Z',
+						createdAt: '2026-05-12T20:45:00Z',
+						updatedAt: '2026-05-12T20:45:00Z'
+					}
+				],
 		playbackUpdates: [],
 		scanningUpdates: [],
 		movieScanCount: 0,
@@ -299,7 +317,8 @@ async function installApiMocks(page, options = {}) {
 		deletedLibraries: [],
 		scannedLibraries: [],
 		logoutCount: 0,
-		storageUpdates: []
+		storageUpdates: [],
+		pairingActions: []
 	};
 	await page.route('**/api/**', (route) => {
 		const url = new URL(route.request().url());
@@ -429,6 +448,68 @@ async function installApiMocks(page, options = {}) {
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({ match: body, records: state.metadataRecords[key].records })
+			});
+		}
+		if (url.pathname === '/api/pairing/requests' && route.request().method() === 'GET') {
+			if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) {
+				return route.fulfill({
+					status: 401,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'authentication required' })
+				});
+			}
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ requests: state.pairingRequests || [] })
+			});
+		}
+		if (/^\/api\/pairing\/requests\/[^/]+\/approve$/.test(url.pathname) && route.request().method() === 'POST') {
+			const id = decodeURIComponent(url.pathname.split('/')[4] || '');
+			const index = state.pairingRequests.findIndex((item) => item.id === id);
+			if (index === -1) {
+				return route.fulfill({
+					status: 404,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'pairing request not found' })
+				});
+			}
+			const updated = {
+				...state.pairingRequests[index],
+				status: 'approved',
+				code: undefined,
+				updatedAt: '2026-05-12T20:46:00Z'
+			};
+			state.pairingRequests[index] = updated;
+			state.pairingActions.push({ id, action: 'approve' });
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify(updated)
+			});
+		}
+		if (/^\/api\/pairing\/requests\/[^/]+\/deny$/.test(url.pathname) && route.request().method() === 'POST') {
+			const id = decodeURIComponent(url.pathname.split('/')[4] || '');
+			const index = state.pairingRequests.findIndex((item) => item.id === id);
+			if (index === -1) {
+				return route.fulfill({
+					status: 404,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'pairing request not found' })
+				});
+			}
+			const updated = {
+				...state.pairingRequests[index],
+				status: 'denied',
+				code: undefined,
+				updatedAt: '2026-05-12T20:46:00Z'
+			};
+			state.pairingRequests[index] = updated;
+			state.pairingActions.push({ id, action: 'deny' });
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify(updated)
 			});
 		}
 		if (url.pathname === '/api/settings/metadata-sources' && route.request().method() === 'PUT') {
@@ -1310,25 +1391,64 @@ async function assertAccessSection(page, state) {
 			/Development access is active\. User management will be enabled before production\./
 		);
 		assert.match(await selectedSection.innerText(), /User management is not available yet\./);
-		assert.match(
-			await selectedSection.innerText(),
-			/Device pairing will appear here when client pairing is implemented\./
+		assert.match(await selectedSection.innerText(), /Device Pairing/);
+		assert.match(await selectedSection.innerText(), /Approve devices that ask to connect to this Lorivo server\./);
+		assert.match(await selectedSection.innerText(), /Automatic local network discovery is not available in this build\./);
+		assert.equal(await selectedSection.getByTestId('pairing-request-list').count(), 1);
+		assert.match(await selectedSection.innerText(), /Living Room Apple TV/);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 1);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 1);
+		await selectedSection.getByRole('button', { name: 'Approve', exact: true }).click();
+		await waitForCondition(
+			() => state.pairingActions.some((item) => item.id === 'pair-apple-tv' && item.action === 'approve'),
+			'expected pairing approval to be recorded'
 		);
+		await page.waitForFunction(
+			() => document.body.innerText.includes('Living Room Apple TV approved.'),
+			null,
+			{ timeout: 5000 }
+		);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
 		assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 0);
 		assert.equal(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count(), 0);
+		assert.doesNotMatch(await selectedSection.innerText(), /Connected devices|Discovery section/i);
 		await assertNoHorizontalOverflow(page);
 		return;
 	}
 	assert.match(await selectedSection.innerText(), /Local User/);
 	assert.match(await selectedSection.innerText(), /Owner account/);
+	assert.match(await selectedSection.innerText(), /Device Pairing/);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 1);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 1);
+	await selectedSection.getByRole('button', { name: 'Deny', exact: true }).click();
+	await waitForCondition(
+		() => state.pairingActions.some((item) => item.id === 'pair-apple-tv' && item.action === 'deny'),
+		'expected pairing denial to be recorded'
+	);
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Living Room Apple TV denied.'),
+		null,
+		{ timeout: 5000 }
+	);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 1);
 	assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 0);
 	await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).click();
 	await waitForCondition(() => state.logoutCount === 1, 'expected logout to be recorded');
-	await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
+	await page.waitForFunction(
+		() => {
+			const text = document.querySelector('[data-testid="settings-section-content"]')?.textContent || '';
+			return !text.includes('Signing out...') && text.includes('Sign in as the owner to manage Lorivo settings.');
+		},
+		null,
+		{ timeout: 5000 }
+	);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
 	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+	assert.match(await selectedSection.innerText(), /Sign in as the owner to update device pairing\./);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
 	assert.doesNotMatch(await selectedSection.innerText(), /Create User|Delete User/i);
 	await assertNoHorizontalOverflow(page);
 }
@@ -1470,7 +1590,7 @@ test('settings shows owner access guidance when the server still needs its first
 			await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
 			assert.equal(await selectedSection.getAttribute('data-section'), hash);
 			assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
-			assert.equal(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count(), 1);
+			assert.ok(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count() >= 1);
 		}
 		assert.equal(await page.getByTestId('settings-mode-sidebar').getByRole('link', { name: 'Storage', exact: true }).count(), 0);
 
@@ -1490,6 +1610,33 @@ test('settings shows development owner controls when dev auth bypass is active',
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		const state = await installApiMocks(page, { signedOut: true, devAuthBypass: true });
 		await verifySettingsMenu(page, baseURL, { width: 1600, height: 1000 }, state);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('access shows an empty pairing state when there are no pending requests', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, { devAuthBypass: true, pairingRequests: [] });
+		await page.goto(`${baseURL}/settings#access`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await page.waitForFunction(
+			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'access',
+			null,
+			{ timeout: 5000 }
+		);
+		const selectedSection = page.getByTestId('settings-section-content');
+		assert.match(await selectedSection.innerText(), /Device Pairing/);
+		assert.match(await selectedSection.innerText(), /No pairing requests right now\./);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
+		await assertNoHorizontalOverflow(page);
 		await page.close();
 	} finally {
 		await browser.close();
