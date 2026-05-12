@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { ArrowLeft, Database, Gauge, Info, Menu, Play, RefreshCw, Shield, Tags } from 'lucide-svelte';
-	import AppTopbar from './AppTopbar.svelte';
+	import { ArrowLeft, Database, Gauge, Info, Menu, Play, RefreshCw, Tags } from 'lucide-svelte';
 	import AppDrawer from './AppDrawer.svelte';
 	import LorivoBrand from './LorivoBrand.svelte';
 	import LorivoShell from './LorivoShell.svelte';
@@ -10,14 +9,12 @@
 
 	let {
 		active = 'dashboard',
-		searchValue = $bindable(''),
 		userDisplayName = 'Local User',
 		userRole = 'Local Account',
 		userInitials = 'U',
 		children
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'access' | 'about';
-		searchValue?: string;
+		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'about';
 		userDisplayName?: string;
 		userRole?: string;
 		userInitials?: string;
@@ -75,10 +72,6 @@
 				<Play size={19} />
 				Playback
 			</a>
-			<a class="app-drawer__link" href="/settings#access" aria-current={active === 'access' ? 'page' : undefined}>
-				<Shield size={19} />
-				Access
-			</a>
 			<a class="app-drawer__link" href="/settings#about" aria-current={active === 'about' ? 'page' : undefined}>
 				<Info size={19} />
 				About
@@ -113,7 +106,10 @@
 					>
 						<Menu size={19} />
 					</button>
-					<AppTopbar bind:searchValue {userInitials} onProfileClick={() => (window.location.href = '/settings')} />
+					<div class="server-shell__topbar-spacer" aria-hidden="true"></div>
+					<button class="server-shell__profile-button" type="button" aria-label="Open Settings" onclick={() => (window.location.href = '/settings')}>
+						<span>{userInitials}</span>
+					</button>
 				</div>
 			{/snippet}
 
@@ -142,10 +138,14 @@
 
 	.server-shell__topbar-row {
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 10px;
 		width: 100%;
+	}
+
+	.server-shell__topbar-spacer {
+		min-width: 0;
 	}
 
 	.server-shell__menu-button {
@@ -161,6 +161,34 @@
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 9%),
 			0 12px 28px rgb(0 0 0 / 22%);
+	}
+
+	.server-shell__profile-button {
+		display: grid;
+		place-items: center;
+		width: 40px;
+		height: 40px;
+		padding: 0;
+		border: 1px solid rgb(255 255 255 / 10%);
+		border-radius: 999px;
+		background: rgb(28 29 27 / 74%);
+		color: color-mix(in srgb, var(--lorivo-color-text) 94%, transparent);
+		box-shadow:
+			inset 0 1px 0 rgb(255 255 255 / 10%),
+			0 18px 42px rgb(0 0 0 / 24%);
+	}
+
+	.server-shell__profile-button span {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		border-radius: 999px;
+		background: linear-gradient(180deg, rgb(154 167 255 / 24%), rgb(38 40 37 / 42%));
+		color: #f4f1ea;
+		font-size: 0.72rem;
+		font-weight: 700;
 	}
 
 	:global([data-shell='server'] .v-shell) {
@@ -212,7 +240,8 @@
 
 	:global([data-shell='server'] .v-sidebar__brand) {
 		justify-content: flex-start;
-		margin: 8px 10px 14px;
+		margin: 2px 8px 14px;
+		min-height: 48px;
 	}
 
 	:global([data-shell='server'] .sidebar-item) {
@@ -299,7 +328,7 @@
 
 	@media (min-width: 981px) {
 		.server-shell__topbar-row {
-			grid-template-columns: minmax(0, 1fr);
+			grid-template-columns: minmax(0, 1fr) auto;
 		}
 
 		.server-shell__menu-button {

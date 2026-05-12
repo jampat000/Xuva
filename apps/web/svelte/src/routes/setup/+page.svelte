@@ -11,7 +11,6 @@
 	let isLoading = $state(true);
 	let isSubmitting = $state(false);
 	let isBrowsing = $state(false);
-	let searchValue = $state('');
 
 	let authRequired = $state(false);
 	let loadError = $state('');
@@ -176,7 +175,7 @@
 	<title>{lorivoTitle(serverName)}</title>
 </svelte:head>
 
-<ServerShell active="library" bind:searchValue {userInitials} userDisplayName={userDisplayName}>
+<ServerShell active="library" {userInitials} userDisplayName={userDisplayName}>
 	<div class="setup-page">
 		{#if isLoading}
 			<LorivoPanel title="Loading Library Setup" subtitle="Checking account and library status." />
