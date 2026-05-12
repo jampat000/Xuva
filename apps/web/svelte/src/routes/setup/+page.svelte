@@ -204,7 +204,7 @@
 							placeholder="Lorivo"
 							aria-describedby="server-name-help"
 						/>
-						<small id="server-name-help">This is the name devices on your home network will use to identify this Lorivo server.</small>
+						<small id="server-name-help">Lorivo uses this name in the browser title and shares it with local clients. Local network discovery is not available in this build yet.</small>
 					</label>
 
 					<label class="field">
