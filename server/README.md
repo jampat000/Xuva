@@ -78,6 +78,7 @@ Lorivo now supports local credential authentication with server-side sessions.
 Environment variables:
 
 - `LORIVO_AUTH_DISABLED=false`
+- `LORIVO_DEV_AUTH_BYPASS=false`
 - `LORIVO_ADMIN_USERNAME=admin`
 - `LORIVO_ADMIN_PASSWORD=...`
 
@@ -96,6 +97,15 @@ Session behavior:
 - Logout revokes the current session immediately.
 - Invalid login bursts trigger a temporary lockout window.
 
+Local development bypass:
+
+- For local UI work, prefer `LORIVO_DEV_AUTH_BYPASS=true` instead of disabling auth entirely.
+- The bypass only activates when Lorivo is still running with auth enabled and `LORIVO_HTTP_ADDR` is bound to a loopback address such as `127.0.0.1:8097` or `localhost:8097`.
+- When active, Lorivo reports a visible `Development Owner` session so settings and owner-only UI can be polished without re-running the full sign-in/bootstrap flow.
+- Lorivo logs when the bypass is active.
+- If the server is bound to a non-loopback address, the bypass is ignored.
+- Do not use the bypass for production or shared environments. Turn it off by removing the flag or setting `LORIVO_DEV_AUTH_BYPASS=false`.
+
 Protected routes in this release:
 
 - browser write operations
@@ -105,4 +115,4 @@ Protected routes in this release:
 - file download endpoints
 - `/play/{id}`
 
-Operators should keep auth enabled outside local development. Role-based authorization and finer route policy are tracked separately in `P0.2`.
+Keep auth enabled outside local development. `LORIVO_AUTH_DISABLED` remains a low-level local debugging override, but it is broader than the development bypass and should not be used for normal UI polish work. Role-based authorization and finer route policy are tracked separately in `P0.2`.

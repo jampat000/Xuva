@@ -58,6 +58,9 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Create Owner Account/);
 	assert.match(source, /Open Access/);
 	assert.match(source, /Sign in as the owner to manage Lorivo settings\./);
+	assert.match(source, /Development access is active\. User management will be enabled before production\./);
+	assert.match(source, /User management is not available yet\./);
+	assert.match(source, /Device pairing will appear here when client pairing is implemented\./);
 	assert.match(source, /This is the name devices on your home network will use to identify this Lorivo server\./);
 	assert.match(source, /Server name must be 50 characters or fewer\./);
 	assert.match(source, /Playback setting saved\. Restart Lorivo to apply it\./);
@@ -70,7 +73,6 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.doesNotMatch(source, /Admin Dashboard/);
 	assert.doesNotMatch(source, /Admin Controls/);
 	assert.doesNotMatch(source, /<SettingsPanel title="Server"/);
-	assert.doesNotMatch(source, /User management/);
 	assert.doesNotMatch(source, /Provider setup/);
 	assert.doesNotMatch(source, /Transcode Workers/);
 	assert.doesNotMatch(source, /Editing existing folders is not available here yet\./);

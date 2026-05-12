@@ -87,6 +87,13 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.DevAuthBypass {
+		if config.DevAuthBypassActive(cfg) {
+			slog.Warn("development auth bypass active", "http_addr", cfg.HTTPAddr, "warning", "local owner access is enabled for this loopback development server")
+		} else {
+			slog.Warn("development auth bypass ignored", "http_addr", cfg.HTTPAddr, "reason", "bypass only activates on loopback local development addresses while auth remains enabled")
+		}
+	}
 	authService := auth.NewService(databaseService, cfg.AuthDisabled)
 	if cfg.AdminPassword != "" {
 		if err := authService.Bootstrap(ctx, auth.BootstrapOptions{

@@ -109,6 +109,11 @@ func requireRoutePolicy(deps Deps, policy routePolicy, requireCSRF bool, next ht
 			return
 		}
 		if requireCSRF {
+			if resolved.DevBypass {
+				publishAudit(deps, r, policy, resolved, "allowed", "dev_auth_bypass")
+				next(w, r)
+				return
+			}
 			if hasHeaderAuthToken(r) {
 				publishAudit(deps, r, policy, resolved, "allowed", "header_token")
 				next(w, r)

@@ -62,6 +62,7 @@ type ResolvedSession struct {
 	Session   Session
 	Token     string
 	Rotated   bool
+	DevBypass bool
 }
 
 type contextKey string
