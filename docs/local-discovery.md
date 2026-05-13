@@ -53,12 +53,12 @@ Normal installs should keep the default service type.
   - SSDP
   - UPnP
   - DLNA service discovery
-  - persistent device registry
 
 ## Current Product Boundary
 
-Local discovery and device pairing are separate.
+Local discovery, device pairing, and the approved-device registry are separate.
 
 - Discovery helps clients find the Lorivo server on the home network.
-- Pairing still requires owner approval.
-- Lorivo does not yet expose a persistent connected-device registry.
+- Pairing requires owner approval.
+- Approved devices are stored persistently after approval and survive restart.
+- Lorivo does not claim live online/offline presence or connected-device polling.

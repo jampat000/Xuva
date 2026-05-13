@@ -13,7 +13,7 @@ This is not an implementation plan. It is a product and engineering decision rec
 | Advanced hardware owner tools | advanced-only | Future `Advanced` area, if Lorivo adds one |
 | Source compatibility / Source Inspector redesign | implement later | Playback detail pages, not normal Settings |
 | Remote diagnostics | reject permanently | None in normal Lorivo product UI |
-| Persistent device registry | implement later | `Settings > Access` |
+| Persistent device registry | restored | `Settings > Access` |
 | SSDP / UPnP / DLNA discovery | implement later | Future discovery layer, no new Settings surface yet |
 
 ## 1. Advanced hardware owner tools
@@ -94,27 +94,27 @@ This is not an implementation plan. It is a product and engineering decision rec
 
 ## 4. Persistent device registry
 
-- **Classification:** implement later
+- **Classification:** restored
 - **Old Vyrden evidence:**
   - Old `Devices` tab showed pairing requests with `Approve` and `Deny`.
   - Approved requests received a generated `deviceId`, but the old flow still behaved like a runtime request queue rather than a durable device inventory.
 - **Current Lorivo backend support:**
-  - `server/internal/pairing/service.go` still keeps pairing requests in memory only.
-  - Approved requests still receive a generated `deviceId`.
-  - There is no durable device store or revoke/forget flow.
+  - Pairing requests still remain runtime-only in `server/internal/pairing/service.go`.
+  - Approved devices now persist in Lorivo's SQLite database and survive restart.
+  - Lorivo now has a real revoke/remove flow for approved devices.
 - **Current Lorivo frontend support:**
-  - `Settings > Access` now shows pairing review.
-  - No connected-device list is shown, which is correct for the current backend.
+  - `Settings > Access` shows both pairing review and approved devices.
+  - The UI stays honest about current limitations and does not claim live online/offline presence.
 - **User value:**
   - High once pairing expands beyond a temporary review queue.
 - **Risk:**
   - Medium.
-  - Requires real persistence, ownership semantics, and truthful lifecycle states before any device-management UI should exist.
+  - The remaining risk is around future paired-client authentication and live presence, not basic registry persistence.
 - **Target Lorivo location:**
   - `Settings > Access`
 - **Recommendation:**
-  - Implement later.
-  - The next version should add persistence first, then a minimal honest device list and revoke flow.
+  - Keep the current minimal scope.
+  - Do not expand it into fake connected-device or live presence UI without real session-backed tracking.
 
 ## 5. SSDP / UPnP / DLNA discovery
 
@@ -146,7 +146,7 @@ The remaining decommission blockers are now mostly classification and backlog ma
 - `Remote diagnostics` can be treated as rejected for normal Lorivo UI.
 - `Advanced hardware owner tools` should stay backend-capable but out of normal Settings unless Lorivo deliberately adds an `Advanced` area.
 - `Source compatibility` should come back only as a redesigned playback help surface.
-- `Persistent device registry` and optional broader discovery protocols are the two remaining future platform items with clear product value.
+- Optional broader discovery protocols and any future paired-client authentication work are the remaining device-platform items with clear product value.
 
 That leaves Vyrden in the same overall state as the main checklist:
 

@@ -218,6 +218,19 @@ var migrations = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username <> ''`,
 	`INSERT OR IGNORE INTO users(id, display_name, updated_at) VALUES('local', 'Local User', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
 	`UPDATE users SET role = 'standard' WHERE id = 'local' AND role = ''`,
+	`CREATE TABLE IF NOT EXISTS approved_devices (
+		id TEXT PRIMARY KEY,
+		device_id TEXT NOT NULL UNIQUE,
+		device_name TEXT NOT NULL,
+		client_profile TEXT NOT NULL,
+		display_name TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'approved',
+		approved_at TEXT NOT NULL,
+		approved_by TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_approved_devices_status_updated ON approved_devices(status, updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS playback_states (
 		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		media_source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,

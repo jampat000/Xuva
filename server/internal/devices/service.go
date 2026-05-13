@@ -1,5 +1,28 @@
 package devices
 
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/jampat000/Lorivo/server/internal/database"
+)
+
+var (
+	ErrNotFound            = errors.New("approved device not found")
+	ErrRegistryUnavailable = errors.New("approved device registry is not available")
+)
+
+const (
+	StatusApproved = "approved"
+	StatusRevoked  = "revoked"
+)
+
 type Profile struct {
 	ID                  string   `json:"id"`
 	Name                string   `json:"name"`
@@ -12,10 +35,36 @@ type Profile struct {
 	SupportsHLS         bool     `json:"supportsHls"`
 }
 
-type Service struct{}
+type ApprovedDevice struct {
+	ID            string    `json:"id"`
+	DeviceID      string    `json:"-"`
+	DeviceName    string    `json:"deviceName"`
+	ClientProfile string    `json:"clientProfile"`
+	DisplayName   string    `json:"displayName"`
+	Status        string    `json:"status"`
+	ApprovedAt    time.Time `json:"approvedAt"`
+	ApprovedBy    string    `json:"approvedBy"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+type ApproveInput struct {
+	DeviceID      string
+	DeviceName    string
+	ClientProfile string
+	ApprovedBy    string
+}
+
+type Service struct {
+	database *database.Service
+}
 
 func NewService() *Service {
 	return &Service{}
+}
+
+func NewPersistentService(databaseService *database.Service) *Service {
+	return &Service{database: databaseService}
 }
 
 func (s *Service) Profiles() []Profile {
@@ -85,4 +134,226 @@ func (s *Service) GetProfile(id string) (Profile, bool) {
 		}
 	}
 	return Profile{}, false
+}
+
+func (s *Service) ListApproved(ctx context.Context) ([]ApprovedDevice, error) {
+	if s == nil || s.database == nil {
+		return []ApprovedDevice{}, nil
+	}
+	rows, err := s.database.DB().QueryContext(ctx, `
+		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at
+		FROM approved_devices
+		WHERE status = ?
+		ORDER BY updated_at DESC, approved_at DESC
+	`, StatusApproved)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]ApprovedDevice, 0)
+	for rows.Next() {
+		item, err := scanApprovedDevice(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *Service) Approve(ctx context.Context, input ApproveInput) (ApprovedDevice, error) {
+	if s == nil || s.database == nil {
+		return ApprovedDevice{}, ErrRegistryUnavailable
+	}
+	deviceID := strings.TrimSpace(input.DeviceID)
+	if deviceID == "" {
+		return ApprovedDevice{}, errors.New("device id is required")
+	}
+	profileID := strings.TrimSpace(input.ClientProfile)
+	if profileID == "" {
+		profileID = "apple-tv"
+	}
+	deviceName := strings.TrimSpace(input.DeviceName)
+	if deviceName == "" {
+		deviceName = s.profileName(profileID)
+	}
+	approvedBy := strings.TrimSpace(input.ApprovedBy)
+	if approvedBy == "" {
+		approvedBy = "local-admin"
+	}
+	displayName := deviceName
+	now := time.Now().UTC()
+	existing, found, err := s.findByDeviceID(ctx, deviceID)
+	if err != nil {
+		return ApprovedDevice{}, err
+	}
+	if !found {
+		item := ApprovedDevice{
+			ID:            "approved_device_" + uuid.NewString(),
+			DeviceID:      deviceID,
+			DeviceName:    deviceName,
+			ClientProfile: profileID,
+			DisplayName:   displayName,
+			Status:        StatusApproved,
+			ApprovedAt:    now,
+			ApprovedBy:    approvedBy,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+		if _, err := s.database.DB().ExecContext(ctx, `
+			INSERT INTO approved_devices(id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, item.ID, item.DeviceID, item.DeviceName, item.ClientProfile, item.DisplayName, item.Status, item.ApprovedAt.Format(time.RFC3339Nano), item.ApprovedBy, item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
+			return ApprovedDevice{}, err
+		}
+		return item, nil
+	}
+	approvedAt := existing.ApprovedAt
+	if approvedAt.IsZero() || existing.Status != StatusApproved {
+		approvedAt = now
+	}
+	approvedByValue := existing.ApprovedBy
+	if approvedByValue == "" || existing.Status != StatusApproved {
+		approvedByValue = approvedBy
+	}
+	updated := ApprovedDevice{
+		ID:            existing.ID,
+		DeviceID:      existing.DeviceID,
+		DeviceName:    deviceName,
+		ClientProfile: profileID,
+		DisplayName:   displayName,
+		Status:        StatusApproved,
+		ApprovedAt:    approvedAt,
+		ApprovedBy:    approvedByValue,
+		CreatedAt:     existing.CreatedAt,
+		UpdatedAt:     now,
+	}
+	if updated.CreatedAt.IsZero() {
+		updated.CreatedAt = now
+	}
+	if _, err := s.database.DB().ExecContext(ctx, `
+		UPDATE approved_devices
+		SET device_name = ?, client_profile = ?, display_name = ?, status = ?, approved_at = ?, approved_by = ?, updated_at = ?
+		WHERE id = ?
+	`, updated.DeviceName, updated.ClientProfile, updated.DisplayName, updated.Status, updated.ApprovedAt.Format(time.RFC3339Nano), updated.ApprovedBy, updated.UpdatedAt.Format(time.RFC3339Nano), updated.ID); err != nil {
+		return ApprovedDevice{}, err
+	}
+	return updated, nil
+}
+
+func (s *Service) Revoke(ctx context.Context, id string) (ApprovedDevice, error) {
+	if s == nil || s.database == nil {
+		return ApprovedDevice{}, ErrRegistryUnavailable
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ApprovedDevice{}, ErrNotFound
+	}
+	item, found, err := s.findByID(ctx, id)
+	if err != nil {
+		return ApprovedDevice{}, err
+	}
+	if !found {
+		return ApprovedDevice{}, ErrNotFound
+	}
+	item.Status = StatusRevoked
+	item.UpdatedAt = time.Now().UTC()
+	if _, err := s.database.DB().ExecContext(ctx, `
+		UPDATE approved_devices
+		SET status = ?, updated_at = ?
+		WHERE id = ?
+	`, item.Status, item.UpdatedAt.Format(time.RFC3339Nano), item.ID); err != nil {
+		return ApprovedDevice{}, err
+	}
+	return item, nil
+}
+
+func (s *Service) profileName(id string) string {
+	if profile, ok := s.GetProfile(id); ok && strings.TrimSpace(profile.Name) != "" {
+		return profile.Name
+	}
+	return "Approved device"
+}
+
+func (s *Service) findByDeviceID(ctx context.Context, deviceID string) (ApprovedDevice, bool, error) {
+	if s == nil || s.database == nil {
+		return ApprovedDevice{}, false, ErrRegistryUnavailable
+	}
+	row := s.database.DB().QueryRowContext(ctx, `
+		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at
+		FROM approved_devices
+		WHERE device_id = ?
+		LIMIT 1
+	`, deviceID)
+	item, err := scanApprovedDevice(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ApprovedDevice{}, false, nil
+		}
+		return ApprovedDevice{}, false, err
+	}
+	return item, true, nil
+}
+
+func (s *Service) findByID(ctx context.Context, id string) (ApprovedDevice, bool, error) {
+	if s == nil || s.database == nil {
+		return ApprovedDevice{}, false, ErrRegistryUnavailable
+	}
+	row := s.database.DB().QueryRowContext(ctx, `
+		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at
+		FROM approved_devices
+		WHERE id = ?
+		LIMIT 1
+	`, id)
+	item, err := scanApprovedDevice(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ApprovedDevice{}, false, nil
+		}
+		return ApprovedDevice{}, false, err
+	}
+	return item, true, nil
+}
+
+type approvedDeviceScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanApprovedDevice(scanner approvedDeviceScanner) (ApprovedDevice, error) {
+	var (
+		item            ApprovedDevice
+		approvedAtValue string
+		createdAtValue  string
+		updatedAtValue  string
+	)
+	if err := scanner.Scan(&item.ID, &item.DeviceID, &item.DeviceName, &item.ClientProfile, &item.DisplayName, &item.Status, &approvedAtValue, &item.ApprovedBy, &createdAtValue, &updatedAtValue); err != nil {
+		return ApprovedDevice{}, err
+	}
+	item.ApprovedAt = parseDeviceTime(approvedAtValue)
+	item.CreatedAt = parseDeviceTime(createdAtValue)
+	item.UpdatedAt = parseDeviceTime(updatedAtValue)
+	return item, nil
+}
+
+func parseDeviceTime(value string) time.Time {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err == nil {
+		return parsed
+	}
+	return time.Time{}
+}
+
+func SortApprovedDevices(items []ApprovedDevice) {
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return items[i].ApprovedAt.After(items[j].ApprovedAt)
+		}
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
 }

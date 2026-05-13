@@ -80,6 +80,8 @@ var routePolicies = map[string]routePolicy{
 	"GET /api/pairing/requests":                              route("GET /api/pairing/requests", "pairing", "pairing.list", roleAdmin),
 	"POST /api/pairing/requests/{id}/approve":                route("POST /api/pairing/requests/{id}/approve", "pairing", "pairing.approve", roleAdmin),
 	"POST /api/pairing/requests/{id}/deny":                   route("POST /api/pairing/requests/{id}/deny", "pairing", "pairing.deny", roleAdmin),
+	"GET /api/devices":                                       route("GET /api/devices", "devices", "devices.list", roleAdmin),
+	"POST /api/devices/{id}/revoke":                          route("POST /api/devices/{id}/revoke", "devices", "devices.revoke", roleAdmin),
 	"GET /api/sessions":                                      route("GET /api/sessions", "sessions", "sessions.list", roleAdmin, roleStandard),
 	"GET /api/sessions/{id}/inspector":                       route("GET /api/sessions/{id}/inspector", "sessions", "sessions.inspector", roleAdmin, roleStandard),
 	"POST /api/sessions":                                     route("POST /api/sessions", "sessions", "session.start", roleAdmin, roleStandard),

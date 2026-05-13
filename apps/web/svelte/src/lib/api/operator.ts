@@ -139,6 +139,22 @@ export interface PairingRequestsResponse {
 	requests?: PairingRequestItem[];
 }
 
+export interface ApprovedDeviceItem {
+	id?: string;
+	deviceName?: string;
+	clientProfile?: string;
+	displayName?: string;
+	status?: string;
+	approvedAt?: string;
+	approvedBy?: string;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+export interface ApprovedDevicesResponse {
+	devices?: ApprovedDeviceItem[];
+}
+
 export interface DiscoveryStatusResponse {
 	enabled?: boolean;
 	running?: boolean;
@@ -329,6 +345,10 @@ export function getPairingRequests(client: ApiClient = apiClient): Promise<Pairi
 	return client.request<PairingRequestsResponse>('/api/pairing/requests');
 }
 
+export function getApprovedDevices(client: ApiClient = apiClient): Promise<ApprovedDevicesResponse> {
+	return client.request<ApprovedDevicesResponse>('/api/devices');
+}
+
 export function getDiscoveryStatus(
 	client: ApiClient = apiClient
 ): Promise<DiscoveryStatusResponse> {
@@ -352,6 +372,17 @@ export function denyPairingRequest(
 ): Promise<PairingRequestItem> {
 	return client.send<PairingRequestItem, Record<string, never>>(
 		`/api/pairing/requests/${encodeURIComponent(id)}/deny`,
+		{},
+		'POST'
+	);
+}
+
+export function revokeApprovedDevice(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<ApprovedDeviceItem> {
+	return client.send<ApprovedDeviceItem, Record<string, never>>(
+		`/api/devices/${encodeURIComponent(id)}/revoke`,
 		{},
 		'POST'
 	);

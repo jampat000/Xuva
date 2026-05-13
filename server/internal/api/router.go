@@ -176,6 +176,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/downloads/{id}", downloadJobHandler(deps))
 	handleProtected(mux, deps, "GET /api/downloads/{id}/file", downloadFileHandler(deps))
 	mux.HandleFunc("GET /api/devices/profiles", deviceProfilesHandler(deps))
+	handleProtected(mux, deps, "GET /api/devices", approvedDevicesHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/devices/{id}/revoke", approvedDeviceRevokeHandler(deps))
 	handleProtected(mux, deps, "GET /api/pairing/requests", pairingListHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/pairing/requests/{id}/approve", pairingApproveHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/pairing/requests/{id}/deny", pairingDenyHandler(deps))
@@ -4611,6 +4613,52 @@ func deviceProfilesHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func approvedDevicesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Devices == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"devices": []map[string]any{}})
+			return
+		}
+		items, err := deps.Devices.ListApproved(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "approved devices lookup failed")
+			return
+		}
+		payload := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			payload = append(payload, approvedDevicePayload(item))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"devices": payload})
+	}
+}
+
+func approvedDeviceRevokeHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Devices == nil {
+			writeError(w, http.StatusServiceUnavailable, "approved device registry is not available")
+			return
+		}
+		item, err := deps.Devices.Revoke(r.Context(), r.PathValue("id"))
+		if err != nil {
+			switch err {
+			case devices.ErrNotFound:
+				writeError(w, http.StatusNotFound, "approved device not found")
+			case devices.ErrRegistryUnavailable:
+				writeError(w, http.StatusServiceUnavailable, "approved device registry is not available")
+			default:
+				writeError(w, http.StatusInternalServerError, "approved device update failed")
+			}
+			return
+		}
+		publishOperationalEvent(deps, r, "device.revoked", map[string]any{
+			"deviceId":      item.DeviceID,
+			"displayName":   item.DisplayName,
+			"clientProfile": item.ClientProfile,
+		})
+		writeJSON(w, http.StatusOK, approvedDevicePayload(item))
+	}
+}
+
 func pairingCreateHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Pairing == nil {
@@ -4708,6 +4756,22 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		}
 		return
 	}
+	if approve && deps.Devices != nil {
+		if _, registerErr := deps.Devices.Approve(r.Context(), devices.ApproveInput{
+			DeviceID:      item.DeviceID,
+			DeviceName:    item.DeviceName,
+			ClientProfile: item.ClientProfile,
+			ApprovedBy:    actor,
+		}); registerErr != nil {
+			writeError(w, http.StatusInternalServerError, "approved device registry update failed")
+			return
+		}
+		publishOperationalEvent(deps, r, "device.approved", map[string]any{
+			"deviceId":      item.DeviceID,
+			"deviceName":    item.DeviceName,
+			"clientProfile": item.ClientProfile,
+		})
+	}
 	publishOperationalEvent(deps, r, "pairing.request."+item.Status, map[string]any{
 		"pairingId":     item.ID,
 		"clientProfile": item.ClientProfile,
@@ -4715,6 +4779,20 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		"deviceId":      item.DeviceID,
 	})
 	writeJSON(w, http.StatusOK, item)
+}
+
+func approvedDevicePayload(item devices.ApprovedDevice) map[string]any {
+	return map[string]any{
+		"id":            item.ID,
+		"deviceName":    item.DeviceName,
+		"clientProfile": item.ClientProfile,
+		"displayName":   item.DisplayName,
+		"status":        item.Status,
+		"approvedAt":    item.ApprovedAt,
+		"approvedBy":    item.ApprovedBy,
+		"createdAt":     item.CreatedAt,
+		"updatedAt":     item.UpdatedAt,
+	}
 }
 
 func sessionsHandler(deps Deps) http.HandlerFunc {
