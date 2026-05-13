@@ -74,22 +74,27 @@
 
 	.folder-list {
 		display: grid;
-		gap: 6px;
+		gap: 0;
 		max-height: 260px;
 		overflow: auto;
 		padding-right: 2px;
 	}
 
 	.folder-entry {
-		border: 1px solid var(--lorivo-color-border-soft);
-		background: rgb(255 255 255 / 2%);
+		border: 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
 		color: var(--lorivo-color-text);
-		border-radius: 10px;
-		padding: 8px 10px;
+		padding: 10px 0;
 		text-align: left;
 		display: grid;
 		gap: 3px;
 		cursor: pointer;
+	}
+
+	.folder-list > :first-child {
+		border-top: 0;
+		padding-top: 0;
 	}
 
 	.folder-entry small {

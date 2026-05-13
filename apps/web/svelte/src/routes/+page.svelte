@@ -246,28 +246,36 @@
 				title="Build your Lorivo library"
 				description="Add your media folders, scan your library, and Lorivo will fill this home screen with what you're watching and what's new."
 			>
-				<div class="grid gap-3 lg:grid-cols-2">
-					<a class="next-step-card" href="/setup">
-						<em class="next-step-card__step">01</em>
-						<strong>Add a library</strong>
-						<span>Choose your Movies or TV folder so Lorivo knows where to look.</span>
+				<nav class="next-step-list" aria-label="Library setup steps">
+					<a class="next-step-row" href="/setup">
+						<em class="next-step-row__step">01</em>
+						<div>
+							<strong>Add a library</strong>
+							<span>Choose your Movies or TV folder so Lorivo knows where to look.</span>
+						</div>
 					</a>
-					<a class="next-step-card" href="/movies">
-						<em class="next-step-card__step">02</em>
-						<strong>Review Movies</strong>
-						<span>Use Scan Movies once a movie folder has been added.</span>
+					<a class="next-step-row" href="/movies">
+						<em class="next-step-row__step">02</em>
+						<div>
+							<strong>Review Movies</strong>
+							<span>Use Scan Movies once a movie folder has been added.</span>
+						</div>
 					</a>
-					<a class="next-step-card" href="/tv">
-						<em class="next-step-card__step">03</em>
-						<strong>Review TV</strong>
-						<span>Use Scan TV once a TV folder has been added.</span>
+					<a class="next-step-row" href="/tv">
+						<em class="next-step-row__step">03</em>
+						<div>
+							<strong>Review TV</strong>
+							<span>Use Scan TV once a TV folder has been added.</span>
+						</div>
 					</a>
-					<a class="next-step-card" href="/settings">
-						<em class="next-step-card__step">04</em>
-						<strong>Check settings</strong>
-						<span>Review your library setup and scan status.</span>
+					<a class="next-step-row" href="/settings">
+						<em class="next-step-row__step">04</em>
+						<div>
+							<strong>Check settings</strong>
+							<span>Review your library setup and scan status.</span>
+						</div>
 					</a>
-				</div>
+				</nav>
 				{#snippet primaryAction()}
 					<LorivoButton variant="primary" href="/setup">Add a library</LorivoButton>
 				{/snippet}
@@ -330,38 +338,43 @@
 </LorivoShell>
 
 <style>
-	.next-step-card {
+	.next-step-list {
+		display: grid;
+		gap: 0;
+	}
+
+	.next-step-row {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
 		column-gap: 0.9rem;
 		row-gap: 0.25rem;
-		min-height: 0;
 		align-items: start;
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 0.85rem;
-		background: rgb(11 17 32 / 42%);
-		padding: 0.95rem 1rem;
+		padding: 0.95rem 0;
+		border-top: 1px solid rgb(255 255 255 / 8%);
 		text-decoration: none;
 		transition:
 			border-color 0.2s ease,
 			background 0.2s ease;
 	}
 
-	.next-step-card:hover {
-		border-color: rgb(124 92 255 / 32%);
-		background: rgb(124 92 255 / 7%);
+	.next-step-list > :first-child {
+		padding-top: 0;
+		border-top: 0;
 	}
 
-	.next-step-card__step {
+	.next-step-row:hover {
+		background: rgb(124 92 255 / 4%);
+	}
+
+	.next-step-row__step {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
 		margin-top: 0.1rem;
-		border-radius: 999px;
-		border: 1px solid rgb(255 255 255 / 10%);
-		background: rgb(8 13 25 / 80%);
+		border-radius: 0.65rem;
+		background: rgb(255 255 255 / 5%);
 		color: rgb(255 255 255 / 48%);
 		font-size: 0.72rem;
 		font-style: normal;
@@ -369,16 +382,18 @@
 		letter-spacing: 0.08em;
 	}
 
-	.next-step-card strong {
+	.next-step-row strong {
+		display: block;
 		color: white;
-		font-size: 1rem;
+		font-size: 0.98rem;
 		line-height: 1.2;
 	}
 
-	.next-step-card span {
-		grid-column: 2;
+	.next-step-row span {
+		display: block;
+		margin-top: 0.25rem;
 		color: rgb(255 255 255 / 58%);
-		font-size: 0.9rem;
+		font-size: 0.88rem;
 		line-height: 1.45;
 	}
 </style>

@@ -30,12 +30,10 @@
 		display: grid;
 		justify-items: start;
 		gap: var(--lorivo-space-2);
-		padding: var(--lorivo-space-6);
-		border: 1px solid rgb(255 255 255 / 12%);
-		border-radius: var(--lorivo-radius-lg);
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%)),
-			rgb(17 24 39 / 62%);
+		padding: 1rem 0;
+		border-top: 1px solid rgb(255 255 255 / 9%);
+		border-bottom: 1px solid rgb(255 255 255 / 7%);
+		background: rgb(17 24 39 / 20%);
 	}
 
 	.v-empty__icon {
@@ -43,6 +41,9 @@
 		width: 1.5rem;
 		height: 1.5rem;
 		color: var(--lorivo-color-text-soft);
+		padding: 0.15rem;
+		border-radius: 0.5rem;
+		background: rgb(255 255 255 / 4%);
 	}
 
 	.v-empty__icon :global(svg) {

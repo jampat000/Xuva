@@ -196,49 +196,65 @@
 		{:else}
 			<LorivoPanel title="Library Setup" subtitle="Add a Movies or TV folder to start building your Lorivo home.">
 				<form class="setup-form" onsubmit={(event) => { event.preventDefault(); void createLibrary(); }}>
-					<label class="field">
-						<span>Server name</span>
-						<input
-							bind:value={serverName}
-							maxlength="50"
-							required
-							placeholder="Lorivo"
-							aria-describedby="server-name-help"
-						/>
-						<small id="server-name-help">Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running.</small>
-					</label>
-
-					<label class="field">
-						<span>Library name</span>
-						<input bind:value={libraryName} placeholder={libraryKind === 'movies' ? 'Movies' : 'TV Shows'} />
-					</label>
-
-					<label class="field">
-						<span>Library type</span>
-						<select bind:value={libraryKind}>
-							<option value="movies">Movies</option>
-							<option value="tv">TV Shows</option>
-						</select>
-					</label>
-
-					<label class="field">
-						<span>Folder path</span>
-						<input bind:value={libraryPath} placeholder="D:\\Media\\Movies" />
-					</label>
-
-					<div class="actions">
-						<LorivoButton variant="secondary" type="button" onclick={() => openBrowser()}>
-							{isBrowsing ? 'Loading folders...' : 'Browse folders'}
-						</LorivoButton>
-						<LorivoButton variant="primary" disabled={isSubmitting} onclick={createLibrary}>
-							{isSubmitting ? 'Saving library...' : 'Save library'}
-						</LorivoButton>
+					<div class="setup-form__section">
+						<div class="setup-form__head">
+							<h3>Server</h3>
+							<p>Name this Lorivo server for your home network and browser.</p>
+						</div>
+						<label class="field">
+							<span>Server name</span>
+							<input
+								bind:value={serverName}
+								maxlength="50"
+								required
+								placeholder="Lorivo"
+								aria-describedby="server-name-help"
+							/>
+							<small id="server-name-help">Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running.</small>
+						</label>
 					</div>
 
-					<label class="check">
-						<input type="checkbox" bind:checked={runScanAfterSave} />
-						<span>Start a scan after saving</span>
-					</label>
+					<div class="setup-form__section">
+						<div class="setup-form__head">
+							<h3>Library</h3>
+							<p>Choose the type of library and the folder Lorivo should scan.</p>
+						</div>
+						<div class="setup-form__grid">
+							<label class="field">
+								<span>Library name</span>
+								<input bind:value={libraryName} placeholder={libraryKind === 'movies' ? 'Movies' : 'TV Shows'} />
+							</label>
+
+							<label class="field">
+								<span>Library type</span>
+								<select bind:value={libraryKind}>
+									<option value="movies">Movies</option>
+									<option value="tv">TV Shows</option>
+								</select>
+							</label>
+						</div>
+
+						<label class="field">
+							<span>Folder path</span>
+							<input bind:value={libraryPath} placeholder="D:\\Media\\Movies" />
+						</label>
+					</div>
+
+					<div class="setup-form__actions">
+						<div class="actions">
+							<LorivoButton variant="secondary" type="button" onclick={() => openBrowser()}>
+								{isBrowsing ? 'Loading folders...' : 'Browse folders'}
+							</LorivoButton>
+							<LorivoButton variant="primary" disabled={isSubmitting} onclick={createLibrary}>
+								{isSubmitting ? 'Saving library...' : 'Save library'}
+							</LorivoButton>
+						</div>
+
+						<label class="check">
+							<input type="checkbox" bind:checked={runScanAfterSave} />
+							<span>Start a scan after saving</span>
+						</label>
+					</div>
 
 					{#if actionError}
 						<p class="error">{actionError}</p>
@@ -279,7 +295,50 @@
 
 	.setup-form {
 		display: grid;
+		gap: 0;
+	}
+
+	.setup-form__section {
+		display: grid;
 		gap: 10px;
+		padding: 0 0 16px;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+	}
+
+	.setup-form > :first-child {
+		padding-top: 0;
+		border-top: 0;
+	}
+
+	.setup-form__head {
+		display: grid;
+		gap: 4px;
+	}
+
+	.setup-form__head h3 {
+		margin: 0;
+		font-size: 0.96rem;
+		font-weight: 760;
+	}
+
+	.setup-form__head p {
+		margin: 0;
+		color: var(--lorivo-color-text-soft);
+		font-size: 0.84rem;
+		line-height: 1.45;
+	}
+
+	.setup-form__grid {
+		display: grid;
+		gap: 10px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.setup-form__actions {
+		display: grid;
+		gap: 12px;
+		padding-top: 16px;
+		border-top: 1px solid var(--lorivo-color-border-soft);
 	}
 
 	.field {
@@ -334,6 +393,12 @@
 		margin: 0;
 		color: var(--lorivo-color-accent-teal);
 		font-size: 0.85rem;
+	}
+
+	@media (max-width: 720px) {
+		.setup-form__grid {
+			grid-template-columns: 1fr;
+		}
 	}
 
 </style>

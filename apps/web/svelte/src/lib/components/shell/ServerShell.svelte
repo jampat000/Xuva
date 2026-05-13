@@ -126,9 +126,9 @@
 		display: inline-flex;
 		width: 40px;
 		height: 40px;
-		border-radius: 10px;
-		border: 1px solid rgb(255 255 255 / 13%);
-		background: linear-gradient(180deg, rgb(31 41 55 / 82%), rgb(17 24 39 / 76%));
+		border-radius: 8px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		background: rgb(17 24 39 / 78%);
 		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
 		align-items: center;
 		justify-content: center;
@@ -140,9 +140,9 @@
 		width: 40px;
 		height: 40px;
 		padding: 0;
-		border: 1px solid rgb(255 255 255 / 10%);
+		border: 1px solid rgb(255 255 255 / 8%);
 		border-radius: 999px;
-		background: rgb(28 29 27 / 74%);
+		background: rgb(18 25 38 / 68%);
 		color: color-mix(in srgb, var(--lorivo-color-text) 94%, transparent);
 	}
 
@@ -153,7 +153,7 @@
 		width: 30px;
 		height: 30px;
 		border-radius: 999px;
-		background: linear-gradient(180deg, rgb(154 167 255 / 24%), rgb(38 40 37 / 42%));
+		background: linear-gradient(180deg, rgb(154 167 255 / 18%), rgb(38 40 37 / 28%));
 		color: #f4f1ea;
 		font-size: 0.72rem;
 		font-weight: 700;
@@ -179,7 +179,7 @@
 			radial-gradient(circle at 16% -12%, rgb(124 92 255 / 12%) 0%, transparent 39%),
 			radial-gradient(circle at 84% 112%, rgb(80 111 160 / 9%) 0%, transparent 42%),
 			color-mix(in srgb, var(--lorivo-color-bg-sidebar) 95%, #101827 5%);
-		box-shadow: inset -1px 0 0 rgb(255 255 255 / 4%);
+		box-shadow: inset -1px 0 0 rgb(255 255 255 / 3%);
 	}
 
 	.server-shell__sidebar-panel {
@@ -203,7 +203,7 @@
 	}
 
 	:global([data-shell='server'] .v-sidebar) {
-		padding: 20px 16px 18px;
+		padding: 18px 14px 18px;
 	}
 
 	:global([data-shell='server'] .v-sidebar__brand) {
@@ -214,7 +214,7 @@
 
 	:global([data-shell='server'] .sidebar-item) {
 		min-height: 48px;
-		border-radius: 10px;
+		border-radius: 8px;
 		font-size: 1rem;
 	}
 
@@ -223,10 +223,8 @@
 	}
 
 	:global([data-shell='server'] .sidebar-item[data-active='true']) {
-		border-color: var(--lorivo-settings-accent-border);
-		background:
-			linear-gradient(90deg, rgb(154 167 255 / 11%), rgb(154 167 255 / 3%)),
-			rgb(255 255 255 / 2%);
+		border-color: color-mix(in srgb, var(--lorivo-settings-accent-border) 72%, transparent);
+		background: linear-gradient(90deg, rgb(154 167 255 / 9%), rgb(154 167 255 / 2%));
 		box-shadow: inset 2px 0 0 rgb(154 167 255 / 58%);
 	}
 

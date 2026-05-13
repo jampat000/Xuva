@@ -55,6 +55,8 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: var(--lorivo-space-3);
+		padding-bottom: 0.8rem;
+		border-bottom: 1px solid var(--lorivo-color-border-soft);
 	}
 
 	h2 {
@@ -68,6 +70,10 @@
 		margin: var(--lorivo-space-1) 0 0;
 		color: var(--lorivo-color-text-muted);
 		font-size: 0.84rem;
+	}
+
+	.settings-panel > div:last-child {
+		padding-top: 0.2rem;
 	}
 
 	.settings-panel__header-right {

@@ -17,26 +17,22 @@
 <style>
 	.v-surface {
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
+		border-radius: 12px;
 	}
 
 	.v-surface[data-tone='default'] {
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 18%),
-			var(--lorivo-color-bg-panel);
+		background: color-mix(in srgb, var(--lorivo-color-bg-panel) 96%, #101827 4%);
 	}
 
 	.v-surface[data-tone='elevated'] {
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 18%),
-			var(--lorivo-color-bg-panel-elevated);
+		background: color-mix(in srgb, var(--lorivo-color-bg-panel-elevated) 97%, #101827 3%);
 	}
 
 	.v-surface[data-tone='soft'] {
-		background: rgb(255 255 255 / 3%);
+		background: rgb(255 255 255 / 2.5%);
 	}
 
 	.v-surface[data-padded='true'] {
-		padding: var(--lorivo-space-4);
+		padding: 0.95rem 1rem;
 	}
 </style>
