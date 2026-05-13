@@ -132,7 +132,7 @@
 </svelte:head>
 
 <LorivoShell>
-	<section class="relative mx-4 mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#111827] px-6 py-7 sm:mx-6 sm:px-10 sm:py-8 lg:mx-8 lg:px-12 xl:px-16">
+	<section class="media-head relative mx-4 mt-4 overflow-hidden px-6 py-7 sm:mx-6 sm:px-10 sm:py-8 lg:mx-8 lg:px-12 xl:px-16">
 		<div class="absolute inset-0 bg-gradient-to-r from-[#0B1120] via-[#0B1120]/70 to-[#0B1120]/30"></div>
 		<div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
 			<div class="max-w-[600px]">
@@ -173,18 +173,18 @@
 		</section>
 	{:else}
 		<section class="relative px-4 pt-7 sm:px-6 lg:px-8">
-			<div class="flex flex-col gap-3 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+			<div class="media-toolbar flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
 				<div class="relative w-full lg:max-w-[400px]">
 					<Search size={16} class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
 					<input
 						type="text"
 						placeholder="Search TV"
 						bind:value={searchValue}
-						class="h-10 w-full rounded-full border border-white/10 bg-[#111827]/80 pl-11 pr-4 text-sm text-white shadow-inner shadow-black/20 placeholder:text-white/40 transition focus:border-[#7C5CFF]/50 focus:outline-none focus:ring-2 focus:ring-[#7C5CFF]/25"
+						class="media-toolbar__search h-10 w-full pl-11 pr-4 text-sm text-white placeholder:text-white/40 transition focus:border-[#7C5CFF]/50 focus:outline-none focus:ring-2 focus:ring-[#7C5CFF]/25"
 					/>
 				</div>
 				<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
-					<span class="inline-flex min-h-9 items-center rounded-full border border-white/8 bg-[#111827]/58 px-3.5 py-1.5 text-sm font-medium text-white/65">
+					<span class="media-toolbar__count inline-flex min-h-9 items-center px-3.5 py-1.5 text-sm font-medium text-white/65">
 						{formatVisibleCount(visibleCards.length, visibleSeasons, visibleEpisodes)}
 					</span>
 					<div class="flex flex-wrap gap-2">
@@ -246,3 +246,30 @@
 		{/if}
 	{/if}
 </LorivoShell>
+
+<style>
+	.media-head {
+		border-top: 1px solid rgb(255 255 255 / 9%);
+		border-bottom: 1px solid rgb(255 255 255 / 7%);
+		background: linear-gradient(180deg, rgb(17 24 39 / 92%), rgb(17 24 39 / 72%));
+	}
+
+	.media-toolbar {
+		border-top: 1px solid rgb(255 255 255 / 7%);
+		border-bottom: 1px solid rgb(255 255 255 / 7%);
+		background: rgb(255 255 255 / 2%);
+	}
+
+	.media-toolbar__search {
+		border: 1px solid rgb(255 255 255 / 8%);
+		border-radius: 0.7rem;
+		background: rgb(17 24 39 / 76%);
+		box-shadow: none;
+	}
+
+	.media-toolbar__count {
+		border: 1px solid rgb(255 255 255 / 8%);
+		border-radius: 0.7rem;
+		background: rgb(17 24 39 / 52%);
+	}
+</style>

@@ -19,7 +19,7 @@
 			type="button"
 			data-testid="media-menu-button"
 			data-lorivo-menu-trigger
-			class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#111827]/80 text-white/85 shadow-lg shadow-black/20 transition hover:border-white/25 hover:bg-white/10"
+			class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/8 bg-[#111827]/72 text-white/85 transition hover:border-white/20 hover:bg-white/8"
 			aria-label="Open menu"
 			aria-expanded={menuOpen}
 			onclick={onMenuToggle}
@@ -45,14 +45,14 @@
 			<input
 				type="text"
 				placeholder="Search"
-				class="h-10 w-full rounded-full border border-white/5 bg-[#111827] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#7C5CFF]/50"
+				class="h-10 w-full rounded-lg border border-white/6 bg-[#111827]/88 pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#7C5CFF]/50"
 			/>
 		</div>
 	</div>
 	<div class="flex shrink-0 items-center gap-2">
 		<a
 			href="/settings"
-			class="hidden h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#111827]/80 text-white/72 transition hover:border-white/25 hover:bg-white/10 hover:text-white sm:inline-flex"
+			class="hidden h-10 w-10 items-center justify-center rounded-lg border border-white/8 bg-[#111827]/72 text-white/72 transition hover:border-white/20 hover:bg-white/8 hover:text-white sm:inline-flex"
 			aria-label="Open Settings"
 		>
 			<Settings size={18} />

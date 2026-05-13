@@ -56,12 +56,10 @@
 
 <style>
 	.empty-state {
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 0.85rem;
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%)),
-			rgb(16 24 39 / 84%);
-		padding: 1.25rem;
+		border-top: 1px solid rgb(255 255 255 / 9%);
+		border-bottom: 1px solid rgb(255 255 255 / 7%);
+		background: rgb(15 23 42 / 28%);
+		padding: 1.1rem 0;
 	}
 
 	.empty-state__content {
@@ -73,14 +71,13 @@
 	.empty-state__visual {
 		display: grid;
 		flex: 0 0 auto;
-		width: 2.75rem;
-		height: 2.75rem;
+		width: 2.5rem;
+		height: 2.5rem;
 		place-items: center;
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 0.8rem;
-		background: rgb(8 13 25 / 88%);
+		border-radius: 0.7rem;
+		background: rgb(255 255 255 / 4%);
 		color: rgb(255 255 255 / 82%);
-		font-size: 1rem;
+		font-size: 0.95rem;
 		font-weight: 800;
 	}
 
@@ -106,22 +103,22 @@
 	h2 {
 		margin: 0;
 		color: white;
-		font-size: clamp(1.35rem, 2.4vw, 2.15rem);
+		font-size: clamp(1.2rem, 2vw, 1.85rem);
 		font-weight: 760;
-		line-height: 1.1;
+		line-height: 1.15;
 		letter-spacing: 0;
 	}
 
 	p {
-		margin: 0.7rem 0 0;
+		margin: 0.55rem 0 0;
 		color: rgb(255 255 255 / 66%);
-		font-size: 0.98rem;
-		line-height: 1.55;
+		font-size: 0.94rem;
+		line-height: 1.5;
 	}
 
 	.empty-state__body {
-		margin-top: 1.25rem;
-		padding-top: 1rem;
+		margin-top: 1rem;
+		padding-top: 0.9rem;
 		border-top: 1px solid rgb(255 255 255 / 8%);
 	}
 
@@ -129,11 +126,11 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.75rem;
-		margin-top: 1.1rem;
+		margin-top: 1rem;
 	}
 
 	.empty-state--compact {
-		padding: 0.95rem 1rem;
+		padding: 0.85rem 0;
 	}
 
 	.empty-state--compact .empty-state__content {
@@ -165,7 +162,7 @@
 
 	@media (max-width: 520px) {
 		.empty-state {
-			padding: 1rem;
+			padding: 0.95rem 0;
 		}
 
 		.empty-state__content {

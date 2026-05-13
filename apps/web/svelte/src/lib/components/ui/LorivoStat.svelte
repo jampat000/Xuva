@@ -25,11 +25,15 @@
 <style>
 	.v-stat {
 		display: grid;
-		gap: var(--lorivo-space-1);
-		padding: var(--lorivo-space-3);
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: 10px;
-		background: rgb(255 255 255 / 2%);
+		gap: 0.2rem;
+		padding: 0.8rem 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
+	}
+
+	.v-stat:first-child {
+		border-top: 0;
+		padding-top: 0;
 	}
 
 	span {
