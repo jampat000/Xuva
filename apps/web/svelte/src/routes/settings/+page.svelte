@@ -169,6 +169,9 @@
 	let metadataReviewError = $state('');
 	let pairingRequestsError = $state('');
 	let approvedDevicesError = $state('');
+	let libraryLoadError = $state('');
+	let liveStatusError = $state('');
+	let discoveryStatusError = $state('');
 	let pairingActionMessage = $state('');
 	let approvedDevicesActionMessage = $state('');
 	let lastUpdatedLabel = $state('');
@@ -341,6 +344,8 @@
 	const userInitials = $derived.by(() => initialsForName(userDisplayName));
 	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
 	const canManageSettings = $derived.by(() => authDisabled || devOwnerActive || asText(user?.role).toLowerCase() === 'admin');
+	const hasLibraryLoadError = $derived.by(() => Boolean(libraryLoadError));
+	const hasLiveStatusError = $derived.by(() => Boolean(liveStatusError));
 	const canShowSignIn = $derived.by(() => !authDisabled && !devAuthBypass && !user);
 	const ownerSetupPending = $derived.by(() => !authDisabled && !devAuthBypass && !user && Boolean(clientBootstrap.auth?.bootstrapAllowed));
 	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !devAuthBypass && !canManageSettings);
@@ -436,16 +441,21 @@
 		() => asText(discoveryStatus.serviceName) || serverDisplayName || 'Lorivo'
 	);
 	const discoveryStatusLabel = $derived.by(() => {
+		if (discoveryStatusError) return 'Unavailable';
 		if (discoveryRunning) return 'Running';
 		if (asText(discoveryStatus.lastError)) return 'Needs attention';
 		return 'Not running';
 	});
 	const discoveryStatusTone = $derived.by(() => {
+		if (discoveryStatusError) return 'warn';
 		if (discoveryRunning) return 'good';
 		if (asText(discoveryStatus.lastError)) return 'warn';
 		return 'neutral';
 	});
 	const discoveryStatusMessage = $derived.by(() => {
+		if (discoveryStatusError) {
+			return 'Local discovery status is unavailable right now.';
+		}
 		if (discoveryRunning) {
 			return `Devices on your home network can find this server as ${discoveryServiceName}.`;
 		}
@@ -455,6 +465,7 @@
 		return 'Local discovery is not running.';
 	});
 	const discoveryStatusDetail = $derived.by(() => {
+		if (discoveryStatusError) return discoveryStatusError;
 		const note = asText(discoveryStatus.note);
 		if (note) return note;
 		if (discoveryRunning) {
@@ -501,7 +512,7 @@
 	);
 	const warningItems = $derived.by(() => {
 		const output: Array<{ id: string; label: string; description: string; status: string }> = [];
-		if (libraryCards.length === 0) {
+		if (!hasLibraryLoadError && libraryCards.length === 0) {
 			output.push({
 				id: 'warn-library',
 				label: 'Library setup needed',
@@ -536,6 +547,26 @@
 		return output;
 	});
 	const primaryWarningItem = $derived.by(() => warningItems[0] || null);
+	const libraryPanelStatus = $derived.by(() => {
+		if (hasLibraryLoadError) return 'warning';
+		if (libraryCards.length > 0) return 'healthy';
+		return 'idle';
+	});
+	const scanningPanelStatus = $derived.by(() => {
+		if (hasLiveStatusError) return 'warning';
+		if (activeQueueCount > 0) return 'warning';
+		return 'healthy';
+	});
+	const metadataPanelStatus = $derived.by(() => {
+		if (hasLiveStatusError || metadataReviewError) return 'warning';
+		if (Number(health.needsReview || 0) > 0) return 'warning';
+		return 'healthy';
+	});
+	const playbackPanelStatus = $derived.by(() => {
+		if (hasLiveStatusError) return 'warning';
+		if (activeSessionCount > 0) return 'warning';
+		return 'healthy';
+	});
 	const storageFields = $derived.by(() =>
 		storageFieldDefinitions.map((field) => {
 			const disk = storageDiskFor(field.diskName);
@@ -560,17 +591,20 @@
 		() => storageFields.filter((field) => field.readinessLabel === 'Needs attention').length
 	);
 	const storageDashboardLabel = $derived.by(() => {
+		if (hasLiveStatusError) return 'Status unavailable';
 		if (storageNeedsAttentionCount > 0) return 'Needs attention';
 		if (storageConfiguredCount > 0) return `${asCount(storageConfiguredCount)} folders configured`;
 		return 'Folders not set yet';
 	});
 	const storageDashboardDetail = $derived.by(() => {
+		if (hasLiveStatusError) return liveStatusError;
 		if (storageNeedsAttentionCount > 0) {
 			return `${asCount(storageNeedsAttentionCount)} folder${storageNeedsAttentionCount === 1 ? '' : 's'} need attention before restart.`;
 		}
 		return 'Review where Lorivo keeps its media processing, artwork, cache, and local data.';
 	});
 	const storagePanelStatus = $derived.by(() => {
+		if (hasLiveStatusError) return 'warning';
 		if (storageNeedsAttentionCount > 0) return 'warning';
 		if (storageConfiguredCount > 0) return 'healthy';
 		return 'idle';
@@ -632,19 +666,28 @@
 		metadataReviewError = '';
 		pairingRequestsError = '';
 		approvedDevicesError = '';
+		libraryLoadError = '';
+		liveStatusError = '';
+		discoveryStatusError = '';
 		isLoadingMetadataReview = true;
 		isLoadingPairingRequests = true;
 		isLoadingApprovedDevices = true;
 		sessionsUnavailable = false;
 		try {
+			const [bootstrapPayload, sessionPayload, settingsPayload] = await Promise.all([
+				getClientBootstrap(apiClient).catch(() => ({} as ClientBootstrapResponse)),
+				getAuthSession(apiClient).catch((error: unknown) => {
+					if (isApiStatus(error, 401)) return {} as AuthSessionResponse;
+					throw error;
+				}),
+				getSettings(apiClient),
+			]);
+
 			const [
-				bootstrapPayload,
-				sessionPayload,
 				librariesPayload,
 				summaryPayload,
 				healthPayload,
 				systemPayload,
-				settingsPayload,
 				performancePayload,
 				scansPayload,
 				probesPayload,
@@ -655,29 +698,54 @@
 				reviewPayload,
 				versionGroupPayload
 			] = await Promise.all([
-				getClientBootstrap(apiClient).catch(() => ({} as ClientBootstrapResponse)),
-				getAuthSession(apiClient).catch((error: unknown) => {
-					if (isApiStatus(error, 401)) return {} as AuthSessionResponse;
-					throw error;
+				getLibraries(apiClient).catch((error: unknown) => {
+					libraryLoadError = formatLoadError(error);
+					return { libraries: [] };
 				}),
-				getLibraries(apiClient),
-				getCatalogSummary(apiClient),
-				getCatalogHealth(apiClient),
-				getSystemStatus(apiClient),
-				getSettings(apiClient),
-				getPerformanceSettings(apiClient),
-				getScans(apiClient),
-				getProbes(apiClient),
-				getWork(apiClient),
-				getDownloads(apiClient),
+				getCatalogSummary(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return {} as CatalogSummaryResponse;
+				}),
+				getCatalogHealth(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return {} as CatalogHealthResponse;
+				}),
+				getSystemStatus(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return {} as SystemStatusResponse;
+				}),
+				getPerformanceSettings(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return {} as PerformanceSettingsResponse;
+				}),
+				getScans(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return { scans: [] };
+				}),
+				getProbes(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return { probes: [] };
+				}),
+				getWork(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return { work: [] };
+				}),
+				getDownloads(apiClient).catch((error: unknown) => {
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return { downloads: [] };
+				}),
 				getSessions(apiClient).catch((error: unknown) => {
 					if (isApiStatus(error, 401)) {
 						sessionsUnavailable = true;
 						return { sessions: [] };
 					}
-					throw error;
+					liveStatusError = liveStatusError || formatLoadError(error);
+					return { sessions: [] };
 				}),
-				getDiscoveryStatus(apiClient).catch(() => ({} as DiscoveryStatusResponse)),
+				getDiscoveryStatus(apiClient).catch((error: unknown) => {
+					discoveryStatusError = formatLoadError(error);
+					return {} as DiscoveryStatusResponse;
+				}),
 				getReviewItems(apiClient).catch((error: unknown) => {
 					metadataReviewError = formatLoadError(error);
 					return { items: [] };
@@ -2079,17 +2147,23 @@
 						</div>
 					</article>
 				</section>
+				{#if libraryLoadError || liveStatusError}
+					<LorivoPanel title="Some settings details are unavailable" subtitle={libraryLoadError || liveStatusError} />
+				{/if}
 			{:else if activeSection === 'library'}
 				<section id="library" class="settings-section" data-testid="settings-section-content" data-section="library">
-				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryCards.length > 0 ? 'healthy' : 'idle'}>
+				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryPanelStatus}>
 					{#snippet actions()}
 						<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
 					{/snippet}
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Libraries" value={asCount(libraryCards.length)} meta={libraryCards.length > 0 ? 'Configured folders' : 'Add a library to begin'} tone={libraryCards.length > 0 ? 'good' : 'warn'} />
+						<LorivoStat label="Libraries" value={asCount(libraryCards.length)} meta={libraryLoadError ? 'Current library details are unavailable right now.' : libraryCards.length > 0 ? 'Configured folders' : 'Add a library to begin'} tone={libraryLoadError ? 'warn' : libraryCards.length > 0 ? 'good' : 'warn'} />
 						<LorivoStat label="Movies" value={asCount(summary.movies)} meta="Current movie catalog count." />
 						<LorivoStat label="Shows" value={asCount(summary.series)} meta={`${asCount(summary.episodes)} episodes in the current TV catalog.`} />
 					</div>
+					{#if libraryLoadError}
+						<p class="settings-error">{libraryLoadError}</p>
+					{/if}
 					{#if libraryCards.length > 0}
 						<div class="settings-subsection">
 							<div class="settings-subsection__head">
@@ -2179,7 +2253,10 @@
 
 			{:else if activeSection === 'scanning'}
 			<section id="scanning" class="settings-section" data-testid="settings-section-content" data-section="scanning">
-				<SettingsPanel title="Scanning" description="Start real library scans, choose how Lorivo checks libraries, and review current scan activity." status={activeQueueCount > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Scanning" description="Start real library scans, choose how Lorivo checks libraries, and review current scan activity." status={scanningPanelStatus}>
+					{#if liveStatusError}
+						<p class="settings-error">{liveStatusError}</p>
+					{/if}
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
@@ -2340,7 +2417,7 @@
 
 			{:else if activeSection === 'metadata'}
 			<section id="metadata" class="settings-section" data-testid="settings-section-content" data-section="metadata">
-				<SettingsPanel title="Metadata" description="Choose metadata sources, review matches, and refresh movie and TV information." status={Number(health.needsReview || 0) > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Metadata" description="Choose metadata sources, review matches, and refresh movie and TV information." status={metadataPanelStatus}>
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
@@ -2437,6 +2514,9 @@
 							<LorivoStat label="High bitrate" value={asCount(health.highBitrate)} meta="Large files that may need stronger device support." />
 							<LorivoStat label="Subtitles found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
 						</div>
+						{#if liveStatusError}
+							<p class="settings-error">{liveStatusError}</p>
+						{/if}
 						{#if requiresOwnerSignIn}
 							<div class="settings-auth-callout">
 								<p class="settings-note">Sign in as the owner to update metadata.</p>
@@ -2645,7 +2725,7 @@
 
 			{:else if activeSection === 'playback'}
 			<section id="playback" class="settings-section" data-testid="settings-section-content" data-section="playback">
-				<SettingsPanel title="Playback" description="Playback policy, compatibility status, and active playback sessions." status={activeSessionCount > 0 ? 'warning' : 'healthy'}>
+				<SettingsPanel title="Playback" description="Playback policy, compatibility status, and active playback sessions." status={playbackPanelStatus}>
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat
 							label="Playback Policy"
@@ -2655,6 +2735,9 @@
 						<LorivoStat label="Compatibility Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Lorivo can help when a device needs a different playback format." />
 						<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
 					</div>
+					{#if liveStatusError}
+						<p class="settings-error">{liveStatusError}</p>
+					{/if}
 					{#if canManageSettings}
 						<form class="playback-policy-form" data-testid="playback-policy-form" onsubmit={(event) => { event.preventDefault(); void savePlaybackPolicy(); }}>
 							<div class="settings-subsection__head settings-subsection__head--tight">
@@ -2733,6 +2816,9 @@
 							tone={storageNeedsAttentionCount > 0 ? 'warn' : 'good'}
 						/>
 					</div>
+					{#if liveStatusError}
+						<p class="settings-error">{liveStatusError}</p>
+					{/if}
 					{#if canManageSettings}
 						<form class="storage-settings-form" data-testid="storage-form" onsubmit={(event) => { event.preventDefault(); void saveStorageSettings(); }}>
 							<div class="settings-subsection">
@@ -3109,7 +3195,7 @@
 
 			{:else if activeSection === 'about'}
 			<section id="about" class="settings-section" data-testid="settings-section-content" data-section="about">
-				<SettingsPanel title="About" description="Lorivo identity and local server details." status="healthy">
+				<SettingsPanel title="About" description="Lorivo identity and local server details." status={discoveryStatusError ? 'warning' : 'healthy'}>
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
 						<LorivoStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and advertised on your home network when local discovery is running." />
@@ -3144,6 +3230,9 @@
 								meta={asText(discoveryStatus.serviceType) || '_lorivo._tcp.local.'}
 							/>
 						</div>
+						{#if discoveryStatusError}
+							<p class="settings-error">{discoveryStatusError}</p>
+						{/if}
 						<p class:status-copy={true} class:status-copy--warn={discoveryStatusTone === 'warn'}>
 							{discoveryStatusDetail}
 						</p>

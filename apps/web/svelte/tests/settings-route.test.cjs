@@ -31,6 +31,9 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /getSessions\(apiClient\)/);
 	assert.match(source, /getPairingRequests\(apiClient\)/);
 	assert.match(source, /getApprovedDevices\(apiClient\)/);
+	assert.match(source, /libraryLoadError/);
+	assert.match(source, /liveStatusError/);
+	assert.match(source, /discoveryStatusError/);
 	assert.match(source, /approvePairingRequest\(id,\s*apiClient\)/);
 	assert.match(source, /denyPairingRequest\(id,\s*apiClient\)/);
 	assert.match(source, /revokeApprovedDevice\(id,\s*apiClient\)/);
@@ -110,6 +113,7 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /Remove/);
 	assert.match(source, /Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running\./);
 	assert.match(source, /Local discovery/);
+	assert.match(source, /Local discovery status is unavailable right now\./);
 	assert.match(source, /Devices on your home network can find this server as/);
 	assert.match(source, /Local discovery is not running\./);
 	assert.match(source, /Lorivo could not start local discovery\. The server is still available at this web address\./);
@@ -134,6 +138,8 @@ test('settings route uses existing settings APIs and real user actions', () => {
 	assert.match(source, /No metadata review items right now\./);
 	assert.match(source, /No multiple-version groups right now\./);
 	assert.match(source, /No metadata records yet\. Try Refresh metadata to fetch another pass\./);
+	assert.match(source, /Some settings details are unavailable/);
+	assert.match(source, /Current library details are unavailable right now\./);
 	assert.match(source, /Save Playback Policy/);
 	assert.doesNotMatch(source, /legacy/i);
 	assert.doesNotMatch(source, /Admin Dashboard/);
