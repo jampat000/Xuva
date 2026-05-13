@@ -75,12 +75,18 @@
 
 	type SettingsSection =
 		| 'dashboard'
-		| 'library'
+		| 'general'
+		| 'libraries'
 		| 'scanning'
 		| 'metadata'
 		| 'playback'
+		| 'transcoding'
 		| 'storage'
-		| 'access'
+		| 'network'
+		| 'pairing'
+		| 'approved-devices'
+		| 'discovery'
+		| 'owner-access'
 		| 'about';
 
 	type LibraryActionKind = 'scan' | 'remove' | '';
@@ -1362,11 +1368,55 @@
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
-		activeSection = isSettingsSection(candidate) ? candidate : 'dashboard';
+		if (!candidate) {
+			activeSection = 'dashboard';
+			return;
+		}
+		const normalized = resolveSettingsSection(candidate);
+		activeSection = normalized || 'dashboard';
 	}
 
 	function isSettingsSection(value: string): value is SettingsSection {
-		return ['dashboard', 'library', 'scanning', 'metadata', 'playback', 'storage', 'access', 'about'].includes(value);
+		return [
+			'dashboard',
+			'general',
+			'libraries',
+			'scanning',
+			'metadata',
+			'playback',
+			'transcoding',
+			'storage',
+			'network',
+			'pairing',
+			'approved-devices',
+			'discovery',
+			'owner-access',
+			'about'
+		].includes(value);
+	}
+
+	function resolveSettingsSection(value: string): SettingsSection | '' {
+		const normalized = asText(value).toLowerCase();
+		const aliases: Record<string, SettingsSection> = {
+			dashboard: 'dashboard',
+			general: 'general',
+			library: 'libraries',
+			libraries: 'libraries',
+			scanning: 'scanning',
+			metadata: 'metadata',
+			playback: 'playback',
+			transcoding: 'transcoding',
+			storage: 'storage',
+			network: 'network',
+			access: 'owner-access',
+			'owner-access': 'owner-access',
+			pairing: 'pairing',
+			'approved-devices': 'approved-devices',
+			discovery: 'discovery',
+			about: 'about'
+		};
+		const candidate = aliases[normalized];
+		return candidate && isSettingsSection(candidate) ? candidate : '';
 	}
 
 	function queueSilentRefresh(): void {
@@ -1417,13 +1467,13 @@
 	}
 
 	function warningItemHref(itemID: string): string {
-		if (itemID === 'warn-library') return '#library';
+		if (itemID === 'warn-library') return '#libraries';
 		if (itemID === 'warn-unsupported') return '#playback';
 		return '#metadata';
 	}
 
 	function warningItemActionLabel(itemID: string): string {
-		if (itemID === 'warn-library') return 'Open Library';
+		if (itemID === 'warn-library') return 'Open Libraries';
 		if (itemID === 'warn-unsupported') return 'Open Playback';
 		return 'Open Metadata';
 	}
@@ -1975,12 +2025,18 @@
 	function sectionTitle(section: SettingsSection): string {
 		return {
 			dashboard: 'Dashboard',
-			library: 'Library',
+			general: 'General',
+			libraries: 'Libraries',
 			scanning: 'Scanning',
 			metadata: 'Metadata',
 			playback: 'Playback',
+			transcoding: 'Transcoding',
 			storage: 'Storage',
-			access: 'Access',
+			network: 'Network',
+			pairing: 'Pairing',
+			'approved-devices': 'Approved Devices',
+			discovery: 'Discovery',
+			'owner-access': 'Owner Access',
 			about: 'About'
 		}[section];
 	}
@@ -1988,12 +2044,18 @@
 	function sectionDescription(section: SettingsSection): string {
 		return {
 			dashboard: 'Check whether your Lorivo library is ready and jump to the next useful setting.',
-			library: 'Media folders, setup status, and the current Library Setup flow.',
+			general: 'Server identity, app details, and owner-ready startup status.',
+			libraries: 'Media folders, setup status, and the current Library Setup flow.',
 			scanning: 'Choose how Lorivo checks libraries and review current scan activity.',
 			metadata: 'Choose metadata sources, review matches, and refresh movie and TV information.',
 			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
-			storage: 'Choose where Lorivo keeps media processing files, library artwork, cache, and local data.',
-			access: 'See who is signed in and manage the current session.',
+			transcoding: 'Transcoding paths and playback compatibility status for conversion workflows.',
+			storage: 'Choose where Lorivo keeps metadata, cache, scratch files, and local app data.',
+			network: 'Local discovery and network visibility status for this server.',
+			pairing: 'Pending device pairing requests that need owner review.',
+			'approved-devices': 'Approved devices that can connect to this server.',
+			discovery: 'Local mDNS / Bonjour advertisement status and service identity.',
+			'owner-access': 'Current owner session and sign-in state.',
 			about: 'Lorivo identity, build, and local-first details.'
 		}[section];
 	}
@@ -2042,7 +2104,7 @@
 					<p class="settings-note settings-note--inline">{ownerActionDetail}</p>
 					<div class="status-actions">
 						<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
-						<LorivoButton variant="ghost" href="#access">Open Access</LorivoButton>
+						<LorivoButton variant="ghost" href="#owner-access">Open Access</LorivoButton>
 					</div>
 				</LorivoPanel>
 			{/if}
@@ -2054,7 +2116,7 @@
 						<strong>{serverDisplayName}</strong>
 						<small>{serverIdentityHelpText}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#about">Edit in About</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#general">Edit in General</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -2062,7 +2124,7 @@
 						<strong>{libraryCards.length > 0 ? `${asCount(libraryCards.length)} folders ready` : 'Library setup needed'}</strong>
 						<small>{libraryCards.length > 0 ? 'Review folders, run scans, or remove a library.' : 'Add a Movies or TV folder so Lorivo can start building your library.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#library">Review Library</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#libraries">Review Libraries</LorivoButton>
 							<LorivoButton variant="ghost" size="sm" href="/setup">Library Setup</LorivoButton>
 						</div>
 					</article>
@@ -2105,7 +2167,7 @@
 							<strong>{storageDashboardLabel}</strong>
 							<small>{storageDashboardDetail}</small>
 							<div class="dashboard-card-actions">
-								<LorivoButton variant="secondary" size="sm" href="#storage">Open Storage</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#transcoding">Open Transcoding</LorivoButton>
 							</div>
 						</article>
 					{/if}
@@ -2114,7 +2176,7 @@
 						<strong>{accessCardLabel}</strong>
 						<small>{accessCardDetail}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#access">Open Access</LorivoButton>
+							<LorivoButton variant="secondary" size="sm" href="#owner-access">Open Access</LorivoButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -2143,16 +2205,16 @@
 						<strong>Lorivo</strong>
 						<small>{asText(buildInfo?.buildID) || 'Local build details'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="ghost" size="sm" href="#about">Open About</LorivoButton>
+							<LorivoButton variant="ghost" size="sm" href="#general">Open General</LorivoButton>
 						</div>
 					</article>
 				</section>
 				{#if libraryLoadError || liveStatusError}
 					<LorivoPanel title="Some settings details are unavailable" subtitle={libraryLoadError || liveStatusError} />
 				{/if}
-			{:else if activeSection === 'library'}
-				<section id="library" class="settings-section" data-testid="settings-section-content" data-section="library">
-				<SettingsPanel title="Library" description="Media folders and library setup." status={libraryPanelStatus}>
+			{:else if activeSection === 'libraries'}
+			<section id="libraries" class="settings-section" data-testid="settings-section-content" data-section="libraries">
+				<SettingsPanel title="Libraries" description="Media folders and library setup." status={libraryPanelStatus}>
 					{#snippet actions()}
 						<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
 					{/snippet}
@@ -2244,7 +2306,7 @@
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
 								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
 							</div>
 						</div>
 					{/if}
@@ -2402,7 +2464,7 @@
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
 								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
 							</div>
 						</div>
 					{/if}
@@ -2523,7 +2585,7 @@
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
 									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-									<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+									<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
 								</div>
 							</div>
 						{/if}
@@ -2782,7 +2844,7 @@
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
 								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
 							</div>
 						</div>
 					{/if}
@@ -2795,11 +2857,13 @@
 				</SettingsPanel>
 			</section>
 
-			{:else if activeSection === 'storage'}
-			<section id="storage" class="settings-section" data-testid="settings-section-content" data-section="storage">
+			{:else if activeSection === 'storage' || activeSection === 'transcoding'}
+			<section id={activeSection} class="settings-section" data-testid="settings-section-content" data-section={activeSection}>
 				<SettingsPanel
-					title="Storage"
-					description="Choose where Lorivo keeps media processing files, library artwork, cache, and local data."
+					title={activeSection === 'transcoding' ? 'Transcoding' : 'Storage'}
+					description={activeSection === 'transcoding'
+						? 'Choose where Lorivo keeps temporary transcoding files and optimized playback versions.'
+						: 'Choose where Lorivo keeps library artwork, cache, short-lived files, and local app data.'}
 					status={storagePanelStatus}
 				>
 					<div class="stat-grid stat-grid--compact">
@@ -2824,7 +2888,7 @@
 							<div class="settings-subsection">
 								<div class="settings-subsection__head">
 									<div>
-										<h3>Media processing folders</h3>
+										<h3>{activeSection === 'transcoding' ? 'Transcoding folders' : 'Media processing folders'}</h3>
 										<p>Choose where Lorivo keeps temporary processing files and optimized versions.</p>
 									</div>
 								</div>
@@ -2873,6 +2937,7 @@
 									{/each}
 								</div>
 							</div>
+							{#if activeSection === 'storage'}
 							<div class="settings-subsection">
 								<div class="settings-subsection__head">
 									<div>
@@ -2963,13 +3028,14 @@
 									</article>
 								{/each}
 							</div>
+							{/if}
 							<div class="status-actions">
 								<LorivoButton
 									variant="primary"
 									disabled={isSavingStorage || !hasStorageChanges}
 									onclick={saveStorageSettings}
 								>
-									{isSavingStorage ? 'Saving...' : 'Save Storage Settings'}
+									{isSavingStorage ? 'Saving...' : activeSection === 'transcoding' ? 'Save Transcoding Settings' : 'Save Storage Settings'}
 								</LorivoButton>
 							</div>
 							{#if storageSaveMessage}
@@ -2992,16 +3058,24 @@
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
 								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
 							</div>
 						</div>
 					{/if}
 				</SettingsPanel>
 			</section>
 
-			{:else if activeSection === 'access'}
-			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
-				<SettingsPanel title="Access" description="Current account, session, pairing requests, and approved devices." status={user ? 'healthy' : 'idle'}>
+			{:else if activeSection === 'owner-access' || activeSection === 'pairing' || activeSection === 'approved-devices'}
+			<section id={activeSection} class="settings-section" data-testid="settings-section-content" data-section={activeSection}>
+				<SettingsPanel
+					title={activeSection === 'pairing' ? 'Pairing' : activeSection === 'approved-devices' ? 'Approved Devices' : 'Owner Access'}
+					description={activeSection === 'pairing'
+						? 'Approve or deny pending device pairing requests.'
+						: activeSection === 'approved-devices'
+							? 'Review and revoke persisted approved devices.'
+							: 'Current owner account and session state.'}
+					status={user ? 'healthy' : 'idle'}
+				>
 					{#snippet actions()}
 						{#if user && !authDisabled && !devOwnerActive}
 							<LorivoButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
@@ -3011,17 +3085,20 @@
 							<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
 						{/if}
 					{/snippet}
-					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Account" value={accessAccountValue} meta={accessAccountMeta} tone={user ? 'good' : 'neutral'} />
-						<LorivoStat label="Session" value={accessSessionValue} meta={accessSessionMeta} tone={user ? 'good' : 'neutral'} />
-					</div>
-					<div class="settings-auth-callout">
-						<p class="settings-note">{devOwnerActive ? devAccessMessage : 'Access is limited to the current owner session in this build.'}</p>
-						<ul class="settings-placeholder-list">
-							<li>User management is not available yet.</li>
-							<li>Live device presence is not tracked yet.</li>
-						</ul>
-					</div>
+					{#if activeSection === 'owner-access'}
+						<div class="stat-grid stat-grid--compact">
+							<LorivoStat label="Account" value={accessAccountValue} meta={accessAccountMeta} tone={user ? 'good' : 'neutral'} />
+							<LorivoStat label="Session" value={accessSessionValue} meta={accessSessionMeta} tone={user ? 'good' : 'neutral'} />
+						</div>
+						<div class="settings-auth-callout">
+							<p class="settings-note">{devOwnerActive ? devAccessMessage : 'Access is limited to the current owner session in this build.'}</p>
+							<ul class="settings-placeholder-list">
+								<li>User management is not available yet.</li>
+								<li>Live device presence is not tracked yet.</li>
+							</ul>
+						</div>
+					{/if}
+					{#if activeSection !== 'approved-devices'}
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
@@ -3113,6 +3190,8 @@
 							</div>
 						{/if}
 					</div>
+					{/if}
+					{#if activeSection !== 'pairing'}
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
@@ -3184,6 +3263,7 @@
 							</div>
 						{/if}
 					</div>
+					{/if}
 					{#if !user && !authDisabled}
 						<div class="settings-auth-callout">
 							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
@@ -3193,15 +3273,26 @@
 				</SettingsPanel>
 			</section>
 
-			{:else if activeSection === 'about'}
-			<section id="about" class="settings-section" data-testid="settings-section-content" data-section="about">
-				<SettingsPanel title="About" description="Lorivo identity and local server details." status={discoveryStatusError ? 'warning' : 'healthy'}>
+			{:else if activeSection === 'general' || activeSection === 'network' || activeSection === 'discovery' || activeSection === 'about'}
+			<section id={activeSection} class="settings-section" data-testid="settings-section-content" data-section={activeSection}>
+				<SettingsPanel
+					title={activeSection === 'general' ? 'General' : activeSection === 'network' ? 'Network' : activeSection === 'discovery' ? 'Discovery' : 'About'}
+					description={activeSection === 'general'
+						? 'Server identity and owner-facing basics.'
+						: activeSection === 'network'
+							? 'Local discovery status and network visibility.'
+							: activeSection === 'discovery'
+								? 'mDNS / Bonjour service identity and status.'
+								: 'Lorivo identity and build details.'}
+					status={discoveryStatusError ? 'warning' : 'healthy'}
+				>
 					<div class="stat-grid stat-grid--compact">
 						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
 						<LorivoStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and advertised on your home network when local discovery is running." />
 						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Local build'} meta={asText(buildInfo?.publishedAt) || 'Build details are quiet in this view.'} />
 						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
 					</div>
+					{#if activeSection === 'general'}
 					<div class="settings-subsection settings-subsection--quiet">
 						<div class="settings-subsection__head">
 							<div>
@@ -3210,6 +3301,7 @@
 							</div>
 						</div>
 					</div>
+					{/if}
 					<div class="settings-subsection" data-testid="discovery-status-card">
 						<div class="settings-subsection__head">
 							<div>
@@ -3237,7 +3329,7 @@
 							{discoveryStatusDetail}
 						</p>
 					</div>
-					{#if canManageSettings}
+					{#if activeSection === 'general' && canManageSettings}
 						<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
 							<label class="settings-field">
 								<span>Server name</span>
@@ -3262,13 +3354,13 @@
 								<p class="settings-error">{serverNameError}</p>
 							{/if}
 						</form>
-					{:else if !authDisabled}
+					{:else if activeSection === 'general' && !authDisabled}
 						<div class="settings-auth-callout">
 							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
 								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#access">Open Access</LorivoButton>
+								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
 							</div>
 						</div>
 					{/if}
@@ -3541,7 +3633,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 4px 8px;
-		border-radius: 999px;
+		border-radius: 6px;
 		background: rgb(154 167 255 / 10%);
 		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
 		font-size: 0.74rem;
@@ -3730,7 +3822,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 4px 8px;
-		border-radius: 999px;
+		border-radius: 6px;
 		background: rgb(154 167 255 / 10%);
 		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
 		font-size: 0.74rem;
@@ -4006,7 +4098,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 4px 8px;
-		border-radius: 999px;
+		border-radius: 6px;
 		background: rgb(65 143 101 / 18%);
 		color: color-mix(in srgb, #b7ffd4 75%, white 25%);
 		font-size: 0.74rem;

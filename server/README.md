@@ -106,6 +106,11 @@ Local development bypass:
 - If the server is bound to a non-loopback address, the bypass is ignored.
 - Do not use the bypass for production or shared environments. Turn it off by removing the flag or setting `LORIVO_DEV_AUTH_BYPASS=false`.
 
+Canonical desktop owner run path:
+
+- From repo root use `./tools/run-desktop-owner.ps1`.
+- That script rebuilds and republishes embedded web assets, then starts the Go server in loopback owner development mode.
+
 Protected routes in this release:
 
 - browser write operations

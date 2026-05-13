@@ -50,6 +50,14 @@ The current web foundation is the SvelteKit Lorivo app in `apps/web/svelte`.
 It is the only production web UI and is served by the Go server from
 `server/internal/webapp/static-next`.
 
+Phase focus:
+
+- Phase 1: desktop owner web only
+- primary acceptance viewport: `1600x1000` (secondary: `1920x1080`)
+- tablet/mobile web: smoke-only
+- auth/users expansion: Phase 2
+- native tvOS/Android clients: later phase
+
 The first technical milestone is a playback decision prototype:
 
 1. Scan a local media folder.
@@ -69,6 +77,9 @@ The first technical milestone is a playback decision prototype:
 - [Product Principles](docs/product-principles.md)
 - [MVP Scope](docs/mvp-scope.md)
 - [Architecture](docs/architecture.md)
+- [Development mode](docs/development-mode.md)
+- [Desktop owner mode](docs/desktop-owner-mode.md)
+- [Roadmap phases](docs/roadmap-phases.md)
 - [Playback Engine](docs/playback-engine.md)
 - [Media Scanner](docs/media-scanner.md)
 - [Remote Access](docs/remote-access.md)

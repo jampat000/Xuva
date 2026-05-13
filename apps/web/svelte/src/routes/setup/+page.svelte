@@ -176,7 +176,7 @@
 	<title>{lorivoTitle(serverName)}</title>
 </svelte:head>
 
-<ServerShell active="library" showStorage={!authRequired} {userInitials} userDisplayName={userDisplayName}>
+<ServerShell active="libraries" showStorage={!authRequired} {userInitials} userDisplayName={userDisplayName}>
 	<div class="setup-page">
 		{#if isLoading}
 			<LorivoPanel title="Loading Library Setup" subtitle="Checking account and library status." />

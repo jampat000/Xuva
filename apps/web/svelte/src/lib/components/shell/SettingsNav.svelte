@@ -3,12 +3,18 @@
 
 	type SettingsSection =
 		| 'dashboard'
-		| 'library'
+		| 'general'
+		| 'libraries'
 		| 'scanning'
 		| 'metadata'
 		| 'playback'
+		| 'transcoding'
 		| 'storage'
-		| 'access'
+		| 'network'
+		| 'pairing'
+		| 'approved-devices'
+		| 'discovery'
+		| 'owner-access'
 		| 'about';
 
 	let {
@@ -23,6 +29,7 @@
 </script>
 
 {#if section === 'primary'}
+	<p class="settings-nav-group">Lorivo Server</p>
 	<SidebarItem label="Dashboard" href="/settings#dashboard" active={active === 'dashboard'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -30,7 +37,15 @@
 			</svg>
 		{/snippet}
 	</SidebarItem>
-	<SidebarItem label="Library" href="/settings#library" active={active === 'library'}>
+	<SidebarItem label="General" href="/settings#general" active={active === 'general'}>
+		{#snippet icon()}
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<circle cx="12" cy="8.6" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5" />
+				<path d="M6.2 18.2c1.4-2.7 3.5-4 5.8-4s4.4 1.3 5.8 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+			</svg>
+		{/snippet}
+	</SidebarItem>
+	<SidebarItem label="Libraries" href="/settings#libraries" active={active === 'libraries'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path
@@ -73,6 +88,14 @@
 		{/snippet}
 	</SidebarItem>
 	{#if showStorage}
+		<SidebarItem label="Transcoding" href="/settings#transcoding" active={active === 'transcoding'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M4.8 8h14.4M4.8 12h10.2M4.8 16h6.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+					<path d="m14.5 14.5 3.8-2.5-3.8-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
 		<SidebarItem label="Storage" href="/settings#storage" active={active === 'storage'}>
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -81,8 +104,41 @@
 				</svg>
 			{/snippet}
 		</SidebarItem>
+		<SidebarItem label="Network" href="/settings#network" active={active === 'network'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M4.8 12a10 10 0 0 1 14.4 0M7.8 15a6.2 6.2 0 0 1 8.4 0M11.1 18a2.1 2.1 0 0 1 1.8 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
 	{/if}
-	<SidebarItem label="Access" href="/settings#access" active={active === 'access'}>
+
+	<p class="settings-nav-group">Devices</p>
+	<SidebarItem label="Pairing" href="/settings#pairing" active={active === 'pairing'}>
+		{#snippet icon()}
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M7.2 8.4a3.2 3.2 0 0 1 4.5 0l.3.3.3-.3a3.2 3.2 0 0 1 4.5 4.5l-4.8 4.8-4.8-4.8a3.2 3.2 0 0 1 0-4.5Z" fill="none" stroke="currentColor" stroke-width="1.5" />
+			</svg>
+		{/snippet}
+	</SidebarItem>
+	<SidebarItem label="Approved Devices" href="/settings#approved-devices" active={active === 'approved-devices'}>
+		{#snippet icon()}
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<rect x="6.2" y="5.6" width="11.6" height="12.8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5" />
+				<path d="m9.2 11.8 2.1 2.1 3.5-3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+			</svg>
+		{/snippet}
+	</SidebarItem>
+	<SidebarItem label="Discovery" href="/settings#discovery" active={active === 'discovery'}>
+		{#snippet icon()}
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M12 7v10M8 11h8M6 7h12v10H6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+			</svg>
+		{/snippet}
+	</SidebarItem>
+
+	<p class="settings-nav-group">Access</p>
+	<SidebarItem label="Owner Access" href="/settings#owner-access" active={active === 'owner-access'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<circle cx="12" cy="8.4" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5" />
@@ -90,6 +146,8 @@
 			</svg>
 		{/snippet}
 	</SidebarItem>
+
+	<p class="settings-nav-group">Advanced</p>
 	<SidebarItem label="About" href="/settings#about" active={active === 'about'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -114,3 +172,14 @@
 		{/snippet}
 	</SidebarItem>
 {/if}
+
+<style>
+	.settings-nav-group {
+		margin: 10px 10px 2px;
+		color: color-mix(in srgb, var(--lorivo-color-text-soft) 84%, transparent);
+		font-size: 0.69rem;
+		font-weight: 750;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
+	}
+</style>

@@ -10,7 +10,21 @@
 		userRole = 'Local Account',
 		showStorage = true
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'storage' | 'access' | 'about';
+		active?:
+			| 'dashboard'
+			| 'general'
+			| 'libraries'
+			| 'scanning'
+			| 'metadata'
+			| 'playback'
+			| 'transcoding'
+			| 'storage'
+			| 'network'
+			| 'pairing'
+			| 'approved-devices'
+			| 'discovery'
+			| 'owner-access'
+			| 'about';
 		userDisplayName?: string;
 		userRole?: string;
 		showStorage?: boolean;

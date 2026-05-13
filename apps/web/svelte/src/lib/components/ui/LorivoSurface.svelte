@@ -17,7 +17,7 @@
 <style>
 	.v-surface {
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: 12px;
+		border-radius: 8px;
 	}
 
 	.v-surface[data-tone='default'] {
@@ -33,6 +33,6 @@
 	}
 
 	.v-surface[data-padded='true'] {
-		padding: 0.95rem 1rem;
+		padding: 0.85rem 0.95rem;
 	}
 </style>
