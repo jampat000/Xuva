@@ -126,15 +126,12 @@
 		display: inline-flex;
 		width: 40px;
 		height: 40px;
-		border-radius: 12px;
+		border-radius: 10px;
 		border: 1px solid rgb(255 255 255 / 13%);
 		background: linear-gradient(180deg, rgb(31 41 55 / 82%), rgb(17 24 39 / 76%));
 		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
 		align-items: center;
 		justify-content: center;
-		box-shadow:
-			inset 0 1px 0 rgb(255 255 255 / 9%),
-			0 12px 28px rgb(0 0 0 / 22%);
 	}
 
 	.server-shell__profile-button {
@@ -147,9 +144,6 @@
 		border-radius: 999px;
 		background: rgb(28 29 27 / 74%);
 		color: color-mix(in srgb, var(--lorivo-color-text) 94%, transparent);
-		box-shadow:
-			inset 0 1px 0 rgb(255 255 255 / 10%),
-			0 18px 42px rgb(0 0 0 / 24%);
 	}
 
 	.server-shell__profile-button span {
@@ -220,7 +214,7 @@
 
 	:global([data-shell='server'] .sidebar-item) {
 		min-height: 48px;
-		border-radius: 14px;
+		border-radius: 10px;
 		font-size: 1rem;
 	}
 
@@ -231,11 +225,9 @@
 	:global([data-shell='server'] .sidebar-item[data-active='true']) {
 		border-color: var(--lorivo-settings-accent-border);
 		background:
-			linear-gradient(90deg, rgb(154 167 255 / 14%), rgb(154 167 255 / 4%)),
-			rgb(255 255 255 / 4%);
-		box-shadow:
-			inset 3px 0 0 rgb(154 167 255 / 64%),
-			0 14px 32px rgb(33 45 86 / 14%);
+			linear-gradient(90deg, rgb(154 167 255 / 11%), rgb(154 167 255 / 3%)),
+			rgb(255 255 255 / 2%);
+		box-shadow: inset 2px 0 0 rgb(154 167 255 / 58%);
 	}
 
 	:global([data-shell='server'] .sidebar-item[data-active='true'] .sidebar-item__icon) {

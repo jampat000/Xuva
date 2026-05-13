@@ -28,8 +28,8 @@
 		gap: var(--lorivo-space-1);
 		padding: var(--lorivo-space-3);
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: linear-gradient(180deg, rgb(255 246 229 / 4%), rgb(255 246 229 / 2%));
+		border-radius: 10px;
+		background: rgb(255 255 255 / 2%);
 	}
 
 	span {

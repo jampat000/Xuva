@@ -17,27 +17,26 @@
 <style>
 	.v-surface {
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-lg);
-		box-shadow: var(--lorivo-shadow-soft);
+		border-radius: var(--lorivo-radius-md);
 	}
 
 	.v-surface[data-tone='default'] {
 		background:
-			linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 22%),
+			linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 18%),
 			var(--lorivo-color-bg-panel);
 	}
 
 	.v-surface[data-tone='elevated'] {
 		background:
-			linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 24%),
+			linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 18%),
 			var(--lorivo-color-bg-panel-elevated);
 	}
 
 	.v-surface[data-tone='soft'] {
-		background: rgb(255 255 255 / 5%);
+		background: rgb(255 255 255 / 3%);
 	}
 
 	.v-surface[data-padded='true'] {
-		padding: calc(var(--lorivo-space-4) + 1px);
+		padding: var(--lorivo-space-4);
 	}
 </style>

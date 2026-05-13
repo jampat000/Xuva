@@ -82,9 +82,9 @@
 
 	.folder-entry {
 		border: 1px solid var(--lorivo-color-border-soft);
-		background: var(--lorivo-color-surface-elevated);
+		background: rgb(255 255 255 / 2%);
 		color: var(--lorivo-color-text);
-		border-radius: var(--lorivo-radius-md);
+		border-radius: 10px;
 		padding: 8px 10px;
 		text-align: left;
 		display: grid;
