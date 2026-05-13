@@ -20,7 +20,7 @@
 	}>();
 </script>
 
-<LorivoSurface tone="elevated">
+<LorivoSurface tone="default">
 	<section class="settings-panel">
 		<header>
 			<div>
@@ -47,7 +47,7 @@
 <style>
 	.settings-panel {
 		display: grid;
-		gap: var(--lorivo-space-4);
+		gap: var(--lorivo-space-3);
 	}
 
 	header {
@@ -59,8 +59,8 @@
 
 	h2 {
 		margin: 0;
-		font-size: 1.04rem;
-		font-weight: 680;
+		font-size: 1.02rem;
+		font-weight: 720;
 		letter-spacing: -0.01em;
 	}
 

@@ -246,20 +246,24 @@
 				title="Build your Lorivo library"
 				description="Add your media folders, scan your library, and Lorivo will fill this home screen with what you're watching and what's new."
 			>
-				<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+				<div class="grid gap-3 lg:grid-cols-2">
 					<a class="next-step-card" href="/setup">
+						<em class="next-step-card__step">01</em>
 						<strong>Add a library</strong>
 						<span>Choose your Movies or TV folder so Lorivo knows where to look.</span>
 					</a>
 					<a class="next-step-card" href="/movies">
+						<em class="next-step-card__step">02</em>
 						<strong>Review Movies</strong>
 						<span>Use Scan Movies once a movie folder has been added.</span>
 					</a>
 					<a class="next-step-card" href="/tv">
+						<em class="next-step-card__step">03</em>
 						<strong>Review TV</strong>
 						<span>Use Scan TV once a TV folder has been added.</span>
 					</a>
 					<a class="next-step-card" href="/settings">
+						<em class="next-step-card__step">04</em>
 						<strong>Check settings</strong>
 						<span>Review your library setup and scan status.</span>
 					</a>
@@ -328,32 +332,51 @@
 <style>
 	.next-step-card {
 		display: grid;
-		gap: 0.45rem;
-		min-height: 9rem;
-		align-content: start;
+		grid-template-columns: auto minmax(0, 1fr);
+		column-gap: 0.9rem;
+		row-gap: 0.25rem;
+		min-height: 0;
+		align-items: start;
 		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 1rem;
-		background: rgb(11 17 32 / 58%);
-		padding: 1rem;
+		border-radius: 0.85rem;
+		background: rgb(11 17 32 / 42%);
+		padding: 0.95rem 1rem;
 		text-decoration: none;
 		transition:
-			transform 0.2s ease,
 			border-color 0.2s ease,
 			background 0.2s ease;
 	}
 
 	.next-step-card:hover {
-		transform: translateY(-2px);
-		border-color: rgb(124 92 255 / 45%);
-		background: rgb(124 92 255 / 10%);
+		border-color: rgb(124 92 255 / 32%);
+		background: rgb(124 92 255 / 7%);
+	}
+
+	.next-step-card__step {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		margin-top: 0.1rem;
+		border-radius: 999px;
+		border: 1px solid rgb(255 255 255 / 10%);
+		background: rgb(8 13 25 / 80%);
+		color: rgb(255 255 255 / 48%);
+		font-size: 0.72rem;
+		font-style: normal;
+		font-weight: 800;
+		letter-spacing: 0.08em;
 	}
 
 	.next-step-card strong {
 		color: white;
 		font-size: 1rem;
+		line-height: 1.2;
 	}
 
 	.next-step-card span {
+		grid-column: 2;
 		color: rgb(255 255 255 / 58%);
 		font-size: 0.9rem;
 		line-height: 1.45;

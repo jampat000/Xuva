@@ -3341,24 +3341,22 @@
 	.settings-dashboard {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 12px;
+		gap: 10px;
 	}
 
 	.settings-dashboard-card {
 		display: grid;
-		gap: 7px;
-		min-height: 156px;
+		gap: 8px;
+		min-height: 136px;
 		align-content: space-between;
-		padding: 15px;
+		padding: 14px;
 		border: 1px solid color-mix(in srgb, var(--settings-accent-border) 42%, var(--lorivo-color-border-soft));
-		border-radius: 12px;
+		border-radius: 10px;
 		background:
-			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 2%)),
+			linear-gradient(180deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%)),
 			color-mix(in srgb, var(--lorivo-color-surface-elevated) 96%, #111827 4%);
 		color: var(--lorivo-color-text);
-		box-shadow:
-			inset 0 1px 0 rgb(255 255 255 / 7%),
-			0 14px 32px rgb(0 0 0 / 14%);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
 	}
 
 	.settings-dashboard-card span {
@@ -3390,7 +3388,7 @@
 	}
 
 	.settings-dashboard-card--quiet {
-		min-height: 132px;
+		min-height: 118px;
 	}
 
 	.dashboard-card-actions {
@@ -3417,15 +3415,15 @@
 
 	.settings-subsection {
 		display: grid;
-		gap: 12px;
-		padding: 14px;
+		gap: 14px;
+		padding: 16px;
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 97%, #101827 3%);
 	}
 
 	.settings-subsection--quiet {
-		background: color-mix(in srgb, var(--settings-accent-soft) 42%, transparent);
+		background: color-mix(in srgb, var(--settings-accent-soft) 28%, transparent);
 	}
 
 	.settings-subsection--empty {
@@ -3466,7 +3464,7 @@
 	.stat-grid {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 11px;
+		gap: 10px;
 	}
 
 	.stat-grid--compact {
@@ -3488,16 +3486,20 @@
 
 	.library-list {
 		display: grid;
-		gap: 12px;
+		gap: 0;
 	}
 
 	.library-card {
 		display: grid;
-		gap: 14px;
-		padding: 14px;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		gap: 12px;
+		padding: 14px 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
+	}
+
+	.library-list > :first-child {
+		padding-top: 0;
+		border-top: 0;
 	}
 
 	.library-card__body {
@@ -3583,8 +3585,8 @@
 		gap: 8px;
 		padding: 12px 14px;
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--settings-accent-soft) 52%, transparent);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--settings-accent-soft) 34%, transparent);
 	}
 
 	.settings-auth-callout__detail {
@@ -3618,8 +3620,8 @@
 	.settings-advanced {
 		padding: 12px;
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		border-radius: 10px;
+		background: rgb(255 255 255 / 2%);
 	}
 
 	.settings-advanced summary {
@@ -3637,7 +3639,7 @@
 
 	.playback-policy-options {
 		display: grid;
-		gap: 10px;
+		gap: 0;
 	}
 
 	.metadata-source-groups {
@@ -3653,20 +3655,24 @@
 
 	.metadata-source-list {
 		display: grid;
-		gap: 10px;
+		gap: 0;
 	}
 
 	.metadata-source-card {
 		display: grid;
 		gap: 10px;
-		padding: 12px;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		padding: 12px 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
 	}
 
 	.metadata-source-card--disabled {
-		background: color-mix(in srgb, var(--settings-accent-soft) 30%, transparent);
+		background: linear-gradient(90deg, rgb(255 255 255 / 1%), transparent);
+	}
+
+	.metadata-source-list > :first-child {
+		padding-top: 0;
+		border-top: 0;
 	}
 
 	.metadata-source-card__main {
@@ -3761,10 +3767,14 @@
 		grid-template-columns: auto minmax(0, 1fr);
 		align-items: flex-start;
 		gap: 10px;
-		padding: 12px;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		padding: 12px 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
+	}
+
+	.playback-policy-options > :first-child {
+		padding-top: 0;
+		border-top: 0;
 	}
 
 	.playback-policy-option input {
@@ -3792,7 +3802,7 @@
 	.review-records,
 	.pairing-request-list {
 		display: grid;
-		gap: 10px;
+		gap: 0;
 	}
 
 	.review-card,
@@ -3801,10 +3811,17 @@
 	.pairing-request-card {
 		display: grid;
 		gap: 10px;
-		padding: 12px;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		padding: 12px 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
+	}
+
+	.metadata-review-list > :first-child,
+	.metadata-version-groups > :first-child,
+	.review-records > :first-child,
+	.pairing-request-list > :first-child {
+		padding-top: 0;
+		border-top: 0;
 	}
 
 	.review-card__head,
@@ -3883,8 +3900,8 @@
 		gap: 10px;
 		padding: 12px;
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--settings-accent-soft) 24%, transparent);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--settings-accent-soft) 18%, transparent);
 	}
 
 	.review-manual-form__fields {
@@ -3929,7 +3946,7 @@
 	.settings-field input {
 		min-height: 42px;
 		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
+		border-radius: 10px;
 		background: var(--lorivo-color-surface-elevated);
 		color: var(--lorivo-color-text);
 		font: inherit;
@@ -3944,20 +3961,25 @@
 
 	.storage-field-list {
 		display: grid;
-		gap: 12px;
+		gap: 0;
 	}
 
 	.storage-field-card {
 		display: grid;
 		gap: 12px;
-		padding: 14px;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 95%, #101827 5%);
+		padding: 14px 0;
+		border-top: 1px solid var(--lorivo-color-border-soft);
+		background: transparent;
 	}
 
 	.storage-field-card--readonly {
-		background: color-mix(in srgb, var(--settings-accent-soft) 36%, transparent);
+		background: linear-gradient(90deg, rgb(255 255 255 / 1%), transparent);
+	}
+
+	.storage-field-list > :first-child,
+	.settings-subsection--quiet > .storage-field-card:first-of-type {
+		padding-top: 0;
+		border-top: 0;
 	}
 
 	.storage-field-card__head {

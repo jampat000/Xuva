@@ -23,7 +23,6 @@
 </script>
 
 <section class={compact ? 'empty-state empty-state--compact' : 'empty-state'}>
-	<div class="empty-state__glow" aria-hidden="true"></div>
 	<div class="empty-state__content">
 		<div class="empty-state__visual" aria-hidden="true">
 			{#if visual}
@@ -57,30 +56,15 @@
 
 <style>
 	.empty-state {
-		position: relative;
-		overflow: hidden;
 		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 1rem;
+		border-radius: 0.85rem;
 		background:
-			linear-gradient(135deg, rgb(255 255 255 / 7%), rgb(255 255 255 / 2%)),
-			rgb(17 24 39 / 72%);
-		box-shadow: 0 24px 60px rgb(0 0 0 / 24%);
-		backdrop-filter: blur(16px);
-		padding: 1.5rem;
-	}
-
-	.empty-state__glow {
-		position: absolute;
-		inset: auto -12% -42% auto;
-		width: min(22rem, 70vw);
-		aspect-ratio: 1;
-		border-radius: 999px;
-		background: radial-gradient(circle, rgb(124 92 255 / 22%), transparent 68%);
-		pointer-events: none;
+			linear-gradient(180deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%)),
+			rgb(16 24 39 / 84%);
+		padding: 1.25rem;
 	}
 
 	.empty-state__content {
-		position: relative;
 		display: flex;
 		align-items: flex-start;
 		gap: 1rem;
@@ -89,14 +73,13 @@
 	.empty-state__visual {
 		display: grid;
 		flex: 0 0 auto;
-		width: 3.25rem;
-		height: 3.25rem;
+		width: 2.75rem;
+		height: 2.75rem;
 		place-items: center;
 		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 1rem;
-		background: rgb(11 17 32 / 72%);
+		border-radius: 0.8rem;
+		background: rgb(8 13 25 / 88%);
 		color: rgb(255 255 255 / 82%);
-		box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
 		font-size: 1rem;
 		font-weight: 800;
 	}
@@ -108,7 +91,7 @@
 
 	.empty-state__copy {
 		min-width: 0;
-		max-width: 44rem;
+		max-width: 48rem;
 	}
 
 	.empty-state__eyebrow {
@@ -137,21 +120,20 @@
 	}
 
 	.empty-state__body {
-		position: relative;
 		margin-top: 1.25rem;
+		padding-top: 1rem;
+		border-top: 1px solid rgb(255 255 255 / 8%);
 	}
 
 	.empty-state__actions {
-		position: relative;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.75rem;
-		margin-top: 1.4rem;
+		margin-top: 1.1rem;
 	}
 
 	.empty-state--compact {
-		padding: 1rem;
-		box-shadow: 0 14px 36px rgb(0 0 0 / 16%);
+		padding: 0.95rem 1rem;
 	}
 
 	.empty-state--compact .empty-state__content {
@@ -183,7 +165,7 @@
 
 	@media (max-width: 520px) {
 		.empty-state {
-			padding: 1.1rem;
+			padding: 1rem;
 		}
 
 		.empty-state__content {
