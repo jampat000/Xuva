@@ -1,11 +1,11 @@
 {
-  "buildID": "20260513042146-25faf0ba39e9b3c6",
-  "publishedAt": "2026-05-13T04:21:46.340Z",
+  "buildID": "20260513044522-d70ccc9cb3a5e0ec",
+  "publishedAt": "2026-05-13T04:45:22.399Z",
   "basePath": "/",
   "sourceApp": "apps/web/svelte",
   "staticOutput": "server/internal/webapp/static-next",
-  "gitCommit": "d56e5eff",
-  "indexHash": "25faf0ba39e9b3c6",
+  "gitCommit": "46895900",
+  "indexHash": "d70ccc9cb3a5e0ec",
   "routePatterns": [
     "/",
     "/collections",

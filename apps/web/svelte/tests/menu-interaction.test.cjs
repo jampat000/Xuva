@@ -37,6 +37,15 @@ async function waitForCondition(check, message, timeout = 5000) {
 	throw new Error(message);
 }
 
+async function assertSettingsNotLoading(page) {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < 10000) {
+		if ((await page.getByRole('heading', { name: 'Loading Settings', exact: true }).count()) === 0) return;
+		await new Promise((resolve) => setTimeout(resolve, 40));
+	}
+	throw new Error('settings page stayed on loading panel');
+}
+
 async function launchDevServer() {
 	const port = await getFreePort();
 	const { createServer } = await import('vite');
@@ -335,6 +344,7 @@ async function installApiMocks(page, options = {}) {
 					}
 				],
 		approvedDevices: Array.isArray(options.approvedDevices) ? options.approvedDevices : [],
+		failApi: { ...(options.failApi || {}) },
 		playbackUpdates: [],
 		scanningUpdates: [],
 		movieScanCount: 0,
@@ -350,6 +360,14 @@ async function installApiMocks(page, options = {}) {
 		const url = new URL(route.request().url());
 		if (!url.pathname.startsWith('/api/')) return route.continue();
 		if (url.pathname === '/api/events') return route.fulfill({ status: 204, body: '' });
+		const failKey = `${route.request().method()} ${url.pathname}`;
+		if (Object.hasOwn(state.failApi, failKey)) {
+			return route.fulfill({
+				status: Number(state.failApi[failKey]) || 500,
+				contentType: 'application/json',
+				body: JSON.stringify({ error: `forced failure for ${failKey}` })
+			});
+		}
 		if (url.pathname === '/api/libraries/movies/scan' && route.request().method() === 'POST') {
 			state.movieScanCount += 1;
 			return route.fulfill({
@@ -1021,6 +1039,7 @@ async function verifySettingsMenu(page, baseURL, viewport, state) {
 	}
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
+	await assertSettingsNotLoading(page);
 	await assertNoHorizontalOverflow(page);
 	assert.equal(await page.getByTestId('settings-dashboard').count(), 1);
 	assert.equal(await page.getByTestId('settings-section-content').count(), 0);
@@ -1103,6 +1122,7 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 			hash,
 			{ timeout: 5000 }
 		);
+		await assertSettingsNotLoading(page);
 		assert.equal(await selectedSection.count(), 1);
 		assert.equal(await selectedSection.getAttribute('data-section'), hash);
 		assert.equal(await page.locator(`section#${hash}`).count(), 1);
@@ -1781,6 +1801,107 @@ test('about shows a plain local discovery unavailable state when discovery is no
 		assert.match(await selectedSection.innerText(), /This server is listening only on this device right now\./);
 		assert.doesNotMatch(await selectedSection.innerText(), /DLNA|SSDP|UPnP/i);
 		await assertNoHorizontalOverflow(page);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('/settings does not stay loading when optional library details fail', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, {
+			devAuthBypass: true,
+			failApi: {
+				'GET /api/libraries': 503
+			}
+		});
+		await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await assertSettingsNotLoading(page);
+		assert.match(await page.locator('body').innerText(), /Some settings details are unavailable|Current library details are unavailable right now\./);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('/settings#access does not stay loading when approved devices fail', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, {
+			devAuthBypass: true,
+			failApi: {
+				'GET /api/devices': 503
+			}
+		});
+		await page.goto(`${baseURL}/settings#access`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await assertSettingsNotLoading(page);
+		const selectedSection = page.getByTestId('settings-section-content');
+		assert.match(await selectedSection.innerText(), /Device Pairing/);
+		assert.match(await selectedSection.innerText(), /Approved Devices/);
+		assert.match(await selectedSection.innerText(), /The server failed while handling this action\. Retry once and inspect Activity if needed\./);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('/settings#about does not stay loading when discovery status fails', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, {
+			devAuthBypass: true,
+			failApi: {
+				'GET /api/discovery/status': 503
+			}
+		});
+		await page.goto(`${baseURL}/settings#about`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await assertSettingsNotLoading(page);
+		const selectedSection = page.getByTestId('settings-section-content');
+		assert.match(await selectedSection.innerText(), /Local discovery status is unavailable right now\./);
+		assert.match(await selectedSection.innerText(), /The server failed while handling this action\. Retry once and inspect Activity if needed\./);
+		await page.close();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test('/settings#metadata does not stay loading when review endpoints fail', async () => {
+	const { server, baseURL } = await launchDevServer();
+	const browser = await chromium.launch();
+
+	try {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		await installApiMocks(page, {
+			devAuthBypass: true,
+			failApi: {
+				'GET /api/review': 503,
+				'GET /api/versions': 503
+			}
+		});
+		await page.goto(`${baseURL}/settings#metadata`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await assertSettingsNotLoading(page);
+		const selectedSection = page.getByTestId('settings-section-content');
+		assert.match(await selectedSection.innerText(), /Metadata Sources/);
+		assert.match(await selectedSection.innerText(), /Metadata Review/);
+		assert.match(await selectedSection.innerText(), /The server failed while handling this action\. Retry once and inspect Activity if needed\./);
 		await page.close();
 	} finally {
 		await browser.close();
