@@ -215,6 +215,6 @@ What remains from Vyrden is not a blocking parity gap for normal owner settings.
 - future platform capability,
 - or product direction Lorivo has already rejected.
 
-That means Vyrden is **safe to archive now**, but **not yet the right candidate for permanent deletion** until the remaining advanced/future items are explicitly tracked or closed out.
+That means Vyrden is **already archived** and **not yet the right candidate for permanent deletion** until the remaining advanced/future items are explicitly tracked or closed out.
 
 Current status is now: **archived and retained as historical reference; not safe to delete yet.**

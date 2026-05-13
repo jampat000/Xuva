@@ -120,7 +120,7 @@
 
 	function chipClass(active: boolean): string {
 		const base =
-			'inline-flex min-h-9 items-center rounded-full border px-3.5 py-1.5 text-sm font-semibold transition duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
+			'inline-flex min-h-9 items-center rounded-md border px-3.5 py-1.5 text-sm font-semibold transition duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
 		if (active) return `${base} border-[#7C5CFF]/70 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/25`;
 		return `${base} border-white/10 bg-white/[0.04] text-white/65 hover:border-white/25 hover:bg-white/[0.08] hover:text-white`;
 	}
@@ -262,14 +262,14 @@
 
 	.media-toolbar__search {
 		border: 1px solid rgb(255 255 255 / 8%);
-		border-radius: 0.7rem;
+		border-radius: 0.5rem;
 		background: rgb(17 24 39 / 76%);
 		box-shadow: none;
 	}
 
 	.media-toolbar__count {
 		border: 1px solid rgb(255 255 255 / 8%);
-		border-radius: 0.7rem;
+		border-radius: 0.5rem;
 		background: rgb(17 24 39 / 52%);
 	}
 </style>

@@ -26,7 +26,7 @@
 		{ id: 'home', label: 'Home', href: '/' },
 		{ id: 'movies', label: 'Movies', href: '/movies' },
 		{ id: 'tv', label: 'TV', href: '/tv' },
-		{ id: 'setup', label: 'Libraries', href: '/settings#library' }
+		{ id: 'setup', label: 'Libraries', href: '/settings#libraries' }
 	];
 
 	const drawerBottomItems: NavItem[] = [{ id: 'settings', label: 'Settings', href: '/settings' }];

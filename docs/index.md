@@ -7,6 +7,8 @@ This index is the repository map for humans and agents. Keep it short, current, 
 - [Product principles](product-principles.md)
 - [MVP scope](mvp-scope.md)
 - [Roadmap](roadmap.md)
+- [Roadmap phases](roadmap-phases.md)
+- [Desktop owner mode](desktop-owner-mode.md)
 - [Competitive notes](competitive-notes.md)
 - [Monetization](monetization.md)
 
@@ -23,6 +25,7 @@ This index is the repository map for humans and agents. Keep it short, current, 
 - [Architecture](architecture.md)
 - [Route policy](route-policy.md)
 - [Operations runbook](operations-runbook.md)
+- [Development mode](development-mode.md)
 - [Local discovery](local-discovery.md)
 - [Runtime recovery](runtime-recovery.md)
 - [Security baseline](security-baseline.md)

@@ -205,6 +205,12 @@
 		align-content: start;
 	}
 
+	.app-drawer__main {
+		min-height: 0;
+		overflow-y: auto;
+		padding-right: 2px;
+	}
+
 	.app-drawer__bottom {
 		padding-top: 14px;
 		border-top: 1px solid var(--lorivo-color-border-soft);

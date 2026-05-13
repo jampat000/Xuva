@@ -188,12 +188,18 @@ test('settings navigation stays shared across desktop sidebar and settings drawe
 	assert.doesNotMatch(shellSource, /class="app-drawer__link"\s+href="\/settings#/);
 
 	assert.match(navSource, /label="Dashboard"\s+href="\/settings#dashboard"/);
-	assert.match(navSource, /label="Library"\s+href="\/settings#library"/);
+	assert.match(navSource, /label="General"\s+href="\/settings#general"/);
+	assert.match(navSource, /label="Libraries"\s+href="\/settings#libraries"/);
 	assert.match(navSource, /label="Scanning"\s+href="\/settings#scanning"/);
 	assert.match(navSource, /label="Metadata"\s+href="\/settings#metadata"/);
 	assert.match(navSource, /label="Playback"\s+href="\/settings#playback"/);
+	assert.match(navSource, /label="Transcoding"\s+href="\/settings#transcoding"/);
 	assert.match(navSource, /label="Storage"\s+href="\/settings#storage"/);
-	assert.match(navSource, /label="Access"\s+href="\/settings#access"/);
+	assert.match(navSource, /label="Network"\s+href="\/settings#network"/);
+	assert.match(navSource, /label="Pairing"\s+href="\/settings#pairing"/);
+	assert.match(navSource, /label="Approved Devices"\s+href="\/settings#approved-devices"/);
+	assert.match(navSource, /label="Discovery"\s+href="\/settings#discovery"/);
+	assert.match(navSource, /label="Owner Access"\s+href="\/settings#owner-access"/);
 	assert.match(navSource, /label="About"\s+href="\/settings#about"/);
 	assert.match(navSource, /label="Back to Media"\s+href="\/"/);
 	assert.doesNotMatch(navSource, /label="Server"\s+href="\/settings#server"/);

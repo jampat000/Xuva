@@ -16,7 +16,21 @@
 		showStorage = true,
 		children
 	} = $props<{
-		active?: 'dashboard' | 'library' | 'scanning' | 'metadata' | 'playback' | 'storage' | 'access' | 'about';
+		active?:
+			| 'dashboard'
+			| 'general'
+			| 'libraries'
+			| 'scanning'
+			| 'metadata'
+			| 'playback'
+			| 'transcoding'
+			| 'storage'
+			| 'network'
+			| 'pairing'
+			| 'approved-devices'
+			| 'discovery'
+			| 'owner-access'
+			| 'about';
 		userDisplayName?: string;
 		userRole?: string;
 		userInitials?: string;
@@ -204,6 +218,7 @@
 
 	:global([data-shell='server'] .v-sidebar) {
 		padding: 18px 14px 18px;
+		overflow-y: auto;
 	}
 
 	:global([data-shell='server'] .v-sidebar__brand) {

@@ -18,7 +18,7 @@
 	const activeRoute = $derived.by(() => {
 		if (currentPath.startsWith('/movies')) return 'movies';
 		if (currentPath.startsWith('/tv')) return 'tv';
-		if (currentPath.startsWith('/setup') || currentPath === '/settings#library') return 'libraries';
+		if (currentPath.startsWith('/setup') || currentPath === '/settings#libraries') return 'libraries';
 		return 'home';
 	});
 
@@ -64,7 +64,7 @@
 				<Tv size={19} />
 				TV
 			</a>
-			<a class="app-drawer__link" href="/settings#library" aria-current={linkCurrent('libraries')}>
+			<a class="app-drawer__link" href="/settings#libraries" aria-current={linkCurrent('libraries')}>
 				<Folder size={19} />
 				Libraries
 			</a>
