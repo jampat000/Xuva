@@ -221,7 +221,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Streaming: streaming.NewService(),
 		Transcode: transcodeService,
 		Subtitles: subtitles.NewService(),
-		Devices:   devices.NewService(),
+		Devices:   devices.NewPersistentService(databaseService),
 		Sessions:  sessionService,
 		Downloads: downloadService,
 		Pairing:   pairing.NewService(),

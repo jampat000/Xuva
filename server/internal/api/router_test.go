@@ -548,6 +548,88 @@ func TestPairingRequestCreateStatusAndAdminApprove(t *testing.T) {
 	if polled["status"] != "approved" || polled["deviceId"] == "" || polled["code"] != nil {
 		t.Fatalf("expected approved polling result without code, got %#v", polled)
 	}
+
+	client = newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	devices := client.requestJSON(t, router, http.MethodGet, "/api/devices", nil)
+	if devices.status != http.StatusOK {
+		t.Fatalf("expected approved devices list 200, got %d: %s", devices.status, devices.body)
+	}
+	list, ok := devices.payload["devices"].([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("expected one approved device, got %#v", devices.payload)
+	}
+	item, _ := list[0].(map[string]any)
+	if item["deviceName"] != "Living Room Apple TV" || item["clientProfile"] != "apple-tv" {
+		t.Fatalf("expected safe approved device payload, got %#v", item)
+	}
+	if _, exists := item["deviceId"]; exists {
+		t.Fatalf("expected approved device payload to omit raw device id, got %#v", item)
+	}
+	if strings.Contains(devices.body, "token") || strings.Contains(devices.body, "secret") {
+		t.Fatalf("expected approved device payload to avoid auth material, got %s", devices.body)
+	}
+}
+
+func TestPairingDenyDoesNotCreateApprovedDevice(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+
+	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
+		"deviceName":    "Bedroom Tablet",
+		"clientProfile": "ios",
+	})
+	pairingID, _ := create["id"].(string)
+	if pairingID == "" {
+		t.Fatalf("expected pairing id, got %#v", create)
+	}
+
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	denied := client.requestJSON(t, router, http.MethodPost, "/api/pairing/requests/"+pairingID+"/deny", map[string]any{})
+	if denied.status != http.StatusOK || denied.payload["status"] != "denied" {
+		t.Fatalf("expected denied pairing request, got %#v", denied)
+	}
+	devices := client.requestJSON(t, router, http.MethodGet, "/api/devices", nil)
+	list, _ := devices.payload["devices"].([]any)
+	if len(list) != 0 {
+		t.Fatalf("expected denied pairing to avoid approved device record, got %#v", devices.payload)
+	}
+}
+
+func TestApprovedDeviceCanBeRevoked(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+
+	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
+		"deviceName":    "Hallway Apple TV",
+		"clientProfile": "apple-tv",
+	})
+	pairingID, _ := create["id"].(string)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+	approved := client.requestJSON(t, router, http.MethodPost, "/api/pairing/requests/"+pairingID+"/approve", map[string]any{})
+	if approved.status != http.StatusOK {
+		t.Fatalf("approve pairing: %#v", approved)
+	}
+	devices := client.requestJSON(t, router, http.MethodGet, "/api/devices", nil)
+	list, _ := devices.payload["devices"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("expected one approved device, got %#v", devices.payload)
+	}
+	item, _ := list[0].(map[string]any)
+	id, _ := item["id"].(string)
+	if id == "" {
+		t.Fatalf("expected approved device id, got %#v", item)
+	}
+
+	revoked := client.requestJSON(t, router, http.MethodPost, "/api/devices/"+id+"/revoke", map[string]any{})
+	if revoked.status != http.StatusOK || revoked.payload["status"] != "revoked" {
+		t.Fatalf("expected device revoke success, got %#v", revoked)
+	}
+	after := client.requestJSON(t, router, http.MethodGet, "/api/devices", nil)
+	afterList, _ := after.payload["devices"].([]any)
+	if len(afterList) != 0 {
+		t.Fatalf("expected revoked device to disappear from approved list, got %#v", after.payload)
+	}
 }
 
 func TestPairingAdminRoutesRequireAdmin(t *testing.T) {
@@ -1598,6 +1680,48 @@ func TestDevAuthBypassAllowsProtectedSettingsUpdateOnLoopback(t *testing.T) {
 	}
 }
 
+func TestDevAuthBypassAllowsPairingAndApprovedDevicesRoutesOnLoopback(t *testing.T) {
+	deps := testDepsWithAuthNoBootstrap(t, time.Now())
+	deps.Config.DevAuthBypass = true
+	router := NewRouter(deps)
+
+	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
+		"deviceName":    "Kitchen Apple TV",
+		"clientProfile": "apple-tv",
+	})
+	pairingID, _ := create["id"].(string)
+	if pairingID == "" {
+		t.Fatalf("expected pairing request id, got %#v", create)
+	}
+
+	listRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/pairing/requests", nil)
+	listResponse := httptest.NewRecorder()
+	router.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 for dev bypass pairing list, got %d: %s", listResponse.Code, listResponse.Body.String())
+	}
+
+	approveRequest := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8097/api/pairing/requests/"+pairingID+"/approve", bytes.NewReader([]byte(`{}`)))
+	approveRequest.Header.Set("Content-Type", "application/json")
+	approveResponse := httptest.NewRecorder()
+	router.ServeHTTP(approveResponse, approveRequest)
+	if approveResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 for dev bypass pairing approve, got %d: %s", approveResponse.Code, approveResponse.Body.String())
+	}
+
+	devicesRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/devices", nil)
+	devicesResponse := httptest.NewRecorder()
+	router.ServeHTTP(devicesResponse, devicesRequest)
+	if devicesResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 for dev bypass approved devices, got %d: %s", devicesResponse.Code, devicesResponse.Body.String())
+	}
+	body := decodeBody(t, devicesResponse.Body.Bytes())
+	items, _ := body["devices"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected one approved device through dev bypass route, got %#v", body)
+	}
+}
+
 func TestDevAuthBypassIgnoredOnNonLoopbackBind(t *testing.T) {
 	deps := testDepsWithAuthNoBootstrap(t, time.Now())
 	deps.Config.DevAuthBypass = true
@@ -2571,7 +2695,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Streaming: streaming.NewServiceWithKey("test", []byte("01234567890123456789012345678901")),
 		Transcode: transcode.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "transcode")),
 		Downloads: downloads.NewService(eventBus, registry.Transcode, "ffmpeg", filepath.Join(t.TempDir(), "downloads")),
-		Devices:   devices.NewService(),
+		Devices:   devices.NewPersistentService(db),
 		Sessions:  sessions.NewService(eventBus),
 		Subtitles: subtitles.NewService(),
 		Pairing:   pairing.NewService(),
@@ -2600,6 +2724,7 @@ func testDepsWithAuth(t *testing.T, startedAt time.Time) Deps {
 	deps.PlayState = playstate.NewService(db, deps.Events)
 	deps.Migration = migration.NewService(db, deps.Events)
 	deps.Auth = auth.NewService(db, false)
+	deps.Devices = devices.NewPersistentService(db)
 	if err := deps.Auth.Bootstrap(context.Background(), auth.BootstrapOptions{
 		Username: "admin",
 		Password: "test-password-123!",
@@ -2630,6 +2755,7 @@ func testDepsWithAuthNoBootstrap(t *testing.T, startedAt time.Time) Deps {
 	deps.PlayState = playstate.NewService(db, deps.Events)
 	deps.Migration = migration.NewService(db, deps.Events)
 	deps.Auth = auth.NewService(db, false)
+	deps.Devices = devices.NewPersistentService(db)
 	return deps
 }
 

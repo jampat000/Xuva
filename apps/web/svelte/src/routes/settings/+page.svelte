@@ -27,6 +27,7 @@
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
 	import { browseFolder, deleteLibrary, startLibraryScan, type FolderBrowseResponse } from '$lib/api/setup';
 	import {
+		getApprovedDevices,
 		approvePairingRequest,
 		denyPairingRequest,
 		getCatalogHealth,
@@ -41,8 +42,10 @@
 		getSettings,
 		getSystemStatus,
 		getWork,
+		revokeApprovedDevice,
 		updateSettings,
 		updateMetadataSourcePreferences,
+		type ApprovedDeviceItem,
 		type CatalogHealthResponse,
 		type CatalogSummaryResponse,
 		type DiscoveryStatusResponse,
@@ -156,6 +159,7 @@
 	let isBrowsingStorage = $state(false);
 	let isLoadingMetadataReview = $state(false);
 	let isLoadingPairingRequests = $state(false);
+	let isLoadingApprovedDevices = $state(false);
 	let loadError = $state('');
 	let actionMessage = $state('');
 	let scanningSettingsError = $state('');
@@ -164,7 +168,9 @@
 	let metadataSourceError = $state('');
 	let metadataReviewError = $state('');
 	let pairingRequestsError = $state('');
+	let approvedDevicesError = $state('');
 	let pairingActionMessage = $state('');
+	let approvedDevicesActionMessage = $state('');
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
@@ -175,6 +181,7 @@
 	let activeLibraryActionKind = $state<LibraryActionKind>('');
 	let activePairingRequestID = $state('');
 	let activePairingActionKind = $state<PairingActionKind>('');
+	let activeApprovedDeviceID = $state('');
 
 	let user = $state<AuthSessionUser | null>(null);
 	let clientBootstrap = $state<ClientBootstrapResponse>({});
@@ -190,6 +197,7 @@
 	let downloads = $state<DownloadJobItem[]>([]);
 	let sessions = $state<SessionItem[]>([]);
 	let pairingRequests = $state<PairingRequestItem[]>([]);
+	let approvedDevices = $state<ApprovedDeviceItem[]>([]);
 	let reviewItems = $state<ReviewItem[]>([]);
 	let versionGroups = $state<VersionGroup[]>([]);
 	let metadataRecordsByItem = $state<Record<string, MetadataRecordsResponse>>({});
@@ -623,8 +631,10 @@
 		}
 		metadataReviewError = '';
 		pairingRequestsError = '';
+		approvedDevicesError = '';
 		isLoadingMetadataReview = true;
 		isLoadingPairingRequests = true;
+		isLoadingApprovedDevices = true;
 		sessionsUnavailable = false;
 		try {
 			const [
@@ -720,8 +730,18 @@
 					return { requests: [] };
 				});
 				pairingRequests = pairingPayload.requests || [];
+				const approvedDevicesPayload = await getApprovedDevices(apiClient).catch((error: unknown) => {
+					if (isApiStatus(error, 401) || isApiStatus(error, 403)) {
+						approvedDevicesError = '';
+						return { devices: [] };
+					}
+					approvedDevicesError = formatLoadError(error);
+					return { devices: [] };
+				});
+				approvedDevices = approvedDevicesPayload.devices || [];
 			} else {
 				pairingRequests = [];
+				approvedDevices = [];
 			}
 			lastUpdatedLabel = new Date().toLocaleTimeString();
 		} catch (error) {
@@ -729,6 +749,7 @@
 		} finally {
 			isLoadingMetadataReview = false;
 			isLoadingPairingRequests = false;
+			isLoadingApprovedDevices = false;
 			isLoading = false;
 		}
 	}
@@ -1253,6 +1274,23 @@
 		}
 	}
 
+	async function revokeApprovedDeviceEntry(device: ApprovedDeviceItem): Promise<void> {
+		const id = asText(device.id);
+		if (!id || !canManageSettings) return;
+		activeApprovedDeviceID = id;
+		approvedDevicesActionMessage = '';
+		approvedDevicesError = '';
+		try {
+			await revokeApprovedDevice(id, apiClient);
+			approvedDevicesActionMessage = `${approvedDeviceName(device)} removed.`;
+			await loadSettingsSurface(true);
+		} catch (error) {
+			approvedDevicesError = formatLoadError(error);
+		} finally {
+			activeApprovedDeviceID = '';
+		}
+	}
+
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
@@ -1376,6 +1414,16 @@
 
 	function canUpdatePairingRequest(item: PairingRequestItem): boolean {
 		return canManageSettings && asText(item.status).toLowerCase() === 'pending';
+	}
+
+	function approvedDeviceName(item: ApprovedDeviceItem): string {
+		return asText(item.displayName) || asText(item.deviceName) || pairingProfileLabel(item.clientProfile);
+	}
+
+	function approvedDeviceSummary(item: ApprovedDeviceItem): string {
+		const approvedAt = asText(item.approvedAt);
+		if (approvedAt) return `Approved ${formatDateTime(approvedAt)}.`;
+		return 'Approved for this server.';
 	}
 
 	function asCount(value: unknown): string {
@@ -2867,7 +2915,7 @@
 
 			{:else if activeSection === 'access'}
 			<section id="access" class="settings-section" data-testid="settings-section-content" data-section="access">
-				<SettingsPanel title="Access" description="Current account, session, and device pairing requests." status={user ? 'healthy' : 'idle'}>
+				<SettingsPanel title="Access" description="Current account, session, pairing requests, and approved devices." status={user ? 'healthy' : 'idle'}>
 					{#snippet actions()}
 						{#if user && !authDisabled && !devOwnerActive}
 							<LorivoButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
@@ -2885,7 +2933,7 @@
 						<p class="settings-note">{devOwnerActive ? devAccessMessage : 'Access is limited to the current owner session in this build.'}</p>
 						<ul class="settings-placeholder-list">
 							<li>User management is not available yet.</li>
-							<li>Persistent connected-device registry is not implemented yet.</li>
+							<li>Live device presence is not tracked yet.</li>
 						</ul>
 					</div>
 					<div class="settings-subsection">
@@ -2972,6 +3020,77 @@
 						{:else}
 							<div class="settings-auth-callout">
 								<p class="settings-note">Sign in as the owner to update device pairing.</p>
+								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+								<div class="status-actions">
+									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+								</div>
+							</div>
+						{/if}
+					</div>
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Approved Devices</h3>
+								<p>Approved devices can connect to this Lorivo server.</p>
+							</div>
+						</div>
+						<p class="settings-note">Pairing requests appear here when a client asks to connect. Recent activity is not tracked yet.</p>
+						{#if canManageSettings || authDisabled}
+							{#if isLoadingApprovedDevices}
+								<p class="settings-note">Loading approved devices…</p>
+							{:else if approvedDevices.length > 0}
+								<div class="pairing-request-list approved-device-list" data-testid="approved-device-list">
+									{#each approvedDevices as device (device.id)}
+										<article class="pairing-request-card approved-device-card">
+											<div class="pairing-request-card__head">
+												<div>
+													<h4>{approvedDeviceName(device)}</h4>
+													<p>{pairingProfileLabel(device.clientProfile)}</p>
+												</div>
+												<span class="storage-status-pill">Approved</span>
+											</div>
+											<p class="review-card__reason">{approvedDeviceSummary(device)}</p>
+											<dl class="pairing-request-facts">
+												{#if asText(device.approvedAt)}
+													<div>
+														<dt>Approved</dt>
+														<dd>{formatDateTime(device.approvedAt)}</dd>
+													</div>
+												{/if}
+												{#if asText(device.updatedAt)}
+													<div>
+														<dt>Updated</dt>
+														<dd>{formatDateTime(device.updatedAt)}</dd>
+													</div>
+												{/if}
+											</dl>
+											{#if canManageSettings}
+												<div class="status-actions">
+													<LorivoButton
+														variant="danger"
+														size="sm"
+														disabled={activeApprovedDeviceID === asText(device.id)}
+														onclick={() => revokeApprovedDeviceEntry(device)}
+													>
+														{activeApprovedDeviceID === asText(device.id) ? 'Removing...' : 'Remove'}
+													</LorivoButton>
+												</div>
+											{/if}
+										</article>
+									{/each}
+								</div>
+							{:else}
+								<p class="settings-note">No approved devices yet.</p>
+							{/if}
+							{#if approvedDevicesActionMessage}
+								<p class="settings-feedback">{approvedDevicesActionMessage}</p>
+							{/if}
+							{#if approvedDevicesError}
+								<p class="settings-error">{approvedDevicesError}</p>
+							{/if}
+						{:else}
+							<div class="settings-auth-callout">
+								<p class="settings-note">Sign in as the owner to manage approved devices.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
 									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>

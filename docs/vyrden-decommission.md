@@ -43,6 +43,8 @@ Reason:
 - [x] Local network discovery using Lorivo Server Name
   - `5ab69a0` Add Lorivo local network discovery
   - Implemented as mDNS / Bonjour over `_lorivo._tcp.local.`
+- [x] Persistent approved-device registry
+  - current approved-device registry pass
 
 ## Backlogged / deliberately deferred
 
@@ -56,7 +58,6 @@ Reason:
 
 ### Backlog / future
 
-- [ ] Persistent device registry
 - [ ] SSDP / UPnP / DLNA discovery, if Lorivo later needs more than mDNS / Bonjour
 - [ ] Source compatibility tools redesigned for Lorivo
 - [ ] Advanced hardware owner tools
@@ -86,7 +87,6 @@ Reason:
 
 ### Keep as tracked future platform work
 
-- Persistent device registry
 - SSDP / UPnP / DLNA discovery expansion, if product needs it
 
 ### Do not restore
@@ -100,7 +100,8 @@ Reason:
 
 - [x] all core owner settings restored
 - [x] advanced/operator items either restored, rejected, or tracked as issues
-- [x] LAN discovery implemented and device registry tracked as future work
+- [x] LAN discovery implemented
+- [x] persistent approved-device registry implemented
 - [ ] no required code/assets/docs remain only in Vyrden
 - [x] final Lorivo validation passed
 - [ ] optional final archive/tag created
@@ -116,26 +117,7 @@ See also: [Advanced owner tools audit](advanced-owner-tools-audit.md)
 
 ## Optional issue drafts
 
-### 1. Add persistent device registry
-
-**Title**  
-Add persistent device registry for approved clients
-
-**Problem**  
-Current pairing review is real, but pairing requests are runtime-only and there is no durable registry of approved devices.
-
-**Scope**
-- persist approved device records
-- define owner-visible device list behavior
-- define revoke / forget device flow only if backend is real
-- keep pairing separate from discovery
-
-**Acceptance**
-- approved devices survive restart
-- Lorivo can show a truthful owner-facing device list
-- no fake connected devices UI before persistence exists
-
-### 2. Extend local discovery beyond mDNS / Bonjour
+### 1. Extend local discovery beyond mDNS / Bonjour
 
 **Title**  
 Decide whether Lorivo needs SSDP / UPnP / DLNA discovery
@@ -153,7 +135,7 @@ Lorivo now advertises itself over mDNS / Bonjour, but does not implement SSDP, U
 - clear keep/defer/reject decision for SSDP / UPnP / DLNA
 - if kept, tracked as future platform work instead of implied support
 
-### 3. Design Advanced hardware owner tools
+### 2. Design Advanced hardware owner tools
 
 **Title**  
 Decide whether Lorivo needs advanced hardware owner tools
@@ -171,7 +153,7 @@ Old Vyrden exposed hardware acceleration status, GPU worker controls, and hardwa
 - documented product decision on hardware owner tooling
 - clear keep/defer/reject decision for GPU worker controls and hardware test flow
 
-### 4. Redesign Source Compatibility tools
+### 3. Redesign Source Compatibility tools
 
 **Title**  
 Redesign Source Compatibility tools for Lorivo
@@ -188,7 +170,7 @@ Old Vyrden Source Inspector was useful but too diagnostic and internal for Loriv
 - clear Lorivo-oriented compatibility UX proposal
 - no dependency on old Vyrden operator language
 
-### 5. Decide Remote Diagnostics future
+### 4. Decide Remote Diagnostics future
 
 **Title**  
 Decide whether Remote Diagnostics belongs in Lorivo
@@ -218,6 +200,7 @@ Lorivo has restored the core owner-settings surface that justified keeping old V
 - metadata review
 - access basics
 - pairing review
+- persistent approved-device registry
 - local network discovery via mDNS / Bonjour
 
 What remains from Vyrden is not a blocking parity gap for normal owner settings. It is either:

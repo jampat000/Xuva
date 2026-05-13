@@ -41,6 +41,7 @@ type Request struct {
 type CreateRequest struct {
 	DeviceName    string `json:"deviceName"`
 	ClientProfile string `json:"clientProfile"`
+	DeviceID      string `json:"deviceId"`
 }
 
 type Service struct {
@@ -75,6 +76,7 @@ func (s *Service) Create(request CreateRequest) (Request, error) {
 		Code:          code,
 		DeviceName:    deviceName,
 		ClientProfile: clientProfile,
+		DeviceID:      strings.TrimSpace(request.DeviceID),
 		Status:        StatusPending,
 		ExpiresAt:     now.Add(s.ttl),
 		CreatedAt:     now,
@@ -110,14 +112,18 @@ func (s *Service) Get(id string) (Request, bool) {
 }
 
 func (s *Service) Approve(id string, approvedBy string) (Request, error) {
-	return s.close(id, StatusApproved, approvedBy)
+	return s.close(id, StatusApproved, approvedBy, "")
+}
+
+func (s *Service) ApproveWithDeviceID(id string, approvedBy string, deviceID string) (Request, error) {
+	return s.close(id, StatusApproved, approvedBy, deviceID)
 }
 
 func (s *Service) Deny(id string, approvedBy string) (Request, error) {
-	return s.close(id, StatusDenied, approvedBy)
+	return s.close(id, StatusDenied, approvedBy, "")
 }
 
-func (s *Service) close(id string, status string, approvedBy string) (Request, error) {
+func (s *Service) close(id string, status string, approvedBy string, deviceID string) (Request, error) {
 	s.expireOld()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -135,7 +141,10 @@ func (s *Service) close(id string, status string, approvedBy string) (Request, e
 	item.ApprovedBy = strings.TrimSpace(approvedBy)
 	item.UpdatedAt = time.Now().UTC()
 	if status == StatusApproved {
-		item.DeviceID = "device_" + uuid.NewString()
+		item.DeviceID = strings.TrimSpace(firstNonEmpty(item.DeviceID, deviceID))
+		if item.DeviceID == "" {
+			item.DeviceID = "device_" + uuid.NewString()
+		}
 	}
 	s.byID[id] = item
 	return publicRequest(item), nil
@@ -171,4 +180,13 @@ func randomCode() (string, error) {
 		value = -value
 	}
 	return fmt.Sprintf("%06d", value%1000000), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
