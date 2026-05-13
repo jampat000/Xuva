@@ -6,6 +6,8 @@ This audit covers the remaining Vyrden-era advanced and future surfaces that are
 
 This is not an implementation plan. It is a product and engineering decision record for the remaining high-risk items.
 
+Vyrden is archived and should now be treated as historical reference only, not an active implementation source.
+
 ## Classification summary
 
 | Item | Classification | Target Lorivo location |
@@ -150,5 +152,5 @@ The remaining decommission blockers are now mostly classification and backlog ma
 
 That leaves Vyrden in the same overall state as the main checklist:
 
-- safe to archive
+- archived already
 - not yet the right candidate for permanent deletion

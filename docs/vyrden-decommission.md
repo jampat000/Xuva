@@ -2,9 +2,13 @@
 
 ## Status
 
-Recommended status: **Safe to archive but not delete**
+Recommended status: **Archived. Not safe to delete yet.**
 
 Reason:
+- Vyrden has already been archived on GitHub and is no longer an active development source.
+- Lorivo is now the active source of truth.
+- Vyrden remains useful as historical evidence for audit/decommission work until remaining advanced and client-readiness items are closed or explicitly rejected.
+- New implementation work should not depend on Vyrden except as historical reference.
 - Lorivo now covers the core owner settings that were still product-relevant from old Vyrden.
 - Local discovery is now implemented in Lorivo with mDNS / Bonjour using the configured Server Name.
 - The remaining Vyrden surfaces are either advanced-only owner tools, future platform work, or product directions Lorivo has already rejected.
@@ -58,6 +62,7 @@ Reason:
 
 ### Backlog / future
 
+- [ ] Durable paired-device credential flow for auth-enabled native playback/session routes
 - [ ] SSDP / UPnP / DLNA discovery, if Lorivo later needs more than mDNS / Bonjour
 - [ ] Source compatibility tools redesigned for Lorivo
 - [ ] Advanced hardware owner tools
@@ -105,13 +110,14 @@ Reason:
 - [ ] no required code/assets/docs remain only in Vyrden
 - [x] final Lorivo validation passed
 - [ ] optional final archive/tag created
-- [ ] Vyrden repo archived/deleted
+- [x] Vyrden repo archived
+- [ ] Vyrden repo deleted
 
 ## Recommended next step
 
-Archive Vyrden first. Do not delete it yet.
+Keep Vyrden archived and read-only. Do not delete it yet.
 
-That is the safer sequence because Lorivo has reached practical owner-settings parity, but the remaining advanced and future items should be closed out intentionally rather than by losing the old reference repo too early.
+That is the safer sequence because Lorivo has reached practical owner-settings parity, but the remaining advanced and future items should be closed out intentionally before removing the historical reference.
 
 See also: [Advanced owner tools audit](advanced-owner-tools-audit.md)
 
@@ -210,3 +216,5 @@ What remains from Vyrden is not a blocking parity gap for normal owner settings.
 - or product direction Lorivo has already rejected.
 
 That means Vyrden is **safe to archive now**, but **not yet the right candidate for permanent deletion** until the remaining advanced/future items are explicitly tracked or closed out.
+
+Current status is now: **archived and retained as historical reference; not safe to delete yet.**
