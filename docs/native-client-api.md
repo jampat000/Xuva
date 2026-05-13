@@ -4,7 +4,6 @@ This document defines the current server contract for native clients (tvOS, Andr
 
 Source-of-truth note:
 - Lorivo is the active implementation source.
-- Archived Vyrden references are historical evidence only.
 
 Scope:
 - local-server discovery
