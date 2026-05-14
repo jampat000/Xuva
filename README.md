@@ -79,6 +79,8 @@ The first technical milestone is a playback decision prototype:
 - [Architecture](docs/architecture.md)
 - [Development mode](docs/development-mode.md)
 - [Desktop owner mode](docs/desktop-owner-mode.md)
+- [Security policy](SECURITY.md)
+- [Repository hardening](docs/repository-hardening.md)
 - [Roadmap phases](docs/roadmap-phases.md)
 - [Playback Engine](docs/playback-engine.md)
 - [Media Scanner](docs/media-scanner.md)
