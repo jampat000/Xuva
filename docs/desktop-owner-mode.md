@@ -1,6 +1,6 @@
 # Desktop Owner Mode
 
-Desktop Owner Mode is the product operating mode for Lorivo Phase 1.
+Desktop Owner Mode is the product operating mode for Xuva Phase 1.
 
 ## Product boundary
 
@@ -19,7 +19,7 @@ Settings Mode:
 
 For UI and settings work:
 
-- run Lorivo in local loopback with development owner bypass
+- run Xuva in local loopback with development owner bypass
 - do not use mobile/tablet polish as acceptance criteria
 - keep mobile/tablet checks to smoke verification only:
   - app loads

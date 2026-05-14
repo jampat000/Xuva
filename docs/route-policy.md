@@ -1,4 +1,4 @@
-# Lorivo Route Policy
+# Xuva Route Policy
 
 This table documents the protected route policy introduced for local authorization.
 

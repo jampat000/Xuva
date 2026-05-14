@@ -29,7 +29,7 @@ func ClassifyFailure(stderr string, contextErr error) Failure {
 	case strings.Contains(text, "no space left") || strings.Contains(text, "disk full"):
 		return Failure{Class: "disk_full", ReasonCode: "transcode_disk_full", ReasonText: "The transcode folder ran out of disk space.", Remediation: "Free disk space or move the transcode temp folder to a larger drive.", Retryable: false}
 	case strings.Contains(text, "connection reset") || strings.Contains(text, "resource temporarily unavailable") || strings.Contains(text, "i/o error") || strings.Contains(text, "input/output error"):
-		return Failure{Class: "retryable_io", ReasonCode: "transient_storage_io", ReasonText: "The storage path reported a transient I/O failure.", Remediation: "Lorivo retried the job; check NAS/USB/network stability if it continues.", Retryable: true}
+		return Failure{Class: "retryable_io", ReasonCode: "transient_storage_io", ReasonText: "The storage path reported a transient I/O failure.", Remediation: "Xuva retried the job; check NAS/USB/network stability if it continues.", Retryable: true}
 	case strings.Contains(text, "unknown decoder") || strings.Contains(text, "decoder not found") || strings.Contains(text, "unsupported codec"):
 		return Failure{Class: "unsupported_codec", ReasonCode: "unsupported_codec", ReasonText: "FFmpeg cannot decode one of the selected streams.", Remediation: "Try a different file version or install an FFmpeg build with the required codec.", Retryable: false}
 	default:

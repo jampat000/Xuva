@@ -1,6 +1,6 @@
-# Lorivo Handover Journal
+# Xuva Handover Journal
 
-Operational handover for building Lorivo into a production-grade media server competitor.
+Operational handover for building Xuva into a production-grade media server competitor.
 
 Use this as the single source of truth for execution, delivery tracking, and acceptance.
 
@@ -111,7 +111,7 @@ Add these under each task’s **Completion Notes** subsection when done.
   - auth logs login success, invalid credentials, and lockout window activation.
 - Risks/rollback:
   - this work protects write operations and sensitive stream/file routes, but role-based `403` authorization is intentionally deferred to `P0.2`.
-  - rollback is to disable auth with `LORIVO_AUTH_DISABLED=true` or revert auth/session middleware and `auth_sessions` migration in a follow-up DB migration.
+  - rollback is to disable auth with `XUVA_AUTH_DISABLED=true` or revert auth/session middleware and `auth_sessions` migration in a follow-up DB migration.
 
 ---
 
@@ -222,7 +222,7 @@ Add these under each task’s **Completion Notes** subsection when done.
   - `audit.library` records library save/delete/scan actions with actor and library identifiers.
   - `audit.stream.denied` remains active for rejected stream attempts.
 - Risks/rollback:
-  - CORS starts strict with local-safe defaults plus `LORIVO_ALLOWED_ORIGINS`; unusual browser origins must be explicitly configured.
+  - CORS starts strict with local-safe defaults plus `XUVA_ALLOWED_ORIGINS`; unusual browser origins must be explicitly configured.
   - CSP allows inline script/style until the web UI is bundled with nonces or external assets.
   - Rollback is to remove `withSecurity` from router construction and disable the security CI workflow while preserving route/auth audit behavior.
 

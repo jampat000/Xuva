@@ -59,8 +59,8 @@
 		overflow: hidden;
 		width: 100%;
 		height: 100%;
-		padding: var(--lorivo-space-3);
-		color: var(--lorivo-color-text);
+		padding: var(--xuva-space-3);
+		color: var(--xuva-color-text);
 		background:
 			linear-gradient(160deg, rgb(255 255 255 / 8%), rgb(255 255 255 / 0%) 58%),
 			linear-gradient(180deg, #1f2937, #111827 57%, #0b1120 100%);
@@ -87,9 +87,9 @@
 
 	.artwork-fallback__line {
 		position: absolute;
-		left: var(--lorivo-space-3);
-		right: var(--lorivo-space-3);
-		top: var(--lorivo-space-3);
+		left: var(--xuva-space-3);
+		right: var(--xuva-space-3);
+		top: var(--xuva-space-3);
 		height: 2px;
 		background: linear-gradient(
 			90deg,
@@ -103,7 +103,7 @@
 		position: relative;
 		z-index: 1;
 		display: grid;
-		gap: var(--lorivo-space-1);
+		gap: var(--xuva-space-1);
 	}
 
 	.artwork-fallback__mark {
@@ -138,8 +138,8 @@
 
 	.artwork-fallback__mark--solo {
 		position: absolute;
-		left: var(--lorivo-space-3);
-		bottom: var(--lorivo-space-3);
+		left: var(--xuva-space-3);
+		bottom: var(--xuva-space-3);
 		z-index: 1;
 	}
 
@@ -151,7 +151,7 @@
 
 	p {
 		margin: 0;
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.74rem;
 	}
 

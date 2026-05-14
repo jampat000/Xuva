@@ -8,15 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/catalog"
-	"github.com/jampat000/Lorivo/server/internal/config"
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	"github.com/jampat000/Lorivo/server/internal/libraries"
-	"github.com/jampat000/Lorivo/server/internal/metadata"
-	"github.com/jampat000/Lorivo/server/internal/movies"
-	"github.com/jampat000/Lorivo/server/internal/scanner"
-	"github.com/jampat000/Lorivo/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	"github.com/jampat000/Xuva/server/internal/libraries"
+	"github.com/jampat000/Xuva/server/internal/metadata"
+	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/scanner"
+	"github.com/jampat000/Xuva/server/internal/tv"
 )
 
 type Kind string

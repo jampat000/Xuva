@@ -157,7 +157,7 @@
 
 	.detail-hero__copy h1 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--xuva-font-display);
 		font-size: clamp(3rem, 5.6vw, 5.4rem);
 		letter-spacing: 0;
 		line-height: 1.02;
@@ -168,7 +168,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 90%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 90%, transparent);
 		text-decoration: none;
 		font-size: 0.82rem;
 		font-weight: 620;
@@ -183,7 +183,7 @@
 
 	.detail-hero__meta {
 		margin: 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 90%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 90%, transparent);
 		font-size: 1rem;
 		font-weight: 580;
 	}
@@ -191,7 +191,7 @@
 	.detail-hero__overview {
 		margin: 8px 0 0;
 		max-width: 680px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 88%, transparent);
 		font-size: 1rem;
 		line-height: 1.58;
 	}
@@ -212,7 +212,7 @@
 		border: 1px solid rgb(255 255 255 / 14%);
 		border-radius: 999px;
 		background: rgb(255 255 255 / 7%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 88%, transparent);
 		font-size: 0.82rem;
 		font-weight: 630;
 	}

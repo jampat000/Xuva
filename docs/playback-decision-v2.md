@@ -1,6 +1,6 @@
 # Playback Decision Engine v2
 
-Lorivo's playback decision contract is deterministic and explainable. The same normalized request and media facts produce the same route, reason code, and `decisionTraceId`.
+Xuva's playback decision contract is deterministic and explainable. The same normalized request and media facts produce the same route, reason code, and `decisionTraceId`.
 
 ## Request Inputs
 

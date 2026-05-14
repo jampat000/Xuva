@@ -2,15 +2,15 @@
 
 ## Local First
 
-Lorivo should treat the user's server as the source of truth.
+Xuva should treat the user's server as the source of truth.
 
 Local playback, local users, local libraries, local configuration, and local device pairing must work without a vendor account or internet connection.
 
 ## No Required Vendor Infrastructure
 
-Lorivo should not require company-hosted servers for core use.
+Xuva should not require company-hosted servers for core use.
 
-In v1, Lorivo will not provide:
+In v1, Xuva will not provide:
 
 - Mandatory central authentication.
 - Vendor-hosted media relay.
@@ -20,7 +20,7 @@ In v1, Lorivo will not provide:
 
 ## User-Owned Remote Access
 
-Lorivo provides mechanisms and diagnostics to help users configure remote access, but users own their remote infrastructure.
+Xuva provides mechanisms and diagnostics to help users configure remote access, but users own their remote infrastructure.
 
 Supported paths include:
 

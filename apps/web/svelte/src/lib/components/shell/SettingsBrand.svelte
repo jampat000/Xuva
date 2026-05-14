@@ -1,30 +1,18 @@
 <script lang="ts">
-	import LorivoBrand from './LorivoBrand.svelte';
+	import XuvaBrand from './XuvaBrand.svelte';
 </script>
 
 <div class="settings-brand">
-	<LorivoBrand />
-	<span>Settings</span>
+	<XuvaBrand />
 </div>
 
 <style>
 	.settings-brand {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		justify-content: center;
+		gap: 0;
 		min-width: 0;
-		min-height: 48px;
-	}
-
-	.settings-brand span {
-		padding: 5px 9px;
-		border: 1px solid rgb(154 167 255 / 16%);
-		border-radius: 999px;
-		background: rgb(154 167 255 / 7%);
-		color: color-mix(in srgb, #9aa7ff 76%, white 24%);
-		font-size: 0.7rem;
-		font-weight: 760;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		min-height: 34px;
 	}
 </style>

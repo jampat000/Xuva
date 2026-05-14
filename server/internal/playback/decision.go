@@ -97,7 +97,7 @@ func (s *Service) Decide(_ context.Context, request Request) Decision {
 	decision := Decision{
 		Mode:             DecisionDeferred,
 		ReasonCode:       "source_required",
-		ReasonText:       "Choose a media source before Lorivo can check playback compatibility.",
+		ReasonText:       "Choose a media source before Xuva can check playback compatibility.",
 		MediaSourceID:    request.MediaSourceID,
 		ClientProfile:    request.ClientProfile,
 		ContainerAction:  "pending",
@@ -128,7 +128,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	if !source.Probed {
 		decision.Mode = DecisionDeferred
 		decision.ReasonCode = "probe_required"
-		decision.ReasonText = "Lorivo needs to inspect this file once before it can confirm the best playback path."
+		decision.ReasonText = "Xuva needs to inspect this file once before it can confirm the best playback path."
 		decision.ContainerAction = "probe_required"
 		decision.VideoAction = "probe_required"
 		decision.AudioAction = "probe_required"
@@ -186,7 +186,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		if request.SupportsAdaptive && !needsVideoSubtitleBurn(subtitles) {
 			decision.Mode = AdaptiveStream
 			decision.ReasonCode = "adaptive_remote_route"
-			decision.ReasonText = "The selected network is below the source bitrate, so Lorivo can use adaptive streaming to step quality down before playback stalls."
+			decision.ReasonText = "The selected network is below the source bitrate, so Xuva can use adaptive streaming to step quality down before playback stalls."
 			decision.ContainerAction = "adaptive_hls"
 			decision.VideoAction = "adaptive"
 			decision.AudioAction = audioAction
@@ -198,7 +198,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		}
 		decision.Mode = VideoTranscode
 		decision.ReasonCode = "network_bitrate_limit"
-		decision.ReasonText = "The file bitrate is above the selected network limit, so Lorivo should create a lower-bitrate stream for smoother playback."
+		decision.ReasonText = "The file bitrate is above the selected network limit, so Xuva should create a lower-bitrate stream for smoother playback."
 		decision.ContainerAction = "transcode"
 		decision.VideoAction = "transcode"
 		decision.AudioAction = audioAction
@@ -211,7 +211,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 	if isDirectPlayable(request, source.Container, source.VideoCodec) {
 		decision.Mode = DirectPlay
 		decision.ReasonCode = "direct_play_supported"
-		decision.ReasonText = "This file matches the selected player profile, so Lorivo can stream it without conversion."
+		decision.ReasonText = "This file matches the selected player profile, so Xuva can stream it without conversion."
 		decision.ContainerAction = "direct"
 		decision.VideoAction = "direct"
 		decision.AudioAction = audioAction
@@ -226,7 +226,7 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 			decision.SuggestedFixes = []string{"Choose a compatible audio track", "Allow temporary audio conversion", "Create an optimized version for this device"}
 		} else if subtitles == "convert" {
 			decision.ReasonCode = "subtitle_conversion_available"
-			decision.ReasonText = "The video can play as-is, and Lorivo can convert this text subtitle to a compatible sidecar format."
+			decision.ReasonText = "The video can play as-is, and Xuva can convert this text subtitle to a compatible sidecar format."
 			decision.EstimatedCPUCost = "low"
 			decision.SuggestedFixes = []string{"Use the converted WebVTT subtitle", "Choose a subtitle format this player supports", "Turn subtitles off for pure direct play"}
 		}
@@ -443,7 +443,7 @@ func subtitleImpact(request Request, source SourceFacts, action string) map[stri
 	case "convert":
 		impact["serverLoad"] = "low"
 		impact["output"] = "webvtt sidecar"
-		impact["userMessage"] = "Lorivo can convert this text subtitle to WebVTT without video conversion."
+		impact["userMessage"] = "Xuva can convert this text subtitle to WebVTT without video conversion."
 	case "burn_in":
 		impact["serverLoad"] = "high"
 		impact["output"] = "video with subtitles burned in"

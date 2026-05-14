@@ -16,12 +16,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/database"
 )
 
 const (
-	SessionCookieName = "lorivo_session"
-	CSRFCookieName    = "lorivo_csrf"
+	SessionCookieName = "xuva_session"
+	CSRFCookieName    = "xuva_csrf"
 )
 
 var (

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/database"
-	"github.com/jampat000/Lorivo/server/internal/libraries"
-	"github.com/jampat000/Lorivo/server/internal/movies"
-	"github.com/jampat000/Lorivo/server/internal/scanner"
-	"github.com/jampat000/Lorivo/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/libraries"
+	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/scanner"
+	"github.com/jampat000/Xuva/server/internal/tv"
 )
 
 func TestSaveMovieScanIsIdempotent(t *testing.T) {

@@ -3,12 +3,12 @@
 		name,
 		subtitle = '',
 		avatarUrl = '',
-		ariaLabel = 'Open profile menu'
+		href = ''
 	} = $props<{
 		name: string;
 		subtitle?: string;
 		avatarUrl?: string;
-		ariaLabel?: string;
+		href?: string;
 	}>();
 
 	const initials = $derived.by(() =>
@@ -21,39 +21,54 @@
 	);
 </script>
 
-<button class="sidebar-user" type="button" aria-label={ariaLabel}>
-	{#if avatarUrl}
-		<img src={avatarUrl} alt="" loading="lazy" />
-	{:else}
-		<span class="sidebar-user__fallback" aria-hidden="true">{initials || 'V'}</span>
-	{/if}
-	<span class="sidebar-user__copy">
-		<strong>{name}</strong>
-		{#if subtitle}
-			<span>{subtitle}</span>
+{#if href}
+	<a class="sidebar-user" href={href} aria-label="Current profile">
+		{#if avatarUrl}
+			<img src={avatarUrl} alt="" loading="lazy" />
+		{:else}
+			<span class="sidebar-user__fallback" aria-hidden="true">{initials || 'V'}</span>
 		{/if}
-	</span>
-	<span class="sidebar-user__chevron" aria-hidden="true">
-		<svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-	</span>
-</button>
+		<span class="sidebar-user__copy">
+			<strong>{name}</strong>
+			{#if subtitle}
+				<span>{subtitle}</span>
+			{/if}
+		</span>
+	</a>
+{:else}
+	<div class="sidebar-user" aria-label="Current profile">
+		{#if avatarUrl}
+			<img src={avatarUrl} alt="" loading="lazy" />
+		{:else}
+			<span class="sidebar-user__fallback" aria-hidden="true">{initials || 'V'}</span>
+		{/if}
+		<span class="sidebar-user__copy">
+			<strong>{name}</strong>
+			{#if subtitle}
+				<span>{subtitle}</span>
+			{/if}
+		</span>
+	</div>
+{/if}
 
 <style>
 	.sidebar-user {
 		display: grid;
-		grid-template-columns: 38px minmax(0, 1fr) 16px;
+		grid-template-columns: 38px minmax(0, 1fr);
 		align-items: center;
 		column-gap: 12px;
 		width: 100%;
 		margin-top: 8px;
-		padding: 12px 13px 8px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 92%, transparent);
-		border-radius: 12px;
+		padding: 10px 13px 8px;
+		color: color-mix(in srgb, var(--xuva-color-text) 92%, transparent);
+		border-top: 1px solid rgb(255 255 255 / 9%);
+		border-radius: 0;
+		text-decoration: none;
 		transition: background-color 150ms ease;
 	}
 
 	.sidebar-user:hover {
-		background: rgb(255 246 229 / 5%);
+		background: rgb(255 246 229 / 3%);
 	}
 
 	img,
@@ -73,6 +88,7 @@
 		color: #f4f1ea;
 		font-size: 0.8rem;
 		font-weight: 800;
+		border-radius: 999px;
 	}
 
 	.sidebar-user__copy {
@@ -91,21 +107,10 @@
 
 	.sidebar-user__copy span {
 		font-size: 0.72rem;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
-	.sidebar-user__chevron {
-		display: inline-flex;
-		width: 16px;
-		height: 16px;
-		color: rgb(255 255 255 / 58%);
-	}
-
-	.sidebar-user__chevron svg {
-		width: 100%;
-		height: 100%;
-	}
 </style>

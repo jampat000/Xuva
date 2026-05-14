@@ -3,7 +3,7 @@ package metasources
 import (
 	"strings"
 
-	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/config"
 )
 
 type SourceDefinition struct {

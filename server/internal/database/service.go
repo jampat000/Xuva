@@ -24,7 +24,7 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 		return nil, err
 	}
 
-	dbPath := filepath.Join(dataDir, "lorivo.db")
+	dbPath := filepath.Join(dataDir, "xuva.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err

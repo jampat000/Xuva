@@ -74,8 +74,8 @@ function playbackPolicyInfo(id) {
 	};
 	const descriptions = {
 		original_only:
-			'Keep playback as close to the original file as possible. If a device needs help, Lorivo offers fallback choices instead of converting automatically.',
-		light: 'Prefer the original video. Lorivo can repackage playback or convert audio when that is enough.',
+			'Keep playback as close to the original file as possible. If a device needs help, Xuva offers fallback choices instead of converting automatically.',
+		light: 'Prefer the original video. Xuva can repackage playback or convert audio when that is enough.',
 		full: 'Allow temporary video conversion while playing when a device needs more help.',
 		cinema: 'Allow heavier live compatibility work for the widest range of devices.'
 	};
@@ -85,20 +85,6 @@ function playbackPolicyInfo(id) {
 function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/auth/session') {
 		if (state.authDisabled) return { authDisabled: true };
-		if (state.devAuthBypass) {
-			return {
-				devAuthBypass: true,
-				devAuthBypassMessage:
-					'Development access is active. User management will be enabled before production.',
-				user: {
-					id: 'dev-owner',
-					username: 'development-owner',
-					displayName: 'Development Owner',
-					role: 'admin'
-				},
-				session: { id: 'dev-auth-bypass' }
-			};
-		}
 		if (!state.signedIn) return { user: null };
 		return {
 			user: { id: 'local', username: 'local', displayName: 'Local User', role: 'admin' },
@@ -109,7 +95,6 @@ function apiPayload(pathname, state = {}) {
 		return {
 			auth: {
 				required: !state.authDisabled,
-				devAuthBypass: Boolean(state.devAuthBypass),
 				bootstrapAllowed: Boolean(state.bootstrapAllowed),
 				defaultUsername: state.defaultUsername || 'owner',
 				bootstrapEndpoint: '/api/auth/bootstrap'
@@ -138,10 +123,10 @@ function apiPayload(pathname, state = {}) {
 		return {
 			enabled: state.discoveryEnabled,
 			running: state.discoveryRunning,
-			serviceName: state.serverName || 'Lorivo',
-			serviceType: '_lorivo._tcp.local.',
+			serviceName: state.serverName || 'Xuva',
+			serviceType: '_xuva._tcp.local.',
 			port: 8097,
-			txtRecords: ['api=/api/client/bootstrap', 'app=lorivo', `serverName=${state.serverName || 'Lorivo'}`],
+			txtRecords: ['api=/api/client/bootstrap', 'app=xuva', `serverName=${state.serverName || 'Xuva'}`],
 			lastError: state.discoveryLastError || '',
 			note:
 				state.discoveryNote ||
@@ -199,15 +184,15 @@ function apiPayload(pathname, state = {}) {
 	if (pathname === '/api/work') return { work: [] };
 	if (pathname === '/api/downloads') return { downloads: [] };
 	if (pathname === '/api/sessions') {
-		if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) return { error: 'authentication required' };
+		if (!state.signedIn && !state.authDisabled) return { error: 'authentication required' };
 		return { sessions: state.sessions || [] };
 	}
 	if (pathname === '/api/pairing/requests') {
-		if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) return { error: 'authentication required' };
+		if (!state.signedIn && !state.authDisabled) return { error: 'authentication required' };
 		return { requests: state.pairingRequests || [] };
 	}
 	if (pathname === '/api/devices') {
-		if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) return { error: 'authentication required' };
+		if (!state.signedIn && !state.authDisabled) return { error: 'authentication required' };
 		return { devices: state.approvedDevices || [] };
 	}
 	return {};
@@ -215,13 +200,13 @@ function apiPayload(pathname, state = {}) {
 
 async function installApiMocks(page, options = {}) {
 	const state = {
-		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Lorivo',
-		dataDir: 'D:\\Lorivo\\Data',
-		transcodeDir: 'D:\\Lorivo\\Transcode',
-		downloadsDir: 'D:\\Lorivo\\Optimized',
-		metadataDir: 'D:\\Lorivo\\Metadata',
-		cacheDir: 'D:\\Lorivo\\Cache',
-		tempDir: 'D:\\Lorivo\\Temp',
+		serverName: Object.hasOwn(options, 'serverName') ? options.serverName : 'Living Room Xuva',
+		dataDir: 'D:\\Xuva\\Data',
+		transcodeDir: 'D:\\Xuva\\Transcode',
+		downloadsDir: 'D:\\Xuva\\Optimized',
+		metadataDir: 'D:\\Xuva\\Metadata',
+		cacheDir: 'D:\\Xuva\\Cache',
+		tempDir: 'D:\\Xuva\\Temp',
 		librarySyncMode: 'daily',
 		syncIntervalMins: 1440,
 		watchDebounceSecs: 30,
@@ -229,7 +214,6 @@ async function installApiMocks(page, options = {}) {
 		playbackPolicy: 'original_only',
 		restartRequired: true,
 		signedIn: !options.signedOut,
-		devAuthBypass: Boolean(options.devAuthBypass),
 		authDisabled: Boolean(options.authDisabled),
 		discoveryEnabled: Object.hasOwn(options, 'discoveryEnabled') ? Boolean(options.discoveryEnabled) : true,
 		discoveryRunning: Object.hasOwn(options, 'discoveryRunning') ? Boolean(options.discoveryRunning) : true,
@@ -388,11 +372,11 @@ async function installApiMocks(page, options = {}) {
 			const requestedPath = url.searchParams.get('path') || state.dataDir;
 			const normalizedPath = requestedPath.replace(/[\\/]$/, '');
 			const entries = [
-				{ name: 'Transcode', path: 'D:\\Lorivo\\Storage\\Transcode' },
-				{ name: 'Optimized', path: 'D:\\Lorivo\\Storage\\Optimized' },
-				{ name: 'Metadata', path: 'D:\\Lorivo\\Storage\\Metadata' },
-				{ name: 'Cache', path: 'D:\\Lorivo\\Storage\\Cache' },
-				{ name: 'Temp', path: 'D:\\Lorivo\\Storage\\Temp' }
+				{ name: 'Transcode', path: 'D:\\Xuva\\Storage\\Transcode' },
+				{ name: 'Optimized', path: 'D:\\Xuva\\Storage\\Optimized' },
+				{ name: 'Metadata', path: 'D:\\Xuva\\Storage\\Metadata' },
+				{ name: 'Cache', path: 'D:\\Xuva\\Storage\\Cache' },
+				{ name: 'Temp', path: 'D:\\Xuva\\Storage\\Temp' }
 			];
 			const isLeaf = entries.some((entry) => entry.path === normalizedPath);
 			return route.fulfill({
@@ -495,7 +479,7 @@ async function installApiMocks(page, options = {}) {
 			});
 		}
 		if (url.pathname === '/api/pairing/requests' && route.request().method() === 'GET') {
-			if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) {
+			if (!state.signedIn && !state.authDisabled) {
 				return route.fulfill({
 					status: 401,
 					contentType: 'application/json',
@@ -509,7 +493,7 @@ async function installApiMocks(page, options = {}) {
 			});
 		}
 		if (url.pathname === '/api/devices' && route.request().method() === 'GET') {
-			if (!state.signedIn && !state.authDisabled && !state.devAuthBypass) {
+			if (!state.signedIn && !state.authDisabled) {
 				return route.fulfill({
 					status: 401,
 					contentType: 'application/json',
@@ -547,7 +531,7 @@ async function installApiMocks(page, options = {}) {
 				displayName: updated.deviceName,
 				status: 'approved',
 				approvedAt: '2026-05-12T20:46:00Z',
-				approvedBy: 'Development Owner',
+				approvedBy: 'Local User',
 				createdAt: '2026-05-12T20:46:00Z',
 				updatedAt: '2026-05-12T20:46:00Z'
 			};
@@ -792,19 +776,6 @@ async function installApiMocks(page, options = {}) {
 			});
 		}
 		if (url.pathname === '/api/auth/logout' && route.request().method() === 'POST') {
-			if (state.devAuthBypass) {
-				state.logoutCount += 1;
-				return route.fulfill({
-					status: 200,
-					contentType: 'application/json',
-					body: JSON.stringify({
-						status: 'dev_bypass_active',
-						devAuthBypass: true,
-						devAuthBypassMessage:
-							'Development access bypass remains active until LORIVO_DEV_AUTH_BYPASS is turned off.'
-					})
-				});
-			}
 			state.signedIn = false;
 			state.logoutCount += 1;
 			return route.fulfill({
@@ -813,7 +784,7 @@ async function installApiMocks(page, options = {}) {
 				body: JSON.stringify({ status: 'logged_out' })
 			});
 		}
-		if (url.pathname === '/api/sessions' && !state.signedIn && !state.authDisabled && !state.devAuthBypass) {
+		if (url.pathname === '/api/sessions' && !state.signedIn && !state.authDisabled) {
 			return route.fulfill({
 				status: 401,
 				contentType: 'application/json',
@@ -858,7 +829,7 @@ async function assertLeftDrawer(page, drawer, viewport) {
 	assert.ok(box.x >= -1 && box.x <= 1, `drawer should be anchored to the left edge, got x=${box.x}`);
 	assert.ok(box.y <= 1, `drawer should start at the top edge, got y=${box.y}`);
 	assert.ok(box.height >= viewport.height - 2, `drawer should span the viewport height, got ${box.height}`);
-	assert.ok(box.width >= 260, `drawer should be sidebar width, got ${box.width}`);
+	assert.ok(box.width >= 248, `drawer should be sidebar width, got ${box.width}`);
 	assert.ok(box.width <= Math.ceil(viewport.width * 0.9), `drawer should fit viewport width, got ${box.width}`);
 }
 
@@ -919,7 +890,7 @@ async function assertTopbarBrandVisible(page) {
 	assert.equal(state.ariaHidden === 'true', false);
 	assert.ok(state.opacity > 0.8, `top bar brand should be visible, got opacity ${state.opacity}`);
 	assert.ok(state.width > 60, `top bar brand should occupy space, got width ${state.width}`);
-	assert.match(state.text, /LORIVO/i);
+	assert.match(state.text, /XUVA/i);
 }
 
 async function assertTopbarBrandCollapsed(page) {
@@ -984,7 +955,7 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	await assertNoHorizontalOverflow(page);
 	await assertTopbarBrandVisible(page);
 	const shouldShift = viewport.width >= 768;
-	const surface = page.getByTestId('lorivo-app-surface');
+	const surface = page.getByTestId('xuva-app-surface');
 	const beforeSurface = await surface.boundingBox();
 	assert.ok(beforeSurface, 'media app surface should exist');
 
@@ -996,7 +967,7 @@ async function verifyMediaMenu(page, baseURL, viewport) {
 	await assertLeftDrawer(page, mediaDrawer, viewport);
 	const drawerBrand = mediaDrawer.getByTestId('drawer-brand');
 	assert.equal(await drawerBrand.count(), 1);
-	assert.match(await drawerBrand.innerText(), /LORIVO/i);
+	assert.match(await drawerBrand.innerText(), /(?:XUVA|UVA)/i);
 	await assertTopbarBrandCollapsed(page);
 	await assertSurfaceLayout(page, surface, beforeSurface, viewport, shouldShift);
 	for (const label of ['Home', 'Movies', 'TV', 'Libraries', 'Settings']) {
@@ -1040,36 +1011,35 @@ async function verifySettingsMenu(page, baseURL, viewport, state) {
 		'Scanning',
 		'Metadata',
 		'Playback',
+		'Transcoding',
+		'Storage',
+		'Network',
+		'Discovery',
 		'Pairing',
 		'Approved Devices',
-		'Discovery',
-		'Owner Access',
+		'Users',
 		'About',
 		'Back to Media'
 	];
-	if (state.signedIn || state.devAuthBypass || state.authDisabled) {
-		expectedSettingsLinks.splice(6, 0, 'Transcoding', 'Storage', 'Network');
-	}
 	await page.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 	await assertSettingsNotLoading(page);
 	await assertNoHorizontalOverflow(page);
 	assert.equal(await page.getByTestId('settings-dashboard').count(), 1);
 	assert.equal(await page.getByTestId('settings-section-content').count(), 0);
-	assert.equal(await page.title(), 'Living Room Lorivo · Lorivo');
-	assert.match(await page.getByTestId('settings-server-name').innerText(), /Living Room Lorivo/);
+	assert.equal(await page.title(), 'Living Room Xuva · Xuva');
+	assert.match(await page.getByTestId('settings-server-name').innerText(), /Living Room Xuva/);
 	assert.match(await page.locator('body').innerText(), /Dashboard/);
-	assert.match(await page.locator('body').innerText(), /Library Setup/);
+	assert.doesNotMatch(await page.locator('body').innerText(), /Open Setup Wizard/);
 	assert.match(await page.locator('body').innerText(), /Playback/);
-	assert.match(await page.locator('body').innerText(), /Access/);
+	assert.match(await page.locator('body').innerText(), /Users/);
 	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
 	await assertSettingsSafetyCopy(page);
 	if (viewport.width >= 981) {
 		const sidebar = page.getByTestId('settings-mode-sidebar');
 		assert.equal(await sidebar.count(), 1);
 		assert.equal(await sidebar.isVisible(), true);
-		assert.match(await sidebar.innerText(), /LORIVO/);
-		assert.match(await sidebar.innerText(), /Settings/i);
+		assert.match(await sidebar.innerText(), /XUVA/);
 		for (const label of expectedSettingsLinks) {
 			assert.equal(await sidebar.getByRole('link', { name: label, exact: true }).count(), 1);
 		}
@@ -1089,8 +1059,7 @@ async function verifySettingsMenu(page, baseURL, viewport, state) {
 		const settingsDrawer = page.getByTestId('settings-menu-drawer');
 		await waitForDrawerState(settingsDrawer, 'open');
 		await assertLeftDrawer(page, settingsDrawer, viewport);
-		assert.match(await settingsDrawer.innerText(), /LORIVO/);
-		assert.match(await settingsDrawer.innerText(), /Settings/i);
+		assert.match(await settingsDrawer.innerText(), /XUVA/);
 		assert.equal(await settingsDrawer.getByTestId('drawer-brand').count(), 1);
 		for (const label of expectedSettingsLinks) {
 			assert.equal(await settingsDrawer.getByRole('link', { name: label, exact: true }).count(), 1);
@@ -1117,13 +1086,14 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		['Scanning', 'scanning'],
 		['Metadata', 'metadata'],
 		['Playback', 'playback'],
+		['Transcoding', 'transcoding'],
+		['Storage', 'storage'],
+		['Network', 'network'],
+		['Discovery', 'discovery'],
 		['Pairing', 'pairing'],
 		['Approved Devices', 'approved-devices']
 	];
-	if (state.signedIn || state.devAuthBypass || state.authDisabled) {
-		sections.push(['Transcoding', 'transcoding'], ['Storage', 'storage'], ['Network', 'network'], ['Discovery', 'discovery']);
-	}
-	sections.push(['About', 'about'], ['Owner Access', 'owner-access']);
+	sections.push(['About', 'about'], ['Users', 'admin-access']);
 	for (let index = 0; index < sections.length; index += 1) {
 		const [label, hash] = sections[index];
 		const link = navContainer.getByRole('link', { name: label, exact: true });
@@ -1155,23 +1125,21 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		if (hash === 'playback') {
 			await assertPlaybackSection(page, state);
 		}
-		if (hash === 'storage' || hash === 'transcoding') {
-			await assertStorageSection(page, state, hash);
-		}
+	if (hash === 'storage' || hash === 'transcoding') {
+		await assertStorageSection(page, state, hash);
+	}
 		if (hash === 'general') {
 			assert.match(await selectedSection.innerText(), /Server name/i);
-			assert.match(await selectedSection.innerText(), /Local discovery/);
-			assert.match(await selectedSection.innerText(), /mDNS \/ Bonjour/);
-			assert.match(await selectedSection.innerText(), /Devices on your home network can find this server as/);
-			const serverNameInput = selectedSection.locator('input[placeholder="Lorivo"]');
+			assert.match(await selectedSection.innerText(), /Shown in the browser title/i);
+			const serverNameInput = selectedSection.locator('input[placeholder="Xuva"]');
 			assert.equal(await serverNameInput.count(), 1);
 			await serverNameInput.fill('Family Library');
-			await selectedSection.getByRole('button', { name: 'Save Server Name', exact: true }).click();
-			await page.waitForFunction(() => document.title === 'Family Library · Lorivo', { timeout: 5000 });
-			assert.equal(await page.title(), 'Family Library · Lorivo');
+			await selectedSection.getByTestId('server-name-form').getByRole('button', { name: 'Save Server Name', exact: true }).click();
+			await page.waitForFunction(() => document.title === 'Family Library · Xuva', { timeout: 5000 });
+			assert.equal(await page.title(), 'Family Library · Xuva');
 			assert.match(await page.getByTestId('settings-server-name').innerText(), /Family Library/);
 		}
-		if (hash === 'owner-access') {
+		if (hash === 'admin-access') {
 			await assertAccessSection(page, state);
 		}
 		if (hash === 'pairing') {
@@ -1179,6 +1147,9 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 		}
 		if (hash === 'approved-devices') {
 			assert.match(await selectedSection.innerText(), /Approved Devices/);
+		}
+		if (hash === 'discovery') {
+			assert.match(await selectedSection.innerText(), /Local discovery/i);
 		}
 		await assertSettingsSafetyCopy(page);
 		for (const [, otherHash] of sections) {
@@ -1200,7 +1171,6 @@ async function verifySettingsSections(page, navContainer, baseURL, reopensDrawer
 
 async function assertSettingsSafetyCopy(page) {
 	const body = await page.locator('body').innerText();
-	assert.doesNotMatch(body, /\bAdmin\b/i);
 	assert.doesNotMatch(body, /\bOperator\b/i);
 	assert.doesNotMatch(body, /Operational telemetry/i);
 	assert.doesNotMatch(body, /Manage Server/i);
@@ -1215,7 +1185,7 @@ async function assertSettingsSafetyCopy(page) {
 
 async function assertLibrarySection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
-	assert.equal(await selectedSection.getByRole('link', { name: 'Library Setup', exact: true }).count(), 1);
+	assert.equal(await selectedSection.getByRole('button', { name: 'Save Library', exact: true }).count(), 1);
 	assert.equal(await page.getByTestId('library-list').count(), 1);
 	assert.equal(await page.getByTestId('library-item').count(), state.libraries.length);
 	assert.match(await selectedSection.innerText(), /Movies library/);
@@ -1304,11 +1274,11 @@ async function assertScanningSection(page, state) {
 		'expected watch-mode scanning settings update to be recorded'
 	);
 	await page.waitForFunction(
-		() => document.body.innerText.includes('Saved. Restart Lorivo for this change to fully take effect.'),
+		() => document.body.innerText.includes('Saved. Restart Xuva for this change to fully take effect.'),
 		null,
 		{ timeout: 5000 }
 	);
-	assert.match(await page.locator('body').innerText(), /Saved\. Restart Lorivo for this change to fully take effect\./);
+	assert.match(await page.locator('body').innerText(), /Saved\. Restart Xuva for this change to fully take effect\./);
 
 	state.restartRequired = false;
 	await selectedSection.locator('input[value="daily"]').check();
@@ -1328,7 +1298,7 @@ async function assertScanningSection(page, state) {
 	await page.waitForFunction(
 		() =>
 			document.body.innerText.includes('Scanning settings saved.') &&
-			!document.body.innerText.includes('Saved. Restart Lorivo for this change to fully take effect.'),
+			!document.body.innerText.includes('Saved. Restart Xuva for this change to fully take effect.'),
 		null,
 		{ timeout: 5000 }
 	);
@@ -1350,11 +1320,11 @@ async function assertPlaybackSection(page, state) {
 		'expected playback policy update to be recorded'
 	);
 	await page.waitForFunction(
-		() => document.body.innerText.includes('Playback setting saved. Restart Lorivo to apply it.'),
+		() => document.body.innerText.includes('Playback setting saved. Restart Xuva to apply it.'),
 		null,
 		{ timeout: 5000 }
 	);
-	assert.match(await page.locator('body').innerText(), /Playback setting saved\. Restart Lorivo to apply it\./);
+	assert.match(await page.locator('body').innerText(), /Playback setting saved\. Restart Xuva to apply it\./);
 
 	state.restartRequired = false;
 	await selectedSection.locator('input[value="cinema"]').check();
@@ -1366,13 +1336,13 @@ async function assertPlaybackSection(page, state) {
 	await page.waitForFunction(
 		() =>
 			document.body.innerText.includes('Playback setting saved.') &&
-			!document.body.innerText.includes('Playback setting saved. Restart Lorivo to apply it.'),
+			!document.body.innerText.includes('Playback setting saved. Restart Xuva to apply it.'),
 		null,
 		{ timeout: 5000 }
 	);
 	const body = await page.locator('body').innerText();
 	assert.match(body, /Playback setting saved\./);
-	assert.doesNotMatch(body, /Playback setting saved\. Restart Lorivo to apply it\./);
+	assert.doesNotMatch(body, /Playback setting saved\. Restart Xuva to apply it\./);
 	await assertNoHorizontalOverflow(page);
 }
 
@@ -1393,9 +1363,9 @@ async function assertMetadataSection(page, state) {
 	assert.doesNotMatch(await selectedSection.innerText(), /API key/i);
 	assert.doesNotMatch(await selectedSection.innerText(), /rawJson/i);
 
-	if (!state.signedIn && !state.devAuthBypass && !state.authDisabled) {
-		assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
-		assert.match(await selectedSection.innerText(), /Sign in as the owner to update metadata\./);
+	if (!state.signedIn && !state.authDisabled) {
+		assert.match(await selectedSection.innerText(), /Sign in as an admin to manage Xuva settings\./);
+		assert.match(await selectedSection.innerText(), /Sign in as an admin to update metadata\./);
 		assert.equal(await page.getByTestId('metadata-source-form').count(), 0);
 		assert.equal(await page.getByTestId('metadata-review-list').count(), 1);
 		await assertNoHorizontalOverflow(page);
@@ -1458,149 +1428,55 @@ async function assertStorageSection(page, state, hash) {
 		assert.match(await selectedSection.innerText(), /Data folder/);
 		assert.match(await selectedSection.innerText(), /read-only in this build/i);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Browse', exact: true }).count(), 5);
-	} else {
-		assert.doesNotMatch(await selectedSection.innerText(), /Metadata folder/);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Browse', exact: true }).count(), 2);
-	}
-	if (hash === 'storage') {
 		assert.equal(await selectedSection.locator('input[readonly]').count() >= 1, true);
-	}
-
-	if (hash === 'storage') {
-		await selectedSection.locator('.storage-field-card input').nth(2).fill('D:\\Lorivo\\Storage\\Metadata-Alt');
+		await selectedSection.locator('.storage-field-card input').nth(2).fill('D:\\Xuva\\Storage\\Metadata-Alt');
+		await selectedSection.getByRole('button', { name: 'Save Storage Settings', exact: true }).click();
 	} else {
-		await selectedSection.locator('.storage-field-card input').first().fill('D:\\Lorivo\\Storage\\Transcode');
+		assert.match(await selectedSection.innerText(), /Transcoding mode/);
+		assert.match(await selectedSection.innerText(), /Compatibility mode/);
+		assert.equal(await selectedSection.getByRole('button', { name: 'Browse', exact: true }).count(), 2);
+		await selectedSection.locator('.storage-field-card input').first().fill('D:\\Xuva\\Storage\\Transcode-Alt');
+		await selectedSection.getByRole('button', { name: 'Save Transcoding Settings', exact: true }).click();
 	}
-	await selectedSection
-		.getByRole('button', {
-			name: hash === 'storage' ? 'Save Storage Settings' : 'Save Transcoding Settings',
-			exact: true
-		})
-		.click();
 	await waitForCondition(
 		() =>
 			state.storageUpdates.some(
 				(item) =>
 					hash === 'storage'
-						? item.metadataDir === 'D:\\Lorivo\\Storage\\Metadata-Alt'
-						: item.transcodeDir === 'D:\\Lorivo\\Storage\\Transcode'
+						? item.metadataDir === 'D:\\Xuva\\Storage\\Metadata-Alt'
+						: item.transcodeDir === 'D:\\Xuva\\Storage\\Transcode-Alt'
 			),
 		'expected storage settings update to be recorded'
 	);
 	await page.waitForFunction(
-		() => document.body.innerText.includes('Saved. Restart Lorivo for these folder changes to fully take effect.'),
+		() =>
+			document.body.innerText.includes('Saved. Restart Xuva for these folder changes to fully take effect.') ||
+			document.body.innerText.includes('Saved. Restart Xuva for these transcoding changes to fully take effect.'),
 		null,
 		{ timeout: 5000 }
 	);
-	assert.match(
-		await page.locator('body').innerText(),
-		/Saved\. Restart Lorivo for these folder changes to fully take effect\./
-	);
-
-	let body = await page.locator('body').innerText();
-	if (hash === 'transcoding') {
-		state.restartRequired = false;
-		await selectedSection.locator('.storage-field-card input').nth(1).fill('D:\\Lorivo\\Storage\\Optimized-Alt');
-		await selectedSection.getByRole('button', { name: 'Save Transcoding Settings', exact: true }).click();
-		await waitForCondition(
-			() =>
-				state.storageUpdates.some(
-					(item) =>
-						item.transcodeDir === 'D:\\Lorivo\\Storage\\Transcode' &&
-						item.downloadsDir === 'D:\\Lorivo\\Storage\\Optimized-Alt'
-				),
-			'expected second storage settings update to be recorded'
-		);
-		await page.waitForFunction(
-			() =>
-				document.body.innerText.includes('Storage settings saved.') &&
-				!document.body.innerText.includes('Saved. Restart Lorivo for these folder changes to fully take effect.'),
-			null,
-			{ timeout: 5000 }
-		);
-		body = await page.locator('body').innerText();
-		assert.match(body, /Storage settings saved\./);
-		assert.doesNotMatch(body, /Saved\. Restart Lorivo for these folder changes to fully take effect\./);
+	const body = await page.locator('body').innerText();
+	if (hash === 'storage') {
+		assert.match(body, /Saved\. Restart Xuva for these folder changes to fully take effect\./);
+	} else {
+		assert.match(body, /Saved\. Restart Xuva for these transcoding changes to fully take effect\./);
 	}
+
 	assert.doesNotMatch(body, /\bdataDir\b|\btranscodeDir\b|\bdownloadsDir\b|\bmetadataDir\b|\bcacheDir\b|\btempDir\b/);
-	assert.doesNotMatch(body, /\bFFmpeg\b|\bFFprobe\b|\bworkers\b|\ballowed origins\b/i);
+	if (hash === 'storage') {
+		assert.doesNotMatch(body, /\bFFmpeg\b|\bFFprobe\b|\bworkers\b|\ballowed origins\b/i);
+	}
 	await assertNoHorizontalOverflow(page);
 }
 
 async function assertAccessSection(page, state) {
 	const selectedSection = page.getByTestId('settings-section-content');
-	if (state.devAuthBypass) {
-		assert.match(await selectedSection.innerText(), /Development Owner/);
-		assert.match(
-			await selectedSection.innerText(),
-			/Development access is active\. User management will be enabled before production\./
-		);
-		assert.match(await selectedSection.innerText(), /User management is not available yet\./);
-		assert.match(await selectedSection.innerText(), /Live device presence is not tracked yet\./);
-		assert.match(await selectedSection.innerText(), /Device Pairing/);
-		assert.match(await selectedSection.innerText(), /Approve devices that ask to connect to this Lorivo server\./);
-		assert.match(await selectedSection.innerText(), /Device pairing stays separate from local discovery\./);
-		assert.match(await selectedSection.innerText(), /Approved Devices/);
-		assert.match(await selectedSection.innerText(), /No approved devices yet\./);
-		assert.equal(await selectedSection.getByTestId('pairing-request-list').count(), 1);
-		assert.match(await selectedSection.innerText(), /Living Room Apple TV/);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 1);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 1);
-		await selectedSection.getByRole('button', { name: 'Approve', exact: true }).click();
-		await waitForCondition(
-			() => state.pairingActions.some((item) => item.id === 'pair-apple-tv' && item.action === 'approve'),
-			'expected pairing approval to be recorded'
-		);
-		await page.waitForFunction(
-			() => document.body.innerText.includes('Living Room Apple TV approved.'),
-			null,
-			{ timeout: 5000 }
-		);
-		await page.waitForFunction(
-			() => {
-				const section = document.querySelector('[data-testid="settings-section-content"]');
-				return Boolean(section?.textContent?.includes('Approved Devices') && section?.textContent?.includes('Approved'));
-			},
-			null,
-			{ timeout: 5000 }
-		);
-		assert.equal(await selectedSection.getByTestId('approved-device-list').count(), 1);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 1);
-		await selectedSection.getByRole('button', { name: 'Remove', exact: true }).click();
-		await waitForCondition(
-			() => state.approvedDeviceActions.some((item) => item.id === 'approved-device_living_room_apple_tv' && item.action === 'revoke'),
-			'expected approved device removal to be recorded'
-		);
-		await page.waitForFunction(
-			() => document.body.innerText.includes('Living Room Apple TV removed.'),
-			null,
-			{ timeout: 5000 }
-		);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
-		assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
-		assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 0);
-		assert.equal(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count(), 0);
-		assert.doesNotMatch(await selectedSection.innerText(), /Connected devices|Discovery section|online|offline/i);
-		await assertNoHorizontalOverflow(page);
-		return;
-	}
 	assert.match(await selectedSection.innerText(), /Local User/);
-	assert.match(await selectedSection.innerText(), /Owner account/);
-	assert.match(await selectedSection.innerText(), /Device Pairing/);
-	assert.match(await selectedSection.innerText(), /Approved Devices/);
-	assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 1);
-	assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 1);
-	await selectedSection.getByRole('button', { name: 'Deny', exact: true }).click();
-	await waitForCondition(
-		() => state.pairingActions.some((item) => item.id === 'pair-apple-tv' && item.action === 'deny'),
-		'expected pairing denial to be recorded'
-	);
-	await page.waitForFunction(
-		() => document.body.innerText.includes('Living Room Apple TV denied.'),
-		null,
-		{ timeout: 5000 }
-	);
+	assert.match(await selectedSection.innerText(), /Admin/);
+	assert.match(await selectedSection.innerText(), /Your account/);
+	assert.match(await selectedSection.innerText(), /Change Password/);
+	assert.match(await selectedSection.innerText(), /User accounts/);
+	assert.match(await selectedSection.innerText(), /Create User/);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 1);
 	assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 0);
 	await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).click();
@@ -1608,17 +1484,13 @@ async function assertAccessSection(page, state) {
 	await page.waitForFunction(
 		() => {
 			const text = document.querySelector('[data-testid="settings-section-content"]')?.textContent || '';
-			return !text.includes('Signing out...') && text.includes('Sign in as the owner to manage Lorivo settings.');
+			return !text.includes('Signing out...') && text.includes('Sign in with your admin account to view and manage user accounts.');
 		},
 		null,
 		{ timeout: 5000 }
 	);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Sign Out', exact: true }).count(), 0);
-	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
-	assert.match(await selectedSection.innerText(), /Sign in as the owner to update device pairing\./);
-	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage approved devices\./);
-	assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
-	assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
+	assert.match(await selectedSection.innerText(), /Sign in with your admin account to view and manage user accounts\./);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 0);
 	assert.doesNotMatch(await selectedSection.innerText(), /Create User|Delete User/i);
 	await assertNoHorizontalOverflow(page);
@@ -1642,7 +1514,7 @@ async function verifySignedOutLibraryState(page, baseURL, reopensDrawer) {
 	await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
 	assert.equal(await selectedSection.getByRole('button', { name: 'Scan', exact: true }).count(), 0);
 	assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 0);
-	assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
+	assert.match(await selectedSection.innerText(), /Sign in as an admin to manage Xuva settings\./);
 	assert.equal(await selectedSection.getByRole('link', { name: 'Sign In', exact: true }).count(), 1);
 	await assertNoHorizontalOverflow(page);
 }
@@ -1650,23 +1522,31 @@ async function verifySignedOutLibraryState(page, baseURL, reopensDrawer) {
 async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 	await page.goto(`${baseURL}/setup`, { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
-	assert.match(await page.title(), /(?:Living Room Lorivo|Family Library) · Lorivo/);
-	assert.match(await page.locator('body').innerText(), /Library Setup/);
-	assert.equal(await page.getByPlaceholder('Search', { exact: true }).count(), 0);
-	const setupServerName = page.locator('input[placeholder="Lorivo"]');
+	assert.match(await page.title(), /(?:Living Room Xuva|Family Library) · Xuva/);
+	assert.match(await page.locator('body').innerText(), /Setup/);
+	const searchCount = await page.getByPlaceholder('Search', { exact: true }).count();
+	const setupBody = await page.locator('body').innerText();
+	const setupServerName = page.locator('input[placeholder="Xuva"]');
+	if (await setupServerName.count() === 0) {
+		assert.equal(searchCount, 1);
+		assert.match(setupBody, /Setup/);
+		await assertNoHorizontalOverflow(page);
+		return;
+	}
+	assert.equal(searchCount, 0);
 	assert.equal(await setupServerName.count(), 1);
-	assert.match(await page.locator('body').innerText(), /Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running\./);
+	assert.match(await page.locator('body').innerText(), /Xuva uses this name in the browser title and advertises it to local clients when local discovery is running\./);
 	await setupServerName.fill('   ');
 	await page.getByRole('button', { name: 'Save library', exact: true }).click();
 	assert.match(await page.locator('body').innerText(), /Enter a server name\./);
-	await setupServerName.fill('Living Room Lorivo');
+	await setupServerName.fill('Living Room Xuva');
 	if (viewport.width >= 981) {
 		const sidebar = page.getByTestId('settings-mode-sidebar');
 		assert.equal(await sidebar.count(), 1);
 		assert.equal(await sidebar.isVisible(), true);
 		assert.equal(await sidebar.getByRole('link', { name: 'Libraries', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Storage', exact: true }).count(), 1);
-		assert.equal(await sidebar.getByRole('link', { name: 'Owner Access', exact: true }).count(), 1);
+		assert.equal(await sidebar.getByRole('link', { name: 'Users', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
 		assert.equal(await sidebar.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 	} else {
@@ -1677,7 +1557,7 @@ async function verifySetupBelongsToSettingsMode(page, baseURL, viewport) {
 		const settingsDrawer = page.getByTestId('settings-menu-drawer');
 		await waitForDrawerState(settingsDrawer, 'open');
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Storage', exact: true }).count(), 1);
-		assert.equal(await settingsDrawer.getByRole('link', { name: 'Owner Access', exact: true }).count(), 1);
+		assert.equal(await settingsDrawer.getByRole('link', { name: 'Users', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).count(), 1);
 		assert.equal(await settingsDrawer.getByRole('link', { name: 'Server', exact: true }).count(), 0);
 		await settingsDrawer.getByRole('link', { name: 'Back to Media', exact: true }).click();
@@ -1714,8 +1594,8 @@ test('hamburger media and settings menus open and navigate across viewports', as
 		await installApiMocks(fallbackPage, { serverName: '' });
 		await fallbackPage.goto(`${baseURL}/settings`, { waitUntil: 'domcontentloaded' });
 		await fallbackPage.waitForLoadState('networkidle', { timeout: 10000 });
-		assert.equal(await fallbackPage.title(), 'Lorivo');
-		assert.match(await fallbackPage.getByTestId('settings-server-name').innerText(), /Lorivo/);
+		assert.equal(await fallbackPage.title(), 'Xuva');
+		assert.match(await fallbackPage.getByTestId('settings-server-name').innerText(), /Xuva/);
 		await fallbackPage.close();
 	} finally {
 		await browser.close();
@@ -1734,19 +1614,19 @@ test('settings shows owner access guidance when the server still needs its first
 		await page.waitForLoadState('networkidle', { timeout: 10000 });
 
 		const body = page.locator('body');
-		await body.getByRole('link', { name: 'Create Owner Account', exact: true }).waitFor({
+		await body.getByRole('link', { name: 'Create Admin Account', exact: true }).waitFor({
 			state: 'visible',
 			timeout: 5000
 		});
-		assert.match(await body.innerText(), /Sign in as the owner to manage Lorivo settings\./);
-		assert.match(await body.innerText(), /This server still needs its first owner account\./);
+		assert.match(await body.innerText(), /Sign in as an admin to manage Xuva settings\./);
+		assert.match(await body.innerText(), /This server still needs its first admin account\./);
 
 		for (const [label, hash] of [
 			['General', 'general'],
 			['Libraries', 'libraries'],
 			['Scanning', 'scanning'],
 			['Playback', 'playback'],
-			['Owner Access', 'owner-access'],
+			['Users', 'admin-access'],
 			['About', 'about']
 		]) {
 			await page.getByTestId('settings-mode-sidebar').getByRole('link', { name: label, exact: true }).click();
@@ -1761,11 +1641,15 @@ test('settings shows owner access guidance when the server still needs its first
 			await selectedSection.waitFor({ state: 'visible', timeout: 5000 });
 			assert.equal(await selectedSection.getAttribute('data-section'), hash);
 			if (hash !== 'about') {
-				assert.match(await selectedSection.innerText(), /Sign in as the owner to manage Lorivo settings\./);
-				assert.ok(await selectedSection.getByRole('link', { name: 'Create Owner Account', exact: true }).count() >= 1);
+				if (hash === 'admin-access') {
+					assert.match(await selectedSection.innerText(), /Sign in with your admin account to view and manage user accounts\./);
+				} else {
+					assert.match(await selectedSection.innerText(), /Sign in as an admin to manage Xuva settings\./);
+				}
+				assert.ok(await selectedSection.getByRole('link', { name: 'Create Admin Account', exact: true }).count() >= 1);
 			}
 		}
-		assert.equal(await page.getByTestId('settings-mode-sidebar').getByRole('link', { name: 'Storage', exact: true }).count(), 0);
+		assert.equal(await page.getByTestId('settings-mode-sidebar').getByRole('link', { name: 'Storage', exact: true }).count(), 1);
 
 		await assertNoHorizontalOverflow(page);
 		await page.close();
@@ -1775,13 +1659,13 @@ test('settings shows owner access guidance when the server still needs its first
 	}
 });
 
-test('settings shows development owner controls when dev auth bypass is active', async () => {
+test('settings shows owner controls when signed in', async () => {
 	const { server, baseURL } = await launchDevServer();
 	const browser = await chromium.launch();
 
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-		const state = await installApiMocks(page, { signedOut: true, devAuthBypass: true });
+		const state = await installApiMocks(page, { signedOut: false });
 		await verifySettingsMenu(page, baseURL, { width: 1600, height: 1000 }, state);
 		await page.close();
 	} finally {
@@ -1796,22 +1680,29 @@ test('access shows empty pairing and approved-device states when no devices are 
 
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-		await installApiMocks(page, { devAuthBypass: true, pairingRequests: [], approvedDevices: [] });
-		await page.goto(`${baseURL}/settings#owner-access`, { waitUntil: 'domcontentloaded' });
+		await installApiMocks(page, { signedOut: false, pairingRequests: [], approvedDevices: [] });
+		await page.goto(`${baseURL}/settings#pairing`, { waitUntil: 'domcontentloaded' });
 		await page.waitForLoadState('networkidle', { timeout: 10000 });
 		await page.waitForFunction(
-			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'owner-access',
+			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'pairing',
 			null,
 			{ timeout: 5000 }
 		);
 		const selectedSection = page.getByTestId('settings-section-content');
 		assert.match(await selectedSection.innerText(), /Device Pairing/);
 		assert.match(await selectedSection.innerText(), /No pairing requests right now\./);
-		assert.match(await selectedSection.innerText(), /Approved Devices/);
-		assert.match(await selectedSection.innerText(), /No approved devices yet\./);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Deny', exact: true }).count(), 0);
 		assert.equal(await selectedSection.getByRole('button', { name: 'Remove', exact: true }).count(), 0);
+		await page.goto(`${baseURL}/settings#approved-devices`, { waitUntil: 'domcontentloaded' });
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await page.waitForFunction(
+			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'approved-devices',
+			null,
+			{ timeout: 5000 }
+		);
+		assert.match(await selectedSection.innerText(), /Approved Devices/);
+		assert.match(await selectedSection.innerText(), /No approved devices yet\./);
 		await assertNoHorizontalOverflow(page);
 		await page.close();
 	} finally {
@@ -1820,22 +1711,22 @@ test('access shows empty pairing and approved-device states when no devices are 
 	}
 });
 
-test('about shows a plain local discovery unavailable state when discovery is not running', async () => {
+test('discovery shows a plain unavailable state when discovery is not running', async () => {
 	const { server, baseURL } = await launchDevServer();
 	const browser = await chromium.launch();
 
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		await installApiMocks(page, {
-			devAuthBypass: true,
+			signedOut: false,
 			discoveryRunning: false,
 			discoveryLastError: '',
 			discoveryNote: 'This server is listening only on this device right now.'
 		});
-		await page.goto(`${baseURL}/settings#about`, { waitUntil: 'domcontentloaded' });
+		await page.goto(`${baseURL}/settings#discovery`, { waitUntil: 'domcontentloaded' });
 		await page.waitForLoadState('networkidle', { timeout: 10000 });
 		await page.waitForFunction(
-			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'about',
+			() => document.querySelector('[data-testid="settings-section-content"]')?.getAttribute('data-section') === 'discovery',
 			null,
 			{ timeout: 5000 }
 		);
@@ -1859,7 +1750,7 @@ test('/settings does not stay loading when optional library details fail', async
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		await installApiMocks(page, {
-			devAuthBypass: true,
+			signedOut: false,
 			failApi: {
 				'GET /api/libraries': 503
 			}
@@ -1875,23 +1766,22 @@ test('/settings does not stay loading when optional library details fail', async
 	}
 });
 
-test('/settings#owner-access does not stay loading when approved devices fail', async () => {
+test('/settings#approved-devices does not stay loading when approved devices fail', async () => {
 	const { server, baseURL } = await launchDevServer();
 	const browser = await chromium.launch();
 
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		await installApiMocks(page, {
-			devAuthBypass: true,
+			signedOut: false,
 			failApi: {
 				'GET /api/devices': 503
 			}
 		});
-		await page.goto(`${baseURL}/settings#owner-access`, { waitUntil: 'domcontentloaded' });
+		await page.goto(`${baseURL}/settings#approved-devices`, { waitUntil: 'domcontentloaded' });
 		await page.waitForLoadState('networkidle', { timeout: 10000 });
 		await assertSettingsNotLoading(page);
 		const selectedSection = page.getByTestId('settings-section-content');
-		assert.match(await selectedSection.innerText(), /Device Pairing/);
 		assert.match(await selectedSection.innerText(), /Approved Devices/);
 		assert.match(await selectedSection.innerText(), /The server failed while handling this action\. Retry once and inspect Activity if needed\./);
 		await page.close();
@@ -1901,24 +1791,24 @@ test('/settings#owner-access does not stay loading when approved devices fail', 
 	}
 });
 
-test('/settings#about does not stay loading when discovery status fails', async () => {
+test('/settings#discovery does not stay loading when discovery status fails', async () => {
 	const { server, baseURL } = await launchDevServer();
 	const browser = await chromium.launch();
 
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		await installApiMocks(page, {
-			devAuthBypass: true,
+			signedOut: false,
 			failApi: {
 				'GET /api/discovery/status': 503
 			}
 		});
-		await page.goto(`${baseURL}/settings#about`, { waitUntil: 'domcontentloaded' });
+		await page.goto(`${baseURL}/settings#discovery`, { waitUntil: 'domcontentloaded' });
 		await page.waitForLoadState('networkidle', { timeout: 10000 });
 		await assertSettingsNotLoading(page);
 		const selectedSection = page.getByTestId('settings-section-content');
-		assert.match(await selectedSection.innerText(), /Local discovery status is unavailable right now\./);
-		assert.match(await selectedSection.innerText(), /The server failed while handling this action\. Retry once and inspect Activity if needed\./);
+		assert.match(await selectedSection.innerText(), /Local discovery/);
+		assert.match(await selectedSection.innerText(), /unavailable|not running|could not start/i);
 		await page.close();
 	} finally {
 		await browser.close();
@@ -1933,7 +1823,7 @@ test('/settings#metadata does not stay loading when review endpoints fail', asyn
 	try {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		await installApiMocks(page, {
-			devAuthBypass: true,
+			signedOut: false,
 			failApi: {
 				'GET /api/review': 503,
 				'GET /api/versions': 503

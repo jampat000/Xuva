@@ -8,9 +8,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel
+		XuvaButton,
+		XuvaEmptyState,
+		XuvaPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -105,24 +105,24 @@
 <MediaShell active="recently-added" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<LorivoPanel
+			<XuvaPanel
 				title="Loading Recently Added"
 				subtitle="Fetching recent movie and TV additions from existing APIs."
 			/>
 		{:else if loadError}
-			<LorivoPanel title="Recently Added could not load" subtitle={loadError}>
+			<XuvaPanel title="Recently Added could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadRecentlyAdded}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<XuvaButton variant="secondary" onclick={loadRecentlyAdded}>Retry</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back to Home</XuvaButton>
 				</div>
-			</LorivoPanel>
+			</XuvaPanel>
 		{:else if authMessage}
-			<LorivoPanel title="Sign in required" subtitle={authMessage}>
+			<XuvaPanel title="Sign in required" subtitle={authMessage}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadRecentlyAdded}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/signin">Open Sign In</LorivoButton>
+					<XuvaButton variant="secondary" onclick={loadRecentlyAdded}>Retry</XuvaButton>
+					<XuvaButton variant="ghost" href="/signin">Open Sign In</XuvaButton>
 				</div>
-			</LorivoPanel>
+			</XuvaPanel>
 		{:else}
 			<BrowseHeader title="Recently Added" subtitle="Latest additions across movies and TV.">
 				{#snippet chips()}
@@ -138,21 +138,21 @@
 			<BrowseToolbar />
 
 			{#if !rowAvailable}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="Recently Added is not available yet"
 					message="The current backend payload does not expose a recently added row for this route."
 				>
 					{#snippet action()}
-						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
+						<XuvaButton variant="secondary" href="/">Back to Home</XuvaButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</XuvaEmptyState>
 			{:else if movieItems.length === 0 && tvItems.length === 0}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="Nothing recently added"
 					message="Scan your libraries to populate recent additions."
 				/>
 			{:else if totalVisible === 0}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="No recent matches"
 					message="Try changing search terms to find recent titles."
 				/>
@@ -194,7 +194,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 
 	.row {

@@ -1,9 +1,9 @@
-# Lorivo Native Client API
+# Xuva Native Client API
 
 This document defines the current server contract for native clients (tvOS, Android TV, mobile).
 
 Source-of-truth note:
-- Lorivo is the active implementation source.
+- Xuva is the active implementation source.
 
 Scope:
 - local-server discovery
@@ -21,12 +21,12 @@ Out of scope:
 
 Current discovery protocol:
 - mDNS / Bonjour
-- service type: `_lorivo._tcp.local.`
-- service instance name: configured Lorivo `Server Name`
+- service type: `_xuva._tcp.local.`
+- service instance name: configured Xuva `Server Name`
 - service port: active HTTP port
 
 Discovery TXT records:
-- `app=lorivo`
+- `app=xuva`
 - `version=<build version>`
 - `api=/api/client/bootstrap`
 - `serverName=<configured server name>`
@@ -53,7 +53,6 @@ Important fields:
 - `server.httpAddr`
 - `auth.required`
 - `auth.bootstrapAllowed`
-- `auth.devAuthBypass`
 - `features` flags
 - `profiles` capability list
 - `endpoints` route templates
@@ -63,14 +62,13 @@ Safe example response shape:
 ```json
 {
   "server": {
-    "name": "Lorivo",
+    "name": "Xuva",
     "baseUrl": "http://127.0.0.1:8097",
     "httpAddr": "127.0.0.1:8097"
   },
   "auth": {
     "required": true,
-    "bootstrapAllowed": false,
-    "devAuthBypass": false
+    "bootstrapAllowed": false
   },
   "features": {
     "directPlay": true,
@@ -135,10 +133,6 @@ Modes:
 - normal auth mode:
   - owner/user session required for protected routes
   - browser mutations require CSRF token
-- development bypass mode (`LORIVO_DEV_AUTH_BYPASS=true`):
-  - loopback-only
-  - for local server/web development
-  - not a native-client production auth mechanism
 
 Route classes:
 - public bootstrap routes:
@@ -226,7 +220,7 @@ Recommendation:
 
 | Client need | Current support | Endpoint(s) | Ready for tvOS/Android | Blocker | Priority |
 | --- | --- | --- | --- | --- | --- |
-| Discover server on LAN | mDNS/Bonjour implemented | mDNS `_lorivo._tcp.local.`, `GET /api/discovery/status` | yes | none for Bonjour-capable clients | P0 |
+| Discover server on LAN | mDNS/Bonjour implemented | mDNS `_xuva._tcp.local.`, `GET /api/discovery/status` | yes | none for Bonjour-capable clients | P0 |
 | Manual server URL entry | supported | `GET /api/client/bootstrap` | yes | none | P0 |
 | Create pairing request | supported | `POST /api/pairing/requests` | yes | none | P0 |
 | Poll pairing approval status | supported | `GET /api/pairing/requests/{id}` | yes | none | P0 |

@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/events"
-	runtimestore "github.com/jampat000/Lorivo/server/internal/runtime"
+	"github.com/jampat000/Xuva/server/internal/events"
+	runtimestore "github.com/jampat000/Xuva/server/internal/runtime"
 )
 
 type Session struct {

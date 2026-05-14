@@ -95,7 +95,7 @@ func writable(path string) bool {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return false
 	}
-	file, err := os.CreateTemp(path, ".lorivo-write-*")
+	file, err := os.CreateTemp(path, ".xuva-write-*")
 	if err != nil {
 		return false
 	}

@@ -1,4 +1,4 @@
-# Lorivo Screen Inventory
+# Xuva Screen Inventory
 
 ## TV App
 

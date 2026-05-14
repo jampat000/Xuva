@@ -44,8 +44,8 @@
 		min-height: 41px;
 		padding: 0 13px;
 		border: 1px solid transparent;
-		border-radius: 8px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 76%, transparent);
+		border-radius: 6px;
+		color: color-mix(in srgb, var(--xuva-color-text) 76%, transparent);
 		text-decoration: none;
 		transition:
 			background-color 150ms ease,
@@ -55,27 +55,27 @@
 	}
 
 	.sidebar-item:hover {
-		color: var(--lorivo-color-text);
-		background: rgb(255 249 236 / 5%);
-		transform: translateY(-1px);
+		color: var(--xuva-color-text);
+		background: rgb(255 249 236 / 4%);
+		transform: none;
 	}
 
 	.sidebar-item[data-active='true'] {
-		color: var(--lorivo-color-text);
-		border-color: rgb(255 246 229 / 10%);
-		background: color-mix(in srgb, var(--lorivo-color-accent-teal) 8%, transparent);
-		box-shadow: inset 2px 0 0 rgb(255 246 229 / 28%);
+		color: var(--xuva-color-text);
+		border-color: rgb(255 246 229 / 12%);
+		background: color-mix(in srgb, var(--xuva-color-accent-teal) 6%, transparent);
+		box-shadow: none;
 	}
 
 	.sidebar-item[data-active='true'] .sidebar-item__icon {
-		color: var(--lorivo-color-accent-teal);
+		color: var(--xuva-color-accent-teal);
 	}
 
 	.sidebar-item--back {
 		min-height: 48px;
 		border-color: rgb(255 255 255 / 9%);
-		background: rgb(154 167 255 / 5%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 88%, transparent);
+		background: rgb(154 167 255 / 4%);
+		color: color-mix(in srgb, var(--xuva-color-text) 88%, transparent);
 	}
 
 	.sidebar-item--back:hover,
@@ -87,7 +87,7 @@
 	}
 
 	.sidebar-item--back .sidebar-item__icon {
-		color: color-mix(in srgb, var(--lorivo-color-text) 82%, var(--lorivo-settings-accent, #9aa7ff) 18%);
+		color: color-mix(in srgb, var(--xuva-color-text) 82%, var(--xuva-settings-accent, #9aa7ff) 18%);
 	}
 
 	.sidebar-item__icon {
@@ -96,7 +96,7 @@
 		justify-content: center;
 		width: 21px;
 		height: 21px;
-		color: color-mix(in srgb, var(--lorivo-color-text-soft) 86%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-soft) 86%, transparent);
 	}
 
 	.sidebar-item__icon :global(svg) {
@@ -114,6 +114,6 @@
 
 	.sidebar-item__trailing {
 		font-size: 0.76rem;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 	}
 </style>

@@ -47,84 +47,81 @@ type Config struct {
 	ProbeBatchLimit       int      `json:"probeBatchLimit,omitempty"`
 	AllowedOrigins        []string `json:"allowedOrigins,omitempty"`
 	AuthDisabled          bool     `json:"-"`
-	DevAuthBypass         bool     `json:"-"`
 	AdminUsername         string   `json:"-"`
 	AdminPassword         string   `json:"-"`
 }
 
 func FromEnv() Config {
-	dataDir := envString("LORIVO_DATA_DIR", "data")
+	dataDir := envString("XUVA_DATA_DIR", "data")
 	cfg := Config{
-		ServerName:           envString("LORIVO_SERVER_NAME", "Lorivo"),
-		HTTPAddr:             envString("LORIVO_HTTP_ADDR", "127.0.0.1:8097"),
-		DiscoveryEnabled:     envBool("LORIVO_DISCOVERY_ENABLED", true),
-		DiscoveryServiceType: envString("LORIVO_DISCOVERY_SERVICE_TYPE", "_lorivo._tcp"),
+		ServerName:           envString("XUVA_SERVER_NAME", "Xuva"),
+		HTTPAddr:             envString("XUVA_HTTP_ADDR", "127.0.0.1:8097"),
+		DiscoveryEnabled:     envBool("XUVA_DISCOVERY_ENABLED", true),
+		DiscoveryServiceType: envString("XUVA_DISCOVERY_SERVICE_TYPE", "_xuva._tcp"),
 		DataDir:              dataDir,
-		TranscodeDir:         envString("LORIVO_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
-		DownloadsDir:         envString("LORIVO_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
-		MetadataDir:          envString("LORIVO_METADATA_DIR", filepath.Join(dataDir, "metadata")),
-		CacheDir:             envString("LORIVO_CACHE_DIR", filepath.Join(dataDir, "cache")),
-		TempDir:              envString("LORIVO_TEMP_DIR", filepath.Join(dataDir, "temp")),
-		MovieLibraryPath:     envString("LORIVO_MOVIES_PATH", ""),
-		TVLibraryPath:        envString("LORIVO_TV_PATH", ""),
-		FFprobePath:          envString("LORIVO_FFPROBE_PATH", "ffprobe"),
-		FFmpegPath:           envString("LORIVO_FFMPEG_PATH", "ffmpeg"),
-		OMDbAPIKey:           envString("LORIVO_OMDB_API_KEY", ""),
-		TMDBAPIKey:           envString("LORIVO_TMDB_API_KEY", ""),
-		TVDBAPIKey:           envString("LORIVO_TVDB_API_KEY", ""),
-		EventBuffer:          envInt("LORIVO_EVENT_BUFFER", 128),
-		ScanWorkers:          envInt("LORIVO_SCAN_WORKERS", 1),
-		ProbeWorkers:         envInt("LORIVO_PROBE_WORKERS", 2),
-		TranscodeWorkers:     envInt("LORIVO_TRANSCODE_WORKERS", 1),
-		GPUWorkers:           envInt("LORIVO_GPU_WORKERS", 1),
-		HardwareUnlocked:     envBool("LORIVO_HARDWARE_UNLOCKED", false),
-		PlaybackPolicy:       envString("LORIVO_PLAYBACK_POLICY", "original_only"),
-		LibrarySyncMode:      envString("LORIVO_LIBRARY_SYNC_MODE", "daily"),
-		SyncIntervalMins:     envInt("LORIVO_SYNC_INTERVAL_MINS", 1440),
-		WatchDebounceSecs:    envInt("LORIVO_WATCH_DEBOUNCE_SECS", 30),
-		ProbeBatchLimit:      envInt("LORIVO_PROBE_BATCH_LIMIT", 50),
-		AllowedOrigins:       envCSV("LORIVO_ALLOWED_ORIGINS", nil),
-		AuthDisabled:         envBool("LORIVO_AUTH_DISABLED", false),
-		DevAuthBypass:        envBool("LORIVO_DEV_AUTH_BYPASS", false),
-		AdminUsername:        envString("LORIVO_ADMIN_USERNAME", "admin"),
-		AdminPassword:        envString("LORIVO_ADMIN_PASSWORD", ""),
+		TranscodeDir:         envString("XUVA_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
+		DownloadsDir:         envString("XUVA_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
+		MetadataDir:          envString("XUVA_METADATA_DIR", filepath.Join(dataDir, "metadata")),
+		CacheDir:             envString("XUVA_CACHE_DIR", filepath.Join(dataDir, "cache")),
+		TempDir:              envString("XUVA_TEMP_DIR", filepath.Join(dataDir, "temp")),
+		MovieLibraryPath:     envString("XUVA_MOVIES_PATH", ""),
+		TVLibraryPath:        envString("XUVA_TV_PATH", ""),
+		FFprobePath:          envString("XUVA_FFPROBE_PATH", "ffprobe"),
+		FFmpegPath:           envString("XUVA_FFMPEG_PATH", "ffmpeg"),
+		OMDbAPIKey:           envString("XUVA_OMDB_API_KEY", ""),
+		TMDBAPIKey:           envString("XUVA_TMDB_API_KEY", ""),
+		TVDBAPIKey:           envString("XUVA_TVDB_API_KEY", ""),
+		EventBuffer:          envInt("XUVA_EVENT_BUFFER", 128),
+		ScanWorkers:          envInt("XUVA_SCAN_WORKERS", 1),
+		ProbeWorkers:         envInt("XUVA_PROBE_WORKERS", 2),
+		TranscodeWorkers:     envInt("XUVA_TRANSCODE_WORKERS", 1),
+		GPUWorkers:           envInt("XUVA_GPU_WORKERS", 1),
+		HardwareUnlocked:     envBool("XUVA_HARDWARE_UNLOCKED", false),
+		PlaybackPolicy:       envString("XUVA_PLAYBACK_POLICY", "original_only"),
+		LibrarySyncMode:      envString("XUVA_LIBRARY_SYNC_MODE", "daily"),
+		SyncIntervalMins:     envInt("XUVA_SYNC_INTERVAL_MINS", 1440),
+		WatchDebounceSecs:    envInt("XUVA_WATCH_DEBOUNCE_SECS", 30),
+		ProbeBatchLimit:      envInt("XUVA_PROBE_BATCH_LIMIT", 50),
+		AllowedOrigins:       envCSV("XUVA_ALLOWED_ORIGINS", nil),
+		AuthDisabled:         envBool("XUVA_AUTH_DISABLED", false),
+		AdminUsername:        envString("XUVA_ADMIN_USERNAME", "admin"),
+		AdminPassword:        envString("XUVA_ADMIN_PASSWORD", ""),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
 	}
-	cfg.HTTPAddr = envString("LORIVO_HTTP_ADDR", cfg.HTTPAddr)
-	cfg.DiscoveryEnabled = envBool("LORIVO_DISCOVERY_ENABLED", cfg.DiscoveryEnabled)
-	cfg.DiscoveryServiceType = envString("LORIVO_DISCOVERY_SERVICE_TYPE", defaultDiscoveryServiceType(cfg.DiscoveryServiceType))
-	cfg.ServerName = envString("LORIVO_SERVER_NAME", defaultServerName(cfg.ServerName))
-	cfg.DataDir = envString("LORIVO_DATA_DIR", cfg.DataDir)
-	cfg.TranscodeDir = envString("LORIVO_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
-	cfg.DownloadsDir = envString("LORIVO_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
-	cfg.MetadataDir = envString("LORIVO_METADATA_DIR", defaultDir(cfg.MetadataDir, cfg.DataDir, "metadata"))
-	cfg.CacheDir = envString("LORIVO_CACHE_DIR", defaultDir(cfg.CacheDir, cfg.DataDir, "cache"))
-	cfg.TempDir = envString("LORIVO_TEMP_DIR", defaultDir(cfg.TempDir, cfg.DataDir, "temp"))
-	cfg.MovieLibraryPath = envString("LORIVO_MOVIES_PATH", cfg.MovieLibraryPath)
-	cfg.TVLibraryPath = envString("LORIVO_TV_PATH", cfg.TVLibraryPath)
-	cfg.FFprobePath = envString("LORIVO_FFPROBE_PATH", cfg.FFprobePath)
-	cfg.FFmpegPath = envString("LORIVO_FFMPEG_PATH", cfg.FFmpegPath)
-	cfg.OMDbAPIKey = envString("LORIVO_OMDB_API_KEY", cfg.OMDbAPIKey)
-	cfg.TMDBAPIKey = envString("LORIVO_TMDB_API_KEY", cfg.TMDBAPIKey)
-	cfg.TVDBAPIKey = envString("LORIVO_TVDB_API_KEY", cfg.TVDBAPIKey)
-	cfg.EventBuffer = envInt("LORIVO_EVENT_BUFFER", cfg.EventBuffer)
-	cfg.ScanWorkers = envInt("LORIVO_SCAN_WORKERS", cfg.ScanWorkers)
-	cfg.ProbeWorkers = envInt("LORIVO_PROBE_WORKERS", cfg.ProbeWorkers)
-	cfg.TranscodeWorkers = envInt("LORIVO_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
-	cfg.GPUWorkers = envInt("LORIVO_GPU_WORKERS", cfg.GPUWorkers)
-	cfg.HardwareUnlocked = envBool("LORIVO_HARDWARE_UNLOCKED", cfg.HardwareUnlocked)
-	cfg.PlaybackPolicy = envString("LORIVO_PLAYBACK_POLICY", defaultPlaybackPolicy(cfg.PlaybackPolicy))
-	cfg.LibrarySyncMode = envString("LORIVO_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
-	cfg.SyncIntervalMins = envInt("LORIVO_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
-	cfg.WatchDebounceSecs = envInt("LORIVO_WATCH_DEBOUNCE_SECS", defaultInt(cfg.WatchDebounceSecs, 30))
-	cfg.ProbeBatchLimit = envInt("LORIVO_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
-	cfg.AllowedOrigins = envCSV("LORIVO_ALLOWED_ORIGINS", cfg.AllowedOrigins)
-	cfg.AuthDisabled = envBool("LORIVO_AUTH_DISABLED", cfg.AuthDisabled)
-	cfg.DevAuthBypass = envBool("LORIVO_DEV_AUTH_BYPASS", cfg.DevAuthBypass)
-	cfg.AdminUsername = envString("LORIVO_ADMIN_USERNAME", cfg.AdminUsername)
-	cfg.AdminPassword = envString("LORIVO_ADMIN_PASSWORD", cfg.AdminPassword)
+	cfg.HTTPAddr = envString("XUVA_HTTP_ADDR", cfg.HTTPAddr)
+	cfg.DiscoveryEnabled = envBool("XUVA_DISCOVERY_ENABLED", cfg.DiscoveryEnabled)
+	cfg.DiscoveryServiceType = envString("XUVA_DISCOVERY_SERVICE_TYPE", defaultDiscoveryServiceType(cfg.DiscoveryServiceType))
+	cfg.ServerName = envString("XUVA_SERVER_NAME", defaultServerName(cfg.ServerName))
+	cfg.DataDir = envString("XUVA_DATA_DIR", cfg.DataDir)
+	cfg.TranscodeDir = envString("XUVA_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
+	cfg.DownloadsDir = envString("XUVA_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
+	cfg.MetadataDir = envString("XUVA_METADATA_DIR", defaultDir(cfg.MetadataDir, cfg.DataDir, "metadata"))
+	cfg.CacheDir = envString("XUVA_CACHE_DIR", defaultDir(cfg.CacheDir, cfg.DataDir, "cache"))
+	cfg.TempDir = envString("XUVA_TEMP_DIR", defaultDir(cfg.TempDir, cfg.DataDir, "temp"))
+	cfg.MovieLibraryPath = envString("XUVA_MOVIES_PATH", cfg.MovieLibraryPath)
+	cfg.TVLibraryPath = envString("XUVA_TV_PATH", cfg.TVLibraryPath)
+	cfg.FFprobePath = envString("XUVA_FFPROBE_PATH", cfg.FFprobePath)
+	cfg.FFmpegPath = envString("XUVA_FFMPEG_PATH", cfg.FFmpegPath)
+	cfg.OMDbAPIKey = envString("XUVA_OMDB_API_KEY", cfg.OMDbAPIKey)
+	cfg.TMDBAPIKey = envString("XUVA_TMDB_API_KEY", cfg.TMDBAPIKey)
+	cfg.TVDBAPIKey = envString("XUVA_TVDB_API_KEY", cfg.TVDBAPIKey)
+	cfg.EventBuffer = envInt("XUVA_EVENT_BUFFER", cfg.EventBuffer)
+	cfg.ScanWorkers = envInt("XUVA_SCAN_WORKERS", cfg.ScanWorkers)
+	cfg.ProbeWorkers = envInt("XUVA_PROBE_WORKERS", cfg.ProbeWorkers)
+	cfg.TranscodeWorkers = envInt("XUVA_TRANSCODE_WORKERS", cfg.TranscodeWorkers)
+	cfg.GPUWorkers = envInt("XUVA_GPU_WORKERS", cfg.GPUWorkers)
+	cfg.HardwareUnlocked = envBool("XUVA_HARDWARE_UNLOCKED", cfg.HardwareUnlocked)
+	cfg.PlaybackPolicy = envString("XUVA_PLAYBACK_POLICY", defaultPlaybackPolicy(cfg.PlaybackPolicy))
+	cfg.LibrarySyncMode = envString("XUVA_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
+	cfg.SyncIntervalMins = envInt("XUVA_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
+	cfg.WatchDebounceSecs = envInt("XUVA_WATCH_DEBOUNCE_SECS", defaultInt(cfg.WatchDebounceSecs, 30))
+	cfg.ProbeBatchLimit = envInt("XUVA_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
+	cfg.AllowedOrigins = envCSV("XUVA_ALLOWED_ORIGINS", cfg.AllowedOrigins)
+	cfg.AuthDisabled = envBool("XUVA_AUTH_DISABLED", cfg.AuthDisabled)
+	cfg.AdminUsername = envString("XUVA_ADMIN_USERNAME", cfg.AdminUsername)
+	cfg.AdminPassword = envString("XUVA_ADMIN_PASSWORD", cfg.AdminPassword)
 	return cfg
 }
 
@@ -266,18 +263,18 @@ func defaultPlaybackPolicy(value string) string {
 
 func defaultServerName(value string) string {
 	if strings.TrimSpace(value) == legacyDefaultServerName {
-		return "Lorivo"
+		return "Xuva"
 	}
 	if normalized, err := NormalizeServerName(value); err == nil {
 		return normalized
 	}
-	return "Lorivo"
+	return "Xuva"
 }
 
 func defaultDiscoveryServiceType(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return "_lorivo._tcp"
+		return "_xuva._tcp"
 	}
 	return trimmed
 }
@@ -357,10 +354,6 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
-}
-
-func DevAuthBypassActive(cfg Config) bool {
-	return cfg.DevAuthBypass && !cfg.AuthDisabled && loopbackHTTPAddr(cfg.HTTPAddr)
 }
 
 func HTTPAddrLoopbackOnly(addr string) bool {

@@ -1,4 +1,4 @@
-# lorivo web frontend
+# xuva web frontend
 
 This app is the SvelteKit + TypeScript product frontend.
 

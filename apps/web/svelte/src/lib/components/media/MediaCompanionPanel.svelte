@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import LorivoSurface from '../ui/LorivoSurface.svelte';
+	import XuvaSurface from '../ui/XuvaSurface.svelte';
 
 	let {
 		title,
@@ -15,7 +15,7 @@
 	}>();
 </script>
 
-<LorivoSurface tone="elevated">
+<XuvaSurface tone="elevated">
 	<section class="media-companion">
 		<header>
 			<h3>{title}</h3>
@@ -27,19 +27,19 @@
 			{@render children?.()}
 		</div>
 	</section>
-</LorivoSurface>
+</XuvaSurface>
 
 <style>
 	.media-companion {
 		display: grid;
-		gap: var(--lorivo-space-3);
+		gap: var(--xuva-space-3);
 	}
 
 	header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 
 	h3 {
@@ -49,13 +49,13 @@
 	}
 
 	a {
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.82rem;
 		text-decoration: none;
 	}
 
 	.media-companion__body {
 		display: grid;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 </style>

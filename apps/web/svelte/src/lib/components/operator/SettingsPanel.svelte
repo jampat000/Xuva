@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import LorivoSurface from '../ui/LorivoSurface.svelte';
 	import LiveStatusBadge from './LiveStatusBadge.svelte';
 
 	type Status = 'healthy' | 'warning' | 'critical' | 'idle';
@@ -20,43 +19,43 @@
 	}>();
 </script>
 
-<LorivoSurface tone="default">
-	<section class="settings-panel">
-		<header>
-			<div>
-				<h2>{title}</h2>
-				{#if description}
-					<p>{description}</p>
-				{/if}
-			</div>
-			<div class="settings-panel__header-right">
-				<LiveStatusBadge {status} />
-				{#if actions}
-					<div class="settings-panel__actions">
-						{@render actions()}
-					</div>
-				{/if}
-			</div>
-		</header>
+<section class="settings-panel">
+	<header>
 		<div>
-			{@render children?.()}
+			<h2>{title}</h2>
+			{#if description}
+				<p>{description}</p>
+			{/if}
 		</div>
-	</section>
-</LorivoSurface>
+		<div class="settings-panel__header-right">
+			<LiveStatusBadge {status} />
+			{#if actions}
+				<div class="settings-panel__actions">
+					{@render actions()}
+				</div>
+			{/if}
+		</div>
+	</header>
+	<div>
+		{@render children?.()}
+	</div>
+</section>
 
 <style>
 	.settings-panel {
 		display: grid;
-		gap: var(--lorivo-space-3);
+		gap: var(--xuva-space-3);
+		padding: 0.95rem 0 0.45rem;
+		border-top: 1px solid var(--xuva-color-border-soft);
 	}
 
 	header {
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: var(--lorivo-space-3);
+		gap: var(--xuva-space-3);
 		padding-bottom: 0.8rem;
-		border-bottom: 1px solid var(--lorivo-color-border-soft);
+		border-bottom: 1px solid color-mix(in srgb, var(--xuva-color-border-soft) 88%, transparent);
 	}
 
 	h2 {
@@ -67,8 +66,8 @@
 	}
 
 	p {
-		margin: var(--lorivo-space-1) 0 0;
-		color: var(--lorivo-color-text-muted);
+		margin: var(--xuva-space-1) 0 0;
+		color: var(--xuva-color-text-muted);
 		font-size: 0.84rem;
 	}
 
@@ -79,7 +78,7 @@
 	.settings-panel__header-right {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 		align-items: center;
 		justify-content: flex-end;
 	}
@@ -87,7 +86,7 @@
 	.settings-panel__actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 		justify-content: flex-end;
 	}
 

@@ -7,37 +7,37 @@ import (
 	"os"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/api"
-	"github.com/jampat000/Lorivo/server/internal/auth"
-	"github.com/jampat000/Lorivo/server/internal/catalog"
-	"github.com/jampat000/Lorivo/server/internal/config"
-	"github.com/jampat000/Lorivo/server/internal/database"
-	"github.com/jampat000/Lorivo/server/internal/devices"
-	"github.com/jampat000/Lorivo/server/internal/discovery"
-	"github.com/jampat000/Lorivo/server/internal/downloads"
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	"github.com/jampat000/Lorivo/server/internal/libraries"
-	"github.com/jampat000/Lorivo/server/internal/media"
-	"github.com/jampat000/Lorivo/server/internal/metadata"
-	"github.com/jampat000/Lorivo/server/internal/metasources"
-	"github.com/jampat000/Lorivo/server/internal/migration"
-	"github.com/jampat000/Lorivo/server/internal/movies"
-	"github.com/jampat000/Lorivo/server/internal/observability"
-	"github.com/jampat000/Lorivo/server/internal/pairing"
-	"github.com/jampat000/Lorivo/server/internal/playback"
-	"github.com/jampat000/Lorivo/server/internal/playstate"
-	"github.com/jampat000/Lorivo/server/internal/probe"
-	"github.com/jampat000/Lorivo/server/internal/probes"
-	"github.com/jampat000/Lorivo/server/internal/resources"
-	runtimestore "github.com/jampat000/Lorivo/server/internal/runtime"
-	"github.com/jampat000/Lorivo/server/internal/scanner"
-	"github.com/jampat000/Lorivo/server/internal/scans"
-	"github.com/jampat000/Lorivo/server/internal/sessions"
-	"github.com/jampat000/Lorivo/server/internal/streaming"
-	"github.com/jampat000/Lorivo/server/internal/subtitles"
-	"github.com/jampat000/Lorivo/server/internal/transcode"
-	"github.com/jampat000/Lorivo/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/api"
+	"github.com/jampat000/Xuva/server/internal/auth"
+	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/devices"
+	"github.com/jampat000/Xuva/server/internal/discovery"
+	"github.com/jampat000/Xuva/server/internal/downloads"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	"github.com/jampat000/Xuva/server/internal/libraries"
+	"github.com/jampat000/Xuva/server/internal/media"
+	"github.com/jampat000/Xuva/server/internal/metadata"
+	"github.com/jampat000/Xuva/server/internal/metasources"
+	"github.com/jampat000/Xuva/server/internal/migration"
+	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/observability"
+	"github.com/jampat000/Xuva/server/internal/pairing"
+	"github.com/jampat000/Xuva/server/internal/playback"
+	"github.com/jampat000/Xuva/server/internal/playstate"
+	"github.com/jampat000/Xuva/server/internal/probe"
+	"github.com/jampat000/Xuva/server/internal/probes"
+	"github.com/jampat000/Xuva/server/internal/resources"
+	runtimestore "github.com/jampat000/Xuva/server/internal/runtime"
+	"github.com/jampat000/Xuva/server/internal/scanner"
+	"github.com/jampat000/Xuva/server/internal/scans"
+	"github.com/jampat000/Xuva/server/internal/sessions"
+	"github.com/jampat000/Xuva/server/internal/streaming"
+	"github.com/jampat000/Xuva/server/internal/subtitles"
+	"github.com/jampat000/Xuva/server/internal/transcode"
+	"github.com/jampat000/Xuva/server/internal/tv"
 )
 
 type Application struct {
@@ -89,13 +89,6 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	databaseService, err := database.Open(ctx, cfg.DataDir)
 	if err != nil {
 		return nil, err
-	}
-	if cfg.DevAuthBypass {
-		if config.DevAuthBypassActive(cfg) {
-			slog.Warn("development auth bypass active", "http_addr", cfg.HTTPAddr, "warning", "local owner access is enabled for this loopback development server")
-		} else {
-			slog.Warn("development auth bypass ignored", "http_addr", cfg.HTTPAddr, "reason", "bypass only activates on loopback local development addresses while auth remains enabled")
-		}
 	}
 	authService := auth.NewService(databaseService, cfg.AuthDisabled)
 	if cfg.AdminPassword != "" {

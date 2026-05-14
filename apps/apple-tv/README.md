@@ -1,8 +1,8 @@
-# Lorivo Apple TV
+# Xuva Apple TV
 
 Native Apple TV client.
 
-Apple TV is the first native playback client target for Lorivo alpha because it is available for home testing and fits the premium living-room product direction. The first app should prove the end-to-end product loop: install server, add libraries, pair Apple TV, browse media, and play through direct or adaptive streaming.
+Apple TV is the first native playback client target for Xuva alpha because it is available for home testing and fits the premium living-room product direction. The first app should prove the end-to-end product loop: install server, add libraries, pair Apple TV, browse media, and play through direct or adaptive streaming.
 
 Source files live in `Sources/` and are ready to add to an Xcode tvOS SwiftUI app target. The visual system mirrors the server UI: cinema black, warm text, restrained cards, amber primary actions, teal focus, poster-led rows, and quiet playback diagnostics.
 
@@ -17,7 +17,7 @@ Responsibilities:
 
 Alpha scope:
 
-- Pair with a local Lorivo server by code or manual URL.
+- Pair with a local Xuva server by code or manual URL.
 - Register a tvOS playback capability profile.
 - Browse Movies and TV Shows.
 - Open movie, series, season, and episode detail screens.

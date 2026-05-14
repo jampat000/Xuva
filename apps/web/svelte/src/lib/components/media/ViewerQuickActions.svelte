@@ -22,27 +22,27 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 
 	li a {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		min-height: var(--lorivo-control-height-md);
-		padding: 0 var(--lorivo-space-3);
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: var(--lorivo-radius-md);
+		min-height: var(--xuva-control-height-md);
+		padding: 0 var(--xuva-space-3);
+		border: 1px solid var(--xuva-color-border-soft);
+		border-radius: var(--xuva-radius-md);
 		background: rgb(255 246 229 / 3%);
 		font-size: 0.88rem;
 		font-weight: 630;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		text-decoration: none;
 	}
 
 	li a::after {
 		content: '>';
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 	}
 
 	li a:hover {

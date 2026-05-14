@@ -14,11 +14,11 @@ import (
 
 	"github.com/hashicorp/mdns"
 
-	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/config"
 )
 
 const (
-	DefaultServiceType = "_lorivo._tcp"
+	DefaultServiceType = "_xuva._tcp"
 	serviceDomain      = "local."
 	bootstrapAPIPath   = "/api/client/bootstrap"
 )
@@ -116,7 +116,7 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	txtRecords := []string{
-		"app=lorivo",
+		"app=xuva",
 		"api=" + bootstrapAPIPath,
 		"serverName=" + status.ServiceName,
 	}
@@ -210,7 +210,7 @@ func newMDNSAnnouncer(cfg AdvertiseConfig) (announcer, error) {
 func displayServiceName(value string) string {
 	normalized, err := config.NormalizeServerName(value)
 	if err != nil {
-		return "Lorivo"
+		return "Xuva"
 	}
 	return normalized
 }

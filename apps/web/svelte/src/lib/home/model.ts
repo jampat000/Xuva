@@ -372,7 +372,7 @@ function buildEmptyHero(): HomeDisplayItem {
 		subtitle: '',
 		meta: 'Setup',
 		description:
-			'Choose a Movies or TV folder and Lorivo will build your personal streaming home.',
+			'Choose a Movies or TV folder and Xuva will build your personal streaming home.',
 		posterUrl: '',
 		backdropUrl: '',
 		progressPercent: 0,

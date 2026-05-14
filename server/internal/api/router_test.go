@@ -18,34 +18,34 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/auth"
-	"github.com/jampat000/Lorivo/server/internal/catalog"
-	"github.com/jampat000/Lorivo/server/internal/config"
-	"github.com/jampat000/Lorivo/server/internal/database"
-	"github.com/jampat000/Lorivo/server/internal/devices"
-	"github.com/jampat000/Lorivo/server/internal/discovery"
-	"github.com/jampat000/Lorivo/server/internal/downloads"
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	"github.com/jampat000/Lorivo/server/internal/libraries"
-	"github.com/jampat000/Lorivo/server/internal/media"
-	metaprovider "github.com/jampat000/Lorivo/server/internal/metadata"
-	"github.com/jampat000/Lorivo/server/internal/migration"
-	"github.com/jampat000/Lorivo/server/internal/movies"
-	"github.com/jampat000/Lorivo/server/internal/observability"
-	"github.com/jampat000/Lorivo/server/internal/pairing"
-	"github.com/jampat000/Lorivo/server/internal/playback"
-	"github.com/jampat000/Lorivo/server/internal/playstate"
-	"github.com/jampat000/Lorivo/server/internal/probe"
-	"github.com/jampat000/Lorivo/server/internal/probes"
-	"github.com/jampat000/Lorivo/server/internal/resources"
-	"github.com/jampat000/Lorivo/server/internal/scanner"
-	"github.com/jampat000/Lorivo/server/internal/scans"
-	"github.com/jampat000/Lorivo/server/internal/sessions"
-	"github.com/jampat000/Lorivo/server/internal/streaming"
-	"github.com/jampat000/Lorivo/server/internal/subtitles"
-	"github.com/jampat000/Lorivo/server/internal/transcode"
-	"github.com/jampat000/Lorivo/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/auth"
+	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/devices"
+	"github.com/jampat000/Xuva/server/internal/discovery"
+	"github.com/jampat000/Xuva/server/internal/downloads"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	"github.com/jampat000/Xuva/server/internal/libraries"
+	"github.com/jampat000/Xuva/server/internal/media"
+	metaprovider "github.com/jampat000/Xuva/server/internal/metadata"
+	"github.com/jampat000/Xuva/server/internal/migration"
+	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/observability"
+	"github.com/jampat000/Xuva/server/internal/pairing"
+	"github.com/jampat000/Xuva/server/internal/playback"
+	"github.com/jampat000/Xuva/server/internal/playstate"
+	"github.com/jampat000/Xuva/server/internal/probe"
+	"github.com/jampat000/Xuva/server/internal/probes"
+	"github.com/jampat000/Xuva/server/internal/resources"
+	"github.com/jampat000/Xuva/server/internal/scanner"
+	"github.com/jampat000/Xuva/server/internal/scans"
+	"github.com/jampat000/Xuva/server/internal/sessions"
+	"github.com/jampat000/Xuva/server/internal/streaming"
+	"github.com/jampat000/Xuva/server/internal/subtitles"
+	"github.com/jampat000/Xuva/server/internal/transcode"
+	"github.com/jampat000/Xuva/server/internal/tv"
 )
 
 func TestHealthUsesStableStartedAt(t *testing.T) {
@@ -159,7 +159,7 @@ func TestRootMissingStaticAssetReturnsNotFound(t *testing.T) {
 
 func TestRootAssetCacheHeadersAreImmutable(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
-	request := httptest.NewRequest(http.MethodGet, "/README.md", nil)
+	request := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -348,7 +348,7 @@ func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
 	startedAt := time.Date(2026, 4, 30, 4, 5, 6, 0, time.UTC)
 	router := NewRouter(testDeps(t, startedAt))
 	request := httptest.NewRequest(http.MethodGet, "/api/client/bootstrap", nil)
-	request.Host = "lorivo.local:8097"
+	request.Host = "xuva.local:8097"
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -361,7 +361,7 @@ func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
 		t.Fatalf("decode bootstrap: %v", err)
 	}
 	server := payload["server"].(map[string]any)
-	if server["name"] != "Lorivo" || server["baseUrl"] != "http://lorivo.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
+	if server["name"] != "Xuva" || server["baseUrl"] != "http://xuva.local:8097" || server["startedAt"] != startedAt.Format(time.RFC3339) {
 		t.Fatalf("expected server identity, got %#v", server)
 	}
 	client := payload["client"].(map[string]any)
@@ -410,7 +410,7 @@ func TestDiscoveryStatusReturnsSafeFields(t *testing.T) {
 	deps.Config.ServerName = "Family Library"
 	deps.Config.DataDir = filepath.Join(t.TempDir(), "data")
 	deps.Config.DiscoveryEnabled = true
-	deps.Config.DiscoveryServiceType = "_lorivo._tcp"
+	deps.Config.DiscoveryServiceType = "_xuva._tcp"
 	deps.Discovery = discovery.NewService(deps.Config)
 	router := NewRouter(deps)
 	request := httptest.NewRequest(http.MethodGet, "/api/discovery/status", nil)
@@ -429,7 +429,7 @@ func TestDiscoveryStatusReturnsSafeFields(t *testing.T) {
 	if payload["serviceName"] != "Family Library" {
 		t.Fatalf("expected discovery status service name, got %#v", payload)
 	}
-	if payload["serviceType"] != "_lorivo._tcp.local." {
+	if payload["serviceType"] != "_xuva._tcp.local." {
 		t.Fatalf("expected discovery service type, got %#v", payload)
 	}
 	if _, ok := payload["txtRecords"]; !ok {
@@ -1266,7 +1266,7 @@ func TestCatalogSummaryUpdatesAfterScans(t *testing.T) {
 }
 
 func TestMetadataProvidersEndpointUsesStrictManagedModeHealth(t *testing.T) {
-	t.Setenv("LORIVO_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+	t.Setenv("XUVA_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 
@@ -1614,7 +1614,7 @@ func TestAuthProtectedRouteRequiresSession(t *testing.T) {
 	}
 }
 
-func TestDevAuthBypassProtectedSettingsRequireAuthByDefault(t *testing.T) {
+func TestProtectedSettingsRequireAuthByDefault(t *testing.T) {
 	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
 	request := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:8097/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
 		"serverName": "Family Room",
@@ -1625,130 +1625,7 @@ func TestDevAuthBypassProtectedSettingsRequireAuthByDefault(t *testing.T) {
 	router.ServeHTTP(response, request)
 
 	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 when dev auth bypass is off, got %d: %s", response.Code, response.Body.String())
-	}
-}
-
-func TestDevAuthBypassSessionReturnsDevelopmentOwnerOnLoopback(t *testing.T) {
-	deps := testDepsWithAuthNoBootstrap(t, time.Now())
-	deps.Config.DevAuthBypass = true
-	router := NewRouter(deps)
-	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/auth/session", nil)
-	response := httptest.NewRecorder()
-
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200 with dev auth bypass, got %d: %s", response.Code, response.Body.String())
-	}
-	payload := decodeBody(t, response.Body.Bytes())
-	user, _ := payload["user"].(map[string]any)
-	session, _ := payload["session"].(map[string]any)
-	if user["username"] != "development-owner" || user["displayName"] != "Development Owner" || user["role"] != "admin" {
-		t.Fatalf("expected development owner payload, got %#v", payload)
-	}
-	if payload["devAuthBypass"] != true {
-		t.Fatalf("expected devAuthBypass=true, got %#v", payload)
-	}
-	if payload["csrfToken"] != nil {
-		t.Fatalf("expected no csrf token in dev bypass session payload, got %#v", payload)
-	}
-	if session["id"] != devAuthBypassSessionID || session["expiresAt"] != nil {
-		t.Fatalf("expected synthetic dev bypass session without expiry, got %#v", session)
-	}
-}
-
-func TestDevAuthBypassAllowsProtectedSettingsUpdateOnLoopback(t *testing.T) {
-	deps := testDepsWithAuthNoBootstrap(t, time.Now())
-	deps.Config.DevAuthBypass = true
-	router := NewRouter(deps)
-	request := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:8097/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
-		"serverName": "Family Room",
-	})))
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200 with dev auth bypass settings update, got %d: %s", response.Code, response.Body.String())
-	}
-	payload := decodeBody(t, response.Body.Bytes())
-	configPayload, _ := payload["config"].(map[string]any)
-	if configPayload["serverName"] != "Family Room" {
-		t.Fatalf("expected updated server name, got %#v", payload)
-	}
-}
-
-func TestDevAuthBypassAllowsPairingAndApprovedDevicesRoutesOnLoopback(t *testing.T) {
-	deps := testDepsWithAuthNoBootstrap(t, time.Now())
-	deps.Config.DevAuthBypass = true
-	router := NewRouter(deps)
-
-	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
-		"deviceName":    "Kitchen Apple TV",
-		"clientProfile": "apple-tv",
-	})
-	pairingID, _ := create["id"].(string)
-	if pairingID == "" {
-		t.Fatalf("expected pairing request id, got %#v", create)
-	}
-
-	listRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/pairing/requests", nil)
-	listResponse := httptest.NewRecorder()
-	router.ServeHTTP(listResponse, listRequest)
-	if listResponse.Code != http.StatusOK {
-		t.Fatalf("expected 200 for dev bypass pairing list, got %d: %s", listResponse.Code, listResponse.Body.String())
-	}
-
-	approveRequest := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8097/api/pairing/requests/"+pairingID+"/approve", bytes.NewReader([]byte(`{}`)))
-	approveRequest.Header.Set("Content-Type", "application/json")
-	approveResponse := httptest.NewRecorder()
-	router.ServeHTTP(approveResponse, approveRequest)
-	if approveResponse.Code != http.StatusOK {
-		t.Fatalf("expected 200 for dev bypass pairing approve, got %d: %s", approveResponse.Code, approveResponse.Body.String())
-	}
-
-	devicesRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/devices", nil)
-	devicesResponse := httptest.NewRecorder()
-	router.ServeHTTP(devicesResponse, devicesRequest)
-	if devicesResponse.Code != http.StatusOK {
-		t.Fatalf("expected 200 for dev bypass approved devices, got %d: %s", devicesResponse.Code, devicesResponse.Body.String())
-	}
-	body := decodeBody(t, devicesResponse.Body.Bytes())
-	items, _ := body["devices"].([]any)
-	if len(items) != 1 {
-		t.Fatalf("expected one approved device through dev bypass route, got %#v", body)
-	}
-}
-
-func TestDevAuthBypassIgnoredOnNonLoopbackBind(t *testing.T) {
-	deps := testDepsWithAuthNoBootstrap(t, time.Now())
-	deps.Config.DevAuthBypass = true
-	deps.Config.HTTPAddr = "0.0.0.0:8097"
-	router := NewRouter(deps)
-	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/auth/session", nil)
-	response := httptest.NewRecorder()
-
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 when dev auth bypass is configured on a non-loopback bind, got %d: %s", response.Code, response.Body.String())
-	}
-}
-
-func TestDevAuthBypassIgnoredForExternalHost(t *testing.T) {
-	deps := testDepsWithAuthNoBootstrap(t, time.Now())
-	deps.Config.DevAuthBypass = true
-	router := NewRouter(deps)
-	request := httptest.NewRequest(http.MethodGet, "http://lorivo.example/api/auth/session", nil)
-	request.Header.Set("X-Forwarded-Host", "lorivo.example")
-	response := httptest.NewRecorder()
-
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 when dev auth bypass is accessed through a non-loopback host, got %d: %s", response.Code, response.Body.String())
+		t.Fatalf("expected 401 for protected settings update without auth, got %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -1814,10 +1691,10 @@ func TestAuthLoginForwardedHTTPSOnNonLoopbackDoesNotSetSecureCookieWithoutTLS(t 
 		"username": "admin",
 		"password": "test-password-123!",
 	})
-	request := httptest.NewRequest(http.MethodPost, "http://lorivo.test/api/auth/login", bytes.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "http://xuva.test/api/auth/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Forwarded-Proto", "https")
-	request.Header.Set("X-Forwarded-Host", "lorivo.example")
+	request.Header.Set("X-Forwarded-Host", "xuva.example")
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -1838,7 +1715,7 @@ func TestAuthLoginHTTPSRequestSetsSecureCookie(t *testing.T) {
 		"username": "admin",
 		"password": "test-password-123!",
 	})
-	request := httptest.NewRequest(http.MethodPost, "https://lorivo.test/api/auth/login", bytes.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "https://xuva.test/api/auth/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 
@@ -1920,7 +1797,7 @@ func TestAuthMutationRejectsMissingCSRF(t *testing.T) {
 		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
 	}
 
-	request := httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+	request := httptest.NewRequest(http.MethodPut, "http://xuva.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
 		"httpAddr": "127.0.0.1:8097",
 	})))
 	request.Header.Set("Content-Type", "application/json")
@@ -1949,7 +1826,7 @@ func TestAuthHeaderTokenAllowsProtectedRouteWithoutCookies(t *testing.T) {
 		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "http://lorivo.test/api/users", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/api/users", nil)
 	request.Header.Set("X-Auth-Token", token)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -1975,7 +1852,7 @@ func TestAuthHeaderTokenMutationBypassesCSRFRequirement(t *testing.T) {
 		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
 	}
 
-	request := httptest.NewRequest(http.MethodPost, "http://lorivo.test/api/users", bytes.NewReader(mustJSON(t, map[string]any{
+	request := httptest.NewRequest(http.MethodPost, "http://xuva.test/api/users", bytes.NewReader(mustJSON(t, map[string]any{
 		"username":    "viewer-hdr",
 		"displayName": "Viewer Header",
 		"password":    "viewer-password-123!",
@@ -2007,7 +1884,7 @@ func TestAuthHeaderTokenOverridesStaleCookie(t *testing.T) {
 		t.Fatalf("expected sessionToken in login payload, got %#v", login.payload)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "http://lorivo.test/api/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://xuva.test/api/users", nil)
 	req.Header.Set("X-Auth-Token", token)
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "stale.invalid.token"})
 	res := httptest.NewRecorder()
@@ -2203,16 +2080,16 @@ func TestSettingsServerNameIsUserFacingServerIdentity(t *testing.T) {
 	router := NewRouter(deps)
 
 	update := requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
-		"serverName": "  Living Room Lorivo  ",
+		"serverName": "  Living Room Xuva  ",
 	})
 	configPayload, _ := update["config"].(map[string]any)
-	if configPayload["serverName"] != "Living Room Lorivo" {
+	if configPayload["serverName"] != "Living Room Xuva" {
 		t.Fatalf("expected trimmed server name, got %#v", configPayload)
 	}
 
 	reloaded := getJSON(t, router, "/api/settings")
 	reloadedConfig, _ := reloaded["config"].(map[string]any)
-	if reloadedConfig["serverName"] != "Living Room Lorivo" {
+	if reloadedConfig["serverName"] != "Living Room Xuva" {
 		t.Fatalf("expected saved server name after reload, got %#v", reloadedConfig)
 	}
 }
@@ -2236,7 +2113,7 @@ func TestSettingsServerNameValidation(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 
 	empty := httptest.NewRecorder()
-	router.ServeHTTP(empty, httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+	router.ServeHTTP(empty, httptest.NewRequest(http.MethodPut, "http://xuva.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
 		"serverName": "   ",
 	}))))
 	if empty.Code != http.StatusBadRequest {
@@ -2245,7 +2122,7 @@ func TestSettingsServerNameValidation(t *testing.T) {
 
 	longName := strings.Repeat("L", 51)
 	tooLong := httptest.NewRecorder()
-	router.ServeHTTP(tooLong, httptest.NewRequest(http.MethodPut, "http://lorivo.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
+	router.ServeHTTP(tooLong, httptest.NewRequest(http.MethodPut, "http://xuva.test/api/settings", bytes.NewReader(mustJSON(t, map[string]any{
 		"serverName": longName,
 	}))))
 	if tooLong.Code != http.StatusBadRequest {
@@ -2260,13 +2137,13 @@ func TestSettingsServerNameMigratesLegacyDefault(t *testing.T) {
 
 	settings := getJSON(t, router, "/api/settings")
 	configPayload, _ := settings["config"].(map[string]any)
-	if configPayload["serverName"] != "Lorivo" {
-		t.Fatalf("expected legacy default server name to display as Lorivo, got %#v", configPayload)
+	if configPayload["serverName"] != "Xuva" {
+		t.Fatalf("expected legacy default server name to display as Xuva, got %#v", configPayload)
 	}
 }
 
 func TestSettingsManagedProviderOverridesIgnoreClientKeyInjection(t *testing.T) {
-	t.Setenv("LORIVO_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+	t.Setenv("XUVA_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 
@@ -2786,7 +2663,7 @@ func (c *authTestClient) requestJSON(t *testing.T, router http.Handler, method s
 	if body != nil {
 		reader = bytes.NewReader(mustJSON(t, body))
 	}
-	request := httptest.NewRequest(method, "http://lorivo.test"+path, reader)
+	request := httptest.NewRequest(method, "http://xuva.test"+path, reader)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

@@ -2,8 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 test("folder picker reports unsupported without desktop bridge", async () => {
-  delete global.lorivoDesktop;
-  delete global.LorivoDesktop;
+  delete global.xuvaDesktop;
+  delete global.XuvaDesktop;
   delete require.cache[require.resolve("./modules/folder-picker.js")];
   const picker = require("./modules/folder-picker.js");
 
@@ -11,10 +11,10 @@ test("folder picker reports unsupported without desktop bridge", async () => {
 });
 
 test("folder picker normalizes desktop bridge path results", async () => {
-  global.lorivoDesktop = {
+  global.xuvaDesktop = {
     pickFolder: async request => ({ path: `  ${request.currentPath}\\Movies  ` }),
   };
-  delete global.LorivoDesktop;
+  delete global.XuvaDesktop;
   delete require.cache[require.resolve("./modules/folder-picker.js")];
   const picker = require("./modules/folder-picker.js");
 

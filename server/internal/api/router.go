@@ -27,38 +27,38 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/jampat000/Lorivo/server/internal/adaptive"
-	"github.com/jampat000/Lorivo/server/internal/auth"
-	"github.com/jampat000/Lorivo/server/internal/catalog"
-	"github.com/jampat000/Lorivo/server/internal/config"
-	"github.com/jampat000/Lorivo/server/internal/devices"
-	"github.com/jampat000/Lorivo/server/internal/discovery"
-	"github.com/jampat000/Lorivo/server/internal/downloads"
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	"github.com/jampat000/Lorivo/server/internal/libraries"
-	"github.com/jampat000/Lorivo/server/internal/media"
-	metaprovider "github.com/jampat000/Lorivo/server/internal/metadata"
-	"github.com/jampat000/Lorivo/server/internal/metasources"
-	"github.com/jampat000/Lorivo/server/internal/migration"
-	"github.com/jampat000/Lorivo/server/internal/movies"
-	"github.com/jampat000/Lorivo/server/internal/observability"
-	"github.com/jampat000/Lorivo/server/internal/pairing"
-	"github.com/jampat000/Lorivo/server/internal/playback"
-	"github.com/jampat000/Lorivo/server/internal/playstate"
-	"github.com/jampat000/Lorivo/server/internal/probe"
-	"github.com/jampat000/Lorivo/server/internal/probes"
-	"github.com/jampat000/Lorivo/server/internal/remote"
-	"github.com/jampat000/Lorivo/server/internal/resources"
-	"github.com/jampat000/Lorivo/server/internal/scanner"
-	"github.com/jampat000/Lorivo/server/internal/scans"
-	"github.com/jampat000/Lorivo/server/internal/sessions"
-	"github.com/jampat000/Lorivo/server/internal/streaming"
-	"github.com/jampat000/Lorivo/server/internal/subtitles"
-	"github.com/jampat000/Lorivo/server/internal/systemstats"
-	"github.com/jampat000/Lorivo/server/internal/transcode"
-	"github.com/jampat000/Lorivo/server/internal/tv"
-	"github.com/jampat000/Lorivo/server/internal/webapp"
+	"github.com/jampat000/Xuva/server/internal/adaptive"
+	"github.com/jampat000/Xuva/server/internal/auth"
+	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/devices"
+	"github.com/jampat000/Xuva/server/internal/discovery"
+	"github.com/jampat000/Xuva/server/internal/downloads"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	"github.com/jampat000/Xuva/server/internal/libraries"
+	"github.com/jampat000/Xuva/server/internal/media"
+	metaprovider "github.com/jampat000/Xuva/server/internal/metadata"
+	"github.com/jampat000/Xuva/server/internal/metasources"
+	"github.com/jampat000/Xuva/server/internal/migration"
+	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/observability"
+	"github.com/jampat000/Xuva/server/internal/pairing"
+	"github.com/jampat000/Xuva/server/internal/playback"
+	"github.com/jampat000/Xuva/server/internal/playstate"
+	"github.com/jampat000/Xuva/server/internal/probe"
+	"github.com/jampat000/Xuva/server/internal/probes"
+	"github.com/jampat000/Xuva/server/internal/remote"
+	"github.com/jampat000/Xuva/server/internal/resources"
+	"github.com/jampat000/Xuva/server/internal/scanner"
+	"github.com/jampat000/Xuva/server/internal/scans"
+	"github.com/jampat000/Xuva/server/internal/sessions"
+	"github.com/jampat000/Xuva/server/internal/streaming"
+	"github.com/jampat000/Xuva/server/internal/subtitles"
+	"github.com/jampat000/Xuva/server/internal/systemstats"
+	"github.com/jampat000/Xuva/server/internal/transcode"
+	"github.com/jampat000/Xuva/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/webapp"
 )
 
 type Deps struct {
@@ -249,18 +249,10 @@ func withObservability(deps Deps, next http.Handler) http.Handler {
 }
 
 func withResolvedSession(deps Deps, next http.Handler) http.Handler {
-	if (deps.Auth == nil || deps.Auth.Disabled()) && !devAuthBypassEnabled(deps) {
+	if deps.Auth == nil || deps.Auth.Disabled() {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if devAuthBypassEnabled(deps) && devAuthBypassAllowsRequest(r) {
-			next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), devAuthBypassSession())))
-			return
-		}
-		if deps.Auth == nil || deps.Auth.Disabled() {
-			next.ServeHTTP(w, r)
-			return
-		}
 		cookieToken := ""
 		if cookie, err := r.Cookie(auth.SessionCookieName); err == nil {
 			cookieToken = strings.TrimSpace(cookie.Value)
@@ -521,32 +513,17 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 				"role":        resolved.Principal.Role,
 			},
 		}
-		sessionPayload := map[string]any{
-			"id": resolved.Session.ID,
+		payload["session"] = map[string]any{
+			"id":        resolved.Session.ID,
+			"expiresAt": resolved.Session.ExpiresAt.Format(time.RFC3339),
 		}
-		if resolved.DevBypass {
-			payload["devAuthBypass"] = true
-			payload["devAuthBypassMessage"] = "Development access is active. User management will be enabled before production."
-		} else {
-			sessionPayload["expiresAt"] = resolved.Session.ExpiresAt.Format(time.RFC3339)
-			payload["csrfToken"] = resolved.Session.CSRFToken
-		}
-		payload["session"] = sessionPayload
+		payload["csrfToken"] = resolved.Session.CSRFToken
 		writeJSON(w, http.StatusOK, payload)
 	}
 }
 
 func authLogoutHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok && resolved.DevBypass {
-			clearAuthCookies(w)
-			writeJSON(w, http.StatusOK, map[string]any{
-				"status":               "dev_bypass_active",
-				"devAuthBypass":        true,
-				"devAuthBypassMessage": "Development access bypass remains active until LORIVO_DEV_AUTH_BYPASS is turned off.",
-			})
-			return
-		}
 		if deps.Auth != nil && !deps.Auth.Disabled() {
 			if cookie, err := r.Cookie(auth.SessionCookieName); err == nil && cookie.Value != "" {
 				_ = deps.Auth.Revoke(r.Context(), cookie.Value)
@@ -860,7 +837,6 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 			startedAt = time.Now().UTC()
 		}
 		authRequired := deps.Auth != nil && !deps.Auth.Disabled()
-		devBypassActive := devAuthBypassEnabled(deps) && requestHostIsLoopback(r)
 		bootstrapAllowed := false
 		defaultAdminUsername := strings.TrimSpace(cfg.AdminUsername)
 		if defaultAdminUsername == "" {
@@ -873,7 +849,7 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"server": map[string]any{
-				"product":      "lorivo",
+				"product":      "xuva",
 				"name":         configDisplayName(cfg.ServerName),
 				"baseUrl":      requestBaseURL(r, cfg.HTTPAddr),
 				"httpAddr":     cfg.HTTPAddr,
@@ -885,7 +861,6 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 				"bootstrapAllowed":  bootstrapAllowed,
 				"defaultUsername":   defaultAdminUsername,
 				"bootstrapEndpoint": "/api/auth/bootstrap",
-				"devAuthBypass":     devBypassActive,
 				"methods":           []string{"session_cookie", "local_pairing_code"},
 			},
 			"client": map[string]any{
@@ -935,7 +910,7 @@ func discoveryStatusHandler(deps Deps) http.HandlerFunc {
 		status := discovery.Status{
 			Enabled:     cfg.DiscoveryEnabled,
 			ServiceName: configDisplayName(cfg.ServerName),
-			ServiceType: "_lorivo._tcp.local.",
+			ServiceType: "_xuva._tcp.local.",
 			Note:        "Local discovery is not running.",
 		}
 		if deps.Discovery != nil {
@@ -995,7 +970,7 @@ func healthSnapshot(deps Deps) (map[string]any, bool) {
 	}
 	return map[string]any{
 		"status":    status,
-		"service":   "lorivo-server",
+		"service":   "xuva-server",
 		"startedAt": startedAt.UTC().Format(time.RFC3339),
 		"httpAddr":  deps.Config.HTTPAddr,
 		"checks":    checks,
@@ -1014,7 +989,7 @@ func pathReady(path string) (bool, string) {
 	if !info.IsDir() {
 		return false, "path is not a directory"
 	}
-	testPath, ok := safeChildPath(path, ".lorivo-healthcheck")
+	testPath, ok := safeChildPath(path, ".xuva-healthcheck")
 	if !ok {
 		return false, "path cannot be checked safely"
 	}
@@ -1826,7 +1801,7 @@ func firstTVHomeItem(rows []map[string]any) map[string]any {
 		"id":       "empty",
 		"kind":     "empty",
 		"title":    "Add your first library",
-		"subtitle": "Open Lorivo Settings to add Movies or TV Shows.",
+		"subtitle": "Open Xuva Settings to add Movies or TV Shows.",
 		"route":    "Setup",
 	}
 }
@@ -1969,7 +1944,7 @@ func metadataSuggestionsHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"suggestions": items,
 			"providers":   metadataProviders(r.Context(), deps),
-			"strategy":    "Lorivo runs strict managed metadata mode: local-first signals and account-free online sources stay active, managed providers auto-run when server credentials are provisioned, and fallback paths continue when limits or provider outages occur.",
+			"strategy":    "Xuva runs strict managed metadata mode: local-first signals and account-free online sources stay active, managed providers auto-run when server credentials are provisioned, and fallback paths continue when limits or provider outages occur.",
 		})
 	}
 }
@@ -2211,7 +2186,7 @@ func metadataArtworkCandidates(records []catalog.MetadataRecord, artType string)
 func fallbackArtworkSVG(title string, artType string) string {
 	safeTitle := html.EscapeString(truncate(strings.TrimSpace(title), 20))
 	if safeTitle == "" {
-		safeTitle = "Lorivo"
+		safeTitle = "Xuva"
 	}
 	if strings.EqualFold(artType, "backdrop") {
 		return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
@@ -2325,7 +2300,7 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	if err != nil {
 		return false
 	}
-	request.Header.Set("User-Agent", "Lorivo/0.1 (+https://github.com/lorivohq/lorivo)")
+	request.Header.Set("User-Agent", "Xuva/0.1 (+https://github.com/xuvahq/xuva)")
 	request.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -2722,6 +2697,14 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		mergeInt(&updated.ProbeWorkers, request.ProbeWorkers)
 		mergeInt(&updated.TranscodeWorkers, request.TranscodeWorkers)
 		mergeInt(&updated.GPUWorkers, request.GPUWorkers)
+		if value, ok := fields["hardwareUnlocked"]; ok {
+			var hardwareUnlocked bool
+			if err := json.Unmarshal(value, &hardwareUnlocked); err != nil {
+				writeError(w, http.StatusBadRequest, "hardware unlocked must be true or false")
+				return
+			}
+			updated.HardwareUnlocked = hardwareUnlocked
+		}
 		mergeString(&updated.LibrarySyncMode, request.LibrarySyncMode)
 		mergeString(&updated.PlaybackPolicy, request.PlaybackPolicy)
 		updated.PlaybackPolicy = normalizedPlaybackPolicy(updated.PlaybackPolicy)
@@ -2968,7 +2951,7 @@ func hardwareAccelerationRecommendation(available bool, gpuWorkers int) string {
 	if gpuWorkers <= 0 {
 		return "FFmpeg exposes hardware encoder support, but GPU worker slots are disabled. Enable one or more slots to reserve GPU conversion capacity."
 	}
-	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Lorivo can use GPU conversion for heavy video routes and subtitle burn-in."
+	return "FFmpeg exposes hardware encoder support. Once licensed and runtime-tested, Xuva can use GPU conversion for heavy video routes and subtitle burn-in."
 }
 
 func playbackPolicyStatus(policy string) map[string]any {
@@ -2980,10 +2963,10 @@ func playbackPolicyStatus(policy string) map[string]any {
 		"cinema":        "Cinema Server",
 	}
 	descriptions := map[string]string{
-		"original_only": "Lorivo plays the original file only. If this device cannot play it as-is, Lorivo shows fallback options instead of converting automatically.",
-		"light":         "Lorivo may repackage while playing or convert audio. Video stays untouched, so quality is preserved.",
-		"full":          "Lorivo may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.",
-		"cinema":        "Lorivo allows heavier live conversion and future automated optimization controls for power users.",
+		"original_only": "Xuva plays the original file only. If this device cannot play it as-is, Xuva shows fallback options instead of converting automatically.",
+		"light":         "Xuva may repackage while playing or convert audio. Video stays untouched, so quality is preserved.",
+		"full":          "Xuva may convert video while playing when a device needs it. Work is temporary unless the user creates an optimized version.",
+		"cinema":        "Xuva allows heavier live conversion and future automated optimization controls for power users.",
 	}
 	return map[string]any{
 		"id":          policy,
@@ -3019,7 +3002,7 @@ func playbackPolicyAllows(policy string, decision playback.Decision) bool {
 func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[string]string {
 	mode := string(decision.Mode)
 	fallbacks := []map[string]string{
-		{"label": "Play on a compatible device", "detail": "Use a player that supports this file as-is so Lorivo does not need to convert anything."},
+		{"label": "Play on a compatible device", "detail": "Use a player that supports this file as-is so Xuva does not need to convert anything."},
 		{"label": "Allow this session to adapt", "detail": "Switch to a compatibility policy that permits the required playback work: " + mode + "."},
 	}
 	if decision.Mode == playback.Remux {
@@ -3031,7 +3014,7 @@ func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[st
 	if decision.Mode == playback.VideoTranscode || decision.Mode == playback.SubtitleBurn {
 		fallbacks = append(fallbacks, map[string]string{"label": "Allow live video conversion", "detail": "Convert video only while playing. This may use high CPU or GPU if hardware acceleration is unlocked and working."})
 	}
-	fallbacks = append(fallbacks, map[string]string{"label": "Create optimized version", "detail": "Optional stored version for easier future playback. Lorivo should show size, quality, and storage impact first."})
+	fallbacks = append(fallbacks, map[string]string{"label": "Create optimized version", "detail": "Optional stored version for easier future playback. Xuva should show size, quality, and storage impact first."})
 	return fallbacks
 }
 
@@ -3234,11 +3217,11 @@ func settingsPayload(cfg config.Config) map[string]any {
 
 func configDisplayName(value string) string {
 	if strings.TrimSpace(value) == "My Server" {
-		return "Lorivo"
+		return "Xuva"
 	}
 	normalized, err := config.NormalizeServerName(value)
 	if err != nil {
-		return "Lorivo"
+		return "Xuva"
 	}
 	return normalized
 }
@@ -3276,7 +3259,7 @@ func remoteAccessHandler(deps Deps) http.HandlerFunc {
 			"wanLookup":      "available_on_request",
 			"diagnostics":    "available",
 			"failureClasses": []string{remote.ClassNotConfigured, remote.ClassPrivateRoute, remote.ClassDNS, remote.ClassNATFirewall, remote.ClassCertificate, remote.ClassThroughput},
-			"recommendation": "Use your own VPN, reverse proxy, or port-forwarding setup. Lorivo does not require hosted relay servers.",
+			"recommendation": "Use your own VPN, reverse proxy, or port-forwarding setup. Xuva does not require hosted relay servers.",
 		})
 	}
 }
@@ -3530,7 +3513,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>%s - Lorivo</title>
+  <title>%s - Xuva</title>
   <style>
     :root {
       color-scheme: dark;
@@ -3856,7 +3839,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
 <body>
   <div class="player-shell">
     <div class="topbar">
-      <div class="brand"><b>V</b> Lorivo Player</div>
+      <div class="brand"><b>V</b> Xuva Player</div>
       <div class="status-pill" id="sessionState">Starting</div>
     </div>
     <button class="hud-toggle" id="hudToggle" type="button">Controls</button>
@@ -3947,7 +3930,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     let selectedSubtitleTrack = "-1";
 
     function csrfToken() {
-      return document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("lorivo_csrf="))?.split("=").slice(1).join("=") || "";
+      return document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("xuva_csrf="))?.split("=").slice(1).join("=") || "";
     }
     async function send(path, body, method = "POST", keepalive = false) {
       const token = csrfToken();
@@ -4063,7 +4046,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
         return "direct";
       }
       sessionState.textContent = "Playback unavailable";
-      forecastReason.textContent = "Lorivo could not resolve a playable route for this browser. Check source compatibility and playback policy.";
+      forecastReason.textContent = "Xuva could not resolve a playable route for this browser. Check source compatibility and playback policy.";
       await updateInspectorRoute("blocked", currentDecision);
       return "blocked";
     }

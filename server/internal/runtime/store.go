@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/database"
 )
 
 type Entity struct {

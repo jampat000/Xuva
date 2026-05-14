@@ -21,12 +21,12 @@
 		type PlaybackRouteResponse,
 		type PlaybackStateResponse
 	} from '$lib/api/details';
-	import DetailHero from '$lib/lorivo/DetailHero.svelte';
-	import DetailSection from '$lib/lorivo/DetailSection.svelte';
-	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
-	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
-	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
-	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
+	import DetailHero from '$lib/Xuva/DetailHero.svelte';
+	import DetailSection from '$lib/Xuva/DetailSection.svelte';
+	import XuvaButton from '$lib/Xuva/XuvaButton.svelte';
+	import XuvaEmptyState from '$lib/Xuva/XuvaEmptyState.svelte';
+	import XuvaPanel from '$lib/Xuva/XuvaPanel.svelte';
+	import XuvaShell from '$lib/Xuva/XuvaShell.svelte';
 	import {
 		cleanDescription,
 		extractYear,
@@ -288,45 +288,41 @@
 
 </script>
 
-<svelte:head>
-	<title>{movieTitle} - Lorivo Media</title>
-</svelte:head>
-
-<LorivoShell>
+<XuvaShell>
 	{#if isLoading}
-		<LorivoPanel title="Loading Movie Details" subtitle="Fetching movie metadata, versions, and playback state." />
+		<XuvaPanel title="Loading Movie Details" subtitle="Fetching movie metadata, versions, and playback state." />
 	{:else if loadError}
 		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="Connection"
 				title="Media library unavailable"
-				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+				description="Xuva could not reach the media library service. Check that the server is running, then try again."
 			>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" onclick={loadMovieDetails}>Retry</LorivoButton>
+					<XuvaButton variant="primary" onclick={loadMovieDetails}>Retry</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back Home</LorivoButton>
+					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back Home</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 		</section>
 	{:else if !movie}
 		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="Movies"
 				title="Movie not found"
-				description="Lorivo could not find that movie. It may have been removed, renamed, or not scanned yet."
+				description="Xuva could not find that movie. It may have been removed, renamed, or not scanned yet."
 			>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" href="/movies">Back to Movies</LorivoButton>
+					<XuvaButton variant="primary" href="/movies">Back to Movies</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" onclick={startMovieScan} disabled={isScanning}>
+					<XuvaButton variant="secondary" onclick={startMovieScan} disabled={isScanning}>
 						{isScanning ? 'Scanning...' : 'Scan Movies'}
-					</LorivoButton>
+					</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 			{#if actionMessage}
 				<p class="mt-3 text-sm text-white/60">{actionMessage}</p>
 			{/if}
@@ -345,13 +341,13 @@
 		>
 			{#snippet actions()}
 				{#if primaryPlayHref}
-					<LorivoButton variant="primary" href={primaryPlayHref}>
+					<XuvaButton variant="primary" href={primaryPlayHref}>
 						<Play size={18} class="fill-white text-white" />
 						{primaryPlayLabel}
-					</LorivoButton>
-					<LorivoButton variant="secondary" href={primaryStartHref}>Play From Start</LorivoButton>
+					</XuvaButton>
+					<XuvaButton variant="secondary" href={primaryStartHref}>Play From Start</XuvaButton>
 				{:else}
-					<LorivoButton variant="primary" disabled>Play</LorivoButton>
+					<XuvaButton variant="primary" disabled>Play</XuvaButton>
 				{/if}
 			{/snippet}
 		</DetailHero>
@@ -367,7 +363,7 @@
 			{:else}
 				<div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
 					{#each sourceModels as source (source.mediaSourceId)}
-						<article class={`rounded-2xl border p-5 shadow-lg shadow-black/20 transition ${isSourceSelected(source.mediaSourceId) ? 'border-[#7C5CFF]/45 bg-[#7C5CFF]/10' : 'border-white/10 bg-white/[0.04]'}`}>
+						<article class={`rounded-md border p-4 transition ${isSourceSelected(source.mediaSourceId) ? 'border-[#7C5CFF]/45 bg-[#7C5CFF]/8' : 'border-white/10 bg-white/[0.02]'}`}>
 							<button
 								class="flex w-full items-start justify-between gap-4 text-left text-white"
 								type="button"
@@ -383,31 +379,31 @@
 									</strong>
 									<span class="mt-1 block text-sm leading-relaxed text-white/50">{movieSourceMeta(source)}</span>
 								</span>
-								<em class="shrink-0 rounded-full border border-white/10 bg-[#111827] px-3 py-1 text-xs font-semibold not-italic text-white/70">
+								<em class="shrink-0 rounded-sm border border-white/10 bg-[#111827] px-3 py-1 text-xs font-semibold not-italic text-white/70">
 									{watchedLabel(source.state)}
 								</em>
 							</button>
 							<p class="mt-4 text-sm font-semibold text-white">{playbackModeLabel(source.decision)}</p>
 							<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(source.decision)}</p>
 							<div class="mt-5 flex flex-wrap gap-3">
-								<LorivoButton variant="primary" size="sm" href={`/play/${encodeURIComponent(source.mediaSourceId)}`}>
+								<XuvaButton variant="primary" size="sm" href={`/play/${encodeURIComponent(source.mediaSourceId)}`}>
 									{isResumeState(source.state) ? 'Resume' : 'Play'}
-								</LorivoButton>
-								<LorivoButton
+								</XuvaButton>
+								<XuvaButton
 									variant="secondary"
 									size="sm"
 									href={`/play/${encodeURIComponent(source.mediaSourceId)}?start=0`}
 								>
 									Start Over
-								</LorivoButton>
-								<LorivoButton
+								</XuvaButton>
+								<XuvaButton
 									variant="ghost"
 									size="sm"
 									onclick={() => resolvePlaybackRoute(source.mediaSourceId)}
 									disabled={routeStateFor(source.mediaSourceId).status === 'loading'}
 								>
 									{routeStateFor(source.mediaSourceId).status === 'loading' ? 'Checking Route...' : 'Check Route'}
-								</LorivoButton>
+								</XuvaButton>
 							</div>
 							{#if routeStateFor(source.mediaSourceId).status === 'loaded' && routeStateFor(source.mediaSourceId).payload}
 								<p class="mt-4 text-sm text-white/55">
@@ -445,7 +441,7 @@
 				<p class="text-sm leading-relaxed text-white/60">Select a source version to view track and subtitle details.</p>
 			{:else}
 				<div class="grid gap-4 lg:grid-cols-3">
-						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+						<article class="rounded-md border border-white/10 bg-[#111827]/55 p-4">
 							<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
 							{#if (selectedSource.tracks.audioTracks || []).length === 0}
 								<p class="mt-3 text-sm text-white/55">No audio track data is available yet.</p>
@@ -454,13 +450,13 @@
 									{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
 										<li class="text-sm text-white/70">
 											<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
-											{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+											{#if track.default}<span class="ml-2 rounded-sm bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
 										</li>
 									{/each}
 								</ul>
 							{/if}
 						</article>
-						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+						<article class="rounded-md border border-white/10 bg-[#111827]/55 p-4">
 							<h3 class="text-base font-semibold text-white">Subtitle Tracks</h3>
 							{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
 								<p class="mt-3 text-sm text-white/55">No embedded subtitle tracks were detected.</p>
@@ -469,15 +465,15 @@
 									{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
 										<li class="text-sm text-white/70">
 											<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language)}</strong>
-											{#if track.forced}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
-											{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+											{#if track.forced}<span class="ml-2 rounded-sm bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
+											{#if track.default}<span class="ml-2 rounded-sm bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
 										</li>
 									{/each}
 								</ul>
 							{/if}
 							<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
 						</article>
-						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+						<article class="rounded-md border border-white/10 bg-[#111827]/55 p-4">
 							<h3 class="text-base font-semibold text-white">Source Details</h3>
 							<dl class="mt-3 grid gap-3 text-sm">
 								<div>
@@ -494,4 +490,4 @@
 			{/if}
 		</DetailSection>
 	{/if}
-</LorivoShell>
+</XuvaShell>

@@ -185,7 +185,7 @@
 
 	h1 {
 		margin: 10px 0 6px;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--xuva-font-display);
 		font-size: clamp(2.35rem, 2.7vw, 3.05rem);
 		line-height: 0.98;
 		letter-spacing: -0.05em;
@@ -195,7 +195,7 @@
 
 	.hero-surface__meta {
 		margin: 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 84%, transparent);
 		font-size: 0.98rem;
 		font-weight: 560;
 		letter-spacing: 0.005em;
@@ -204,7 +204,7 @@
 	.hero-surface__description {
 		margin: 10px 0 0;
 		max-width: 520px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 86%, transparent);
 		font-size: 0.95rem;
 		line-height: 1.5;
 	}
@@ -224,7 +224,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 	}
 
 	.hero-surface__close {
@@ -265,11 +265,11 @@
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: color-mix(in srgb, var(--lorivo-color-text-muted) 48%, transparent);
+		background: color-mix(in srgb, var(--xuva-color-text-muted) 48%, transparent);
 	}
 
 	.hero-surface__dots span.active {
-		background: var(--lorivo-color-accent-teal);
+		background: var(--xuva-color-accent-teal);
 	}
 
 	@media (max-width: 920px) {

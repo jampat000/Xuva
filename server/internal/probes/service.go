@@ -9,11 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/catalog"
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	"github.com/jampat000/Lorivo/server/internal/probe"
-	runtimestore "github.com/jampat000/Lorivo/server/internal/runtime"
+	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	"github.com/jampat000/Xuva/server/internal/probe"
+	runtimestore "github.com/jampat000/Xuva/server/internal/runtime"
 )
 
 type Status string

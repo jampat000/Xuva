@@ -19,14 +19,14 @@ if (-not $SkipWebBuild) {
 	}
 }
 
-$env:LORIVO_HTTP_ADDR = $HttpAddr
-$env:LORIVO_DEV_AUTH_BYPASS = "true"
-$env:LORIVO_AUTH_DISABLED = "false"
+$env:XUVA_HTTP_ADDR = $HttpAddr
+$env:XUVA_AUTH_DISABLED = "false"
+$env:XUVA_HARDWARE_UNLOCKED = "true"
 
-Write-Host "Starting Lorivo desktop owner mode on $HttpAddr ..."
+Write-Host "Starting Xuva desktop owner mode on $HttpAddr (bootstrap/sign-in flow enabled)..."
 Push-Location (Join-Path $repoRoot "server")
 try {
-	go run ./cmd/lorivo
+	go run ./cmd/xuva
 } finally {
 	Pop-Location
 }

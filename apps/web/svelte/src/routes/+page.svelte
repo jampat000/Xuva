@@ -17,14 +17,14 @@
 		type HomeDisplayItem,
 		type HomeViewModel
 	} from '$lib/home/model';
-	import Hero from '$lib/lorivo/Hero.svelte';
-	import LandscapeCard from '$lib/lorivo/LandscapeCard.svelte';
-	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
-	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
-	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
-	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
-	import PosterCard from '$lib/lorivo/PosterCard.svelte';
-	import Row from '$lib/lorivo/Row.svelte';
+	import Hero from '\$lib/Xuva/Hero.svelte';
+	import LandscapeCard from '\$lib/Xuva/LandscapeCard.svelte';
+	import XuvaButton from '\$lib/Xuva/XuvaButton.svelte';
+	import XuvaEmptyState from '\$lib/Xuva/XuvaEmptyState.svelte';
+	import XuvaPanel from '\$lib/Xuva/XuvaPanel.svelte';
+	import XuvaShell from '\$lib/Xuva/XuvaShell.svelte';
+	import PosterCard from '\$lib/Xuva/PosterCard.svelte';
+	import Row from '\$lib/Xuva/Row.svelte';
 
 	let isLoading = $state(true);
 	let loadNotice = $state('');
@@ -114,7 +114,7 @@
 		const recentlyAddedItems = [...movieItems, ...seriesItems].slice(0, 24);
 
 		return {
-			profile: 'lorivo',
+			profile: 'xuva',
 			hero: movieItems[0] || seriesItems[0],
 			rows: [
 				{ id: 'continue', title: 'Continue Watching', items: [] },
@@ -217,41 +217,40 @@
 </script>
 
 <svelte:head>
-	<title>Lorivo - Stream Movies & TV</title>
-	<meta name="description" content="Lorivo: your personal streaming hub for movies and TV." />
+	<meta name="description" content="Xuva: your personal streaming hub for movies and TV." />
 </svelte:head>
 
-<LorivoShell>
+<XuvaShell>
 	{#if isLoading}
-		<LorivoPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
+		<XuvaPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
 	{:else if loadNotice}
 		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="Connection"
 				title="Media library unavailable"
-				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+				description="Xuva could not reach the media library service. Check that the server is running, then try again."
 			>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" onclick={loadHome}>Retry</LorivoButton>
+					<XuvaButton variant="primary" onclick={loadHome}>Retry</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 		</section>
 	{:else if model.trueEmpty}
 		<section class="px-4 pt-6 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="First run"
-				title="Build your Lorivo library"
-				description="Add your media folders, scan your library, and Lorivo will fill this home screen with what you're watching and what's new."
+				title="Build your Xuva library"
+				description="Add your media folders, scan your library, and Xuva will fill this home screen with what you're watching and what's new."
 			>
 				<nav class="next-step-list" aria-label="Library setup steps">
 					<a class="next-step-row" href="/setup">
 						<em class="next-step-row__step">01</em>
 						<div>
 							<strong>Add a library</strong>
-							<span>Choose your Movies or TV folder so Lorivo knows where to look.</span>
+							<span>Choose your Movies or TV folder so Xuva knows where to look.</span>
 						</div>
 					</a>
 					<a class="next-step-row" href="/movies">
@@ -277,12 +276,12 @@
 					</a>
 				</nav>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" href="/setup">Add a library</LorivoButton>
+					<XuvaButton variant="primary" href="/setup">Add a library</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
+					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 		</section>
 	{:else}
 		<Hero
@@ -303,7 +302,7 @@
 				{/each}
 			{:else}
 				<div class="min-w-[280px] flex-1">
-					<LorivoEmptyState
+					<XuvaEmptyState
 						compact
 						title="Nothing in progress yet."
 						description="Start a movie or episode and it will appear here."
@@ -318,7 +317,7 @@
 				{/each}
 			{:else}
 				<div class="min-w-[280px] flex-1">
-					<LorivoEmptyState compact title="No movies have been added yet." description="Add a movie library or run Scan Movies." />
+					<XuvaEmptyState compact title="No movies have been added yet." description="Add a movie library or run Scan Movies." />
 				</div>
 			{/if}
 		</Row>
@@ -329,13 +328,13 @@
 				{/each}
 			{:else}
 				<div class="min-w-[280px] flex-1">
-					<LorivoEmptyState compact title="No TV shows have been added yet." description="Add a TV library or run Scan TV." />
+					<XuvaEmptyState compact title="No TV shows have been added yet." description="Add a TV library or run Scan TV." />
 				</div>
 			{/if}
 		</Row>
 		<div class="h-16"></div>
 	{/if}
-</LorivoShell>
+</XuvaShell>
 
 <style>
 	.next-step-list {
@@ -373,8 +372,9 @@
 		width: 2rem;
 		height: 2rem;
 		margin-top: 0.1rem;
-		border-radius: 0.65rem;
-		background: rgb(255 255 255 / 5%);
+		border: 1px solid rgb(255 255 255 / 12%);
+		border-radius: 0.35rem;
+		background: rgb(255 255 255 / 2%);
 		color: rgb(255 255 255 / 48%);
 		font-size: 0.72rem;
 		font-style: normal;

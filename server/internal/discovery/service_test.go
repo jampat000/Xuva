@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/config"
 )
 
 type testAnnouncer struct {
@@ -77,7 +77,7 @@ func TestServiceCapturesExpectedAdvertiseConfig(t *testing.T) {
 	}
 }
 
-func TestServiceFallsBackToLorivoName(t *testing.T) {
+func TestServiceFallsBackToXuvaName(t *testing.T) {
 	var captured AdvertiseConfig
 	service := NewServiceForTest(config.Config{
 		ServerName:           "   ",
@@ -91,8 +91,8 @@ func TestServiceFallsBackToLorivoName(t *testing.T) {
 
 	service.Start(context.Background())
 
-	if captured.ServiceName != "Lorivo" {
-		t.Fatalf("expected fallback service name Lorivo, got %#v", captured)
+	if captured.ServiceName != "Xuva" {
+		t.Fatalf("expected fallback service name Xuva, got %#v", captured)
 	}
 	if captured.ServiceType != DefaultServiceType {
 		t.Fatalf("expected default service type, got %#v", captured)
@@ -125,7 +125,7 @@ func TestServiceFailureDoesNotCrashAndExposesPlainStatus(t *testing.T) {
 
 func TestServiceDoesNotAdvertiseLoopbackOnlyBind(t *testing.T) {
 	service := NewServiceForTest(config.Config{
-		ServerName:           "Desk Lorivo",
+		ServerName:           "Desk Xuva",
 		HTTPAddr:             "127.0.0.1:8097",
 		DiscoveryEnabled:     true,
 		DiscoveryServiceType: DefaultServiceType,

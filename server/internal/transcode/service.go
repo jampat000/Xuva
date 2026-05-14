@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	runtimestore "github.com/jampat000/Lorivo/server/internal/runtime"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	runtimestore "github.com/jampat000/Xuva/server/internal/runtime"
 )
 
 type Mode string

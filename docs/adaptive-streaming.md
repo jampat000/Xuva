@@ -1,6 +1,6 @@
 # Adaptive Streaming
 
-Lorivo uses adaptive streaming for remote or constrained routes where the original file bitrate is higher than the selected network limit. The first implementation targets HLS because it is broadly supported by browsers and native players. DASH remains a later protocol option behind the same planning contract.
+Xuva uses adaptive streaming for remote or constrained routes where the original file bitrate is higher than the selected network limit. The first implementation targets HLS because it is broadly supported by browsers and native players. DASH remains a later protocol option behind the same planning contract.
 
 ## Route Selection
 
@@ -14,7 +14,7 @@ Required inputs:
 - Source bitrate above the selected network limit.
 - No subtitle burn-in requirement.
 
-If any input is missing, Lorivo falls back to the existing decision engine path: direct play, remux, audio conversion, video conversion, or a policy block.
+If any input is missing, Xuva falls back to the existing decision engine path: direct play, remux, audio conversion, video conversion, or a policy block.
 
 ## Profile Ladder
 
@@ -28,7 +28,7 @@ The initial ladder is intentionally conservative:
 | `720p` | 1280x720 | 4 Mbps | H.264/AAC |
 | `480p` | 854x480 | 1.5 Mbps | H.264/AAC |
 
-The plan filters out variants above the source resolution and above the selected network target. If no variant fits the network target but the source is otherwise eligible, Lorivo keeps the lowest source-compatible rung so the route can still degrade cleanly rather than failing the session.
+The plan filters out variants above the source resolution and above the selected network target. If no variant fits the network target but the source is otherwise eligible, Xuva keeps the lowest source-compatible rung so the route can still degrade cleanly rather than failing the session.
 
 ## API Surface
 
@@ -70,7 +70,7 @@ Operational use:
 
 Adaptive streaming is heavier than direct play and remux because each active rung may require FFmpeg video encoding. The decision engine reports medium CPU cost and optional GPU cost so UI surfaces can explain the route plainly. Operators should prefer hardware encoding for remote adaptive sessions and keep concurrent transcode worker counts conservative on low-power hosts.
 
-The initial API plan and playlists are local-only control plane work; FFmpeg remains the intended media operation backend for actual segment generation. Lorivo does not use vendor relay, CDN, or hosted packaging infrastructure.
+The initial API plan and playlists are local-only control plane work; FFmpeg remains the intended media operation backend for actual segment generation. Xuva does not use vendor relay, CDN, or hosted packaging infrastructure.
 
 ## Rollback Plan
 

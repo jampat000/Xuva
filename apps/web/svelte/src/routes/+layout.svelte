@@ -2,18 +2,18 @@
 	import { afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { getSettings } from '$lib/api/operator';
-	import { lorivoTitle, normalizeServerName } from '$lib/server-name';
+	import { xuvaTitle, normalizeServerName } from '$lib/server-name';
 	import '../app.css';
 	import '$lib/styles/tokens.css';
 	import '$lib/styles/base.css';
 
 	let { children } = $props();
-	let serverName = $state('Lorivo');
+	let serverName = $state('Xuva');
 
 	function applyTitle(): void {
 		if (typeof document === 'undefined') return;
 		setTimeout(() => {
-			document.title = lorivoTitle(serverName);
+			document.title = xuvaTitle(serverName);
 		}, 0);
 	}
 
@@ -26,8 +26,8 @@
 			serverName = normalizeServerName(detail?.serverName);
 			applyTitle();
 		};
-		window.addEventListener('lorivo:server-name-changed', handleServerNameChanged);
-		return () => window.removeEventListener('lorivo:server-name-changed', handleServerNameChanged);
+		window.addEventListener('xuva:server-name-changed', handleServerNameChanged);
+		return () => window.removeEventListener('xuva:server-name-changed', handleServerNameChanged);
 	});
 
 	async function loadServerName(): Promise<void> {
@@ -35,7 +35,7 @@
 			const payload = await getSettings();
 			serverName = normalizeServerName(payload.config?.serverName);
 		} catch {
-			serverName = 'Lorivo';
+			serverName = 'Xuva';
 		} finally {
 			applyTitle();
 		}
@@ -43,12 +43,13 @@
 </script>
 
 <svelte:head>
-	<title>Lorivo</title>
+	<title>Xuva</title>
 	<link rel="icon" href="/favicon.svg" />
 	<meta
-		name="description"
-		content="Lorivo private cinema and personal media server."
+		name="description" content="Xuva private cinema and personal media server."
 	/>
+    <meta property="og:title" content="Xuva - your media, beautifully played" />
+	<meta property="og:description" content="A modern media player for your movies, shows, and music." />
 </svelte:head>
 
 {@render children()}

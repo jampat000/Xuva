@@ -1,6 +1,6 @@
 # Runtime Recovery
 
-Lorivo persists operational runtime state in SQLite so a restart does not hide active playback, conversions, media checks, or prepared download jobs.
+Xuva persists operational runtime state in SQLite so a restart does not hide active playback, conversions, media checks, or prepared download jobs.
 
 ## Stored Entities
 
@@ -33,4 +33,4 @@ Playback session updates act as heartbeats. The default stale threshold is 15 mi
 
 ## Rollback
 
-The migration only adds `runtime_entities` and indexes. Rolling back the runtime persistence feature can leave the table in place because older builds ignore it. If a hard rollback is required, stop Lorivo and drop `runtime_entities`; no media library, metadata, or user records depend on it.
+The migration only adds `runtime_entities` and indexes. Rolling back the runtime persistence feature can leave the table in place because older builds ignore it. If a hard rollback is required, stop Xuva and drop `runtime_entities`; no media library, metadata, or user records depend on it.

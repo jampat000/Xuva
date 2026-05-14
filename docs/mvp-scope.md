@@ -2,9 +2,9 @@
 
 ## Goal
 
-Build a credible first version of Lorivo that proves the playback engine, local-first model, and polished media-library experience.
+Build a credible first version of Xuva that proves the playback engine, local-first model, and polished media-library experience.
 
-The MVP is successful when a user can install the server, add a movie or TV folder, open a client, play media, and understand exactly why Lorivo chose direct play, remux, or transcode.
+The MVP is successful when a user can install the server, add a movie or TV folder, open a client, play media, and understand exactly why Xuva chose direct play, remux, or transcode.
 
 ## In Scope
 

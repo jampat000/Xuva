@@ -44,19 +44,19 @@ test('design-system component exports include phase 2 primitives', () => {
 	const exportsFile = fs.readFileSync(indexPath, 'utf8');
 
 	const required = [
-		'LorivoShell',
-		'LorivoBrand',
-		'LorivoSidebar',
+		'XuvaShell',
+		'XuvaBrand',
+		'XuvaSidebar',
 		'SidebarItem',
 		'SidebarSection',
 		'SidebarUser',
-		'LorivoButton',
-		'LorivoPanel',
-		'LorivoSurface',
-		'LorivoSearch',
-		'LorivoEmptyState',
-		'LorivoStat',
-		'LorivoActionList',
+		'XuvaButton',
+		'XuvaPanel',
+		'XuvaSurface',
+		'XuvaSearch',
+		'XuvaEmptyState',
+		'XuvaStat',
+		'XuvaActionList',
 		'HeroSurface',
 		'MediaRow',
 		'ResumeTile',
@@ -86,5 +86,5 @@ test('root home route no longer includes phase 2 showroom copy', () => {
 	assert.match(pageSource, /<Hero/);
 	assert.match(pageSource, /Continue Watching/);
 	assert.match(pageSource, /Recently Added Movies/);
-	assert.doesNotMatch(pageSource, /LorivoMediaHome/);
+	assert.doesNotMatch(pageSource, /XuvaMediaHome/);
 });

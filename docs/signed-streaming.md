@@ -1,6 +1,6 @@
 # Signed Streaming URLs
 
-Lorivo direct media streams require a short-lived signed token when local authentication is enabled.
+Xuva direct media streams require a short-lived signed token when local authentication is enabled.
 
 Token claims:
 
@@ -47,6 +47,6 @@ The streaming service supports key IDs and a rotation entry point. Current produ
 
 Rollback path:
 
-- Prefer `LORIVO_DEV_AUTH_BYPASS=true` on a loopback-only local server when UI work needs owner access without the full sign-in flow.
-- Use `LORIVO_AUTH_DISABLED=true` only for narrow local debugging when the broader bypass is explicitly acceptable.
+- Prefer normal owner sign-in/bootstrap on loopback local development.
+- Use `XUVA_AUTH_DISABLED=true` only for narrow local debugging when fully open local access is explicitly acceptable.
 - Or restore direct stream handlers to bypass token validation while keeping auth/session middleware intact.

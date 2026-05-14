@@ -8,12 +8,12 @@
 		type MovieListItem
 	} from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
-	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
-	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
-	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
-	import LorivoPosterLink from '$lib/lorivo/LorivoPosterLink.svelte';
-	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
-	import MediaGrid from '$lib/lorivo/MediaGrid.svelte';
+	import XuvaButton from '\$lib/Xuva/XuvaButton.svelte';
+	import XuvaEmptyState from '\$lib/Xuva/XuvaEmptyState.svelte';
+	import XuvaPanel from '\$lib/Xuva/XuvaPanel.svelte';
+	import XuvaPosterLink from '\$lib/Xuva/XuvaPosterLink.svelte';
+	import XuvaShell from '\$lib/Xuva/XuvaShell.svelte';
+	import MediaGrid from '\$lib/Xuva/MediaGrid.svelte';
 	import {
 		buildMovieCards,
 		filterAndSortMovieCards,
@@ -118,18 +118,14 @@
 
 	function chipClass(active: boolean): string {
 		const base =
-			'inline-flex min-h-9 items-center rounded-md border px-3.5 py-1.5 text-sm font-semibold transition duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
-		if (active) return `${base} border-[#7C5CFF]/70 bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/25`;
+			'inline-flex min-h-9 items-center rounded-sm border px-3.5 py-1.5 text-sm font-semibold transition duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120]';
+		if (active) return `${base} border-[#7C5CFF]/70 bg-[#7C5CFF]/85 text-white`;
 		return `${base} border-white/10 bg-white/[0.04] text-white/65 hover:border-white/25 hover:bg-white/[0.08] hover:text-white`;
 	}
 
 </script>
 
-<svelte:head>
-	<title>Movies - Lorivo Media</title>
-</svelte:head>
-
-<LorivoShell>
+<XuvaShell>
 	<section class="media-head relative mx-4 mt-4 overflow-hidden px-6 py-7 sm:mx-6 sm:px-10 sm:py-8 lg:mx-8 lg:px-12 xl:px-16">
 		<div class="absolute inset-0 bg-gradient-to-r from-[#0B1120] via-[#0B1120]/70 to-[#0B1120]/30"></div>
 		<div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -141,33 +137,33 @@
 				</p>
 			</div>
 			<div class="flex flex-wrap gap-3">
-				<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
+				<XuvaButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
 					{isScanning ? 'Scanning...' : 'Scan Movies'}
-				</LorivoButton>
-				<LorivoButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
+				</XuvaButton>
+				<XuvaButton variant="secondary" onclick={runMetadataRefresh} disabled={isScanning || isRefreshing}>
 					{isRefreshing ? 'Refreshing...' : 'Refresh Metadata'}
-				</LorivoButton>
+				</XuvaButton>
 			</div>
 		</div>
 	</section>
 
 	{#if isLoading}
-		<LorivoPanel title="Loading Movies" subtitle="Fetching your movie library from the media APIs." />
+		<XuvaPanel title="Loading Movies" subtitle="Fetching your movie library from the media APIs." />
 	{:else if loadError}
 		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="Connection"
 				title="Media library unavailable"
-				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+				description="Xuva could not reach the media library service. Check that the server is running, then try again."
 			>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" onclick={loadMovies}>Retry</LorivoButton>
+					<XuvaButton variant="primary" onclick={loadMovies}>Retry</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back Home</LorivoButton>
+					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back Home</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 		</section>
 	{:else}
 		<section class="relative px-4 pt-7 sm:px-6 lg:px-8">
@@ -198,40 +194,40 @@
 
 		{#if movieCards.length === 0}
 			<section class="px-4 pt-7 sm:px-6 lg:px-8">
-				<LorivoEmptyState
+				<XuvaEmptyState
 					eyebrow="Movies"
 					title="No movies found yet"
 					description="Add a movie library or run a scan, and your movies will appear here."
 				>
 					{#snippet primaryAction()}
-						<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
+						<XuvaButton variant="primary" onclick={startMovieScan} disabled={isScanning || isRefreshing}>
 							{isScanning ? 'Scanning...' : 'Scan Movies'}
-						</LorivoButton>
+						</XuvaButton>
 					{/snippet}
 					{#snippet secondaryAction()}
-						<LorivoButton variant="secondary" href="/setup">Add Library</LorivoButton>
+						<XuvaButton variant="secondary" href="/setup">Add Library</XuvaButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</XuvaEmptyState>
 			</section>
 		{:else if renderedCards.length === 0}
 			<section class="px-4 pt-7 sm:px-6 lg:px-8">
-				<LorivoEmptyState
+				<XuvaEmptyState
 					compact
 					title="No movies match that search"
 					description="Try a different search or reset the sort."
 				>
 					{#snippet primaryAction()}
-						<LorivoButton variant="secondary" size="sm" onclick={() => (searchValue = '')}>Clear search</LorivoButton>
+						<XuvaButton variant="secondary" size="sm" onclick={() => (searchValue = '')}>Clear search</XuvaButton>
 					{/snippet}
 					{#snippet secondaryAction()}
-						<LorivoButton variant="ghost" size="sm" onclick={() => (movieSort = 'title')}>Reset sort</LorivoButton>
+						<XuvaButton variant="ghost" size="sm" onclick={() => (movieSort = 'title')}>Reset sort</XuvaButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</XuvaEmptyState>
 			</section>
 		{:else}
 			<MediaGrid title="Movies" subtitle={formatTitleCount(renderedCards.length)}>
 				{#each renderedCards as item (item.id)}
-					<LorivoPosterLink
+					<XuvaPosterLink
 						title={item.title}
 						meta={item.meta}
 						img={item.posterUrl}
@@ -241,7 +237,7 @@
 			</MediaGrid>
 		{/if}
 	{/if}
-</LorivoShell>
+</XuvaShell>
 
 <style>
 	.media-head {
@@ -258,14 +254,14 @@
 
 	.media-toolbar__search {
 		border: 1px solid rgb(255 255 255 / 8%);
-		border-radius: 0.5rem;
+		border-radius: 0.35rem;
 		background: rgb(17 24 39 / 76%);
 		box-shadow: none;
 	}
 
 	.media-toolbar__count {
 		border: 1px solid rgb(255 255 255 / 8%);
-		border-radius: 0.5rem;
-		background: rgb(17 24 39 / 52%);
+		border-radius: 0.35rem;
+		background: rgb(17 24 39 / 38%);
 	}
 </style>

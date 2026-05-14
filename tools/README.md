@@ -1,4 +1,4 @@
-# Lorivo Tools
+# Xuva Tools
 
 ## Agent Harness Check
 
@@ -12,14 +12,14 @@ It checks the agent map, docs index, execution-plan folders, and protected route
 
 ## Media Scanner
 
-`lorivo_scan.py` inventories a local or mapped NAS media folder and optionally runs `ffprobe` for stream metadata.
+`xuva_scan.py` inventories a local or mapped NAS media folder and optionally runs `ffprobe` for stream metadata.
 
 The tool is read-only. It does not upload, copy, rename, delete, or modify media files.
 
 Example inventory-only scan:
 
 ```powershell
-python tools/lorivo_scan.py X:\ --no-probe --limit 100
+python tools/xuva_scan.py X:\ --no-probe --limit 100
 ```
 
 Example deep probe scan after FFmpeg is installed:
@@ -29,7 +29,7 @@ winget install --id Gyan.FFmpeg -e --source winget --accept-source-agreements --
 ```
 
 ```powershell
-python tools/lorivo_scan.py X:\ --ffprobe "C:\ffmpeg\bin\ffprobe.exe" --workers 2
+python tools/xuva_scan.py X:\ --ffprobe "C:\ffmpeg\bin\ffprobe.exe" --workers 2
 ```
 
 On Windows, the scanner also checks winget's FFmpeg alias location automatically:
@@ -48,7 +48,7 @@ data/probe-results-summary.json
 Generate a local compatibility dashboard from a scan:
 
 ```powershell
-python tools/lorivo_dashboard.py data/probe-results.jsonl --out data/compatibility-dashboard.html
+python tools/xuva_dashboard.py data/probe-results.jsonl --out data/compatibility-dashboard.html
 ```
 
 Use low worker counts for NAS paths. `--workers 2` is the default because network storage can become slower when too many files are probed at once.

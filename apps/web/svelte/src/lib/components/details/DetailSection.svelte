@@ -26,14 +26,9 @@
 	.detail-section {
 		display: grid;
 		gap: 16px;
-		padding: clamp(18px, 2vw, 26px);
-		border: 1px solid rgb(255 255 255 / 10%);
-		border-radius: 18px;
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%)),
-			rgb(17 24 39 / 66%);
-		box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
-		backdrop-filter: blur(12px);
+		padding: clamp(16px, 1.6vw, 22px) 0;
+		border-top: 1px solid rgb(255 255 255 / 10%);
+		background: transparent;
 	}
 
 	.detail-section__head {
@@ -45,14 +40,14 @@
 
 	.detail-section__head h2 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--xuva-font-display);
 		font-size: 1.35rem;
 		letter-spacing: 0;
 	}
 
 	.detail-section__head p {
 		margin: 3px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 84%, transparent);
 		font-size: 0.86rem;
 	}
 </style>

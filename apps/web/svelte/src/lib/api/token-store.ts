@@ -1,5 +1,5 @@
-const AUTH_TOKEN_KEY = 'lorivo-auth-token';
-const WINDOW_NAME_TOKEN_KEY = 'lorivoAuthToken';
+const AUTH_TOKEN_KEY = 'xuva-auth-token';
+const WINDOW_NAME_TOKEN_KEY = 'xuvaAuthToken';
 
 let memoryAuthToken = '';
 

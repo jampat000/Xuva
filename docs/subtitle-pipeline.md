@@ -1,12 +1,12 @@
 # Subtitle Pipeline
 
-Lorivo treats subtitles as part of the playback route, not as a hidden afterthought.
+Xuva treats subtitles as part of the playback route, not as a hidden afterthought.
 
 ## Subtitle Classes
 
 - `text`: SRT, SubRip, WebVTT, ASS/SSA, mov_text.
 - `image`: PGS, DVD subtitle, DVB subtitle.
-- `unknown`: formats that require inspection before Lorivo can safely choose a route.
+- `unknown`: formats that require inspection before Xuva can safely choose a route.
 
 ## Compatibility Rules
 
@@ -18,8 +18,8 @@ Text subtitles should avoid video conversion whenever possible:
 
 Image subtitles are burn-in only as a last resort:
 
-- if the client profile supports the image subtitle, Lorivo can keep video unchanged.
-- if the client profile does not support it, Lorivo returns `subtitle_burn_required` with high server impact.
+- if the client profile supports the image subtitle, Xuva can keep video unchanged.
+- if the client profile does not support it, Xuva returns `subtitle_burn_required` with high server impact.
 
 ## Forecast Contract
 
@@ -35,7 +35,7 @@ Playback decisions include subtitle-specific fields:
     "codec": "ass",
     "serverLoad": "low",
     "output": "webvtt sidecar",
-    "userMessage": "Lorivo can convert this text subtitle to WebVTT without video conversion."
+    "userMessage": "Xuva can convert this text subtitle to WebVTT without video conversion."
   }
 }
 ```

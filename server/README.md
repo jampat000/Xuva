@@ -1,4 +1,4 @@
-# Lorivo Server
+# Xuva Server
 
 The server owns libraries, users, playback decisions, streaming, and media processing.
 
@@ -13,7 +13,7 @@ Preferred starting stack:
 
 Structure:
 
-- `cmd/lorivo`: process entrypoint.
+- `cmd/xuva`: process entrypoint.
 - `internal/api`: HTTP/JSON and SSE.
 - `internal/app`: service wiring and lifecycle.
 - `internal/database`: SQLite connection, pragmas, and migrations.
@@ -41,7 +41,7 @@ Initial scan endpoints:
 
 Scan requests return a background scan job with HTTP 202. Progress is emitted through `GET /api/events` as `scan.queued`, `scan.started`, `scan.progress`, `scan.completed`, and `scan.failed`.
 
-Scan requests can pass `path`, or use `LORIVO_MOVIES_PATH` and `LORIVO_TV_PATH` when those environment variables are configured.
+Scan requests can pass `path`, or use `XUVA_MOVIES_PATH` and `XUVA_TV_PATH` when those environment variables are configured.
 
 Library paths are not NAS-specific. The scanner accepts any OS-visible folder, including local disks, removable USB drives, network shares, and mounted volumes. Library records include a `storageType` field so future scan/probe behavior can tune itself per storage class.
 
@@ -73,19 +73,18 @@ First milestone:
 
 ## Authentication and Session Security
 
-Lorivo now supports local credential authentication with server-side sessions.
+Xuva now supports local credential authentication with server-side sessions.
 
 Environment variables:
 
-- `LORIVO_AUTH_DISABLED=false`
-- `LORIVO_DEV_AUTH_BYPASS=false`
-- `LORIVO_ADMIN_USERNAME=admin`
-- `LORIVO_ADMIN_PASSWORD=...`
+- `XUVA_AUTH_DISABLED=false`
+- `XUVA_ADMIN_USERNAME=admin`
+- `XUVA_ADMIN_PASSWORD=...`
 
 Bootstrap behavior:
 
-- If auth is enabled and no credentialed user exists yet, Lorivo creates the initial local admin user on startup.
-- If `LORIVO_ADMIN_PASSWORD` is omitted for first boot, Lorivo generates a random bootstrap password and logs it once to the server log.
+- If auth is enabled and no credentialed user exists yet, Xuva creates the initial local admin user on startup.
+- If `XUVA_ADMIN_PASSWORD` is omitted for first boot, Xuva generates a random bootstrap password and logs it once to the server log.
 - Auth bootstrap settings are environment-only and are not written back into `settings.json`.
 
 Session behavior:
@@ -97,19 +96,16 @@ Session behavior:
 - Logout revokes the current session immediately.
 - Invalid login bursts trigger a temporary lockout window.
 
-Local development bypass:
+Local development auth:
 
-- For local UI work, prefer `LORIVO_DEV_AUTH_BYPASS=true` instead of disabling auth entirely.
-- The bypass only activates when Lorivo is still running with auth enabled and `LORIVO_HTTP_ADDR` is bound to a loopback address such as `127.0.0.1:8097` or `localhost:8097`.
-- When active, Lorivo reports a visible `Development Owner` session so settings and owner-only UI can be polished without re-running the full sign-in/bootstrap flow.
-- Lorivo logs when the bypass is active.
-- If the server is bound to a non-loopback address, the bypass is ignored.
-- Do not use the bypass for production or shared environments. Turn it off by removing the flag or setting `LORIVO_DEV_AUTH_BYPASS=false`.
+- Run with auth enabled and complete the first-user bootstrap at `/signin`.
+- The first created user is the admin and can access owner-only settings immediately.
+- Keep `XUVA_AUTH_DISABLED=false` for normal development and testing.
 
 Canonical desktop owner run path:
 
 - From repo root use `./tools/run-desktop-owner.ps1`.
-- That script rebuilds and republishes embedded web assets, then starts the Go server in loopback owner development mode.
+- That script rebuilds and republishes embedded web assets, then starts the Go server in loopback mode with normal bootstrap/sign-in auth flow.
 
 Protected routes in this release:
 
@@ -120,4 +116,4 @@ Protected routes in this release:
 - file download endpoints
 - `/play/{id}`
 
-Keep auth enabled outside local development. `LORIVO_AUTH_DISABLED` remains a low-level local debugging override, but it is broader than the development bypass and should not be used for normal UI polish work. Role-based authorization and finer route policy are tracked separately in `P0.2`.
+Keep auth enabled outside local development. `XUVA_AUTH_DISABLED` remains a low-level local debugging override and should not be used for normal UI polish work. Role-based authorization and finer route policy are tracked separately in `P0.2`.

@@ -2,8 +2,8 @@
 	import SidebarItem from './SidebarItem.svelte';
 	import SidebarSection from './SidebarSection.svelte';
 	import SidebarUser from './SidebarUser.svelte';
-	import LorivoBrand from './LorivoBrand.svelte';
-	import LorivoSidebar from './LorivoSidebar.svelte';
+	import XuvaBrand from './XuvaBrand.svelte';
+	import XuvaSidebar from './XuvaSidebar.svelte';
 
 	type ActiveRoute =
 		| 'home'
@@ -52,9 +52,9 @@
 	const hasLibraries = $derived.by(() => libraryItems.length > 0);
 </script>
 
-<LorivoSidebar>
+<XuvaSidebar>
 	{#snippet brand()}
-		<LorivoBrand />
+		<XuvaBrand />
 	{/snippet}
 
 	{#snippet primary()}
@@ -217,7 +217,7 @@
 	{#snippet profile()}
 		<SidebarUser name={userDisplayName} subtitle={userRole} />
 	{/snippet}
-</LorivoSidebar>
+</XuvaSidebar>
 
 <style>
 	.library-glyph {
@@ -226,15 +226,15 @@
 		justify-content: center;
 		width: 21px;
 		height: 21px;
-		color: color-mix(in srgb, var(--lorivo-color-text) 78%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 78%, transparent);
 	}
 
 	.library-glyph[data-kind='movies'] {
-		color: var(--lorivo-color-accent-teal);
+		color: var(--xuva-color-accent-teal);
 	}
 
 	.library-glyph[data-kind='tv'] {
-		color: color-mix(in srgb, var(--lorivo-color-text) 82%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 82%, transparent);
 	}
 
 	.library-glyph :global(svg) {
@@ -243,6 +243,6 @@
 	}
 
 	.library-glyph--empty {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 72%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 72%, transparent);
 	}
 </style>

@@ -1,6 +1,6 @@
-# Lorivo Apple TV Design
+# Xuva Apple TV Design
 
-The Apple TV app should feel like the living-room version of the Lorivo server UI, not a separate product. It keeps the same cinema-black palette, warm typography, amber action color, teal focus color, and clear playback language, but adapts the layout for remote-first browsing and AVPlayer playback.
+The Apple TV app should feel like the living-room version of the Xuva server UI, not a separate product. It keeps the same cinema-black palette, warm typography, amber action color, teal focus color, and clear playback language, but adapts the layout for remote-first browsing and AVPlayer playback.
 
 ## Visual Rules
 

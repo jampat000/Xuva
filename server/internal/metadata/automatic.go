@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/catalog"
-	"github.com/jampat000/Lorivo/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/config"
 )
 
 func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {

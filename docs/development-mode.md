@@ -1,15 +1,14 @@
-# Lorivo Development Mode
+# Xuva Development Mode
 
-Lorivo Phase 1 development targets a desktop owner workflow on local loopback.
+Xuva Phase 1 development targets a desktop owner workflow on local loopback.
 
 ## Canonical local mode
 
 Use desktop owner development mode when working on server-owner settings and server/web UX.
 
-- `LORIVO_DEV_AUTH_BYPASS=true`
-- `LORIVO_HTTP_ADDR=127.0.0.1:8097`
-- auth remains enabled; bypass only unlocks a local development owner session
-- bypass is ignored on non-loopback binds
+- `XUVA_HTTP_ADDR=127.0.0.1:8097`
+- auth remains enabled
+- first run goes through `/signin` bootstrap, where the first user becomes admin
 
 Run from repo root:
 
@@ -19,7 +18,7 @@ Run from repo root:
 
 ## Why stale UI happens
 
-Lorivo web assets are embedded into Go from:
+Xuva web assets are embedded into Go from:
 
 - `server/internal/webapp/static-next`
 
@@ -29,8 +28,6 @@ The canonical script rebuilds and republishes frontend assets before starting th
 
 ## Production/default behavior
 
-- `LORIVO_DEV_AUTH_BYPASS` defaults to `false`
-- production/non-loopback deployments should not use bypass
 - owner sign-in/bootstrap behavior remains active in normal mode
 
 ## Scope guard for current phase

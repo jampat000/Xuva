@@ -37,7 +37,7 @@ func RootHandler() http.Handler {
 		}
 
 		if relativePath == "" {
-			serveSPAIndex(w, staticFS, "Lorivo")
+			serveSPAIndex(w, staticFS, "Xuva")
 			return
 		}
 
@@ -57,7 +57,7 @@ func RootHandler() http.Handler {
 			return
 		}
 
-		serveSPAIndex(w, staticFS, "Lorivo")
+		serveSPAIndex(w, staticFS, "Xuva")
 	})
 }
 

@@ -1,4 +1,4 @@
-# Lorivo Android TV
+# Xuva Android TV
 
 Native Android TV client.
 

@@ -1,4 +1,4 @@
-# Lorivo Docs Index
+# Xuva Docs Index
 
 This index is the repository map for humans and agents. Keep it short, current, and linked.
 
