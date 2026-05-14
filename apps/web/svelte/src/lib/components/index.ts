@@ -1,6 +1,6 @@
-export { default as LorivoShell } from './shell/LorivoShell.svelte';
-export { default as LorivoBrand } from './shell/LorivoBrand.svelte';
-export { default as LorivoSidebar } from './shell/LorivoSidebar.svelte';
+export { default as XuvaShell } from './shell/XuvaShell.svelte';
+export { default as XuvaBrand } from './shell/XuvaBrand.svelte';
+export { default as XuvaSidebar } from './shell/XuvaSidebar.svelte';
 export { default as SidebarItem } from './shell/SidebarItem.svelte';
 export { default as SidebarSection } from './shell/SidebarSection.svelte';
 export { default as SidebarUser } from './shell/SidebarUser.svelte';
@@ -10,13 +10,13 @@ export { default as AppTopbar } from './shell/AppTopbar.svelte';
 export { default as MediaShell } from './shell/MediaShell.svelte';
 export { default as ServerShell } from './shell/ServerShell.svelte';
 
-export { default as LorivoButton } from './ui/LorivoButton.svelte';
-export { default as LorivoPanel } from './ui/LorivoPanel.svelte';
-export { default as LorivoSurface } from './ui/LorivoSurface.svelte';
-export { default as LorivoSearch } from './ui/LorivoSearch.svelte';
-export { default as LorivoEmptyState } from './ui/LorivoEmptyState.svelte';
-export { default as LorivoStat } from './ui/LorivoStat.svelte';
-export { default as LorivoActionList } from './ui/LorivoActionList.svelte';
+export { default as XuvaButton } from './ui/XuvaButton.svelte';
+export { default as XuvaPanel } from './ui/XuvaPanel.svelte';
+export { default as XuvaSurface } from './ui/XuvaSurface.svelte';
+export { default as XuvaSearch } from './ui/XuvaSearch.svelte';
+export { default as XuvaEmptyState } from './ui/XuvaEmptyState.svelte';
+export { default as XuvaStat } from './ui/XuvaStat.svelte';
+export { default as XuvaActionList } from './ui/XuvaActionList.svelte';
 
 export { default as HeroSurface } from './media/HeroSurface.svelte';
 export { default as MediaRow } from './media/MediaRow.svelte';

@@ -13,14 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/database"
-	"github.com/jampat000/Lorivo/server/internal/libraries"
-	"github.com/jampat000/Lorivo/server/internal/media"
-	"github.com/jampat000/Lorivo/server/internal/metasources"
-	"github.com/jampat000/Lorivo/server/internal/movies"
-	"github.com/jampat000/Lorivo/server/internal/probe"
-	"github.com/jampat000/Lorivo/server/internal/scanner"
-	"github.com/jampat000/Lorivo/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/libraries"
+	"github.com/jampat000/Xuva/server/internal/media"
+	"github.com/jampat000/Xuva/server/internal/metasources"
+	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/probe"
+	"github.com/jampat000/Xuva/server/internal/scanner"
+	"github.com/jampat000/Xuva/server/internal/tv"
 )
 
 type Service struct {

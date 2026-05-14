@@ -8,9 +8,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		PosterCard,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel
+		XuvaButton,
+		XuvaEmptyState,
+		XuvaPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -77,24 +77,24 @@
 <MediaShell active="watchlist" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<LorivoPanel
+			<XuvaPanel
 				title="Loading Watchlist"
 				subtitle="Reading watchlist availability from existing backend APIs."
 			/>
 		{:else if loadError}
-			<LorivoPanel title="Watchlist could not load" subtitle={loadError}>
+			<XuvaPanel title="Watchlist could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadWatchlist}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<XuvaButton variant="secondary" onclick={loadWatchlist}>Retry</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back to Home</XuvaButton>
 				</div>
-			</LorivoPanel>
+			</XuvaPanel>
 		{:else if authMessage}
-			<LorivoPanel title="Sign in required" subtitle={authMessage}>
+			<XuvaPanel title="Sign in required" subtitle={authMessage}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadWatchlist}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/signin">Open Sign In</LorivoButton>
+					<XuvaButton variant="secondary" onclick={loadWatchlist}>Retry</XuvaButton>
+					<XuvaButton variant="ghost" href="/signin">Open Sign In</XuvaButton>
 				</div>
-			</LorivoPanel>
+			</XuvaPanel>
 		{:else}
 			<BrowseHeader title="Watchlist" subtitle="Saved titles to watch later.">
 				{#snippet chips()}
@@ -108,21 +108,21 @@
 			<BrowseToolbar />
 
 			{#if !rowAvailable}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="Watchlist is not available yet"
 					message="The current backend home payload does not expose a watchlist row for this route."
 				>
 					{#snippet action()}
-						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
+						<XuvaButton variant="secondary" href="/">Back to Home</XuvaButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</XuvaEmptyState>
 			{:else if items.length === 0}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="No watchlist items yet"
 					message="Save titles to your watchlist and they will appear here."
 				/>
 			{:else if visibleItems.length === 0}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="No watchlist matches"
 					message="Try changing search terms to find a saved title."
 				/>
@@ -146,7 +146,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 </style>
 

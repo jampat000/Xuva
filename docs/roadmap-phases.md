@@ -1,9 +1,9 @@
-# Lorivo Delivery Phases
+# Xuva Delivery Phases
 
 ## Phase 1 — Desktop Owner Web (Current)
 
 Primary goal:
-- complete and stabilise Lorivo Server/Web for desktop owner operation
+- complete and stabilise Xuva Server/Web for desktop owner operation
 
 Acceptance target:
 - desktop first (`1600x1000` primary, `1920x1080` secondary)

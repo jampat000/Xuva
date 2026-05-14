@@ -2,13 +2,13 @@
 
 ## Goal
 
-Ship a real migration path for watched state, resume position, and core metadata identifiers so Lorivo is easier to adopt from Plex, Emby, or Jellyfin.
+Ship a real migration path for watched state, resume position, and core metadata identifiers so Xuva is easier to adopt from Plex, Emby, or Jellyfin.
 
 ## Context
 
 - Issue: `#16 P3.3 Migration and Adoption Tooling`
 - Dependencies are closed in issue `#1`.
-- Lorivo already has stable catalog, playback-state, metadata, auth, and route-policy foundations.
+- Xuva already has stable catalog, playback-state, metadata, auth, and route-policy foundations.
 
 ## In Scope
 
@@ -51,5 +51,5 @@ Ship a real migration path for watched state, resume position, and core metadata
 
 ## Decision Log
 
-- Use one normalized JSON bundle format with source tags instead of pretending Lorivo can safely ingest every vendor's private export format directly.
+- Use one normalized JSON bundle format with source tags instead of pretending Xuva can safely ingest every vendor's private export format directly.
 - Prefer dry-run plus selective import over best-effort silent skips.

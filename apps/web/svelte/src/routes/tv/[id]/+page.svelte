@@ -20,12 +20,12 @@
 		type SeasonDetail,
 		type SeriesDetailResponse
 	} from '$lib/api/details';
-	import DetailHero from '$lib/lorivo/DetailHero.svelte';
-	import DetailSection from '$lib/lorivo/DetailSection.svelte';
-	import LorivoButton from '$lib/lorivo/LorivoButton.svelte';
-	import LorivoEmptyState from '$lib/lorivo/LorivoEmptyState.svelte';
-	import LorivoPanel from '$lib/lorivo/LorivoPanel.svelte';
-	import LorivoShell from '$lib/lorivo/LorivoShell.svelte';
+	import DetailHero from '$lib/Xuva/DetailHero.svelte';
+	import DetailSection from '$lib/Xuva/DetailSection.svelte';
+	import XuvaButton from '$lib/Xuva/XuvaButton.svelte';
+	import XuvaEmptyState from '$lib/Xuva/XuvaEmptyState.svelte';
+	import XuvaPanel from '$lib/Xuva/XuvaPanel.svelte';
+	import XuvaShell from '$lib/Xuva/XuvaShell.svelte';
 	import {
 		buildSeriesCardMeta,
 		cleanDescription,
@@ -324,45 +324,41 @@
 
 </script>
 
-<svelte:head>
-	<title>{seriesTitle} - Lorivo Media</title>
-</svelte:head>
-
-<LorivoShell>
+<XuvaShell>
 	{#if isLoading}
-		<LorivoPanel title="Loading TV Details" subtitle="Fetching series, seasons, episodes, and playback state." />
+		<XuvaPanel title="Loading TV Details" subtitle="Fetching series, seasons, episodes, and playback state." />
 	{:else if loadError}
 		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="Connection"
 				title="Media library unavailable"
-				description="Lorivo could not reach the media library service. Check that the server is running, then try again."
+				description="Xuva could not reach the media library service. Check that the server is running, then try again."
 			>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" onclick={loadSeriesDetails}>Retry</LorivoButton>
+					<XuvaButton variant="primary" onclick={loadSeriesDetails}>Retry</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" href="/settings">Settings</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back Home</LorivoButton>
+					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back Home</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 		</section>
 	{:else if !series}
 		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<LorivoEmptyState
+			<XuvaEmptyState
 				eyebrow="TV"
 				title="TV show not found"
-				description="Lorivo could not find that show. It may have been removed, renamed, or not scanned yet."
+				description="Xuva could not find that show. It may have been removed, renamed, or not scanned yet."
 			>
 				{#snippet primaryAction()}
-					<LorivoButton variant="primary" href="/tv">Back to TV</LorivoButton>
+					<XuvaButton variant="primary" href="/tv">Back to TV</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
-					<LorivoButton variant="secondary" onclick={startTVScan} disabled={isScanning}>
+					<XuvaButton variant="secondary" onclick={startTVScan} disabled={isScanning}>
 						{isScanning ? 'Scanning...' : 'Scan TV'}
-					</LorivoButton>
+					</XuvaButton>
 				{/snippet}
-			</LorivoEmptyState>
+			</XuvaEmptyState>
 			{#if actionMessage}
 				<p class="mt-3 text-sm text-white/60">{actionMessage}</p>
 			{/if}
@@ -381,13 +377,13 @@
 		>
 			{#snippet actions()}
 				{#if selectedPlayHref}
-					<LorivoButton variant="primary" href={selectedPlayHref}>
+					<XuvaButton variant="primary" href={selectedPlayHref}>
 						<Play size={18} class="fill-white text-white" />
 						{selectedPlayLabel}
-					</LorivoButton>
-					<LorivoButton variant="secondary" href={selectedStartHref}>Start Over</LorivoButton>
+					</XuvaButton>
+					<XuvaButton variant="secondary" href={selectedStartHref}>Start Over</XuvaButton>
 				{:else}
-					<LorivoButton variant="primary" disabled>Play</LorivoButton>
+					<XuvaButton variant="primary" disabled>Play</XuvaButton>
 				{/if}
 			{/snippet}
 		</DetailHero>
@@ -400,7 +396,7 @@
 			{:else}
 				<div class="grid gap-4">
 					{#each seasons as season (season.seasonId)}
-						<article class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-lg shadow-black/20">
+						<article class="rounded-md border border-white/10 bg-white/[0.02] p-4">
 							<header class="mb-4 flex flex-wrap items-baseline justify-between gap-3">
 								<h3 class="text-lg font-semibold text-white">Season {season.seasonNumber || 'Unknown'}</h3>
 								<span class="text-sm text-white/50">{season.episodes.length} episodes</span>
@@ -410,7 +406,7 @@
 							{:else}
 								<div class="grid gap-3">
 									{#each season.episodes as episode (episode.episodeId)}
-										<div class={`grid gap-3 rounded-2xl border p-4 transition lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${isEpisodeSelected(episode.episodeId) ? 'border-[#7C5CFF]/45 bg-[#7C5CFF]/10' : 'border-white/10 bg-[#111827]/60'}`}>
+										<div class={`grid gap-3 rounded-md border p-4 transition lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${isEpisodeSelected(episode.episodeId) ? 'border-[#7C5CFF]/45 bg-[#7C5CFF]/8' : 'border-white/10 bg-[#111827]/55'}`}>
 											<button
 												class="flex w-full items-start justify-between gap-4 text-left text-white"
 												type="button"
@@ -421,26 +417,26 @@
 													<strong class="block text-sm font-semibold text-white">{episode.label}</strong>
 													<span class="mt-1 block text-base font-medium text-white">{episode.title}</span>
 												</span>
-												<em class="shrink-0 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold not-italic text-white/65">
+												<em class="shrink-0 rounded-sm border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold not-italic text-white/65">
 													{episodeSummary(episode)}
 												</em>
 											</button>
 											<div class="flex flex-wrap gap-3 lg:justify-end">
 												{#if episode.mediaSourceId}
-													<LorivoButton
+													<XuvaButton
 														variant="primary"
 														size="sm"
 														href={`/play/${encodeURIComponent(episode.mediaSourceId)}`}
 													>
 														{isResumeState(episode.state) ? 'Resume' : 'Play'}
-													</LorivoButton>
-													<LorivoButton
+													</XuvaButton>
+													<XuvaButton
 														variant="secondary"
 														size="sm"
 														href={`/play/${encodeURIComponent(episode.mediaSourceId)}?start=0`}
 													>
 														Start Over
-													</LorivoButton>
+													</XuvaButton>
 												{:else}
 													<span class="text-sm text-white/50">No source</span>
 												{/if}
@@ -468,20 +464,20 @@
 			{:else if !selectedSource}
 				<p class="text-sm leading-relaxed text-white/60">No media source metadata is available for this episode.</p>
 			{:else}
-				<div class="rounded-2xl border border-white/10 bg-[#111827]/70 p-5">
+				<div class="rounded-md border border-white/10 bg-[#111827]/55 p-4">
 					<div class="flex flex-wrap items-baseline justify-between gap-3">
 						<div>
 							<h3 class="text-lg font-semibold text-white">{selectedEpisode.title}</h3>
 							<p class="mt-1 text-sm text-white/50">{sourceEpisodeMeta()}</p>
 						</div>
-						<span class="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white/70">
+						<span class="rounded-sm border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white/70">
 							{watchedLabel(selectedSource.state)}
 						</span>
 					</div>
 					<p class="mt-5 text-sm font-semibold text-white">{playbackModeLabel(selectedSource.decision)}</p>
 					<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(selectedSource.decision)}</p>
 					<dl class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+							<div class="rounded-sm border border-white/10 bg-white/[0.02] p-3">
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Quality</dt>
 								<dd class="mt-1 text-sm text-white/75">
 									{sourceQualityLabel(
@@ -493,15 +489,15 @@
 									)}
 								</dd>
 							</div>
-							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+							<div class="rounded-sm border border-white/10 bg-white/[0.02] p-3">
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Duration</dt>
 								<dd class="mt-1 text-sm text-white/75">{formatDuration(Number(selectedSource.source?.durationSeconds || 0))}</dd>
 							</div>
-							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+							<div class="rounded-sm border border-white/10 bg-white/[0.02] p-3">
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Bitrate</dt>
 								<dd class="mt-1 text-sm text-white/75">{formatBitrate(Number(selectedSource.source?.bitrate || 0))}</dd>
 							</div>
-							<div class="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+							<div class="rounded-sm border border-white/10 bg-white/[0.02] p-3">
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">File Size</dt>
 								<dd class="mt-1 text-sm text-white/75">{formatBytes(Number(selectedSource.source?.sizeBytes || 0))}</dd>
 							</div>
@@ -509,7 +505,7 @@
 				</div>
 
 					<div class="mt-4 grid gap-4 lg:grid-cols-2">
-						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+						<article class="rounded-md border border-white/10 bg-[#111827]/55 p-4">
 							<h3 class="text-base font-semibold text-white">Audio Tracks</h3>
 							{#if (selectedSource.tracks.audioTracks || []).length === 0}
 								<p class="mt-3 text-sm text-white/55">No audio track data is available yet.</p>
@@ -518,13 +514,13 @@
 									{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
 										<li class="text-sm text-white/70">
 											<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}</strong>
-											{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+											{#if track.default}<span class="ml-2 rounded-sm bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
 										</li>
 									{/each}
 								</ul>
 							{/if}
 						</article>
-						<article class="rounded-2xl border border-white/10 bg-[#111827]/70 p-4">
+						<article class="rounded-md border border-white/10 bg-[#111827]/55 p-4">
 							<h3 class="text-base font-semibold text-white">Subtitle Tracks</h3>
 							{#if (selectedSource.tracks.subtitleTracks || []).length === 0}
 								<p class="mt-3 text-sm text-white/55">No embedded subtitle tracks were detected.</p>
@@ -533,8 +529,8 @@
 									{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
 										<li class="text-sm text-white/70">
 											<strong class="font-medium text-white">{formatTrackSummary(track.codec, track.language)}</strong>
-											{#if track.forced}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
-											{#if track.default}<span class="ml-2 rounded-full bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
+											{#if track.forced}<span class="ml-2 rounded-sm bg-white/10 px-2 py-1 text-xs text-white/60">Forced</span>{/if}
+											{#if track.default}<span class="ml-2 rounded-sm bg-white/10 px-2 py-1 text-xs text-white/60">Default</span>{/if}
 										</li>
 									{/each}
 								</ul>
@@ -545,4 +541,4 @@
 			{/if}
 		</DetailSection>
 	{/if}
-</LorivoShell>
+</XuvaShell>

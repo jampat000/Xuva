@@ -2,7 +2,7 @@
 
 ## Objective
 
-Lorivo should choose the cheapest playback path that works for the current client and network conditions.
+Xuva should choose the cheapest playback path that works for the current client and network conditions.
 
 ## Inputs
 

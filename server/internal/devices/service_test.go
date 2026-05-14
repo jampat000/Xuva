@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jampat000/Lorivo/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/database"
 )
 
 func TestApprovedDevicesPersistAcrossReload(t *testing.T) {

@@ -16,16 +16,27 @@
 		type VersionGroup
 	} from '$lib/api/browse';
 	import {
+		createUser,
+		deleteUser,
 		getAuthSession,
 		getClientBootstrap,
+		getUsers,
 		logout,
+		updateUserPassword,
 		type AuthSessionResponse,
 		type AuthSessionUser,
-		type ClientBootstrapResponse
+		type ClientBootstrapResponse,
+		type UserAccount
 	} from '$lib/api/auth';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
-	import { browseFolder, deleteLibrary, startLibraryScan, type FolderBrowseResponse } from '$lib/api/setup';
+	import {
+		browseFolder,
+		deleteLibrary,
+		saveLibrary,
+		startLibraryScan,
+		type FolderBrowseResponse
+	} from '$lib/api/setup';
 	import {
 		getApprovedDevices,
 		approvePairingRequest,
@@ -37,6 +48,7 @@
 		getPairingRequests,
 		getPerformanceSettings,
 		getProbes,
+		runHardwareTest,
 		getScans,
 		getSessions,
 		getSettings,
@@ -56,19 +68,20 @@
 		type ScanJobItem,
 		type SessionItem,
 		type SettingsResponse,
+		type HardwareTestResponse,
 		type SystemStatusResponse,
 		type UpdateSettingsRequest,
 		type WorkQueueItem
 	} from '$lib/api/operator';
 	import { createEventStream } from '$lib/events/stream';
-	import { lorivoTitle, normalizeServerName } from '$lib/server-name';
+	import { xuvaTitle, normalizeServerName } from '$lib/server-name';
 	import {
 		ActivityListShell,
 		ServerShell,
-		LorivoActionList,
-		LorivoButton,
-		LorivoPanel,
-		LorivoStat
+		XuvaActionList,
+		XuvaButton,
+		XuvaPanel,
+		XuvaStat
 	} from '$lib/components';
 	import SettingsPanel from '$lib/components/operator/SettingsPanel.svelte';
 	import FolderBrowserPanel from '$lib/components/operator/FolderBrowserPanel.svelte';
@@ -86,7 +99,8 @@
 		| 'pairing'
 		| 'approved-devices'
 		| 'discovery'
-		| 'owner-access'
+		| 'admin-access'
+		| 'planned-tools'
 		| 'about';
 
 	type LibraryActionKind = 'scan' | 'remove' | '';
@@ -151,6 +165,12 @@
 		year: string;
 	}
 
+	interface SettingsShellIdentity {
+		serverName: string;
+		userDisplayName: string;
+		userRole: string;
+	}
+
 	let isLoading = $state(true);
 	let isScanningMovies = $state(false);
 	let isScanningTV = $state(false);
@@ -160,9 +180,16 @@
 	let isSavingScanningAutomation = $state(false);
 	let isSavingPlaybackPolicy = $state(false);
 	let isSavingStorage = $state(false);
+	let isSavingTranscoding = $state(false);
 	let isSavingMetadataSources = $state(false);
+	let isTestingHardware = $state(false);
 	let isSigningOut = $state(false);
+	let isSavingPassword = $state(false);
+	let isCreatingUser = $state(false);
+	let isDeletingUser = $state(false);
+	let isSavingLibrary = $state(false);
 	let isBrowsingStorage = $state(false);
+	let isBrowsingLibrary = $state(false);
 	let isLoadingMetadataReview = $state(false);
 	let isLoadingPairingRequests = $state(false);
 	let isLoadingApprovedDevices = $state(false);
@@ -171,11 +198,16 @@
 	let scanningSettingsError = $state('');
 	let serverNameError = $state('');
 	let storageSettingsError = $state('');
+	let transcodingSettingsError = $state('');
 	let metadataSourceError = $state('');
 	let metadataReviewError = $state('');
 	let pairingRequestsError = $state('');
 	let approvedDevicesError = $state('');
+	let usersError = $state('');
+	let usersActionMessage = $state('');
 	let libraryLoadError = $state('');
+	let librarySettingsError = $state('');
+	let librarySettingsMessage = $state('');
 	let liveStatusError = $state('');
 	let discoveryStatusError = $state('');
 	let pairingActionMessage = $state('');
@@ -183,14 +215,13 @@
 	let lastUpdatedLabel = $state('');
 	let sessionsUnavailable = $state(false);
 	let authDisabled = $state(false);
-	let devAuthBypass = $state(false);
-	let devAuthBypassMessage = $state('');
 	let activeSection = $state<SettingsSection>('dashboard');
 	let activeLibraryActionID = $state('');
 	let activeLibraryActionKind = $state<LibraryActionKind>('');
 	let activePairingRequestID = $state('');
 	let activePairingActionKind = $state<PairingActionKind>('');
 	let activeApprovedDeviceID = $state('');
+	let activeUserID = $state('');
 
 	let user = $state<AuthSessionUser | null>(null);
 	let clientBootstrap = $state<ClientBootstrapResponse>({});
@@ -207,6 +238,7 @@
 	let sessions = $state<SessionItem[]>([]);
 	let pairingRequests = $state<PairingRequestItem[]>([]);
 	let approvedDevices = $state<ApprovedDeviceItem[]>([]);
+	let users = $state<UserAccount[]>([]);
 	let reviewItems = $state<ReviewItem[]>([]);
 	let versionGroups = $state<VersionGroup[]>([]);
 	let metadataRecordsByItem = $state<Record<string, MetadataRecordsResponse>>({});
@@ -221,8 +253,11 @@
 	let buildInfo = $state<BuildInfo | null>(null);
 	let discoveryStatus = $state<DiscoveryStatusResponse>({});
 	let storageFolderBrowse = $state<FolderBrowseResponse | null>(null);
+	let libraryFolderBrowse = $state<FolderBrowseResponse | null>(null);
 	let activeStorageBrowseField = $state<EditableStorageFieldKey | ''>('');
-	let serverNameDraft = $state('Lorivo');
+	let hardwareModeDraft = $state<'software' | 'hardware'>('software');
+	let hardwareTestResult = $state<HardwareTestResponse | null>(null);
+	let serverNameDraft = $state('Xuva');
 	let librarySyncModeDraft = $state<LibrarySyncModeOption['id']>('daily');
 	let syncIntervalDraft = $state('1440');
 	let watchDebounceDraft = $state('30');
@@ -245,18 +280,33 @@
 		tempDir: ''
 	});
 	let sessionExpiresAt = $state('');
+	let passwordDraft = $state('');
+	let confirmPasswordDraft = $state('');
+	let newUserUsernameDraft = $state('');
+	let newUserDisplayNameDraft = $state('');
+	let newUserPasswordDraft = $state('');
+	let newUserRoleDraft = $state<'admin' | 'standard'>('standard');
+	let newLibraryKindDraft = $state<'movies' | 'tv'>('movies');
+	let newLibraryNameDraft = $state('');
+	let newLibraryPathDraft = $state('');
+	let shellIdentity = $state<SettingsShellIdentity>({
+		serverName: 'Xuva',
+		userDisplayName: '',
+		userRole: ''
+	});
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+	const SETTINGS_SHELL_IDENTITY_KEY = 'xuva.settings.shell.identity.v1';
 
 	const serverIdentityHelpText =
-		'Lorivo uses this name in the browser title and advertises it to local clients when local discovery is running.';
+		'Xuva uses this name in the browser title and advertises it to local clients when local discovery is running.';
 
 	const storageFieldDefinitions: StorageFieldDefinition[] = [
 		{
 			key: 'transcodeDir',
 			diskName: 'transcode',
 			label: 'Transcoding folder',
-			helper: 'Where Lorivo stores temporary files while preparing playback.',
+			helper: 'Where Xuva stores temporary files while preparing playback.',
 			group: 'processing',
 			editable: true
 		},
@@ -264,7 +314,7 @@
 			key: 'downloadsDir',
 			diskName: 'downloads',
 			label: 'Optimized versions folder',
-			helper: 'Where Lorivo stores optimized versions created for playback or travel.',
+			helper: 'Where Xuva stores optimized versions created for playback or travel.',
 			group: 'processing',
 			editable: true
 		},
@@ -272,7 +322,7 @@
 			key: 'metadataDir',
 			diskName: 'metadata',
 			label: 'Metadata folder',
-			helper: 'Where Lorivo stores artwork and metadata it downloads for your library.',
+			helper: 'Where Xuva stores artwork and metadata it downloads for your library.',
 			group: 'library',
 			editable: true
 		},
@@ -280,7 +330,7 @@
 			key: 'cacheDir',
 			diskName: 'cache',
 			label: 'Cache folder',
-			helper: 'Where Lorivo stores temporary cached data.',
+			helper: 'Where Xuva stores temporary cached data.',
 			group: 'library',
 			editable: true
 		},
@@ -288,7 +338,7 @@
 			key: 'tempDir',
 			diskName: 'temp',
 			label: 'Scratch/temp folder',
-			helper: 'Where Lorivo stores short-lived working files.',
+			helper: 'Where Xuva stores short-lived working files.',
 			group: 'library',
 			editable: true
 		},
@@ -296,7 +346,7 @@
 			key: 'dataDir',
 			diskName: 'data',
 			label: 'Data folder',
-			helper: 'Where Lorivo stores its main settings and local data.',
+			helper: 'Where Xuva stores its main settings and local data.',
 			group: 'app',
 			editable: false
 		}
@@ -306,17 +356,17 @@
 		{
 			id: 'manual',
 			label: 'Manual only',
-			description: 'Lorivo scans your libraries only when you start a scan.'
+			description: 'Xuva scans your libraries only when you start a scan.'
 		},
 		{
 			id: 'daily',
 			label: 'Scheduled',
-			description: 'Lorivo checks your libraries on a repeating schedule.'
+			description: 'Xuva checks your libraries on a repeating schedule.'
 		},
 		{
 			id: 'watch',
 			label: 'Watch folders',
-			description: 'Lorivo waits for folder changes, then starts a scan after a short delay.'
+			description: 'Xuva waits for folder changes, then starts a scan after a short delay.'
 		}
 	];
 
@@ -324,12 +374,12 @@
 		{
 			id: 'original_only',
 			label: 'Original files only',
-			description: 'Keep playback as close to the original file as possible. If a device needs help, Lorivo offers fallback choices instead of converting automatically.'
+			description: 'Keep playback as close to the original file as possible. If a device needs help, Xuva offers fallback choices instead of converting automatically.'
 		},
 		{
 			id: 'light',
 			label: 'Direct play with audio fixes',
-			description: 'Prefer the original video. Lorivo can repackage playback or convert audio when that is enough.'
+			description: 'Prefer the original video. Xuva can repackage playback or convert audio when that is enough.'
 		},
 		{
 			id: 'full',
@@ -344,54 +394,84 @@
 	];
 	const metadataKinds: MetadataKind[] = ['movie', 'series'];
 
-	const devOwnerActive = $derived.by(() => devAuthBypass && Boolean(user));
-	const userDisplayName = $derived.by(() => user?.displayName || user?.username || 'Local User');
-	const userRoleLabel = $derived.by(() => (devOwnerActive ? 'Development Owner' : accountTypeLabel(user?.role)));
-	const userInitials = $derived.by(() => initialsForName(userDisplayName));
+	const userDisplayName = $derived.by(() => user?.displayName || user?.username || '');
+	const userRoleLabel = $derived.by(() => accountTypeLabel(user?.role));
+	const shellServerName = $derived.by(() => {
+		const configured = asText(settings.config?.serverName);
+		if (configured) return displayServerName(configured);
+		const cachedName = asText(shellIdentity.serverName);
+		if (cachedName) return displayServerName(cachedName);
+		const draftName = asText(serverNameDraft);
+		if (draftName) return displayServerName(draftName);
+		return 'Xuva';
+	});
+	const shellUserDisplayName = $derived.by(() => userDisplayName || asText(shellIdentity.userDisplayName));
+	const shellUserRole = $derived.by(() => {
+		if (user) return userRoleLabel;
+		return asText(shellIdentity.userRole);
+	});
+	const shellDisplayNameForShell = $derived.by(() => {
+		if (isLoading) return asText(shellIdentity.userDisplayName) || userDisplayName;
+		return userDisplayName;
+	});
+	const shellRoleForShell = $derived.by(() => {
+		if (isLoading) return asText(shellIdentity.userRole) || userRoleLabel;
+		return userRoleLabel;
+	});
+	const userInitials = $derived.by(() => initialsForName(shellUserDisplayName || 'User'));
 	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
-	const canManageSettings = $derived.by(() => authDisabled || devOwnerActive || asText(user?.role).toLowerCase() === 'admin');
+	const canManageSettings = $derived.by(() => authDisabled || asText(user?.role).toLowerCase() === 'admin');
 	const hasLibraryLoadError = $derived.by(() => Boolean(libraryLoadError));
 	const hasLiveStatusError = $derived.by(() => Boolean(liveStatusError));
-	const canShowSignIn = $derived.by(() => !authDisabled && !devAuthBypass && !user);
-	const ownerSetupPending = $derived.by(() => !authDisabled && !devAuthBypass && !user && Boolean(clientBootstrap.auth?.bootstrapAllowed));
-	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !devAuthBypass && !canManageSettings);
-	const ownerAccessMessage = $derived.by(() => 'Sign in as the owner to manage Lorivo settings.');
-	const ownerActionLabel = $derived.by(() => (ownerSetupPending ? 'Create Owner Account' : 'Sign In'));
+	const canShowSignIn = $derived.by(() => !authDisabled && !user);
+	const ownerSetupPending = $derived.by(() => !authDisabled && !user && Boolean(clientBootstrap.auth?.bootstrapAllowed));
+	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !canManageSettings);
+	const ownerAccessMessage = $derived.by(() => 'Sign in as an admin to manage Xuva settings.');
+	const ownerActionLabel = $derived.by(() => (ownerSetupPending ? 'Create Admin Account' : 'Sign In'));
 	const ownerActionDetail = $derived.by(() => {
 		const defaultUsername = asText(clientBootstrap.auth?.defaultUsername);
 		if (ownerSetupPending) {
 			return defaultUsername
-				? `This server still needs its first owner account. Open Sign In to create ${defaultUsername}.`
-				: 'This server still needs its first owner account. Open Sign In to create it.';
+				? `This server still needs its first admin account. Open Sign In to create ${defaultUsername}.`
+				: 'This server still needs its first admin account. Open Sign In to create it.';
 		}
-		return 'Open Sign In to continue with the owner account.';
+		return 'Open Sign In to continue with an admin account.';
 	});
-	const devAccessMessage = $derived.by(
-		() =>
-			asText(devAuthBypassMessage) ||
-			'Development access is active. User management will be enabled before production.'
-	);
 	const accessCardLabel = $derived.by(() => {
-		if (devOwnerActive) return 'Development owner';
 		if (user) return 'Signed in';
 		if (authDisabled) return 'Local access';
-		if (ownerSetupPending) return 'Create owner account';
+		if (ownerSetupPending) return 'Create admin account';
 		return 'Sign in';
 	});
 	const accessCardDetail = $derived.by(() => {
-		if (devOwnerActive) return 'owner controls are unlocked for local development';
 		if (user) return userDisplayName;
 		if (authDisabled) return 'sign-in is not required on this server';
-		if (ownerSetupPending) return 'first owner account needed for changes';
-		return 'owner account needed for changes';
+		if (ownerSetupPending) return 'first admin account needed for changes';
+		return 'admin account needed for changes';
 	});
+	const canManageUsers = $derived.by(() => !authDisabled && Boolean(user) && canManageSettings);
+	const usersCountLabel = $derived.by(() => (users.length === 1 ? '1 account' : `${users.length} accounts`));
+	const currentUserRoleLabel = $derived.by(() => accountTypeLabel(user?.role));
+	const canSubmitPasswordChange = $derived.by(
+		() =>
+			canManageUsers &&
+			Boolean(asText(passwordDraft)) &&
+			asText(passwordDraft) === asText(confirmPasswordDraft) &&
+			asText(passwordDraft).length >= 10
+	);
+	const canSubmitNewUser = $derived.by(
+		() =>
+			canManageUsers &&
+			Boolean(asText(newUserUsernameDraft)) &&
+			Boolean(asText(newUserPasswordDraft)) &&
+			asText(newUserPasswordDraft).length >= 10
+	);
 	const accessAccountValue = $derived.by(() => {
 		if (user) return userDisplayName;
 		if (authDisabled) return 'Local access';
 		return 'Not signed in';
 	});
 	const accessAccountMeta = $derived.by(() => {
-		if (devOwnerActive) return 'Development Owner';
 		if (user) return userRoleLabel;
 		if (authDisabled) return 'Sign-in is not required on this server.';
 		return 'Sign in to change protected settings.';
@@ -418,15 +498,13 @@
 				joinMetadataSourceIDs(metadataSourcePreferences.series || [])
 	);
 	const accessSessionValue = $derived.by(() => {
-		if (devOwnerActive) return 'Development access';
 		if (user) return 'Active';
 		if (authDisabled) return 'Local';
 		return 'Signed out';
 	});
 	const accessSessionMeta = $derived.by(() => {
-		if (devOwnerActive) return 'Owner-only settings are unlocked on this device.';
 		if (user && sessionExpiresAt) return `Current session expires ${formatDateTime(sessionExpiresAt)}.`;
-		if (user) return 'This browser has an active Lorivo session.';
+		if (user) return 'This browser has an active Xuva session.';
 		if (authDisabled) return 'This server is running without account sign-in.';
 		return 'Open Sign In to continue.';
 	});
@@ -444,7 +522,7 @@
 	});
 	const discoveryRunning = $derived.by(() => Boolean(discoveryStatus.running));
 	const discoveryServiceName = $derived.by(
-		() => asText(discoveryStatus.serviceName) || serverDisplayName || 'Lorivo'
+		() => asText(discoveryStatus.serviceName) || serverDisplayName || 'Xuva'
 	);
 	const discoveryStatusLabel = $derived.by(() => {
 		if (discoveryStatusError) return 'Unavailable';
@@ -466,7 +544,7 @@
 			return `Devices on your home network can find this server as ${discoveryServiceName}.`;
 		}
 		if (asText(discoveryStatus.lastError)) {
-			return 'Lorivo could not start local discovery. The server is still available at this web address.';
+			return 'Xuva could not start local discovery. The server is still available at this web address.';
 		}
 		return 'Local discovery is not running.';
 	});
@@ -476,9 +554,9 @@
 		if (note) return note;
 		if (discoveryRunning) {
 			const portLabel = Number(discoveryStatus.port || 0) > 0 ? String(discoveryStatus.port) : 'current server port';
-			return `${asText(discoveryStatus.serviceType) || '_lorivo._tcp.local.'} on port ${portLabel}.`;
+			return `${asText(discoveryStatus.serviceType) || '_xuva._tcp.local.'} on port ${portLabel}.`;
 		}
-		return 'Lorivo keeps working normally through its web address even when discovery is off.';
+		return 'Xuva keeps working normally through its web address even when discovery is off.';
 	});
 	const hasScanningAutomationChanges = $derived.by(
 		() =>
@@ -489,11 +567,15 @@
 	);
 	const hasStorageChanges = $derived.by(
 		() =>
-			asText(storageDraft.transcodeDir) !== asText(settings.config?.transcodeDir) ||
-			asText(storageDraft.downloadsDir) !== asText(settings.config?.downloadsDir) ||
 			asText(storageDraft.metadataDir) !== asText(settings.config?.metadataDir) ||
 			asText(storageDraft.cacheDir) !== asText(settings.config?.cacheDir) ||
 			asText(storageDraft.tempDir) !== asText(settings.config?.tempDir)
+	);
+	const hasTranscodingChanges = $derived.by(
+		() =>
+			asText(storageDraft.transcodeDir) !== asText(settings.config?.transcodeDir) ||
+			asText(storageDraft.downloadsDir) !== asText(settings.config?.downloadsDir) ||
+			(hardwareModeDraft === 'hardware') !== Boolean(settings.config?.hardwareUnlocked)
 	);
 	const configuredLibraries = $derived.by(() => settings.libraries || libraries || []);
 	const libraryCards = $derived.by(() =>
@@ -521,8 +603,8 @@
 		if (!hasLibraryLoadError && libraryCards.length === 0) {
 			output.push({
 				id: 'warn-library',
-				label: 'Library setup needed',
-				description: 'Add a Movies or TV folder so Lorivo can build your media library.',
+				label: 'Library needed',
+				description: 'Add a Movies or TV folder so Xuva can build your media library.',
 				status: 'Action needed'
 			});
 		}
@@ -538,7 +620,7 @@
 			output.push({
 				id: 'warn-unprobed',
 				label: 'Media check pending',
-				description: `${asCount(health.unprobed)} files still need Lorivo's media check.`,
+				description: `${asCount(health.unprobed)} files still need Xuva's media check.`,
 				status: 'Warning'
 			});
 		}
@@ -607,7 +689,7 @@
 		if (storageNeedsAttentionCount > 0) {
 			return `${asCount(storageNeedsAttentionCount)} folder${storageNeedsAttentionCount === 1 ? '' : 's'} need attention before restart.`;
 		}
-		return 'Review where Lorivo keeps its media processing, artwork, cache, and local data.';
+		return 'Review where Xuva keeps its media processing, artwork, cache, and local data.';
 	});
 	const storagePanelStatus = $derived.by(() => {
 		if (hasLiveStatusError) return 'warning';
@@ -618,19 +700,25 @@
 	const activeStorageBrowseFieldLabel = $derived.by(() => storageFieldLabel(activeStorageBrowseField));
 	const scanningSaveMessage = $derived.by(() =>
 		actionMessage === 'Scanning settings saved.' ||
-		actionMessage === 'Saved. Restart Lorivo for this change to fully take effect.'
+		actionMessage === 'Saved. Restart Xuva for this change to fully take effect.'
 			? actionMessage
 			: ''
 	);
 	const storageSaveMessage = $derived.by(() =>
 		actionMessage === 'Storage settings saved.' ||
-		actionMessage === 'Saved. Restart Lorivo for these folder changes to fully take effect.'
+		actionMessage === 'Saved. Restart Xuva for these folder changes to fully take effect.'
+			? actionMessage
+			: ''
+	);
+	const transcodingSaveMessage = $derived.by(() =>
+		actionMessage === 'Transcoding settings saved.' ||
+		actionMessage === 'Saved. Restart Xuva for these transcoding changes to fully take effect.'
 			? actionMessage
 			: ''
 	);
 	const playbackSaveMessage = $derived.by(() =>
 		actionMessage === 'Playback setting saved.' ||
-		actionMessage === 'Playback setting saved. Restart Lorivo to apply it.'
+		actionMessage === 'Playback setting saved. Restart Xuva to apply it.'
 			? actionMessage
 			: ''
 	);
@@ -643,6 +731,7 @@
 	});
 
 	onMount(() => {
+		shellIdentity = readSettingsShellIdentity();
 		syncSectionFromHash();
 		void loadSettingsSurface();
 		void loadBuildInfo();
@@ -672,6 +761,7 @@
 		metadataReviewError = '';
 		pairingRequestsError = '';
 		approvedDevicesError = '';
+		usersError = '';
 		libraryLoadError = '';
 		liveStatusError = '';
 		discoveryStatusError = '';
@@ -764,10 +854,12 @@
 
 			clientBootstrap = bootstrapPayload || {};
 			authDisabled = Boolean(sessionPayload?.authDisabled);
-			devAuthBypass = Boolean(sessionPayload?.devAuthBypass);
-			devAuthBypassMessage = asText(sessionPayload?.devAuthBypassMessage);
-			user = sessionPayload?.user || null;
-			sessionExpiresAt = asText(sessionPayload?.session?.expiresAt);
+			if (Object.prototype.hasOwnProperty.call(sessionPayload || {}, 'user')) {
+				user = sessionPayload?.user || null;
+			}
+			if (Object.prototype.hasOwnProperty.call(sessionPayload?.session || {}, 'expiresAt')) {
+				sessionExpiresAt = asText(sessionPayload?.session?.expiresAt);
+			}
 			libraries = librariesPayload.libraries || [];
 			summary = summaryPayload || {};
 			health = healthPayload || {};
@@ -782,6 +874,8 @@
 			probeBatchLimitDraft = stringDraft(settingsPayload.config?.probeBatchLimit, 50);
 			scanningSettingsError = '';
 			storageSettingsError = '';
+			transcodingSettingsError = '';
+			hardwareTestResult = null;
 			playbackPolicyDraft = normalizePlaybackPolicy(settingsPayload.config?.playbackPolicy);
 			performance = performancePayload || {};
 			scans = scansPayload.scans || [];
@@ -792,6 +886,19 @@
 			discoveryStatus = discoveryPayload || {};
 			reviewItems = reviewPayload.items || [];
 			versionGroups = versionGroupPayload.versions || [];
+			const nextSessionUser = sessionPayload?.user;
+			const nextUserDisplayName = asText(nextSessionUser?.displayName || nextSessionUser?.username);
+			const nextUserRole = nextSessionUser ? accountTypeLabel(nextSessionUser.role) : '';
+			shellIdentity = {
+				serverName: displayServerName(settingsPayload.config?.serverName),
+				userDisplayName: nextSessionUser
+					? nextUserDisplayName
+					: asText(shellIdentity.userDisplayName),
+				userRole: nextSessionUser
+					? nextUserRole
+					: asText(shellIdentity.userRole)
+			};
+			writeSettingsShellIdentity(shellIdentity);
 			syncReviewDrafts(reviewPayload.items || []);
 			const canLoadPairingRequests = Boolean(sessionPayload?.authDisabled || sessionPayload?.user);
 			if (canLoadPairingRequests) {
@@ -816,6 +923,19 @@
 			} else {
 				pairingRequests = [];
 				approvedDevices = [];
+			}
+			if (sessionPayload?.user && !sessionPayload?.authDisabled) {
+				const usersPayload = await getUsers(apiClient).catch((error: unknown) => {
+					if (isApiStatus(error, 401) || isApiStatus(error, 403)) {
+						usersError = '';
+						return { users: [] as UserAccount[] };
+					}
+					usersError = formatLoadError(error);
+					return { users: [] as UserAccount[] };
+				});
+				users = usersPayload.users || [];
+			} else {
+				users = [];
 			}
 			lastUpdatedLabel = new Date().toLocaleTimeString();
 		} catch (error) {
@@ -1074,7 +1194,7 @@
 			};
 			syncMetadataSourceDraft(settings);
 			actionMessage = updated.restartRequired
-				? 'Saved. Restart Lorivo for metadata source changes to fully take effect.'
+				? 'Saved. Restart Xuva for metadata source changes to fully take effect.'
 				: 'Metadata source settings saved.';
 			await loadSettingsSurface(true);
 		} catch (error) {
@@ -1102,6 +1222,11 @@
 			const updated = await updateSettings({ serverName: nextName }, apiClient);
 			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
 			serverNameDraft = displayServerName(settings.config?.serverName);
+			shellIdentity = {
+				...shellIdentity,
+				serverName: displayServerName(settings.config?.serverName)
+			};
+			writeSettingsShellIdentity(shellIdentity);
 			announceServerName();
 			actionMessage = 'Server name saved.';
 		} catch (error) {
@@ -1154,7 +1279,7 @@
 			watchDebounceDraft = stringDraft(updated.config?.watchDebounceSecs, 30);
 			probeBatchLimitDraft = stringDraft(updated.config?.probeBatchLimit, 50);
 			actionMessage = updated.restartRequired
-				? 'Saved. Restart Lorivo for this change to fully take effect.'
+				? 'Saved. Restart Xuva for this change to fully take effect.'
 				: 'Scanning settings saved.';
 		} catch (error) {
 			scanningSettingsError = formatLoadError(error);
@@ -1172,7 +1297,7 @@
 			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
 			playbackPolicyDraft = normalizePlaybackPolicy(updated.config?.playbackPolicy);
 			actionMessage = updated.restartRequired
-				? 'Playback setting saved. Restart Lorivo to apply it.'
+				? 'Playback setting saved. Restart Xuva to apply it.'
 				: 'Playback setting saved.';
 		} catch (error) {
 			actionMessage = formatLoadError(error);
@@ -1215,21 +1340,9 @@
 		if (isSavingStorage || !canManageSettings) return;
 		storageSettingsError = '';
 		actionMessage = '';
-
-		const nextTranscodeDir = asText(storageDraft.transcodeDir);
-		const nextDownloadsDir = asText(storageDraft.downloadsDir);
 		const nextMetadataDir = asText(storageDraft.metadataDir);
 		const nextCacheDir = asText(storageDraft.cacheDir);
 		const nextTempDir = asText(storageDraft.tempDir);
-
-		if (!nextTranscodeDir) {
-			storageSettingsError = 'Choose a folder for the Transcoding folder.';
-			return;
-		}
-		if (!nextDownloadsDir) {
-			storageSettingsError = 'Choose a folder for the Optimized versions folder.';
-			return;
-		}
 		if (!nextMetadataDir) {
 			storageSettingsError = 'Choose a folder for the Metadata folder.';
 			return;
@@ -1244,8 +1357,6 @@
 		}
 
 		const payload: UpdateSettingsRequest = {};
-		if (nextTranscodeDir !== asText(settings.config?.transcodeDir)) payload.transcodeDir = nextTranscodeDir;
-		if (nextDownloadsDir !== asText(settings.config?.downloadsDir)) payload.downloadsDir = nextDownloadsDir;
 		if (nextMetadataDir !== asText(settings.config?.metadataDir)) payload.metadataDir = nextMetadataDir;
 		if (nextCacheDir !== asText(settings.config?.cacheDir)) payload.cacheDir = nextCacheDir;
 		if (nextTempDir !== asText(settings.config?.tempDir)) payload.tempDir = nextTempDir;
@@ -1258,13 +1369,65 @@
 			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
 			syncStorageDraft(updated.config);
 			actionMessage = updated.restartRequired
-				? 'Saved. Restart Lorivo for these folder changes to fully take effect.'
+				? 'Saved. Restart Xuva for these folder changes to fully take effect.'
 				: 'Storage settings saved.';
 			await loadSettingsSurface(true);
 		} catch (error) {
 			storageSettingsError = formatLoadError(error);
 		} finally {
 			isSavingStorage = false;
+		}
+	}
+
+	async function saveTranscodingSettings(): Promise<void> {
+		if (isSavingTranscoding || !canManageSettings) return;
+		transcodingSettingsError = '';
+		actionMessage = '';
+		const nextTranscodeDir = asText(storageDraft.transcodeDir);
+		const nextDownloadsDir = asText(storageDraft.downloadsDir);
+		if (!nextTranscodeDir) {
+			transcodingSettingsError = 'Choose a folder for the Transcoding folder.';
+			return;
+		}
+		if (!nextDownloadsDir) {
+			transcodingSettingsError = 'Choose a folder for the Optimized versions folder.';
+			return;
+		}
+		const payload: UpdateSettingsRequest = {};
+		if (nextTranscodeDir !== asText(settings.config?.transcodeDir)) payload.transcodeDir = nextTranscodeDir;
+		if (nextDownloadsDir !== asText(settings.config?.downloadsDir)) payload.downloadsDir = nextDownloadsDir;
+		const nextHardwareUnlocked = hardwareModeDraft === 'hardware';
+		if (nextHardwareUnlocked !== Boolean(settings.config?.hardwareUnlocked)) {
+			payload.hardwareUnlocked = nextHardwareUnlocked;
+		}
+		if (Object.keys(payload).length === 0) return;
+		isSavingTranscoding = true;
+		try {
+			const updated = await updateSettings(payload, apiClient);
+			settings = { ...settings, ...updated, config: { ...settings.config, ...updated.config } };
+			syncStorageDraft(updated.config);
+			actionMessage = updated.restartRequired
+				? 'Saved. Restart Xuva for these transcoding changes to fully take effect.'
+				: 'Transcoding settings saved.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			transcodingSettingsError = formatLoadError(error);
+		} finally {
+			isSavingTranscoding = false;
+		}
+	}
+
+	async function runTranscodingHardwareTest(): Promise<void> {
+		if (isTestingHardware || !canManageSettings) return;
+		isTestingHardware = true;
+		transcodingSettingsError = '';
+		hardwareTestResult = null;
+		try {
+			hardwareTestResult = await runHardwareTest(apiClient);
+		} catch (error) {
+			transcodingSettingsError = formatLoadError(error);
+		} finally {
+			isTestingHardware = false;
 		}
 	}
 
@@ -1289,7 +1452,7 @@
 	async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		const id = asText(library.id);
 		if (!id || !canManageSettings || typeof window === 'undefined') return;
-		const confirmed = window.confirm('Remove this library from Lorivo? Media files are not deleted.');
+		const confirmed = window.confirm('Remove this library from Xuva? Media files are not deleted.');
 		if (!confirmed) return;
 		activeLibraryActionID = id;
 		activeLibraryActionKind = 'remove';
@@ -1306,18 +1469,168 @@
 		}
 	}
 
+	async function addLibraryItem(): Promise<void> {
+		if (isSavingLibrary || !canManageSettings) return;
+
+		const pathValue = asText(newLibraryPathDraft).trim();
+		const nameValue = asText(newLibraryNameDraft).trim();
+		if (!pathValue) {
+			librarySettingsError = 'Enter a folder path.';
+			librarySettingsMessage = '';
+			return;
+		}
+
+		isSavingLibrary = true;
+		librarySettingsError = '';
+		librarySettingsMessage = '';
+		try {
+			await saveLibrary(
+				{
+					kind: newLibraryKindDraft,
+					path: pathValue,
+					name: nameValue || (newLibraryKindDraft === 'movies' ? 'Movies' : 'TV')
+				},
+				apiClient
+			);
+			newLibraryNameDraft = '';
+			newLibraryPathDraft = '';
+			librarySettingsMessage = `${newLibraryKindDraft === 'movies' ? 'Movies' : 'TV'} library added.`;
+			await loadSettingsSurface(false);
+		} catch (error) {
+			librarySettingsError = formatLoadError(error);
+		} finally {
+			isSavingLibrary = false;
+		}
+	}
+
+	async function openLibraryBrowser(path = ''): Promise<void> {
+		if (!canManageSettings) return;
+		isBrowsingLibrary = true;
+		librarySettingsError = '';
+		try {
+			libraryFolderBrowse = await browseFolder(path || asText(newLibraryPathDraft), apiClient);
+		} catch (error) {
+			librarySettingsError = formatLoadError(error);
+		} finally {
+			isBrowsingLibrary = false;
+		}
+	}
+
+	function useLibraryBrowsePath(path: string): void {
+		newLibraryPathDraft = asText(path);
+		librarySettingsError = '';
+	}
+
+	function browseLibraryPath(path: string): Promise<void> {
+		return openLibraryBrowser(path);
+	}
+
 	async function signOut(): Promise<void> {
-		if (isSigningOut || authDisabled || devOwnerActive || !user) return;
+		if (isSigningOut || authDisabled || !user) return;
 		isSigningOut = true;
 		actionMessage = '';
 		try {
 			await logout(apiClient);
+			shellIdentity = {
+				...shellIdentity,
+				userDisplayName: '',
+				userRole: ''
+			};
+			writeSettingsShellIdentity(shellIdentity);
 			actionMessage = 'Signed out.';
 			await loadSettingsSurface(true);
 		} catch (error) {
 			actionMessage = formatLoadError(error);
 		} finally {
 			isSigningOut = false;
+		}
+	}
+
+	async function changeCurrentPassword(): Promise<void> {
+		if (!user || !canManageUsers || isSavingPassword) return;
+		usersActionMessage = '';
+		usersError = '';
+		const nextPassword = asText(passwordDraft);
+		const confirmPassword = asText(confirmPasswordDraft);
+		if (nextPassword.length < 10) {
+			usersError = 'Use at least 10 characters for a password.';
+			return;
+		}
+		if (nextPassword !== confirmPassword) {
+			usersError = 'Passwords do not match yet.';
+			return;
+		}
+		isSavingPassword = true;
+		try {
+			await updateUserPassword(asText(user.id), nextPassword, apiClient);
+			passwordDraft = '';
+			confirmPasswordDraft = '';
+			usersActionMessage = 'Password updated.';
+		} catch (error) {
+			usersError = formatLoadError(error);
+		} finally {
+			isSavingPassword = false;
+		}
+	}
+
+	async function createUserAccount(): Promise<void> {
+		if (!canManageUsers || isCreatingUser) return;
+		usersActionMessage = '';
+		usersError = '';
+		const username = asText(newUserUsernameDraft).toLowerCase();
+		const displayName = asText(newUserDisplayNameDraft);
+		const password = asText(newUserPasswordDraft);
+		if (!username) {
+			usersError = 'Enter a username.';
+			return;
+		}
+		if (password.length < 10) {
+			usersError = 'Use at least 10 characters for a password.';
+			return;
+		}
+		isCreatingUser = true;
+		try {
+			await createUser(
+				{
+					username,
+					password,
+					displayName,
+					role: newUserRoleDraft
+				},
+				apiClient
+			);
+			newUserUsernameDraft = '';
+			newUserDisplayNameDraft = '';
+			newUserPasswordDraft = '';
+			newUserRoleDraft = 'standard';
+			usersActionMessage = 'User account created.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			usersError = formatLoadError(error);
+		} finally {
+			isCreatingUser = false;
+		}
+	}
+
+	async function removeUserAccount(account: UserAccount): Promise<void> {
+		if (!canManageUsers || isDeletingUser || typeof window === 'undefined') return;
+		const targetID = asText(account.id);
+		if (!targetID) return;
+		const targetName = asText(account.displayName) || asText(account.username) || 'this account';
+		if (!window.confirm(`Remove ${targetName}?`)) return;
+		usersActionMessage = '';
+		usersError = '';
+		activeUserID = targetID;
+		isDeletingUser = true;
+		try {
+			await deleteUser(targetID, apiClient);
+			usersActionMessage = `${targetName} removed.`;
+			await loadSettingsSurface(true);
+		} catch (error) {
+			usersError = formatLoadError(error);
+		} finally {
+			activeUserID = '';
+			isDeletingUser = false;
 		}
 	}
 
@@ -1390,7 +1703,8 @@
 			'pairing',
 			'approved-devices',
 			'discovery',
-			'owner-access',
+			'admin-access',
+			'planned-tools',
 			'about'
 		].includes(value);
 	}
@@ -1408,11 +1722,16 @@
 			transcoding: 'transcoding',
 			storage: 'storage',
 			network: 'network',
-			access: 'owner-access',
-			'owner-access': 'owner-access',
+			access: 'admin-access',
+			users: 'admin-access',
+			'owner-access': 'admin-access',
+			'admin-access': 'admin-access',
 			pairing: 'pairing',
 			'approved-devices': 'approved-devices',
 			discovery: 'discovery',
+			'planned-tools': 'planned-tools',
+			planned: 'planned-tools',
+			backlog: 'planned-tools',
 			about: 'about'
 		};
 		const candidate = aliases[normalized];
@@ -1642,7 +1961,7 @@
 		if (mode === 'manual') {
 			return activeQueueCount > 0
 				? `${asCount(activeQueueCount)} active scan tasks right now.`
-				: 'Scans start only when you ask Lorivo to run them.';
+				: 'Scans start only when you ask Xuva to run them.';
 		}
 		return `Checks libraries every ${friendlyMinutes(settings.config?.syncIntervalMins, 1440)}.`;
 	}
@@ -1711,6 +2030,33 @@
 		return String(value ?? '').trim();
 	}
 
+	function readSettingsShellIdentity(): SettingsShellIdentity {
+		if (typeof window === 'undefined') {
+			return { serverName: 'Xuva', userDisplayName: '', userRole: '' };
+		}
+		try {
+			const raw = window.localStorage.getItem(SETTINGS_SHELL_IDENTITY_KEY);
+			if (!raw) return { serverName: 'Xuva', userDisplayName: '', userRole: '' };
+			const parsed = JSON.parse(raw) as Partial<SettingsShellIdentity>;
+			return {
+				serverName: displayServerName(parsed?.serverName),
+				userDisplayName: asText(parsed?.userDisplayName),
+				userRole: asText(parsed?.userRole)
+			};
+		} catch {
+			return { serverName: 'Xuva', userDisplayName: '', userRole: '' };
+		}
+	}
+
+	function writeSettingsShellIdentity(value: SettingsShellIdentity): void {
+		if (typeof window === 'undefined') return;
+		try {
+			window.localStorage.setItem(SETTINGS_SHELL_IDENTITY_KEY, JSON.stringify(value));
+		} catch {
+			// Ignore storage write failures.
+		}
+	}
+
 	function displayText(value: unknown): string {
 		return asText(value).replace(/_/g, ' ');
 	}
@@ -1720,12 +2066,12 @@
 	}
 
 	function titleForServerName(value: unknown): string {
-		return lorivoTitle(value);
+		return xuvaTitle(value);
 	}
 
 	function announceServerName(): void {
 		if (typeof window === 'undefined') return;
-		window.dispatchEvent(new CustomEvent('lorivo:server-name-changed', { detail: { serverName: serverDisplayName } }));
+		window.dispatchEvent(new CustomEvent('xuva:server-name-changed', { detail: { serverName: serverDisplayName } }));
 	}
 
 	function randomId(prefix: string): string {
@@ -1748,10 +2094,10 @@
 
 	function accountTypeLabel(role: unknown): string {
 		const normalized = asText(role).toLowerCase();
-		if (!normalized) return 'Local Account';
-		if (normalized === 'admin') return 'Owner account';
-		if (normalized === 'standard') return 'Standard account';
-		return 'Local Account';
+		if (!normalized) return 'User';
+		if (normalized === 'admin') return 'Admin';
+		if (normalized === 'standard') return 'User';
+		return capitalize(normalized);
 	}
 
 	function syncStorageDraft(configValues: SettingsResponse['config'] | undefined): void {
@@ -1761,6 +2107,7 @@
 		storageDraft.metadataDir = asText(configValues?.metadataDir);
 		storageDraft.cacheDir = asText(configValues?.cacheDir);
 		storageDraft.tempDir = asText(configValues?.tempDir);
+		hardwareModeDraft = configValues?.hardwareUnlocked ? 'hardware' : 'software';
 	}
 
 	function syncMetadataSourceDraft(sourceSettings: SettingsResponse): void {
@@ -1909,7 +2256,7 @@
 
 	function reviewReasonDetail(reason: unknown): string {
 		const text = asText(reason);
-		if (!text) return 'Lorivo could not confirm this match automatically.';
+		if (!text) return 'Xuva could not confirm this match automatically.';
 		return capitalize(text);
 	}
 
@@ -1990,16 +2337,16 @@
 			return { label: 'Not checked', tone: 'neutral', detail: 'No folder is set yet.' };
 		}
 		if (!disk) {
-			return { label: 'Not checked', tone: 'neutral', detail: 'Lorivo has not checked this folder yet.' };
+			return { label: 'Not checked', tone: 'neutral', detail: 'Xuva has not checked this folder yet.' };
 		}
 		if (disk.error || disk.writable === false) {
 			return {
 				label: 'Needs attention',
 				tone: 'warn',
-				detail: asText(disk.error) || 'Lorivo could not confirm that this folder is writable.'
+				detail: asText(disk.error) || 'Xuva could not confirm that this folder is writable.'
 			};
 		}
-		return { label: 'Ready', tone: 'good', detail: 'Lorivo can use this folder.' };
+		return { label: 'Ready', tone: 'good', detail: 'Xuva can use this folder.' };
 	}
 
 	function storageCapacityLabel(disk: SystemDisk | undefined): string {
@@ -2036,27 +2383,29 @@
 			pairing: 'Pairing',
 			'approved-devices': 'Approved Devices',
 			discovery: 'Discovery',
-			'owner-access': 'Owner Access',
+			'admin-access': 'Users',
+			'planned-tools': 'Planned (Placeholder)',
 			about: 'About'
 		}[section];
 	}
 
 	function sectionDescription(section: SettingsSection): string {
 		return {
-			dashboard: 'Check whether your Lorivo library is ready and jump to the next useful setting.',
-			general: 'Server identity, app details, and owner-ready startup status.',
-			libraries: 'Media folders, setup status, and the current Library Setup flow.',
-			scanning: 'Choose how Lorivo checks libraries and review current scan activity.',
+			dashboard: 'Check whether your Xuva library is ready and jump to the next useful setting.',
+			general: 'Server identity and core server details.',
+			libraries: 'Media folders, library status, and setup access.',
+			scanning: 'Scan controls, automation, and scan activity.',
 			metadata: 'Choose metadata sources, review matches, and refresh movie and TV information.',
-			playback: 'Choose how Lorivo handles playback compatibility and review active sessions.',
-			transcoding: 'Transcoding paths and playback compatibility status for conversion workflows.',
-			storage: 'Choose where Lorivo keeps metadata, cache, scratch files, and local app data.',
-			network: 'Local discovery and network visibility status for this server.',
-			pairing: 'Pending device pairing requests that need owner review.',
+			playback: 'Choose how Xuva handles playback compatibility and review active sessions.',
+			transcoding: 'Transcoding folder and conversion mode controls.',
+			storage: 'Folder paths for metadata, cache, scratch, and app data.',
+			network: 'Network visibility and local discovery status.',
+			pairing: 'Pending device pairing requests that need admin review.',
 			'approved-devices': 'Approved devices that can connect to this server.',
 			discovery: 'Local mDNS / Bonjour advertisement status and service identity.',
-			'owner-access': 'Current owner session and sign-in state.',
-			about: 'Lorivo identity, build, and local-first details.'
+			'admin-access': 'User accounts, passwords, and admin session state.',
+			'planned-tools': 'Placeholder-only section for deferred features.',
+			about: 'Xuva identity, build, and local-first details.'
 		}[section];
 	}
 </script>
@@ -2067,21 +2416,23 @@
 
 <ServerShell
 	active={activeSection}
-	showStorage={canManageSettings}
-	{userDisplayName}
-	userRole={userRoleLabel}
+	showStorage={true}
+	serverGroupLabel={shellServerName}
+	userDisplayName={shellDisplayNameForShell}
+	userRole={shellRoleForShell}
 	{userInitials}
+	canSignOut={!isLoading && Boolean(user) && !authDisabled}
 >
 	<div class="settings-page">
 		{#if isLoading}
-			<LorivoPanel title="Loading Settings" subtitle="Checking your Lorivo library." />
+			<XuvaPanel title="Loading Settings" subtitle="Checking your Xuva library." />
 		{:else if loadError}
-			<LorivoPanel title="Settings could not load" subtitle={loadError}>
+			<XuvaPanel title="Settings could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={() => loadSettingsSurface(false)}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Media</LorivoButton>
+					<XuvaButton variant="secondary" onclick={() => loadSettingsSurface(false)}>Retry</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back to Media</XuvaButton>
 				</div>
-			</LorivoPanel>
+			</XuvaPanel>
 		{:else}
 			<header class="settings-head">
 				<div>
@@ -2096,17 +2447,16 @@
 			</header>
 
 			{#if actionMessage}
-				<LorivoPanel title="Latest action" subtitle={actionMessage} />
+				<XuvaPanel title="Latest action" subtitle={actionMessage} />
 			{/if}
 
 			{#if requiresOwnerSignIn}
-				<LorivoPanel title="Owner sign-in required" subtitle={ownerAccessMessage}>
+				<XuvaPanel title="Admin sign-in required" subtitle={ownerAccessMessage}>
 					<p class="settings-note settings-note--inline">{ownerActionDetail}</p>
 					<div class="status-actions">
-						<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
-						<LorivoButton variant="ghost" href="#owner-access">Open Access</LorivoButton>
+						<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
 					</div>
-				</LorivoPanel>
+				</XuvaPanel>
 			{/if}
 
 			{#if activeSection === 'dashboard'}
@@ -2116,25 +2466,23 @@
 						<strong>{serverDisplayName}</strong>
 						<small>{serverIdentityHelpText}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#general">Edit in General</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="#general">Edit in General</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Library</span>
 						<strong>{libraryCards.length > 0 ? `${asCount(libraryCards.length)} folders ready` : 'Library setup needed'}</strong>
-						<small>{libraryCards.length > 0 ? 'Review folders, run scans, or remove a library.' : 'Add a Movies or TV folder so Lorivo can start building your library.'}</small>
+						<small>{libraryCards.length > 0 ? 'Review folders, run scans, or remove a library.' : 'Add a Movies or TV folder so Xuva can start building your library.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#libraries">Review Libraries</LorivoButton>
-							<LorivoButton variant="ghost" size="sm" href="/setup">Library Setup</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="#libraries">Open Libraries</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
 						<span>Media</span>
 						<strong>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.movies)} movies` : 'No media found yet'}</strong>
-						<small>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.series)} shows and ${asCount(summary.episodes)} episodes ready to browse.` : 'Add a library and run a scan to populate Lorivo.'}</small>
+						<small>{Number(summary.movies || 0) + Number(summary.series || 0) > 0 ? `${asCount(summary.series)} shows and ${asCount(summary.episodes)} episodes ready to browse.` : 'Add a library and run a scan to populate Xuva.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="ghost" size="sm" href="/movies">Movies</LorivoButton>
-							<LorivoButton variant="ghost" size="sm" href="/tv">TV</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="/movies">Open Movies</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -2142,7 +2490,7 @@
 						<strong>{scanningModeSummary()}</strong>
 						<small>{scanningModeMeta()}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#scanning">Open Scanning</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="#scanning">Open Scanning</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -2150,7 +2498,7 @@
 						<strong>{Number(health.needsReview || 0) > 0 ? 'Review' : 'Ready'}</strong>
 						<small>{Number(health.needsReview || 0) > 0 ? `${asCount(health.needsReview)} items need attention.` : 'Movie and TV details look up to date.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#metadata">Open Metadata</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="#metadata">Open Metadata</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -2158,7 +2506,7 @@
 						<strong>{playbackPolicyDetails(settings.config?.playbackPolicy).label}</strong>
 						<small>{activeSessionCount > 0 ? `${asCount(activeSessionCount)} active sessions right now.` : 'Playback is idle right now.'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#playback">Open Playback</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="#playback">Open Playback</XuvaButton>
 						</div>
 					</article>
 					{#if canManageSettings}
@@ -2167,7 +2515,7 @@
 							<strong>{storageDashboardLabel}</strong>
 							<small>{storageDashboardDetail}</small>
 							<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#transcoding">Open Transcoding</LorivoButton>
+								<XuvaButton variant="secondary" size="sm" href="#storage">Open Storage</XuvaButton>
 							</div>
 						</article>
 					{/if}
@@ -2176,7 +2524,7 @@
 						<strong>{accessCardLabel}</strong>
 						<small>{accessCardDetail}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="secondary" size="sm" href="#owner-access">Open Access</LorivoButton>
+							<XuvaButton variant="secondary" size="sm" href="#admin-access">Open Users</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card">
@@ -2191,40 +2539,86 @@
 							</ul>
 						{/if}
 						<div class="dashboard-card-actions">
-							<LorivoButton
+							<XuvaButton
 								variant="ghost"
 								size="sm"
 								href={primaryWarningItem ? warningItemHref(primaryWarningItem.id) : '#dashboard'}
 							>
 								{primaryWarningItem ? warningItemActionLabel(primaryWarningItem.id) : 'Review Settings'}
-							</LorivoButton>
+							</XuvaButton>
 						</div>
 					</article>
 					<article class="settings-dashboard-card settings-dashboard-card--quiet">
 						<span>About</span>
-						<strong>Lorivo</strong>
+						<strong>Xuva</strong>
 						<small>{asText(buildInfo?.buildID) || 'Local build details'}</small>
 						<div class="dashboard-card-actions">
-							<LorivoButton variant="ghost" size="sm" href="#general">Open General</LorivoButton>
+							<XuvaButton variant="ghost" size="sm" href="#about">Open About</XuvaButton>
 						</div>
 					</article>
 				</section>
 				{#if libraryLoadError || liveStatusError}
-					<LorivoPanel title="Some settings details are unavailable" subtitle={libraryLoadError || liveStatusError} />
+					<XuvaPanel title="Some settings details are unavailable" subtitle={libraryLoadError || liveStatusError} />
 				{/if}
 			{:else if activeSection === 'libraries'}
 			<section id="libraries" class="settings-section" data-testid="settings-section-content" data-section="libraries">
-				<SettingsPanel title="Libraries" description="Media folders and library setup." status={libraryPanelStatus}>
-					{#snippet actions()}
-						<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
-					{/snippet}
+				<SettingsPanel title="Libraries" description="Media folders and library status." status={libraryPanelStatus}>
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="Libraries" value={asCount(libraryCards.length)} meta={libraryLoadError ? 'Current library details are unavailable right now.' : libraryCards.length > 0 ? 'Configured folders' : 'Add a library to begin'} tone={libraryLoadError ? 'warn' : libraryCards.length > 0 ? 'good' : 'warn'} />
-						<LorivoStat label="Movies" value={asCount(summary.movies)} meta="Current movie catalog count." />
-						<LorivoStat label="Shows" value={asCount(summary.series)} meta={`${asCount(summary.episodes)} episodes in the current TV catalog.`} />
+						<XuvaStat label="Libraries" value={asCount(libraryCards.length)} meta={libraryLoadError ? 'Current library details are unavailable right now.' : libraryCards.length > 0 ? 'Configured folders' : 'Add a library to begin'} tone={libraryLoadError ? 'warn' : libraryCards.length > 0 ? 'good' : 'warn'} />
+						<XuvaStat label="Movies" value={asCount(summary.movies)} meta="Current movie catalog count." />
+						<XuvaStat label="Shows" value={asCount(summary.series)} meta={`${asCount(summary.episodes)} episodes in the current TV catalog.`} />
 					</div>
 					{#if libraryLoadError}
 						<p class="settings-error">{libraryLoadError}</p>
+					{/if}
+					{#if canManageSettings}
+						<form class="settings-stack users-create-form" onsubmit={(event) => { event.preventDefault(); void addLibraryItem(); }}>
+							<label class="settings-field">
+								<span>Library type</span>
+								<select bind:value={newLibraryKindDraft}>
+									<option value="movies">Movies</option>
+									<option value="tv">TV</option>
+								</select>
+							</label>
+							<label class="settings-field">
+								<span>Library name (optional)</span>
+								<input bind:value={newLibraryNameDraft} maxlength="80" placeholder={newLibraryKindDraft === 'movies' ? 'Movies' : 'TV'} />
+							</label>
+							<label class="settings-field" style="grid-column: 1 / -1;">
+								<span>Folder path</span>
+								<div class="storage-input-row">
+									<input bind:value={newLibraryPathDraft} placeholder="D:\\Media\\Movies" required />
+									<XuvaButton
+										variant="secondary"
+										size="sm"
+										type="button"
+										disabled={isBrowsingLibrary}
+										onclick={() => void openLibraryBrowser()}
+									>
+										{isBrowsingLibrary ? 'Loading folders...' : 'Browse'}
+									</XuvaButton>
+								</div>
+								<small>Type a local path or UNC share (example: \\NAS\Media\Movies), or choose Browse.</small>
+							</label>
+							<div class="status-actions">
+								<XuvaButton variant="primary" disabled={isSavingLibrary} onclick={addLibraryItem}>
+									{isSavingLibrary ? 'Saving...' : 'Save Library'}
+								</XuvaButton>
+							</div>
+						</form>
+						{#if librarySettingsMessage}
+							<p class="settings-feedback">{librarySettingsMessage}</p>
+						{/if}
+						{#if librarySettingsError}
+							<p class="settings-error">{librarySettingsError}</p>
+						{/if}
+						<FolderBrowserPanel
+							browser={libraryFolderBrowse}
+							title="Library folder browser"
+							subtitle={libraryFolderBrowse?.path || 'Select a library folder path.'}
+							onBrowse={browseLibraryPath}
+							onUsePath={useLibraryBrowsePath}
+						/>
 					{/if}
 					{#if libraryCards.length > 0}
 						<div class="settings-subsection">
@@ -2265,22 +2659,22 @@
 									</div>
 									{#if canManageSettings}
 										<div class="library-card__actions">
-											<LorivoButton
+											<XuvaButton
 												variant="secondary"
 												size="sm"
 												disabled={activeLibraryActionID === library.id}
 												onclick={() => scanLibraryItem(configuredLibraries.find((item) => asText(item.id) === library.id) || {})}
 											>
 												{activeLibraryActionID === library.id && activeLibraryActionKind === 'scan' ? 'Scanning...' : 'Scan'}
-											</LorivoButton>
-											<LorivoButton
+											</XuvaButton>
+											<XuvaButton
 												variant="danger"
 												size="sm"
 												disabled={activeLibraryActionID === library.id}
 												onclick={() => removeLibraryItem(configuredLibraries.find((item) => asText(item.id) === library.id) || {})}
 											>
 												{activeLibraryActionID === library.id && activeLibraryActionKind === 'remove' ? 'Removing...' : 'Remove'}
-											</LorivoButton>
+											</XuvaButton>
 										</div>
 									{/if}
 								</article>
@@ -2291,22 +2685,18 @@
 						<div class="settings-subsection settings-subsection--quiet settings-subsection--empty">
 							<div class="settings-subsection__head">
 								<div>
-									<h3>Set up your first library</h3>
-									<p>Add a Movies or TV folder so Lorivo can scan it and build your media library.</p>
+									<h3>No library folders yet</h3>
+									<p>Add a Movies or TV folder so Xuva can scan it and build your media library.</p>
 								</div>
-							</div>
-							<div class="status-actions">
-								<LorivoButton variant="primary" href="/setup">Library Setup</LorivoButton>
 							</div>
 						</div>
 					{/if}
 					{#if !canManageSettings && !authDisabled}
 						<div class="settings-auth-callout">
-							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
+								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
@@ -2315,7 +2705,20 @@
 
 			{:else if activeSection === 'scanning'}
 			<section id="scanning" class="settings-section" data-testid="settings-section-content" data-section="scanning">
-				<SettingsPanel title="Scanning" description="Start real library scans, choose how Lorivo checks libraries, and review current scan activity." status={scanningPanelStatus}>
+				<SettingsPanel title="Scanning" description="Start real library scans, choose how Xuva checks libraries, and review current scan activity." status={scanningPanelStatus}>
+					{#snippet actions()}
+						{#if canManageSettings}
+							<XuvaButton
+								variant="primary"
+								disabled={isSavingScanningAutomation || !hasScanningAutomationChanges}
+								onclick={saveScanningAutomation}
+							>
+								{isSavingScanningAutomation ? 'Saving...' : 'Save Scanning Settings'}
+							</XuvaButton>
+						{:else if !authDisabled}
+							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						{/if}
+					{/snippet}
 					{#if liveStatusError}
 						<p class="settings-error">{liveStatusError}</p>
 					{/if}
@@ -2323,48 +2726,48 @@
 						<div class="settings-subsection__head">
 							<div>
 								<h3>Manual scans</h3>
-								<p>Run a scan when you want Lorivo to check movies or TV right now.</p>
+								<p>Run a scan when you want Xuva to check movies or TV right now.</p>
 							</div>
 						</div>
 						<div class="status-actions">
-							<LorivoButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
+							<XuvaButton variant="primary" onclick={startMovieScan} disabled={isScanningMovies || isScanningTV}>
 								{isScanningMovies ? 'Scanning Movies...' : 'Scan Movies'}
-							</LorivoButton>
-							<LorivoButton variant="secondary" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
+							</XuvaButton>
+							<XuvaButton variant="secondary" onclick={startTVScan} disabled={isScanningMovies || isScanningTV}>
 								{isScanningTV ? 'Scanning TV...' : 'Scan TV'}
-							</LorivoButton>
+							</XuvaButton>
 						</div>
 					</div>
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
 								<h3>Automation</h3>
-								<p>Choose how Lorivo checks your libraries for new or changed media.</p>
+								<p>Choose how Xuva checks your libraries for new or changed media.</p>
 							</div>
 						</div>
 						<div class="stat-grid stat-grid--compact">
-						<LorivoStat
+						<XuvaStat
 							label="Library Scan Mode"
 							value={scanningModeDetails(settings.config?.librarySyncMode).label}
 							meta={scanningModeDetails(settings.config?.librarySyncMode).description}
 						/>
 						{#if normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'watch'}
-							<LorivoStat
+							<XuvaStat
 								label="Folder Watch Delay"
 								value={friendlySeconds(settings.config?.watchDebounceSecs, 30)}
-								meta="How long Lorivo waits after a folder change before starting a scan."
+								meta="How long Xuva waits after a folder change before starting a scan."
 							/>
 						{:else}
-							<LorivoStat
+							<XuvaStat
 								label="Scan Interval"
 								value={normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'manual' ? 'Manual' : friendlyMinutes(settings.config?.syncIntervalMins, 1440)}
-								meta={normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'manual' ? 'Scans start only when you ask Lorivo to run them.' : 'Time between scheduled library scans.'}
+								meta={normalizeLibrarySyncMode(settings.config?.librarySyncMode) === 'manual' ? 'Scans start only when you ask Xuva to run them.' : 'Time between scheduled library scans.'}
 							/>
 						{/if}
-						<LorivoStat
+						<XuvaStat
 							label="Media check batch size"
 							value={asCount(settings.config?.probeBatchLimit || 50)}
-							meta="Items Lorivo checks at a time after a library scan."
+							meta="Items Xuva checks at a time after a library scan."
 						/>
 						</div>
 					</div>
@@ -2372,7 +2775,7 @@
 						<form class="scanning-automation-form" data-testid="scanning-automation-form" onsubmit={(event) => { event.preventDefault(); void saveScanningAutomation(); }}>
 							<div class="settings-field">
 								<span>Library scan mode</span>
-								<small>Choose how Lorivo checks your libraries for new or changed media.</small>
+								<small>Choose how Xuva checks your libraries for new or changed media.</small>
 							</div>
 							<div class="playback-policy-options">
 								{#each librarySyncModeOptions as option (option.id)}
@@ -2406,7 +2809,7 @@
 										placeholder="1440"
 										oninput={() => (scanningSettingsError = '')}
 									/>
-									<small>How often Lorivo runs a scheduled library scan. Minimum 15 minutes.</small>
+									<small>How often Xuva runs a scheduled library scan. Minimum 15 minutes.</small>
 								</label>
 							{:else if librarySyncModeDraft === 'watch'}
 								<label class="settings-field">
@@ -2421,7 +2824,7 @@
 										placeholder="30"
 										oninput={() => (scanningSettingsError = '')}
 									/>
-									<small>How long Lorivo waits after a folder change before starting a scan.</small>
+									<small>How long Xuva waits after a folder change before starting a scan.</small>
 								</label>
 							{/if}
 							<details class="settings-advanced" data-testid="scanning-advanced">
@@ -2438,19 +2841,10 @@
 											placeholder="50"
 											oninput={() => (scanningSettingsError = '')}
 										/>
-										<small>How many items Lorivo checks in one batch during library scanning.</small>
+										<small>How many items Xuva checks in one batch during library scanning.</small>
 									</label>
 								</div>
 							</details>
-							<div class="status-actions">
-								<LorivoButton
-									variant="primary"
-									disabled={isSavingScanningAutomation || !hasScanningAutomationChanges}
-									onclick={saveScanningAutomation}
-								>
-									{isSavingScanningAutomation ? 'Saving...' : 'Save Scanning Settings'}
-								</LorivoButton>
-							</div>
 							{#if scanningSaveMessage}
 								<p class="settings-feedback">{scanningSaveMessage}</p>
 							{/if}
@@ -2460,16 +2854,15 @@
 						</form>
 					{:else if !authDisabled}
 						<div class="settings-auth-callout">
-							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
+								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
 					<ActivityListShell title="Recent Scans">
-						<LorivoActionList
+						<XuvaActionList
 							items={scanItems}
 							emptyLabel="No scan activity right now."
 						/>
@@ -2480,11 +2873,20 @@
 			{:else if activeSection === 'metadata'}
 			<section id="metadata" class="settings-section" data-testid="settings-section-content" data-section="metadata">
 				<SettingsPanel title="Metadata" description="Choose metadata sources, review matches, and refresh movie and TV information." status={metadataPanelStatus}>
+					{#snippet actions()}
+						{#if canManageSettings}
+							<XuvaButton variant="primary" disabled={isSavingMetadataSources || !metadataSourcesChanged} onclick={saveMetadataSources}>
+								{isSavingMetadataSources ? 'Saving Metadata Sources...' : 'Save Metadata Sources'}
+							</XuvaButton>
+						{:else if canShowSignIn}
+							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						{/if}
+					{/snippet}
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
 								<h3>Metadata Sources</h3>
-								<p>Lorivo checks enabled sources in order. Move your preferred source higher.</p>
+								<p>Xuva checks enabled sources in order. Move your preferred source higher.</p>
 							</div>
 						</div>
 						{#if canManageSettings}
@@ -2495,7 +2897,7 @@
 											<div class="settings-subsection__head settings-subsection__head--tight">
 												<div>
 													<h4>{kind === 'movie' ? 'Movie metadata sources' : 'TV metadata sources'}</h4>
-													<p>{kind === 'movie' ? 'Choose where Lorivo looks first for movie titles, artwork, and ratings.' : 'Choose where Lorivo looks first for series titles, artwork, and ratings.'}</p>
+													<p>{kind === 'movie' ? 'Choose where Xuva looks first for movie titles, artwork, and ratings.' : 'Choose where Xuva looks first for series titles, artwork, and ratings.'}</p>
 												</div>
 											</div>
 											<div class="metadata-source-list" data-testid={`metadata-source-list-${kind}`}>
@@ -2518,17 +2920,17 @@
 																{#if source.note && !source.unavailable}
 																	<small>{source.note}</small>
 																{:else if source.unavailable}
-																	<small>This source is managed by Lorivo and is unavailable in this build.</small>
+																	<small>This source is managed by Xuva and is unavailable in this build.</small>
 																{/if}
 															</div>
 														</div>
 														<div class="metadata-source-card__actions">
-															<LorivoButton variant="ghost" size="sm" onclick={() => moveMetadataSource(kind, source.id, -1)} disabled={!canMoveMetadataSource(kind, source.id, -1)}>
+															<XuvaButton variant="ghost" size="sm" onclick={() => moveMetadataSource(kind, source.id, -1)} disabled={!canMoveMetadataSource(kind, source.id, -1)}>
 																Move Up
-															</LorivoButton>
-															<LorivoButton variant="ghost" size="sm" onclick={() => moveMetadataSource(kind, source.id, 1)} disabled={!canMoveMetadataSource(kind, source.id, 1)}>
+															</XuvaButton>
+															<XuvaButton variant="ghost" size="sm" onclick={() => moveMetadataSource(kind, source.id, 1)} disabled={!canMoveMetadataSource(kind, source.id, 1)}>
 																Move Down
-															</LorivoButton>
+															</XuvaButton>
 														</div>
 													</div>
 												{/each}
@@ -2539,11 +2941,6 @@
 								{#if metadataSourceError}
 									<p class="status-copy status-copy--warn">{metadataSourceError}</p>
 								{/if}
-								<div class="status-actions">
-									<LorivoButton variant="primary" type="submit" disabled={isSavingMetadataSources || !metadataSourcesChanged}>
-										{isSavingMetadataSources ? 'Saving Metadata Sources...' : 'Save Metadata Sources'}
-									</LorivoButton>
-								</div>
 							</form>
 						{:else}
 							<div class="settings-subsection settings-subsection--quiet">
@@ -2555,7 +2952,7 @@
 								</div>
 								<div class="status-actions">
 									{#if canShowSignIn}
-										<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
+										<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
 									{/if}
 								</div>
 							</div>
@@ -2570,22 +2967,21 @@
 							</div>
 						</div>
 						<div class="stat-grid stat-grid--compact">
-							<LorivoStat label="Needs review" value={asCount(health.needsReview)} meta="Missing metadata or wrong matches that still need attention." tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
-							<LorivoStat label="Missing media checks" value={asCount(health.unprobed)} meta="Files still waiting for Lorivo's media check." tone={Number(health.unprobed || 0) > 0 ? 'warn' : 'good'} />
-							<LorivoStat label="Playback review" value={asCount(health.unsupported)} meta="Items that may need extra playback attention." tone={Number(health.unsupported || 0) > 0 ? 'warn' : 'good'} />
-							<LorivoStat label="High bitrate" value={asCount(health.highBitrate)} meta="Large files that may need stronger device support." />
-							<LorivoStat label="Subtitles found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
+							<XuvaStat label="Needs review" value={asCount(health.needsReview)} meta="Missing metadata or wrong matches that still need attention." tone={Number(health.needsReview || 0) > 0 ? 'warn' : 'good'} />
+							<XuvaStat label="Missing media checks" value={asCount(health.unprobed)} meta="Files still waiting for Xuva's media check." tone={Number(health.unprobed || 0) > 0 ? 'warn' : 'good'} />
+							<XuvaStat label="Playback review" value={asCount(health.unsupported)} meta="Items that may need extra playback attention." tone={Number(health.unsupported || 0) > 0 ? 'warn' : 'good'} />
+							<XuvaStat label="High bitrate" value={asCount(health.highBitrate)} meta="Large files that may need stronger device support." />
+							<XuvaStat label="Subtitles found" value={asCount(health.withSubtitles)} meta="Available for playback when supported." />
 						</div>
 						{#if liveStatusError}
 							<p class="settings-error">{liveStatusError}</p>
 						{/if}
 						{#if requiresOwnerSignIn}
 							<div class="settings-auth-callout">
-								<p class="settings-note">Sign in as the owner to update metadata.</p>
+								<p class="settings-note">Sign in as an admin to update metadata.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-									<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
+									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
@@ -2609,18 +3005,18 @@
 										</div>
 										<p class="review-card__reason">{reviewReasonDetail(item.reviewReason)}</p>
 										<div class="status-actions review-card__actions">
-											<LorivoButton variant="ghost" size="sm" onclick={() => void toggleReviewDetails(item)}>
+											<XuvaButton variant="ghost" size="sm" onclick={() => void toggleReviewDetails(item)}>
 												{reviewExpanded[reviewItemKey(item)] ? 'Hide records' : 'View records'}
-											</LorivoButton>
+											</XuvaButton>
 											{#if canManageSettings}
-												<LorivoButton
+												<XuvaButton
 													variant="secondary"
 													size="sm"
 													disabled={Boolean(reviewRefreshState[reviewItemKey(item)])}
 													onclick={() => void refreshReviewItem(item)}
 												>
 													{reviewRefreshState[reviewItemKey(item)] ? 'Refreshing...' : 'Refresh metadata'}
-												</LorivoButton>
+												</XuvaButton>
 											{/if}
 										</div>
 										{#if reviewExpanded[reviewItemKey(item)]}
@@ -2641,14 +3037,14 @@
 																			<span>{asText(record.title) || 'Metadata record'}{#if Number(record.year || 0) > 0} ({record.year}){/if}</span>
 																		</div>
 																		{#if canManageSettings}
-																			<LorivoButton
+																			<XuvaButton
 																				variant="ghost"
 																				size="sm"
 																				disabled={Boolean(reviewApplyState[reviewItemKey(item)])}
 																				onclick={() => void applyRecordMatch(item, record)}
 																			>
 																				Apply match
-																			</LorivoButton>
+																			</XuvaButton>
 																		{/if}
 																	</div>
 																	{#if asText(record.overview)}
@@ -2703,21 +3099,21 @@
 															{/if}
 														</div>
 														<div class="status-actions">
-															<LorivoButton
+															<XuvaButton
 																variant="secondary"
 																type="button"
 																disabled={Boolean(reviewRefreshState[reviewItemKey(item)])}
 																onclick={() => void refreshReviewItem(item)}
 															>
 																{reviewRefreshState[reviewItemKey(item)] ? 'Refreshing...' : 'Refresh with correction'}
-															</LorivoButton>
-															<LorivoButton
+															</XuvaButton>
+															<XuvaButton
 																variant="primary"
 																type="submit"
 																disabled={Boolean(reviewApplyState[reviewItemKey(item)])}
 															>
 																{reviewApplyState[reviewItemKey(item)] ? 'Applying...' : 'Apply correction'}
-															</LorivoButton>
+															</XuvaButton>
 														</div>
 													</form>
 												{/if}
@@ -2739,7 +3135,7 @@
 						<div class="settings-subsection__head">
 							<div>
 								<h3>Version Groups</h3>
-								<p>Multiple versions found. Review items where Lorivo found more than one version.</p>
+								<p>Multiple versions found. Review items where Xuva found more than one version.</p>
 							</div>
 						</div>
 						<div class="metadata-version-groups" data-testid="metadata-version-groups">
@@ -2753,9 +3149,9 @@
 											<span>{reviewKindLabel(item.kind)} · {asCount(item.versionCount)} versions</span>
 										</div>
 										{#if versionGroupLink(item)}
-											<LorivoButton variant="ghost" size="sm" href={versionGroupLink(item)}>
+											<XuvaButton variant="ghost" size="sm" href={versionGroupLink(item)}>
 												Open item
-											</LorivoButton>
+											</XuvaButton>
 										{/if}
 									</div>
 								{/each}
@@ -2771,15 +3167,15 @@
 							</div>
 						</div>
 						<div class="status-actions">
-							<LorivoButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+							<XuvaButton variant="primary" onclick={refreshMovieMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
 								{isRefreshingMovies ? 'Refreshing Movies...' : 'Refresh Movies'}
-							</LorivoButton>
-							<LorivoButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
+							</XuvaButton>
+							<XuvaButton variant="secondary" onclick={refreshTVMetadata} disabled={isRefreshingMovies || isRefreshingTV}>
 								{isRefreshingTV ? 'Refreshing TV...' : 'Refresh TV'}
-							</LorivoButton>
+							</XuvaButton>
 						</div>
 						{#if requiresOwnerSignIn}
-							<p class="settings-note">Sign in as the owner to update metadata.</p>
+							<p class="settings-note">Sign in as an admin to update metadata.</p>
 						{/if}
 					</div>
 				</SettingsPanel>
@@ -2788,14 +3184,27 @@
 			{:else if activeSection === 'playback'}
 			<section id="playback" class="settings-section" data-testid="settings-section-content" data-section="playback">
 				<SettingsPanel title="Playback" description="Playback policy, compatibility status, and active playback sessions." status={playbackPanelStatus}>
+					{#snippet actions()}
+						{#if canManageSettings}
+							<XuvaButton
+								variant="primary"
+								disabled={isSavingPlaybackPolicy || playbackPolicyDraft === normalizePlaybackPolicy(settings.config?.playbackPolicy)}
+								onclick={savePlaybackPolicy}
+							>
+								{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Policy'}
+							</XuvaButton>
+						{:else if !authDisabled}
+							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						{/if}
+					{/snippet}
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat
+						<XuvaStat
 							label="Playback Policy"
 							value={playbackPolicyDetails(settings.config?.playbackPolicy).label}
 							meta={playbackPolicyDetails(settings.config?.playbackPolicy).description}
 						/>
-						<LorivoStat label="Compatibility Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Lorivo can help when a device needs a different playback format." />
-						<LorivoStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
+						<XuvaStat label="Compatibility Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Xuva can help when a device needs a different playback format." />
+						<XuvaStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
 					</div>
 					{#if liveStatusError}
 						<p class="settings-error">{liveStatusError}</p>
@@ -2805,7 +3214,7 @@
 							<div class="settings-subsection__head settings-subsection__head--tight">
 								<div>
 									<h3>Playback policy</h3>
-									<p>Pick how Lorivo balances original quality and device compatibility.</p>
+									<p>Pick how Xuva balances original quality and device compatibility.</p>
 								</div>
 							</div>
 							<div class="playback-policy-options">
@@ -2825,31 +3234,21 @@
 									</label>
 								{/each}
 							</div>
-							<div class="status-actions">
-								<LorivoButton
-									variant="primary"
-									disabled={isSavingPlaybackPolicy || playbackPolicyDraft === normalizePlaybackPolicy(settings.config?.playbackPolicy)}
-									onclick={savePlaybackPolicy}
-								>
-									{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Policy'}
-								</LorivoButton>
-							</div>
 							{#if playbackSaveMessage}
 								<p class="settings-feedback">{playbackSaveMessage}</p>
 							{/if}
 						</form>
 					{:else if !authDisabled}
 						<div class="settings-auth-callout">
-							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
+								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
 					<ActivityListShell title="Playback Sessions">
-						<LorivoActionList
+						<XuvaActionList
 							items={sessionItems}
 							emptyLabel={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'No active playback sessions right now.'}
 						/>
@@ -2862,18 +3261,41 @@
 				<SettingsPanel
 					title={activeSection === 'transcoding' ? 'Transcoding' : 'Storage'}
 					description={activeSection === 'transcoding'
-						? 'Choose where Lorivo keeps temporary transcoding files and optimized playback versions.'
-						: 'Choose where Lorivo keeps library artwork, cache, short-lived files, and local app data.'}
+						? 'Choose where Xuva keeps transcoding files and whether compatibility work uses software or hardware mode.'
+						: 'Choose where Xuva keeps library artwork, cache, short-lived files, and local app data.'}
 					status={storagePanelStatus}
 				>
+					{#snippet actions()}
+						{#if canManageSettings}
+							{#if activeSection === 'transcoding'}
+								<XuvaButton
+									variant="primary"
+									disabled={isSavingTranscoding || !hasTranscodingChanges}
+									onclick={saveTranscodingSettings}
+								>
+									{isSavingTranscoding ? 'Saving...' : 'Save Transcoding Settings'}
+								</XuvaButton>
+							{:else}
+								<XuvaButton
+									variant="primary"
+									disabled={isSavingStorage || !hasStorageChanges}
+									onclick={saveStorageSettings}
+								>
+									{isSavingStorage ? 'Saving...' : 'Save Storage Settings'}
+								</XuvaButton>
+							{/if}
+						{:else if !authDisabled}
+							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						{/if}
+					{/snippet}
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat
+						<XuvaStat
 							label="Folders configured"
 							value={asCount(storageConfiguredCount)}
-							meta="Saved folders Lorivo can use for local storage."
+							meta="Saved folders Xuva can use for local storage."
 							tone={storageConfiguredCount > 0 ? 'good' : 'neutral'}
 						/>
-						<LorivoStat
+						<XuvaStat
 							label="Needs attention"
 							value={asCount(storageNeedsAttentionCount)}
 							meta={storageNeedsAttentionCount > 0 ? 'One or more folders may need review before restart.' : 'All checked folders look ready.'}
@@ -2889,7 +3311,9 @@
 								<div class="settings-subsection__head">
 									<div>
 										<h3>{activeSection === 'transcoding' ? 'Transcoding folders' : 'Media processing folders'}</h3>
-										<p>Choose where Lorivo keeps temporary processing files and optimized versions.</p>
+										<p>{activeSection === 'transcoding'
+											? 'Choose where Xuva keeps temporary files while preparing playback and saved optimized versions.'
+											: 'Choose where Xuva keeps temporary processing files and optimized versions.'}</p>
 									</div>
 								</div>
 								<div class="storage-field-list">
@@ -2909,14 +3333,14 @@
 												<div class="storage-input-row">
 													<input bind:value={storageDraft[field.key]} readonly={!field.editable} />
 													{#if field.browseAvailable}
-														<LorivoButton
+														<XuvaButton
 															variant="secondary"
 															size="sm"
 															type="button"
 															onclick={() => browseStorageField(field.key)}
 														>
 															{isBrowsingStorage && activeStorageBrowseField === field.key ? 'Loading folders...' : 'Browse'}
-														</LorivoButton>
+														</XuvaButton>
 													{/if}
 												</div>
 												<small>{field.readinessDetail}</small>
@@ -2942,7 +3366,7 @@
 								<div class="settings-subsection__head">
 									<div>
 										<h3>Library data folders</h3>
-										<p>Choose where Lorivo keeps artwork, cache, and other short-lived working files.</p>
+										<p>Choose where Xuva keeps artwork, cache, and other short-lived working files.</p>
 									</div>
 								</div>
 								<div class="storage-field-list">
@@ -2962,14 +3386,14 @@
 												<div class="storage-input-row">
 													<input bind:value={storageDraft[field.key]} readonly={!field.editable} />
 													{#if field.browseAvailable}
-														<LorivoButton
+														<XuvaButton
 															variant="secondary"
 															size="sm"
 															type="button"
 															onclick={() => browseStorageField(field.key)}
 														>
 															{isBrowsingStorage && activeStorageBrowseField === field.key ? 'Loading folders...' : 'Browse'}
-														</LorivoButton>
+														</XuvaButton>
 													{/if}
 												</div>
 												<small>{field.readinessDetail}</small>
@@ -2994,7 +3418,7 @@
 								<div class="settings-subsection__head">
 									<div>
 										<h3>App data folder</h3>
-										<p>This folder stores Lorivo's main settings and local data.</p>
+										<p>This folder stores Xuva's main settings and local data.</p>
 									</div>
 								</div>
 								{#each storageFields.filter((field) => field.group === 'app') as field (field.key)}
@@ -3011,7 +3435,7 @@
 										<label class="settings-field">
 											<span>{field.label}</span>
 											<input bind:value={storageDraft[field.key]} readonly />
-											<small>Changing this folder can move where Lorivo expects its settings and local data after restart. It stays read-only in this build.</small>
+											<small>Changing this folder can move where Xuva expects its settings and local data after restart. It stays read-only in this build.</small>
 										</label>
 										<dl class="storage-field-facts">
 											<div>
@@ -3029,20 +3453,55 @@
 								{/each}
 							</div>
 							{/if}
-							<div class="status-actions">
-								<LorivoButton
-									variant="primary"
-									disabled={isSavingStorage || !hasStorageChanges}
-									onclick={saveStorageSettings}
-								>
-									{isSavingStorage ? 'Saving...' : activeSection === 'transcoding' ? 'Save Transcoding Settings' : 'Save Storage Settings'}
-								</LorivoButton>
-							</div>
-							{#if storageSaveMessage}
-								<p class="settings-feedback">{storageSaveMessage}</p>
-							{/if}
-							{#if storageSettingsError}
-								<p class="settings-error">{storageSettingsError}</p>
+							{#if activeSection === 'transcoding'}
+								<div class="settings-subsection settings-subsection--quiet">
+									<div class="settings-subsection__head">
+										<div>
+											<h3>Transcoding mode</h3>
+											<p>Software mode always works. Hardware mode uses FFmpeg hardware encoders when available and unlocked.</p>
+										</div>
+									</div>
+									<div class="settings-field">
+										<span>Compatibility mode</span>
+										<select bind:value={hardwareModeDraft}>
+											<option value="software">Software transcoding</option>
+											<option value="hardware">Hardware transcoding</option>
+										</select>
+										<small>
+											Detected status: {asText(performance.hardwareAcceleration?.status) || 'unknown'}.
+											{#if asText(performance.hardwareAcceleration?.unlockState)}
+												Unlock state: {asText(performance.hardwareAcceleration?.unlockState)}.
+											{/if}
+										</small>
+									</div>
+									<div class="status-actions">
+										<XuvaButton variant="secondary" size="sm" type="button" disabled={isTestingHardware} onclick={runTranscodingHardwareTest}>
+											{isTestingHardware ? 'Testing hardware...' : 'Test Hardware Support'}
+										</XuvaButton>
+									</div>
+									{#if hardwareTestResult}
+										<p class="settings-note">
+											Hardware test {asText(hardwareTestResult.status) || 'finished'}.
+											Working encoders: {asCount(Number(hardwareTestResult.working || 0))} of {asCount(Number(hardwareTestResult.tested || 0))}.
+										</p>
+										{#if asText(hardwareTestResult.error)}
+											<p class="settings-error">{asText(hardwareTestResult.error)}</p>
+										{/if}
+									{/if}
+								</div>
+								{#if transcodingSaveMessage}
+									<p class="settings-feedback">{transcodingSaveMessage}</p>
+								{/if}
+								{#if transcodingSettingsError}
+									<p class="settings-error">{transcodingSettingsError}</p>
+								{/if}
+							{:else}
+								{#if storageSaveMessage}
+									<p class="settings-feedback">{storageSaveMessage}</p>
+								{/if}
+								{#if storageSettingsError}
+									<p class="settings-error">{storageSettingsError}</p>
+								{/if}
 							{/if}
 						</form>
 						<FolderBrowserPanel
@@ -3054,59 +3513,181 @@
 						/>
 					{:else if !authDisabled}
 						<div class="settings-auth-callout">
-							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
+								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
 				</SettingsPanel>
 			</section>
 
-			{:else if activeSection === 'owner-access' || activeSection === 'pairing' || activeSection === 'approved-devices'}
+			{:else if activeSection === 'admin-access' || activeSection === 'pairing' || activeSection === 'approved-devices'}
 			<section id={activeSection} class="settings-section" data-testid="settings-section-content" data-section={activeSection}>
 				<SettingsPanel
-					title={activeSection === 'pairing' ? 'Pairing' : activeSection === 'approved-devices' ? 'Approved Devices' : 'Owner Access'}
+					title={activeSection === 'pairing' ? 'Pairing' : activeSection === 'approved-devices' ? 'Approved Devices' : 'Users'}
 					description={activeSection === 'pairing'
 						? 'Approve or deny pending device pairing requests.'
 						: activeSection === 'approved-devices'
 							? 'Review and revoke persisted approved devices.'
-							: 'Current owner account and session state.'}
+						: 'User accounts and admin session state.'}
 					status={user ? 'healthy' : 'idle'}
 				>
 					{#snippet actions()}
-						{#if user && !authDisabled && !devOwnerActive}
-							<LorivoButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
-								{isSigningOut ? 'Signing out...' : 'Sign Out'}
-							</LorivoButton>
-						{:else if canShowSignIn}
-							<LorivoButton variant="primary" href="/signin">{ownerActionLabel}</LorivoButton>
+						{#if activeSection === 'admin-access' && canManageUsers}
+							<XuvaButton variant="primary" href="#admin-access-add-user">Create User</XuvaButton>
+						{:else if activeSection === 'admin-access' && canShowSignIn}
+							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						{:else if activeSection === 'pairing'}
+							<XuvaButton variant="primary" onclick={() => void loadSettingsSurface(false)}>Refresh Pairing</XuvaButton>
+						{:else if activeSection === 'approved-devices'}
+							<XuvaButton variant="primary" onclick={() => void loadSettingsSurface(false)}>Refresh Devices</XuvaButton>
 						{/if}
 					{/snippet}
-					{#if activeSection === 'owner-access'}
-						<div class="stat-grid stat-grid--compact">
-							<LorivoStat label="Account" value={accessAccountValue} meta={accessAccountMeta} tone={user ? 'good' : 'neutral'} />
-							<LorivoStat label="Session" value={accessSessionValue} meta={accessSessionMeta} tone={user ? 'good' : 'neutral'} />
+					{#if activeSection === 'admin-access'}
+						<div class="stat-grid stat-grid--compact users-overview-grid">
+							<XuvaStat label="Account" value={accessAccountValue} meta={accessAccountMeta} tone={user ? 'good' : 'neutral'} />
+							<XuvaStat label="Session" value={accessSessionValue} meta={accessSessionMeta} tone={user ? 'good' : 'neutral'} />
 						</div>
-						<div class="settings-auth-callout">
-							<p class="settings-note">{devOwnerActive ? devAccessMessage : 'Access is limited to the current owner session in this build.'}</p>
-							<ul class="settings-placeholder-list">
-								<li>User management is not available yet.</li>
-								<li>Live device presence is not tracked yet.</li>
-							</ul>
-						</div>
-					{/if}
-					{#if activeSection !== 'approved-devices'}
+						{#if user && !authDisabled}
+							<div class="settings-subsection users-subsection">
+								<div class="settings-subsection__head">
+									<div>
+										<h3>Your account</h3>
+										<p>Signed in as {userDisplayName}.</p>
+									</div>
+									<span class="storage-status-pill storage-status-pill--neutral">{currentUserRoleLabel}</span>
+								</div>
+								<form class="settings-stack users-password-form" onsubmit={(event) => { event.preventDefault(); void changeCurrentPassword(); }}>
+									<label class="settings-field">
+										<span>New password</span>
+										<input type="password" bind:value={passwordDraft} minlength="10" autocomplete="new-password" />
+									</label>
+									<label class="settings-field">
+										<span>Confirm password</span>
+										<input type="password" bind:value={confirmPasswordDraft} minlength="10" autocomplete="new-password" />
+									</label>
+									<div class="status-actions">
+										<XuvaButton
+											variant="primary"
+											disabled={isSavingPassword || !canSubmitPasswordChange}
+											onclick={changeCurrentPassword}
+										>
+											{isSavingPassword ? 'Updating...' : 'Change Password'}
+										</XuvaButton>
+										<XuvaButton variant="secondary" disabled={isSigningOut} onclick={signOut}>
+											{isSigningOut ? 'Signing out...' : 'Sign Out'}
+										</XuvaButton>
+									</div>
+									<p class="settings-note">Passwords require at least 10 characters.</p>
+								</form>
+							</div>
+						{/if}
+						{#if canManageUsers}
+							<div class="settings-subsection users-subsection" data-testid="users-account-list">
+								<div class="settings-subsection__head">
+									<div>
+										<h3>User accounts</h3>
+										<p>{usersCountLabel} with access to this server.</p>
+									</div>
+								</div>
+								<p class="settings-note">Roles: Admin can manage server settings and accounts. User can browse and play media.</p>
+								{#if users.length > 0}
+									<div class="pairing-request-list approved-device-list users-account-list">
+										{#each users as account (account.id)}
+											<article class="pairing-request-card approved-device-card users-account-card">
+												<div class="pairing-request-card__head">
+													<div>
+														<h4>{asText(account.displayName) || asText(account.username) || 'User'}</h4>
+														<p>@{asText(account.username)}</p>
+													</div>
+													<span class="storage-status-pill storage-status-pill--neutral">{accountTypeLabel(account.role)}</span>
+												</div>
+												{#if asText(account.createdAt)}
+													<p class="review-card__reason">Created {formatDateTime(account.createdAt)}</p>
+												{/if}
+												{#if asText(account.id) !== asText(user?.id)}
+													<div class="status-actions">
+														<XuvaButton
+															variant="danger"
+															size="sm"
+															disabled={isDeletingUser && activeUserID === asText(account.id)}
+															onclick={() => removeUserAccount(account)}
+														>
+															{isDeletingUser && activeUserID === asText(account.id) ? 'Removing...' : 'Remove'}
+														</XuvaButton>
+													</div>
+												{/if}
+											</article>
+										{/each}
+									</div>
+								{:else}
+									<p class="settings-note">No user accounts found yet.</p>
+								{/if}
+							</div>
+							<div id="admin-access-add-user" class="settings-subsection users-subsection">
+								<div class="settings-subsection__head">
+									<div>
+										<h3>Add user</h3>
+										<p>Create another account for shared viewing.</p>
+									</div>
+								</div>
+								<form class="settings-stack users-create-form" onsubmit={(event) => { event.preventDefault(); void createUserAccount(); }}>
+									<label class="settings-field">
+										<span>Display name</span>
+										<input bind:value={newUserDisplayNameDraft} maxlength="80" placeholder="Family Room" />
+									</label>
+									<label class="settings-field">
+										<span>Username</span>
+										<input bind:value={newUserUsernameDraft} maxlength="40" required />
+									</label>
+									<label class="settings-field">
+										<span>Password</span>
+										<input type="password" bind:value={newUserPasswordDraft} minlength="10" autocomplete="new-password" required />
+									</label>
+									<label class="settings-field">
+										<span>Role</span>
+										<select bind:value={newUserRoleDraft}>
+											<option value="standard">User</option>
+											<option value="admin">Admin</option>
+										</select>
+									</label>
+									<div class="status-actions">
+										<XuvaButton
+											variant="primary"
+											disabled={isCreatingUser || !canSubmitNewUser}
+											onclick={createUserAccount}
+										>
+											{isCreatingUser ? 'Creating...' : 'Create User'}
+										</XuvaButton>
+									</div>
+								</form>
+							</div>
+						{:else if !authDisabled}
+							<div class="settings-auth-callout">
+								<p class="settings-note">Sign in with your admin account to view and manage user accounts.</p>
+								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+								<div class="status-actions">
+									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+								</div>
+							</div>
+						{/if}
+						{#if usersActionMessage}
+							<p class="settings-feedback">{usersActionMessage}</p>
+						{/if}
+						{#if usersError}
+							<p class="settings-error">{usersError}</p>
+						{/if}
+					{:else if activeSection === 'pairing'}
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
 								<h3>Device Pairing</h3>
-								<p>Approve devices that ask to connect to this Lorivo server.</p>
+								<p>Approve devices that ask to connect to this Xuva server.</p>
 							</div>
 						</div>
-						<p class="settings-note">Device pairing stays separate from local discovery. Devices still need owner approval before they connect.</p>
+						<p class="settings-note">Devices still need admin approval before they can connect.</p>
 						{#if canManageSettings || authDisabled}
 							{#if isLoadingPairingRequests}
 								<p class="settings-note">Loading pairing requests…</p>
@@ -3150,22 +3731,22 @@
 											</dl>
 											{#if canUpdatePairingRequest(request)}
 												<div class="status-actions">
-													<LorivoButton
+													<XuvaButton
 														variant="primary"
 														size="sm"
 														disabled={activePairingRequestID === asText(request.id)}
 														onclick={() => updatePairingRequest(request, 'approve')}
 													>
 														{activePairingRequestID === asText(request.id) && activePairingActionKind === 'approve' ? 'Approving...' : 'Approve'}
-													</LorivoButton>
-													<LorivoButton
+													</XuvaButton>
+													<XuvaButton
 														variant="danger"
 														size="sm"
 														disabled={activePairingRequestID === asText(request.id)}
 														onclick={() => updatePairingRequest(request, 'deny')}
 													>
 														{activePairingRequestID === asText(request.id) && activePairingActionKind === 'deny' ? 'Denying...' : 'Deny'}
-													</LorivoButton>
+													</XuvaButton>
 												</div>
 											{/if}
 										</article>
@@ -3182,24 +3763,23 @@
 							{/if}
 						{:else}
 							<div class="settings-auth-callout">
-								<p class="settings-note">Sign in as the owner to update device pairing.</p>
+								<p class="settings-note">Sign in as an admin to update device pairing.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
 					</div>
-					{/if}
-					{#if activeSection !== 'pairing'}
+					{:else if activeSection === 'approved-devices'}
 					<div class="settings-subsection">
 						<div class="settings-subsection__head">
 							<div>
 								<h3>Approved Devices</h3>
-								<p>Approved devices can connect to this Lorivo server.</p>
+								<p>Approved devices can connect to this Xuva server.</p>
 							</div>
 						</div>
-						<p class="settings-note">Pairing requests appear here when a client asks to connect. Recent activity is not tracked yet.</p>
+						<p class="settings-note">Recent activity is not tracked yet.</p>
 						{#if canManageSettings || authDisabled}
 							{#if isLoadingApprovedDevices}
 								<p class="settings-note">Loading approved devices…</p>
@@ -3231,14 +3811,14 @@
 											</dl>
 											{#if canManageSettings}
 												<div class="status-actions">
-													<LorivoButton
+													<XuvaButton
 														variant="danger"
 														size="sm"
 														disabled={activeApprovedDeviceID === asText(device.id)}
 														onclick={() => revokeApprovedDeviceEntry(device)}
 													>
 														{activeApprovedDeviceID === asText(device.id) ? 'Removing...' : 'Remove'}
-													</LorivoButton>
+													</XuvaButton>
 												</div>
 											{/if}
 										</article>
@@ -3255,21 +3835,59 @@
 							{/if}
 						{:else}
 							<div class="settings-auth-callout">
-								<p class="settings-note">Sign in as the owner to manage approved devices.</p>
+								<p class="settings-note">Sign in as an admin to manage approved devices.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
+									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
 					</div>
 					{/if}
-					{#if !user && !authDisabled}
-						<div class="settings-auth-callout">
-							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
-							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
+				</SettingsPanel>
+			</section>
+
+			{:else if activeSection === 'planned-tools'}
+			<section id="planned-tools" class="settings-section" data-testid="settings-section-content" data-section="planned-tools">
+				<SettingsPanel
+					title="Planned (Placeholder)"
+					description="Deferred items that are intentionally placeholder-only."
+					status="healthy"
+				>
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Placeholder items</h3>
+								<p>These items are parked until final scope and backend behavior are confirmed.</p>
+							</div>
 						</div>
-					{/if}
+						<div class="placeholder-grid">
+							<article class="placeholder-item">
+								<strong>Live TV</strong>
+								<p>Placeholder only. Channel, tuner, and guide workflows are not implemented yet.</p>
+							</article>
+							<article class="placeholder-item">
+								<strong>Database maintenance</strong>
+								<p>Placeholder only. Cleanup and repair actions are not implemented yet.</p>
+							</article>
+							<article class="placeholder-item">
+								<strong>Scheduled tasks</strong>
+								<p>Placeholder only. Extended task scheduling is not implemented yet.</p>
+							</article>
+							<article class="placeholder-item">
+								<strong>Server logs</strong>
+								<p>Placeholder only. A user-facing log viewer is not implemented yet.</p>
+							</article>
+							<article class="placeholder-item">
+								<strong>Plugins</strong>
+								<p>Placeholder only. Plugin lifecycle controls are not implemented yet.</p>
+							</article>
+							<article class="placeholder-item">
+								<strong>Integration credentials</strong>
+								<p>Placeholder only. Client credential management is not implemented yet.</p>
+							</article>
+						</div>
+					</div>
 				</SettingsPanel>
 			</section>
 
@@ -3278,19 +3896,34 @@
 				<SettingsPanel
 					title={activeSection === 'general' ? 'General' : activeSection === 'network' ? 'Network' : activeSection === 'discovery' ? 'Discovery' : 'About'}
 					description={activeSection === 'general'
-						? 'Server identity and owner-facing basics.'
+						? 'Server identity and admin-facing basics.'
 						: activeSection === 'network'
 							? 'Local discovery status and network visibility.'
 							: activeSection === 'discovery'
 								? 'mDNS / Bonjour service identity and status.'
-								: 'Lorivo identity and build details.'}
+								: 'Xuva identity and build details.'}
 					status={discoveryStatusError ? 'warning' : 'healthy'}
 				>
+					{#snippet actions()}
+						{#if activeSection === 'general' && canManageSettings}
+							<XuvaButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
+								{isSavingServerName ? 'Saving...' : 'Save Server Name'}
+							</XuvaButton>
+						{:else if activeSection === 'general' && !authDisabled}
+							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						{:else if activeSection === 'network'}
+							<XuvaButton variant="primary" href="#discovery">Open Discovery</XuvaButton>
+						{:else if activeSection === 'discovery'}
+							<XuvaButton variant="primary" onclick={() => void loadSettingsSurface(false)}>Refresh Status</XuvaButton>
+						{:else if activeSection === 'about'}
+							<XuvaButton variant="primary" href="#general">Open General</XuvaButton>
+						{/if}
+					{/snippet}
 					<div class="stat-grid stat-grid--compact">
-						<LorivoStat label="App" value="Lorivo" meta="Local-first personal media library." />
-						<LorivoStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and advertised on your home network when local discovery is running." />
-						<LorivoStat label="Build" value={asText(buildInfo?.buildID) || 'Local build'} meta={asText(buildInfo?.publishedAt) || 'Build details are quiet in this view.'} />
-						<LorivoStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
+						<XuvaStat label="App" value="Xuva" meta="Local-first personal media library." />
+						<XuvaStat label="Server Name" value={serverDisplayName} meta="Shown in the browser title and advertised on your home network when local discovery is running." />
+						<XuvaStat label="Build" value={asText(buildInfo?.buildID) || 'Local build'} meta={asText(buildInfo?.publishedAt) || 'Build details are quiet in this view.'} />
+						<XuvaStat label="Mode" value="Local" meta="No cloud account or vendor relay required." />
 					</div>
 					{#if activeSection === 'general'}
 					<div class="settings-subsection settings-subsection--quiet">
@@ -3302,6 +3935,7 @@
 						</div>
 					</div>
 					{/if}
+					{#if activeSection === 'network' || activeSection === 'discovery'}
 					<div class="settings-subsection" data-testid="discovery-status-card">
 						<div class="settings-subsection__head">
 							<div>
@@ -3311,15 +3945,15 @@
 							<span class={`status-pill status-pill--${discoveryStatusTone}`}>{discoveryStatusLabel}</span>
 						</div>
 						<div class="stat-grid stat-grid--compact">
-							<LorivoStat
+							<XuvaStat
 								label="Service name"
 								value={discoveryServiceName}
 								meta="Uses your configured Server Name."
 							/>
-							<LorivoStat
+							<XuvaStat
 								label="Protocol"
 								value="mDNS / Bonjour"
-								meta={asText(discoveryStatus.serviceType) || '_lorivo._tcp.local.'}
+								meta={asText(discoveryStatus.serviceType) || '_xuva._tcp.local.'}
 							/>
 						</div>
 						{#if discoveryStatusError}
@@ -3329,6 +3963,7 @@
 							{discoveryStatusDetail}
 						</p>
 					</div>
+					{/if}
 					{#if activeSection === 'general' && canManageSettings}
 						<form class="server-name-form" data-testid="server-name-form" onsubmit={(event) => { event.preventDefault(); void saveServerName(); }}>
 							<label class="settings-field">
@@ -3337,15 +3972,15 @@
 									bind:value={serverNameDraft}
 									maxlength="50"
 									required
-									placeholder="Lorivo"
+									placeholder="Xuva"
 									aria-describedby="settings-server-name-help"
 								/>
 								<small id="settings-server-name-help">{serverIdentityHelpText}</small>
 							</label>
 							<div class="status-actions">
-								<LorivoButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
+								<XuvaButton variant="primary" disabled={isSavingServerName} onclick={saveServerName}>
 									{isSavingServerName ? 'Saving...' : 'Save Server Name'}
-								</LorivoButton>
+								</XuvaButton>
 							</div>
 							{#if serverNameSaveMessage}
 								<p class="settings-feedback">{serverNameSaveMessage}</p>
@@ -3356,11 +3991,10 @@
 						</form>
 					{:else if activeSection === 'general' && !authDisabled}
 						<div class="settings-auth-callout">
-							<p class="settings-note">Sign in as the owner to manage Lorivo settings.</p>
+							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<LorivoButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</LorivoButton>
-								<LorivoButton variant="ghost" size="sm" href="#owner-access">Open Access</LorivoButton>
+								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
@@ -3373,12 +4007,17 @@
 
 <style>
 	.settings-page {
-		--settings-accent: #9aa7ff;
-		--settings-accent-soft: rgb(154 167 255 / 9%);
-		--settings-accent-border: rgb(154 167 255 / 18%);
+		--settings-accent: var(--xuva-settings-accent, #6a74d9);
+		--settings-accent-soft: var(--xuva-settings-accent-soft, rgb(106 116 217 / 10%));
+		--settings-accent-border: var(--xuva-settings-accent-border, rgb(106 116 217 / 24%));
+		--settings-surface: color-mix(in srgb, var(--xuva-color-bg-panel, #f5f7fb) 92%, white 8%);
+		--settings-surface-elevated: color-mix(in srgb, var(--xuva-color-bg-panel-elevated, #fff) 96%, #eef2f8 4%);
+		--settings-divider: color-mix(in srgb, var(--settings-accent-border) 32%, var(--xuva-color-border-soft));
+		--settings-input-bg: color-mix(in srgb, var(--settings-surface-elevated) 96%, #e9eef7 4%);
+		--settings-input-readonly-bg: color-mix(in srgb, var(--settings-surface) 92%, #e6ecf6 8%);
 		display: grid;
 		gap: 20px;
-		padding-bottom: var(--lorivo-space-8);
+		padding-bottom: var(--xuva-space-8);
 		min-width: 0;
 		scroll-behavior: smooth;
 	}
@@ -3392,7 +4031,7 @@
 
 	.settings-head h1 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--xuva-font-display);
 		font-size: clamp(1.8rem, 1.6vw + 1rem, 2.45rem);
 		letter-spacing: -0.03em;
 	}
@@ -3409,7 +4048,7 @@
 	.settings-head__server-name {
 		display: block;
 		margin-bottom: 4px;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		font-size: clamp(1.55rem, 1.2vw + 1rem, 2rem);
 		font-weight: 820;
 		letter-spacing: -0.02em;
@@ -3418,34 +4057,34 @@
 
 	.settings-head p {
 		margin: 6px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 84%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 84%, transparent);
 		font-size: 0.9rem;
 		line-height: 1.42;
 		max-width: 860px;
 	}
 
 	.settings-head__meta {
-		color: color-mix(in srgb, var(--lorivo-color-text-soft) 90%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-soft) 90%, transparent);
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
 
 	.settings-dashboard {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 10px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0 16px;
 	}
 
 	.settings-dashboard-card {
 		display: grid;
-		gap: 8px;
-		min-height: 136px;
-		align-content: space-between;
-		padding: 12px 0;
-		border-top: 1px solid color-mix(in srgb, var(--settings-accent-border) 34%, var(--lorivo-color-border-soft));
+		gap: 7px;
+		min-height: 0;
+		align-content: start;
+		padding: 11px 0;
+		border-top: 1px solid var(--settings-divider);
 		border-radius: 0;
 		background: transparent;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 	}
 
 	.settings-dashboard > :first-child {
@@ -3454,7 +4093,7 @@
 	}
 
 	.settings-dashboard-card span {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 92%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 92%, transparent);
 		font-size: 0.78rem;
 		font-weight: 760;
 		letter-spacing: 0.07em;
@@ -3464,15 +4103,15 @@
 	.settings-dashboard-card strong {
 		overflow: hidden;
 		text-overflow: ellipsis;
-		color: var(--lorivo-color-text);
-		font-size: clamp(1.2rem, 0.6vw + 1rem, 1.6rem);
+		color: var(--xuva-color-text);
+		font-size: clamp(1.02rem, 0.36vw + 0.95rem, 1.28rem);
 		font-weight: 820;
-		line-height: 1.08;
+		line-height: 1.2;
 		overflow-wrap: anywhere;
 	}
 
 	.settings-dashboard-card small {
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.78rem;
 		line-height: 1.35;
 	}
@@ -3482,7 +4121,7 @@
 	}
 
 	.settings-dashboard-card--quiet {
-		min-height: 118px;
+		min-height: 0;
 	}
 
 	.dashboard-card-actions {
@@ -3498,7 +4137,7 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.8rem;
 		line-height: 1.35;
 	}
@@ -3510,8 +4149,8 @@
 	.settings-subsection {
 		display: grid;
 		gap: 14px;
-		padding: 14px 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		padding: 12px 0;
+		border-top: 1px solid var(--settings-divider);
 		border-radius: 0;
 		background: transparent;
 	}
@@ -3542,7 +4181,7 @@
 
 	.settings-subsection__head p {
 		margin: 0;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.84rem;
 		line-height: 1.45;
 	}
@@ -3568,7 +4207,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 
 	.settings-feedback {
@@ -3587,7 +4226,7 @@
 		display: grid;
 		gap: 12px;
 		padding: 14px 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
@@ -3620,7 +4259,7 @@
 	.library-card__note,
 	.settings-note {
 		margin: 0;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.82rem;
 		line-height: 1.4;
 	}
@@ -3633,7 +4272,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 4px 8px;
-		border-radius: 6px;
+		border-radius: 4px;
 		background: rgb(154 167 255 / 10%);
 		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
 		font-size: 0.74rem;
@@ -3654,14 +4293,14 @@
 	}
 
 	.library-card__facts dt {
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.76rem;
 		font-weight: 700;
 	}
 
 	.library-card__facts dd {
 		margin: 0;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		font-size: 0.88rem;
 		line-height: 1.35;
 		overflow-wrap: anywhere;
@@ -3678,24 +4317,14 @@
 		display: grid;
 		gap: 8px;
 		padding: 10px 0 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
 	.settings-auth-callout__detail {
 		margin: 0;
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.88rem;
-		line-height: 1.45;
-	}
-
-	.settings-placeholder-list {
-		display: grid;
-		gap: 4px;
-		margin: 0;
-		padding-left: 18px;
-		color: var(--lorivo-color-text-muted);
-		font-size: 0.82rem;
 		line-height: 1.45;
 	}
 
@@ -3707,18 +4336,18 @@
 		gap: 12px;
 		margin-top: 14px;
 		padding-top: 14px;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 	}
 
 	.settings-advanced {
 		padding: 12px 0 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
 	.settings-advanced summary {
 		cursor: pointer;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		font-size: 0.9rem;
 		font-weight: 760;
 	}
@@ -3754,7 +4383,7 @@
 		display: grid;
 		gap: 10px;
 		padding: 12px 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
@@ -3799,7 +4428,7 @@
 
 	.metadata-source-card__toggle span,
 	.metadata-source-card__meta small {
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.8rem;
 		line-height: 1.4;
 	}
@@ -3822,7 +4451,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 4px 8px;
-		border-radius: 6px;
+		border-radius: 4px;
 		background: rgb(154 167 255 / 10%);
 		color: color-mix(in srgb, var(--settings-accent) 72%, white 28%);
 		font-size: 0.74rem;
@@ -3851,7 +4480,7 @@
 	}
 
 	.status-copy--warn {
-		color: var(--lorivo-color-danger, #ff9f9f);
+		color: var(--xuva-color-danger, #ff9f9f);
 	}
 
 	.playback-policy-option {
@@ -3860,7 +4489,7 @@
 		align-items: flex-start;
 		gap: 10px;
 		padding: 12px 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
@@ -3884,7 +4513,7 @@
 	}
 
 	.playback-policy-option span {
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.82rem;
 		line-height: 1.4;
 	}
@@ -3904,7 +4533,7 @@
 		display: grid;
 		gap: 10px;
 		padding: 12px 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
@@ -3940,7 +4569,7 @@
 	.version-group-card span,
 	.pairing-request-card__head p {
 		margin: 4px 0 0;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.8rem;
 		line-height: 1.4;
 	}
@@ -3949,7 +4578,7 @@
 	.review-record-card p,
 	.pairing-request-card > p {
 		margin: 0;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.82rem;
 		line-height: 1.45;
 	}
@@ -3967,7 +4596,7 @@
 	}
 
 	.pairing-request-facts dt {
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0;
@@ -3976,7 +4605,7 @@
 
 	.pairing-request-facts dd {
 		margin: 0;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		font-size: 0.82rem;
 	}
 
@@ -3984,14 +4613,14 @@
 		display: grid;
 		gap: 12px;
 		padding-top: 12px;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 	}
 
 	.review-manual-form {
 		display: grid;
 		gap: 10px;
 		padding: 12px 0 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
@@ -4003,7 +4632,7 @@
 
 	@media (max-width: 1120px) {
 		.settings-dashboard {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-columns: 1fr;
 		}
 
 		.library-card__facts {
@@ -4020,7 +4649,7 @@
 		gap: 12px;
 		margin-top: 14px;
 		padding-top: 14px;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 	}
 
 	.settings-field {
@@ -4029,25 +4658,103 @@
 	}
 
 	.settings-field span {
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.8rem;
 		font-weight: 700;
 	}
 
 	.settings-field input {
 		min-height: 42px;
-		border: 1px solid var(--lorivo-color-border-soft);
-		border-radius: 8px;
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 94%, #111827 6%);
-		color: var(--lorivo-color-text);
+		border: 1px solid var(--settings-divider);
+		border-radius: 4px;
+		background: var(--settings-input-bg);
+		color: var(--xuva-color-text);
+		font: inherit;
+		padding: 0 12px;
+		width: 100%;
+	}
+
+	.settings-field select {
+		min-height: 42px;
+		border: 1px solid var(--settings-divider);
+		border-radius: 4px;
+		background: var(--settings-input-bg);
+		color: var(--xuva-color-text);
 		font: inherit;
 		padding: 0 12px;
 		width: 100%;
 	}
 
 	.settings-field input[readonly] {
-		background: color-mix(in srgb, var(--lorivo-color-surface-elevated) 92%, #0f172a 8%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
+		background: var(--settings-input-readonly-bg);
+		color: color-mix(in srgb, var(--xuva-color-text) 86%, transparent);
+	}
+
+	.settings-stack {
+		display: grid;
+		gap: 10px;
+		padding-top: 10px;
+		border-top: 1px solid var(--settings-divider);
+	}
+
+	.placeholder-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 10px;
+	}
+
+	.placeholder-item {
+		display: grid;
+		gap: 6px;
+		padding: 10px;
+		border: 1px solid var(--settings-divider);
+		border-radius: 6px;
+		background: var(--settings-surface-elevated);
+	}
+
+	.placeholder-item strong {
+		font-size: 0.9rem;
+	}
+
+	.placeholder-item p {
+		margin: 0;
+		color: var(--xuva-color-text-soft);
+		font-size: 0.82rem;
+		line-height: 1.4;
+	}
+
+	.users-overview-grid {
+		margin-bottom: 4px;
+	}
+
+	.users-subsection {
+		gap: 10px;
+	}
+
+	.users-account-list {
+		display: grid;
+		gap: 8px;
+	}
+
+	.users-account-card {
+		padding-top: 10px;
+		padding-bottom: 10px;
+	}
+
+	.users-password-form,
+	.users-create-form {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 10px 12px;
+	}
+
+	.users-password-form .status-actions,
+	.users-password-form .settings-note,
+	.users-create-form .status-actions {
+		grid-column: 1 / -1;
+	}
+
+	.users-password-form .settings-note {
+		margin-top: -2px;
 	}
 
 	.storage-field-list {
@@ -4059,7 +4766,7 @@
 		display: grid;
 		gap: 12px;
 		padding: 14px 0;
-		border-top: 1px solid var(--lorivo-color-border-soft);
+		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 
@@ -4089,7 +4796,7 @@
 
 	.storage-field-card__head p {
 		margin: 4px 0 0;
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 		font-size: 0.82rem;
 		line-height: 1.4;
 	}
@@ -4098,7 +4805,7 @@
 		display: inline-flex;
 		align-items: center;
 		padding: 4px 8px;
-		border-radius: 6px;
+		border-radius: 4px;
 		background: rgb(65 143 101 / 18%);
 		color: color-mix(in srgb, #b7ffd4 75%, white 25%);
 		font-size: 0.74rem;
@@ -4145,7 +4852,7 @@
 	}
 
 	.storage-field-facts dt {
-		color: var(--lorivo-color-text-muted);
+		color: var(--xuva-color-text-muted);
 		font-size: 0.75rem;
 		font-weight: 700;
 		text-transform: uppercase;
@@ -4154,7 +4861,7 @@
 
 	.storage-field-facts dd {
 		margin: 0;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		font-size: 0.84rem;
 		line-height: 1.38;
 		overflow-wrap: anywhere;
@@ -4168,11 +4875,11 @@
 	}
 
 	.settings-field small {
-		color: var(--lorivo-color-text-soft);
+		color: var(--xuva-color-text-soft);
 	}
 
 	.settings-error {
-		color: var(--lorivo-color-danger, #ff9f9f);
+		color: var(--xuva-color-danger, #ff9f9f);
 	}
 
 	@media (max-width: 820px) {
@@ -4219,6 +4926,15 @@
 
 		.settings-subsection {
 			padding-bottom: 13px;
+		}
+
+		.users-password-form,
+		.users-create-form {
+			grid-template-columns: 1fr;
+		}
+
+		.placeholder-grid {
+			grid-template-columns: 1fr;
 		}
 	}
 

@@ -1,8 +1,8 @@
-# Lorivo TV Experience
+# Xuva TV Experience
 
 ## Objective
 
-Lorivo TV should feel like opening a private cinema library. It should make movies and TV shows visually prominent, support remote-first navigation, and expose playback quality without turning the home screen into a diagnostics tool.
+Xuva TV should feel like opening a private cinema library. It should make movies and TV shows visually prominent, support remote-first navigation, and expose playback quality without turning the home screen into a diagnostics tool.
 
 ## Core Screens
 
@@ -70,7 +70,7 @@ Design intent:
 - Keep play/pause, skip, version, audio, subtitles, quality, inspector, and watched state visible in one predictable control row.
 - Let audio, subtitle, version, and quality focus open a lightweight selector without leaving playback.
 - Keep direct-play/remux/transcode state visible as a small status, not as a distracting dashboard.
-- Preserve a full inspector path for users who want to know exactly why Lorivo chose the current playback route.
+- Preserve a full inspector path for users who want to know exactly why Xuva chose the current playback route.
 - Make subtitle burn-in risk visible before the user selects a subtitle track.
 
 ### Audio And Subtitle Selector
@@ -119,7 +119,7 @@ Design intent:
 
 ### Playback Inspector
 
-Purpose: make Lorivo's technical advantage visible.
+Purpose: make Xuva's technical advantage visible.
 
 Required sections:
 
@@ -160,7 +160,7 @@ Design intent:
 
 ### Server Pairing And Setup
 
-Purpose: get users from install to playback without requiring Lorivo-owned infrastructure.
+Purpose: get users from install to playback without requiring Xuva-owned infrastructure.
 
 Required sections:
 
@@ -199,7 +199,7 @@ Design intent:
 
 ## Platform Notes
 
-Apple tvOS and Android TV both rely heavily on focus-driven interaction. Lorivo should design focus states as part of the component, not as an afterthought.
+Apple tvOS and Android TV both rely heavily on focus-driven interaction. Xuva should design focus states as part of the component, not as an afterthought.
 
 Relevant external guidance:
 

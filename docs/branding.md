@@ -2,28 +2,28 @@
 
 ## Name
 
-Product name: Lorivo
+Product name: Xuva
 
-Primary project namespace: lorivohq
+Primary project namespace: xuvahq
 
 Suggested public handles:
 
-- GitHub: `lorivohq`
-- Social: `@lorivohq`
-- Product domain preference: `lorivo.app`, `lorivo.tv`, or `getlorivo.com`
+- GitHub: `xuvahq`
+- Social: `@xuvahq`
+- Product domain preference: `xuva.app`, `xuva.tv`, or `getxuva.com`
 
 ## Product Names
 
-- Lorivo Server
-- Lorivo Web
-- Lorivo TV
-- Lorivo Mobile
-- Lorivo Pass
-- Lorivo Pro
+- Xuva Server
+- Xuva Web
+- Xuva TV
+- Xuva Mobile
+- Xuva Pass
+- Xuva Pro
 
 ## Positioning
 
-Lorivo is a premium, private, local-first media server for people who want their personal media library to feel fast, beautiful, and dependable across every screen.
+Xuva is a premium, private, local-first media server for people who want their personal media library to feel fast, beautiful, and dependable across every screen.
 
 ## Tone
 

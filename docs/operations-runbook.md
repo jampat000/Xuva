@@ -1,10 +1,10 @@
 # Operations Runbook
 
-Lorivo exposes local-first diagnostics with no vendor APM dependency.
+Xuva exposes local-first diagnostics with no vendor APM dependency.
 
 ## Request Tracing
 
-Every request receives an `X-Request-ID` response header. If the client sends a safe `X-Request-ID`, Lorivo keeps it; otherwise it generates one. Structured request logs include:
+Every request receives an `X-Request-ID` response header. If the client sends a safe `X-Request-ID`, Xuva keeps it; otherwise it generates one. Structured request logs include:
 
 - `correlation_id`
 - `method`

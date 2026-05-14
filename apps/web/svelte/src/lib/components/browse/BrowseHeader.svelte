@@ -35,7 +35,7 @@
 
 	.browse-head h1 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--xuva-font-display);
 		font-size: clamp(2rem, 2.2vw + 1rem, 3.6rem);
 		letter-spacing: 0;
 		line-height: 1.02;
@@ -44,7 +44,7 @@
 
 	.browse-head p {
 		margin: 8px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 86%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 86%, transparent);
 		font-size: 1rem;
 		line-height: 1.4;
 	}

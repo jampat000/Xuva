@@ -166,6 +166,22 @@ export interface DiscoveryStatusResponse {
 	note?: string;
 }
 
+export interface HardwareTestResponse {
+	status?: string;
+	error?: string;
+	working?: number;
+	tested?: number;
+	tests?: Array<{
+		id?: string;
+		label?: string;
+		vendor?: string;
+		codec?: string;
+		ok?: boolean;
+		error?: string;
+		durationMs?: number;
+	}>;
+}
+
 export interface PerformanceSettingsResponse {
 	profile?: string;
 	playbackPolicy?: {
@@ -269,6 +285,7 @@ export interface UpdateSettingsRequest {
 	metadataDir?: string;
 	cacheDir?: string;
 	tempDir?: string;
+	hardwareUnlocked?: boolean;
 	librarySyncMode?: string;
 	syncIntervalMins?: number;
 	watchDebounceSecs?: number;
@@ -383,6 +400,16 @@ export function revokeApprovedDevice(
 ): Promise<ApprovedDeviceItem> {
 	return client.send<ApprovedDeviceItem, Record<string, never>>(
 		`/api/devices/${encodeURIComponent(id)}/revoke`,
+		{},
+		'POST'
+	);
+}
+
+export function runHardwareTest(
+	client: ApiClient = apiClient
+): Promise<HardwareTestResponse> {
+	return client.send<HardwareTestResponse, Record<string, never>>(
+		'/api/settings/hardware/test',
 		{},
 		'POST'
 	);

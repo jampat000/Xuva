@@ -74,11 +74,11 @@ export interface ApiClient {
 
 export function normalizeErrorMessage(status: number, message = ''): string {
 	if (status === 0) {
-		return 'Lorivo could not reach the local server. Check that the server is running and retry.';
+		return 'Xuva could not reach the local server. Check that the server is running and retry.';
 	}
 	if (status === 401) return 'Your session is no longer active. Sign in again to continue.';
 	if (status === 403) return 'This action requires permission or a valid CSRF token.';
-	if (status === 404) return 'Lorivo could not find that item.';
+	if (status === 404) return 'Xuva could not find that item.';
 	if (status === 409) return 'This action conflicts with current server state. Refresh and retry.';
 	if (status >= 500) return 'The server failed while handling this action. Retry once and inspect Activity if needed.';
 	return message || 'Something went wrong. Retry the action.';
@@ -119,7 +119,7 @@ function parsePayload(text: string, path: string, status: number): unknown {
 			status,
 			path,
 			userMessage:
-				'Lorivo could not read media data from the local server. Check that the server is running and retry.'
+				'Xuva could not read media data from the local server. Check that the server is running and retry.'
 		});
 	}
 }
@@ -139,7 +139,7 @@ function toHeaders(options: ApiRequestOptions<unknown>): Headers {
 
 	const method = String(options.method || 'GET').toUpperCase();
 	if (!SAFE_METHODS.has(method) && !headers.has('X-CSRF-Token')) {
-		const token = options.csrfToken ? String(options.csrfToken).trim() : readCookie('lorivo_csrf');
+		const token = options.csrfToken ? String(options.csrfToken).trim() : readCookie('xuva_csrf');
 		if (token) headers.set('X-CSRF-Token', token);
 	}
 

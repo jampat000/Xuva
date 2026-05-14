@@ -1,5 +1,5 @@
 {
-  "schema": "lorivo.migration.v1",
+  "schema": "xuva.migration.v1",
   "source": "jellyfin",
   "createdAt": "2026-04-30T09:10:00Z",
   "items": [

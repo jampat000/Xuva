@@ -1,6 +1,6 @@
 # Agent Harness
 
-Lorivo should be optimized for agent-assisted development. The goal is not process for its own sake; the goal is to make product intent, architecture, UI behavior, tests, logs, and quality constraints directly legible from the repository.
+Xuva should be optimized for agent-assisted development. The goal is not process for its own sake; the goal is to make product intent, architecture, UI behavior, tests, logs, and quality constraints directly legible from the repository.
 
 This alignment is based on the harness-engineering model described by OpenAI: humans steer, agents execute, repository knowledge is the source of truth, and mechanical checks enforce architecture and taste.
 
@@ -60,7 +60,7 @@ const iab = await agent.browsers.get(browser.id);
 const tab = await iab.tabs.selected();
 ```
 
-This client exposes `agent.browsers`, not the older `agent.browser` shape. Use it to validate local Lorivo pages already open in the app browser before falling back to external browser automation.
+This client exposes `agent.browsers`, not the older `agent.browser` shape. Use it to validate local Xuva pages already open in the app browser before falling back to external browser automation.
 
 ## Current Harness Checks
 

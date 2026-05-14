@@ -94,12 +94,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--lorivo-space-3);
+		gap: var(--xuva-space-3);
 	}
 
 	h2 {
 		margin: 0;
-		font-family: var(--lorivo-font-display);
+		font-family: var(--xuva-font-display);
 		font-size: 1.12rem;
 		line-height: 1.03;
 		letter-spacing: -0.021em;
@@ -107,7 +107,7 @@
 	}
 
 	a {
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 78%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 78%, transparent);
 		font-size: 0.79rem;
 		font-weight: 620;
 		text-decoration: none;
@@ -179,7 +179,7 @@
 		border-radius: 999px;
 		border: 1px solid rgb(255 255 255 / 14%);
 		background: rgb(11 17 26 / 78%);
-		color: color-mix(in srgb, var(--lorivo-color-text) 92%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 92%, transparent);
 		font-size: 1.2rem;
 		line-height: 1;
 		display: none;

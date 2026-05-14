@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/catalog"
 )
 
 type localMediaContext struct {

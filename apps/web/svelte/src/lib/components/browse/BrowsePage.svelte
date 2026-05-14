@@ -13,7 +13,7 @@
 		display: grid;
 		gap: 24px;
 		padding-inline: clamp(0px, 1vw, 16px);
-		padding-bottom: var(--lorivo-space-8);
+		padding-bottom: var(--xuva-space-8);
 		min-width: 0;
 	}
 </style>

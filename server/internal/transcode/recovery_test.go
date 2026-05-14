@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/database"
-	"github.com/jampat000/Lorivo/server/internal/events"
-	"github.com/jampat000/Lorivo/server/internal/jobs"
-	"github.com/jampat000/Lorivo/server/internal/resources"
-	runtimestore "github.com/jampat000/Lorivo/server/internal/runtime"
+	"github.com/jampat000/Xuva/server/internal/database"
+	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/jobs"
+	"github.com/jampat000/Xuva/server/internal/resources"
+	runtimestore "github.com/jampat000/Xuva/server/internal/runtime"
 )
 
 func TestPersistentServiceFailsInterruptedRunningJob(t *testing.T) {

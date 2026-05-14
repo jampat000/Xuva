@@ -25,7 +25,7 @@
 
 ## Server MVP
 
-- Real Lorivo player shell.
+- Real Xuva player shell.
 - Alpha desktop shell that starts the local server, opens the web UI, restarts the server, and provides native folder picking.
 - Live dashboard updates through SSE.
 - Playback session heartbeat and cleanup.

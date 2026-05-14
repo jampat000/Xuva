@@ -1,6 +1,6 @@
 # Transcode Reliability
 
-Lorivo normalizes FFmpeg failures so playback and support surfaces can explain what happened and what to do next.
+Xuva normalizes FFmpeg failures so playback and support surfaces can explain what happened and what to do next.
 
 ## Failure Taxonomy
 

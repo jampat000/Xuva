@@ -3,8 +3,8 @@
 	import type { Snippet } from 'svelte';
 	import { Film, Folder, Home, Settings, Tv } from 'lucide-svelte';
 	import AppDrawer from './AppDrawer.svelte';
-	import LorivoBrand from './LorivoBrand.svelte';
-	import LorivoSearch from '../ui/LorivoSearch.svelte';
+	import XuvaBrand from './XuvaBrand.svelte';
+	import TopBar from '\$lib/Xuva/TopBar.svelte';
 
 	type ActiveRoute =
 		| 'home'
@@ -51,10 +51,6 @@
 		menuOpen = false;
 	}
 
-	function openProfileMenu(): void {
-		menuOpen = true;
-	}
-
 	onMount(() => {
 		const handleKeydown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') {
@@ -67,9 +63,15 @@
 </script>
 
 <div class="media-shell" class:media-shell--drawer-open={menuOpen} data-shell="media">
-	<AppDrawer open={menuOpen} label="Main navigation" testId="media-menu-drawer" onClose={closeMenu}>
+	<AppDrawer
+		open={menuOpen}
+		label="Main navigation"
+		testId="media-menu-drawer"
+		drawerWidth="252px"
+		onClose={closeMenu}
+	>
 		{#snippet brand()}
-			<LorivoBrand />
+			<XuvaBrand />
 		{/snippet}
 		{#snippet main()}
 			{#each mediaNavItems as item (item.id)}
@@ -98,42 +100,14 @@
 	</AppDrawer>
 
 	<div class="media-shell__surface" data-testid="media-shell-surface">
-		<header class="media-shell__topbar">
-			<div class="media-shell__topbar-left">
-				<button
-					class="menu-button"
-					type="button"
-					data-testid="media-menu-button"
-					data-lorivo-menu-trigger
-					aria-label="Open menu"
-					aria-expanded={menuOpen}
-					onclick={() => (menuOpen = !menuOpen)}
-				>
-					<span></span>
-					<span></span>
-					<span></span>
-				</button>
-				<a
-					class="brand-link"
-					class:brand-link--drawer-open={menuOpen}
-					href="/"
-					aria-label="Go to Home"
-					aria-hidden={menuOpen}
-					tabindex={menuOpen ? -1 : undefined}
-					data-testid="topbar-brand"
-				>
-					<LorivoBrand />
-				</a>
-			</div>
-			<div class="media-shell__topbar-search">
-				<LorivoSearch bind:value={searchValue} />
-			</div>
-			<div class="media-shell__topbar-actions">
-				<button class="profile-button" type="button" aria-label="Open profile menu" onclick={openProfileMenu}>
-					<span class="profile-button__avatar">{userInitials}</span>
-				</button>
-			</div>
-		</header>
+		<TopBar
+			{menuOpen}
+			onMenuToggle={() => (menuOpen = !menuOpen)}
+			onMenuClose={closeMenu}
+			showSettingsShortcut={false}
+			bind:searchValue
+			avatarInitialsOverride={userInitials}
+		/>
 
 		<div class="media-shell__content" class:media-shell__content--with-companion={Boolean(companion)}>
 			<main class="media-shell__primary">
@@ -150,6 +124,7 @@
 
 <style>
 	.media-shell {
+		--xuva-drawer-width: 252px;
 		min-height: 100dvh;
 		overflow-x: hidden;
 		padding: 16px 24px 32px;
@@ -157,7 +132,7 @@
 			radial-gradient(circle at 22% -18%, rgb(124 92 255 / 16%) 0%, transparent 38%),
 			radial-gradient(circle at 84% 3%, rgb(55 84 150 / 16%) 0%, transparent 32%),
 			linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 24%),
-			var(--lorivo-color-bg-shell);
+			var(--xuva-color-bg-shell);
 	}
 
 	.media-shell__surface {
@@ -165,125 +140,16 @@
 		width: 100%;
 		margin-left: 0;
 		transition:
-			margin-left 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-			width 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
+			margin-left 260ms var(--xuva-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			width 260ms var(--xuva-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
 		will-change: margin-left, width;
 	}
 
 	@media (min-width: 768px) {
 		.media-shell--drawer-open .media-shell__surface {
-			width: calc(100% - var(--lorivo-drawer-width, 320px));
-			margin-left: var(--lorivo-drawer-width, 320px);
+			width: calc(100% - var(--xuva-drawer-width, 252px));
+			margin-left: var(--xuva-drawer-width, 252px);
 		}
-	}
-
-	.media-shell__topbar {
-		position: sticky;
-		top: 0;
-		z-index: 24;
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 10px;
-		padding: 0 0 22px;
-		background:
-			linear-gradient(180deg, rgb(11 17 32 / 96%), rgb(11 17 32 / 86%) 72%, transparent),
-			transparent;
-		border-bottom: 0;
-	}
-
-	.media-shell__topbar-left {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		min-width: 0;
-	}
-
-	.brand-link {
-		display: inline-flex;
-		align-items: center;
-		max-width: 190px;
-		min-width: 0;
-		overflow: hidden;
-		text-decoration: none;
-		opacity: 1;
-		transform: translateX(0);
-		transition:
-			opacity 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-			transform 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-			max-width 260ms var(--lorivo-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
-		will-change: opacity, transform, max-width;
-	}
-
-	.brand-link--drawer-open {
-		max-width: 0;
-		opacity: 0;
-		pointer-events: none;
-		transform: translateX(-10px);
-	}
-
-	.brand-link :global(.v-brand) {
-		min-height: 34px;
-		justify-content: flex-start;
-	}
-
-	.menu-button {
-		display: inline-flex;
-		flex-direction: column;
-		justify-content: center;
-		gap: 3px;
-		width: 32px;
-		height: 32px;
-		border-radius: 9px;
-		border: 1px solid rgb(255 255 255 / 16%);
-		background: linear-gradient(180deg, rgb(31 41 55 / 82%), rgb(17 24 39 / 76%));
-	}
-
-	.menu-button span {
-		display: block;
-		width: 15px;
-		height: 2px;
-		margin: 0 auto;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--lorivo-color-text) 86%, transparent);
-	}
-
-	.media-shell__topbar-search {
-		min-width: 0;
-	}
-
-	.media-shell__topbar-search :global(.v-search) {
-		width: min(100%, 560px);
-		margin: 0 auto;
-	}
-
-	.media-shell__topbar-actions {
-		display: inline-flex;
-		align-items: center;
-		justify-content: flex-end;
-	}
-
-	.profile-button {
-		display: grid;
-		place-items: center;
-		width: 34px;
-		height: 34px;
-		border-radius: 999px;
-		border: 1px solid rgb(255 255 255 / 16%);
-		background: linear-gradient(180deg, rgb(31 41 55 / 84%), rgb(17 24 39 / 80%));
-		padding: 0;
-	}
-
-	.profile-button__avatar {
-		display: inline-grid;
-		place-items: center;
-		width: 26px;
-		height: 26px;
-		border-radius: 999px;
-		font-size: 0.72rem;
-		font-weight: 700;
-		background: linear-gradient(180deg, rgb(124 92 255 / 36%), rgb(31 41 55 / 66%));
-		color: #f4f1ea;
 	}
 
 	.media-shell__content {
@@ -310,54 +176,19 @@
 			padding: 8px 12px 14px;
 		}
 
-		.media-shell__topbar {
-			gap: 8px;
-			padding-bottom: 9px;
-		}
-
-		.media-shell__topbar-search :global(.v-search) {
-			width: 100%;
-		}
-
 		.media-shell__content--with-companion {
 			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 
 	@media (max-width: 620px) {
-		.media-shell__topbar {
-			grid-template-columns: auto minmax(0, 1fr) auto;
-			grid-template-areas:
-				'left left actions'
-				'search search search';
-			row-gap: 8px;
-		}
-
-		.media-shell__topbar-left {
-			grid-area: left;
-			min-width: 0;
-		}
-
-		.media-shell__topbar-actions {
-			grid-area: actions;
-		}
-
-		.media-shell__topbar-search {
-			grid-area: search;
-		}
-
-		.brand-link :global(.v-brand__wordmark) {
-			font-size: 1.08rem;
-		}
-
 		.media-shell__surface {
 			transition: none;
 		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.media-shell__surface,
-		.brand-link {
+		.media-shell__surface {
 			transition: none;
 		}
 	}

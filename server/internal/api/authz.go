@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jampat000/Lorivo/server/internal/auth"
+	"github.com/jampat000/Xuva/server/internal/auth"
 )
 
 const (

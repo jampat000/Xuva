@@ -38,17 +38,17 @@
 		border: 1px solid transparent;
 		border-radius: 999px;
 		background: transparent;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 82%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 82%, transparent);
 		font-size: 0.79rem;
 		font-weight: 640;
 		letter-spacing: 0.008em;
 	}
 
 	.filter-group :global(button.selected) {
-		border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 36%, transparent);
+		border-color: color-mix(in srgb, var(--xuva-color-accent-teal) 36%, transparent);
 		background:
 			linear-gradient(180deg, rgb(255 255 255 / 10%), rgb(255 255 255 / 2%)),
-			color-mix(in srgb, var(--lorivo-color-accent-teal) 20%, transparent);
-		color: color-mix(in srgb, var(--lorivo-color-text) 95%, transparent);
+			color-mix(in srgb, var(--xuva-color-accent-teal) 20%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text) 95%, transparent);
 	}
 </style>

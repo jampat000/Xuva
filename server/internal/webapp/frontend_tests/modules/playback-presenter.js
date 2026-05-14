@@ -1,7 +1,7 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.LorivoPlayback = api;
+  root.XuvaPlayback = api;
 })(typeof globalThis !== "undefined" ? globalThis : window, function () {
   function escapeHTML(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char]));
@@ -74,23 +74,23 @@
   function playbackReason(decision = {}, hardware = {}) {
     const reason = String(decision.reason || "");
     const mode = String(decision.mode || "").toLowerCase();
-    if (!reason) return "Lorivo is checking this file before choosing the best playback path.";
-    if (reason.includes("has not been probed")) return "Lorivo needs to check this file once before it can confirm the best playback path.";
-    if (reason.includes("Container and video codec match")) return "This player can stream the file directly. Lorivo should not need extra CPU, GPU, or temporary disk work.";
-    if (reason.includes("Video can direct play")) return "The video can play as-is, but Lorivo may convert the audio track for this player. Expect a light CPU load.";
-    if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Lorivo may need to repackage the file while playing for this device. No permanent file is created.";
+    if (!reason) return "Xuva is checking this file before choosing the best playback path.";
+    if (reason.includes("has not been probed")) return "Xuva needs to check this file once before it can confirm the best playback path.";
+    if (reason.includes("Container and video codec match")) return "This player can stream the file directly. Xuva should not need extra CPU, GPU, or temporary disk work.";
+    if (reason.includes("Video can direct play")) return "The video can play as-is, but Xuva may convert the audio track for this player. Expect a light CPU load.";
+    if (reason.includes("video codec is compatible")) return "The video can stay untouched, but Xuva may need to repackage the file while playing for this device. No permanent file is created.";
     if (reason.includes("subtitle track is image-based")) return "This file can still play, but image subtitles may need to be burned into the video. That is a heavy path and can use significant CPU/GPU.";
     if (reason.includes("not safely direct-playable")) {
       if (mode === "video transcode") return hardware.configured && hardware.unlockState === "unlocked"
         ? "This file can still play, but this player profile needs video conversion. GPU acceleration is unlocked and is the right path for keeping CPU load low."
         : "This file can still play, but this player profile needs video conversion. Without hardware acceleration, expect high CPU use, more power draw, and more heat.";
       if (mode === "subtitle burn") return "This file can still play, but subtitles may need to be burned into the video for this player. This is one of the heaviest playback paths.";
-      if (mode === "audio transcode") return "The video can stay intact, but Lorivo may convert audio for this player. This is usually a light PC load.";
-      if (mode === "remux") return "The streams can stay intact, but Lorivo may repackage the file while playing for this device. This is temporary and usually low impact.";
-      if (mode === "adaptive stream") return "This file can still play through an adaptive remote stream. Lorivo can lower quality during weak network moments instead of hard buffering.";
-      return "This file can still play, but Lorivo may need to prepare it before or during playback for this player profile.";
+      if (mode === "audio transcode") return "The video can stay intact, but Xuva may convert audio for this player. This is usually a light PC load.";
+      if (mode === "remux") return "The streams can stay intact, but Xuva may repackage the file while playing for this device. This is temporary and usually low impact.";
+      if (mode === "adaptive stream") return "This file can still play through an adaptive remote stream. Xuva can lower quality during weak network moments instead of hard buffering.";
+      return "This file can still play, but Xuva may need to prepare it before or during playback for this player profile.";
     }
-    if (reason.includes("adaptive streaming")) return "Lorivo can use adaptive streaming so remote playback can step quality down before stalls.";
+    if (reason.includes("adaptive streaming")) return "Xuva can use adaptive streaming so remote playback can step quality down before stalls.";
     return reason;
   }
 

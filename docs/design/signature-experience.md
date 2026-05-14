@@ -1,8 +1,8 @@
-# Lorivo Signature Experience
+# Xuva Signature Experience
 
 Status: exploration.
 
-The Signal Deck is not the current lead direction. The Movie Detail Concept is the lead direction because it keeps the common movie/TV controls obvious while still showing Lorivo's playback intelligence. Signal Deck should be used as a source of ideas, not as the default product interface.
+The Signal Deck is not the current lead direction. The Movie Detail Concept is the lead direction because it keeps the common movie/TV controls obvious while still showing Xuva's playback intelligence. Signal Deck should be used as a source of ideas, not as the default product interface.
 
 ## Problem
 
@@ -14,11 +14,11 @@ Most movie and TV apps converge on the same visual pattern:
 - Hidden settings.
 - Playback diagnostics only after something goes wrong.
 
-That pattern is familiar, but it is also overused. Lorivo should not look like a slightly darker Plex, a cleaner Emby, or a paid Jellyfin skin.
+That pattern is familiar, but it is also overused. Xuva should not look like a slightly darker Plex, a cleaner Emby, or a paid Jellyfin skin.
 
 ## Design Goal
 
-Create a browsing system that feels native to Lorivo:
+Create a browsing system that feels native to Xuva:
 
 - Movie and TV first.
 - Remote-friendly.
@@ -31,7 +31,7 @@ Create a browsing system that feels native to Lorivo:
 
 The Signal Deck treats each movie or episode as both a piece of entertainment and a playback route.
 
-Instead of separating browsing from diagnostics, Lorivo shows:
+Instead of separating browsing from diagnostics, Xuva shows:
 
 - The focused title.
 - The selected version.
@@ -40,7 +40,7 @@ Instead of separating browsing from diagnostics, Lorivo shows:
 - The route to the client.
 - The expected server cost.
 
-This makes Lorivo's technical advantage feel like part of the core product, not an admin-only feature.
+This makes Xuva's technical advantage feel like part of the core product, not an admin-only feature.
 
 ## Interaction Model
 

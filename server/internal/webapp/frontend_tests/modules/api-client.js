@@ -1,10 +1,10 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.LorivoApi = api;
+  root.XuvaApi = api;
 })(typeof globalThis !== "undefined" ? globalThis : window, function () {
-  const AUTH_TOKEN_KEY = "lorivo-auth-token";
-  const AUTH_TOKEN_WINDOW_NAME_KEY = "lorivoAuthToken";
+  const AUTH_TOKEN_KEY = "xuva-auth-token";
+  const AUTH_TOKEN_WINDOW_NAME_KEY = "xuvaAuthToken";
   let memoryAuthToken = "";
 
   function readStorage(storage) {
@@ -94,10 +94,10 @@
   }
 
   function normalizeErrorMessage(status, message = "") {
-    if (status === 0) return "Lorivo could not reach the local server. Check that the server is still running, then try again.";
+    if (status === 0) return "Xuva could not reach the local server. Check that the server is still running, then try again.";
     if (status === 401) return "Your session is no longer active. Sign in again to continue.";
     if (status === 403) return "This account cannot perform that action. Use an admin account for server changes.";
-    if (status === 404) return "Lorivo could not find that item. It may have moved, been deleted, or not finished scanning.";
+    if (status === 404) return "Xuva could not find that item. It may have moved, been deleted, or not finished scanning.";
     if (status === 409) return "That action conflicts with the current server state. Refresh and try again.";
     if (status >= 500) return "The server hit a problem while handling this action. Retry once, then check Activity if it keeps failing.";
     return message || "Something went wrong. Try again.";
@@ -108,7 +108,7 @@
     try {
       return JSON.parse(text);
     } catch (error) {
-      throw new ApiError("Server returned unreadable data.", { path, userMessage: "Lorivo received a response it could not read. Refresh and try again." });
+      throw new ApiError("Server returned unreadable data.", { path, userMessage: "Xuva received a response it could not read. Refresh and try again." });
     }
   }
 
@@ -176,7 +176,7 @@
     }
     if (method === "GET" || method === "HEAD" || method === "OPTIONS") return { ...options, headers };
     if (!headers["X-CSRF-Token"]) {
-      const token = cookieValue("lorivo_csrf");
+      const token = cookieValue("xuva_csrf");
       if (token) headers["X-CSRF-Token"] = token;
     }
     return { ...options, headers };

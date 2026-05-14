@@ -36,7 +36,7 @@ test("video conversion forecast explains impact without saying the file cannot p
 test("adaptive stream forecast explains remote resilience", () => {
   const decision = {
     mode: "Adaptive Stream",
-    reason: "The selected network is below the source bitrate, so Lorivo can use adaptive streaming to step quality down before playback stalls.",
+    reason: "The selected network is below the source bitrate, so Xuva can use adaptive streaming to step quality down before playback stalls.",
     estimatedCpuCost: "medium",
     videoAction: "adaptive",
     containerAction: "adaptive_hls",

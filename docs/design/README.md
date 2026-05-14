@@ -1,6 +1,6 @@
-# Lorivo Design
+# Xuva Design
 
-The Lorivo design system starts with the movie and TV experience. The TV app should define the emotional quality of the product, then the web admin should inherit the same trust, clarity, and playback transparency in a denser form.
+The Xuva design system starts with the movie and TV experience. The TV app should define the emotional quality of the product, then the web admin should inherit the same trust, clarity, and playback transparency in a denser form.
 
 ## Files
 

@@ -58,7 +58,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--lorivo-color-text);
+		color: var(--xuva-color-text);
 		text-align: left;
 		line-height: 1;
 		text-decoration: none;
@@ -101,9 +101,9 @@
 
 	.poster-card__copy {
 		position: absolute;
-		left: var(--lorivo-space-2);
-		right: var(--lorivo-space-2);
-		bottom: var(--lorivo-space-2);
+		left: var(--xuva-space-2);
+		right: var(--xuva-space-2);
+		bottom: var(--xuva-space-2);
 		z-index: 1;
 	}
 
@@ -118,7 +118,7 @@
 
 	p {
 		margin: 6px 0 0;
-		color: color-mix(in srgb, var(--lorivo-color-text-muted) 92%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-muted) 92%, transparent);
 		font-size: 0.78rem;
 		text-shadow: 0 1px 8px rgb(0 0 0 / 42%);
 	}
@@ -127,7 +127,7 @@
 		.poster-card:hover .poster-card__art,
 		.poster-card:focus-visible .poster-card__art {
 			transform: translateY(-3px);
-			border-color: color-mix(in srgb, var(--lorivo-color-accent-teal) 36%, rgb(255 246 229 / 22%));
+			border-color: color-mix(in srgb, var(--xuva-color-accent-teal) 36%, rgb(255 246 229 / 22%));
 			box-shadow:
 				inset 0 1px 0 rgb(255 255 255 / 9%),
 				0 24px 42px rgb(0 0 0 / 36%),

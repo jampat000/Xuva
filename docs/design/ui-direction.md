@@ -1,8 +1,8 @@
-# Lorivo UI Direction
+# Xuva UI Direction
 
 ## Product Surface
 
-Lorivo is first a movie and TV product. The primary emotional surface is the TV app, not the admin dashboard.
+Xuva is first a movie and TV product. The primary emotional surface is the TV app, not the admin dashboard.
 
 The design should feel like a private cinema library: immersive, fast, premium, and personal. It should not feel like a generic file browser, a streaming-service ad wall, or a homelab control panel.
 
@@ -37,7 +37,7 @@ Playback diagnostics are part of the product identity. They should be visible wh
 The user should be able to answer:
 
 - Is this direct-playing?
-- Is Lorivo transcoding?
+- Is Xuva transcoding?
 - Why?
 - What can I change?
 
@@ -71,11 +71,11 @@ Core mood:
 - Aurora teal and signal amber accents.
 - One sharp premium accent reserved for focus and primary action.
 
-Lorivo should not read as another purple/blue SaaS product. The palette should support media artwork rather than compete with it.
+Xuva should not read as another purple/blue SaaS product. The palette should support media artwork rather than compete with it.
 
 ## Product Personality
 
-Lorivo should sound:
+Xuva should sound:
 
 - Calm.
 - Direct.

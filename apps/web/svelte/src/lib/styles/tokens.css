@@ -1,7 +1,7 @@
 :root {
 	color-scheme: dark;
 
-	--lorivo-font-sans:
+	--xuva-font-sans:
 		'Segoe UI Variable Text',
 		'Aptos',
 		'Inter',
@@ -9,7 +9,7 @@
 		'Segoe UI',
 		system-ui,
 		sans-serif;
-	--lorivo-font-display:
+	--xuva-font-display:
 		'Segoe UI Variable Display',
 		'Aptos Display',
 		'Inter',
@@ -17,73 +17,73 @@
 		'Segoe UI',
 		system-ui,
 		sans-serif;
-	--lorivo-font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+	--xuva-font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
-	--lorivo-density-factor: 1;
-	--lorivo-space-1: calc(0.25rem * var(--lorivo-density-factor));
-	--lorivo-space-2: calc(0.5rem * var(--lorivo-density-factor));
-	--lorivo-space-3: calc(0.75rem * var(--lorivo-density-factor));
-	--lorivo-space-4: calc(1rem * var(--lorivo-density-factor));
-	--lorivo-space-5: calc(1.25rem * var(--lorivo-density-factor));
-	--lorivo-space-6: calc(1.5rem * var(--lorivo-density-factor));
-	--lorivo-space-8: calc(2rem * var(--lorivo-density-factor));
-	--lorivo-space-10: calc(2.5rem * var(--lorivo-density-factor));
-	--lorivo-space-12: calc(3rem * var(--lorivo-density-factor));
+	--xuva-density-factor: 1;
+	--xuva-space-1: calc(0.25rem * var(--xuva-density-factor));
+	--xuva-space-2: calc(0.5rem * var(--xuva-density-factor));
+	--xuva-space-3: calc(0.75rem * var(--xuva-density-factor));
+	--xuva-space-4: calc(1rem * var(--xuva-density-factor));
+	--xuva-space-5: calc(1.25rem * var(--xuva-density-factor));
+	--xuva-space-6: calc(1.5rem * var(--xuva-density-factor));
+	--xuva-space-8: calc(2rem * var(--xuva-density-factor));
+	--xuva-space-10: calc(2.5rem * var(--xuva-density-factor));
+	--xuva-space-12: calc(3rem * var(--xuva-density-factor));
 
-	--lorivo-control-height-sm: calc(2rem * var(--lorivo-density-factor));
-	--lorivo-control-height-md: calc(2.4rem * var(--lorivo-density-factor));
-	--lorivo-control-height-lg: calc(2.9rem * var(--lorivo-density-factor));
+	--xuva-control-height-sm: calc(2rem * var(--xuva-density-factor));
+	--xuva-control-height-md: calc(2.4rem * var(--xuva-density-factor));
+	--xuva-control-height-lg: calc(2.9rem * var(--xuva-density-factor));
 
-	--lorivo-radius-sm: 0.55rem;
-	--lorivo-radius-md: 0.8rem;
-	--lorivo-radius-lg: 1.05rem;
-	--lorivo-radius-xl: 1.35rem;
-	--lorivo-radius-pill: 999px;
+	--xuva-radius-sm: 0.55rem;
+	--xuva-radius-md: 0.8rem;
+	--xuva-radius-lg: 1.05rem;
+	--xuva-radius-xl: 1.35rem;
+	--xuva-radius-pill: 999px;
 
-	--lorivo-shadow-soft: 0 8px 20px rgb(0 0 0 / 24%);
-	--lorivo-shadow-md: 0 18px 40px rgb(0 0 0 / 34%);
-	--lorivo-shadow-lg: 0 30px 68px rgb(0 0 0 / 44%);
+	--xuva-shadow-soft: 0 8px 20px rgb(0 0 0 / 24%);
+	--xuva-shadow-md: 0 18px 40px rgb(0 0 0 / 34%);
+	--xuva-shadow-lg: 0 30px 68px rgb(0 0 0 / 44%);
 
-	--lorivo-color-bg-base: #0b1120;
-	--lorivo-color-bg-shell: #0b1120;
-	--lorivo-color-bg-sidebar: #0d1424;
-	--lorivo-color-bg-panel: #111827;
-	--lorivo-color-bg-panel-elevated: #1f2937;
-	--lorivo-color-bg-soft: #263244;
-	--lorivo-color-bg-inverse: #ece8df;
+	--xuva-color-bg-base: #0b1120;
+	--xuva-color-bg-shell: #0b1120;
+	--xuva-color-bg-sidebar: #0d1424;
+	--xuva-color-bg-panel: #111827;
+	--xuva-color-bg-panel-elevated: #1f2937;
+	--xuva-color-bg-soft: #263244;
+	--xuva-color-bg-inverse: #ece8df;
 
-	--lorivo-color-border-soft: rgb(255 255 255 / 10%);
-	--lorivo-color-border-strong: rgb(124 92 255 / 36%);
+	--xuva-color-border-soft: rgb(255 255 255 / 10%);
+	--xuva-color-border-strong: rgb(124 92 255 / 36%);
 
-	--lorivo-color-text: #f8fafc;
-	--lorivo-color-text-muted: #cbd5e1;
-	--lorivo-color-text-soft: #94a3b8;
-	--lorivo-color-text-inverse: #0e141d;
+	--xuva-color-text: #f8fafc;
+	--xuva-color-text-muted: #cbd5e1;
+	--xuva-color-text-soft: #94a3b8;
+	--xuva-color-text-inverse: #0e141d;
 
-	--lorivo-color-accent-teal: #7c5cff;
-	--lorivo-color-accent-teal-soft: rgb(124 92 255 / 18%);
-	--lorivo-color-accent-teal-strong: #6a4af0;
-	--lorivo-color-good: #7bc892;
-	--lorivo-color-warn: #e2bf73;
-	--lorivo-color-danger: #dc8b83;
+	--xuva-color-accent-teal: #7c5cff;
+	--xuva-color-accent-teal-soft: rgb(124 92 255 / 18%);
+	--xuva-color-accent-teal-strong: #6a4af0;
+	--xuva-color-good: #7bc892;
+	--xuva-color-warn: #e2bf73;
+	--xuva-color-danger: #dc8b83;
 
-	--lorivo-track: rgb(255 255 255 / 14%);
-	--lorivo-progress: linear-gradient(90deg, #7c5cff, #9b7cff);
-	--lorivo-focus-ring: 0 0 0 3px rgb(124 92 255 / 32%);
+	--xuva-track: rgb(255 255 255 / 14%);
+	--xuva-progress: linear-gradient(90deg, #7c5cff, #9b7cff);
+	--xuva-focus-ring: 0 0 0 3px rgb(124 92 255 / 32%);
 }
 
 [data-density='compact'] {
-	--lorivo-density-factor: 0.88;
+	--xuva-density-factor: 0.88;
 }
 
 [data-density='default'] {
-	--lorivo-density-factor: 1;
+	--xuva-density-factor: 1;
 }
 
 [data-density='comfortable'] {
-	--lorivo-density-factor: 1.08;
+	--xuva-density-factor: 1.08;
 }
 
 [data-density='expanded'] {
-	--lorivo-density-factor: 1.18;
+	--xuva-density-factor: 1.18;
 }

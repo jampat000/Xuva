@@ -1,6 +1,6 @@
 # Apple TV Alpha
 
-Apple TV is Lorivo's first native playback client target. It should prove that Lorivo is more than a server admin console: a user can install the local server, add media, pair the TV app, browse their library, and play a movie or episode from the couch.
+Apple TV is Xuva's first native playback client target. It should prove that Xuva is more than a server admin console: a user can install the local server, add media, pair the TV app, browse their library, and play a movie or episode from the couch.
 
 ## Product Goals
 
@@ -13,7 +13,7 @@ Apple TV is Lorivo's first native playback client target. It should prove that L
 ## First App Scope
 
 - Server discovery or manual URL entry.
-- Pairing code flow against the local Lorivo server.
+- Pairing code flow against the local Xuva server.
 - tvOS capability registration.
 - Movies and TV Shows home rows.
 - Movie detail, series detail, season, and episode screens.
@@ -109,7 +109,7 @@ Current hardening limit: when auth is enabled, native playback start fails expli
 
 ## Acceptance Test
 
-1. Start the Lorivo desktop alpha server.
+1. Start the Xuva desktop alpha server.
 2. Add a Movies library and scan it.
 3. Install or sideload the Apple TV alpha app.
 4. Pair the Apple TV app to the server on the LAN.

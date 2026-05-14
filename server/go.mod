@@ -1,4 +1,4 @@
-module github.com/jampat000/Lorivo/server
+module github.com/jampat000/Xuva/server
 
 go 1.26
 

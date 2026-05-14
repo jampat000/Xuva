@@ -13,7 +13,7 @@ struct PlayerOverlayView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(title)
                             .font(.system(size: 36, weight: .bold))
-                            .foregroundStyle(LorivoTheme.text)
+                            .foregroundStyle(XuvaTheme.text)
                         RouteBadge(text: route)
                     }
                     Spacer()
@@ -25,7 +25,7 @@ struct PlayerOverlayView: View {
                 .font(.system(size: 24, weight: .semibold))
 
                 ProgressView(value: progress)
-                    .tint(LorivoTheme.amber)
+                    .tint(XuvaTheme.amber)
                     .frame(height: 8)
 
                 HStack(spacing: 18) {
@@ -35,11 +35,11 @@ struct PlayerOverlayView: View {
                     Spacer()
                     Text(route)
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(LorivoTheme.quiet)
+                        .foregroundStyle(XuvaTheme.quiet)
                 }
             }
             .padding(42)
-            .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: LorivoTheme.panelRadius))
+            .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: XuvaTheme.panelRadius))
             .padding(.horizontal, 70)
             .padding(.bottom, 44)
         }

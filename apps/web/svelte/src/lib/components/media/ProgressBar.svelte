@@ -11,14 +11,14 @@
 	.progress-wrap {
 		height: 0.32rem;
 		width: 100%;
-		border-radius: var(--lorivo-radius-pill);
-		background: var(--lorivo-track);
+		border-radius: var(--xuva-radius-pill);
+		background: var(--xuva-track);
 		overflow: hidden;
 	}
 
 	.progress-wrap span {
 		display: block;
 		height: 100%;
-		background: var(--lorivo-progress);
+		background: var(--xuva-progress);
 	}
 </style>

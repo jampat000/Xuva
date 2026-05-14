@@ -7,9 +7,9 @@
 		BrowseStatChip,
 		BrowseToolbar,
 		ResumeTile,
-		LorivoButton,
-		LorivoEmptyState,
-		LorivoPanel
+		XuvaButton,
+		XuvaEmptyState,
+		XuvaPanel
 	} from '$lib/components';
 	import {
 		asText,
@@ -65,17 +65,17 @@
 <MediaShell active="continue-watching" bind:searchValue {userInitials}>
 	<BrowsePage>
 		{#if isLoading}
-			<LorivoPanel
+			<XuvaPanel
 				title="Loading Continue Watching"
 				subtitle="Fetching in-progress playback from existing APIs."
 			/>
 		{:else if loadError}
-			<LorivoPanel title="Continue Watching could not load" subtitle={loadError}>
+			<XuvaPanel title="Continue Watching could not load" subtitle={loadError}>
 				<div class="status-actions">
-					<LorivoButton variant="secondary" onclick={loadContinueWatching}>Retry</LorivoButton>
-					<LorivoButton variant="ghost" href="/">Back to Home</LorivoButton>
+					<XuvaButton variant="secondary" onclick={loadContinueWatching}>Retry</XuvaButton>
+					<XuvaButton variant="ghost" href="/">Back to Home</XuvaButton>
 				</div>
-			</LorivoPanel>
+			</XuvaPanel>
 		{:else}
 			<BrowseHeader title="Continue Watching" subtitle="Resume in-progress movies and episodes.">
 				{#snippet chips()}
@@ -89,21 +89,21 @@
 			<BrowseToolbar />
 
 			{#if !rowAvailable}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="Continue Watching is not available yet"
 					message="The current backend payload does not expose a continue row for this route."
 				>
 					{#snippet action()}
-						<LorivoButton variant="secondary" href="/">Back to Home</LorivoButton>
+						<XuvaButton variant="secondary" href="/">Back to Home</XuvaButton>
 					{/snippet}
-				</LorivoEmptyState>
+				</XuvaEmptyState>
 			{:else if items.length === 0}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="Nothing in progress"
 					message="Start playback and your in-progress titles will appear here."
 				/>
 			{:else if visibleItems.length === 0}
-				<LorivoEmptyState
+				<XuvaEmptyState
 					title="No continue matches"
 					message="Try changing search terms to find in-progress titles."
 				/>
@@ -129,7 +129,7 @@
 	.status-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--lorivo-space-2);
+		gap: var(--xuva-space-2);
 	}
 
 	.resume-grid {

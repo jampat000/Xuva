@@ -1,6 +1,6 @@
 # Security Baseline
 
-Lorivo keeps the local server secure by default while still supporting a LAN-first media workflow.
+Xuva keeps the local server secure by default while still supporting a LAN-first media workflow.
 
 ## Web and API Headers
 
@@ -19,14 +19,14 @@ Browser requests with no `Origin` header are treated as direct local/server requ
 
 Browser requests with an `Origin` header are allowed only when the origin is:
 
-- explicitly configured in `allowedOrigins` or `LORIVO_ALLOWED_ORIGINS`, or
+- explicitly configured in `allowedOrigins` or `XUVA_ALLOWED_ORIGINS`, or
 - local to the machine/LAN runtime, such as `localhost` or `127.0.0.1`.
 
 Unknown origins are rejected before reaching API handlers.
 
 ## Path Safety
 
-Handlers that serve cached files validate each user-controlled path segment before joining paths. Segments containing directory separators, empty values, `.` or `..` are rejected. Joined paths must remain under the intended runtime folder before Lorivo reads or writes cache files.
+Handlers that serve cached files validate each user-controlled path segment before joining paths. Segments containing directory separators, empty values, `.` or `..` are rejected. Joined paths must remain under the intended runtime folder before Xuva reads or writes cache files.
 
 ## Audit Events
 

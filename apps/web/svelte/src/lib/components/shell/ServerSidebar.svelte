@@ -1,14 +1,12 @@
 <script lang="ts">
-	import SidebarUser from './SidebarUser.svelte';
-	import LorivoSidebar from './LorivoSidebar.svelte';
+	import XuvaSidebar from './XuvaSidebar.svelte';
 	import SettingsBrand from './SettingsBrand.svelte';
 	import SettingsNav from './SettingsNav.svelte';
 
 	let {
 		active = 'dashboard',
-		userDisplayName = 'Local User',
-		userRole = 'Local Account',
-		showStorage = true
+		showStorage = true,
+		serverGroupLabel = 'Xuva'
 	} = $props<{
 		active?:
 			| 'dashboard'
@@ -23,28 +21,24 @@
 			| 'pairing'
 			| 'approved-devices'
 			| 'discovery'
-			| 'owner-access'
+			| 'admin-access'
+			| 'planned-tools'
 			| 'about';
-		userDisplayName?: string;
-		userRole?: string;
 		showStorage?: boolean;
+		serverGroupLabel?: string;
 	}>();
 </script>
 
-<LorivoSidebar>
+<XuvaSidebar>
 	{#snippet brand()}
 		<SettingsBrand />
 	{/snippet}
 
 	{#snippet primary()}
-		<SettingsNav {active} {showStorage} />
+		<SettingsNav {active} {showStorage} {serverGroupLabel} />
 	{/snippet}
 
 	{#snippet secondary()}
 		<SettingsNav section="secondary" />
 	{/snippet}
-
-	{#snippet profile()}
-		<SidebarUser name={userDisplayName} subtitle={userRole} />
-	{/snippet}
-</LorivoSidebar>
+</XuvaSidebar>

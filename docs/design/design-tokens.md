@@ -1,6 +1,6 @@
-# Lorivo Design Tokens
+# Xuva Design Tokens
 
-These tokens define the first visual direction for Lorivo. They are intentionally small until the first real UI implementation creates pressure for more.
+These tokens define the first visual direction for Xuva. They are intentionally small until the first real UI implementation creates pressure for more.
 
 ## Color
 

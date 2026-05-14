@@ -14,22 +14,25 @@
 		| 'pairing'
 		| 'approved-devices'
 		| 'discovery'
-		| 'owner-access'
+		| 'admin-access'
+		| 'planned-tools'
 		| 'about';
 
 	let {
 		active = 'dashboard',
 		section = 'primary',
-		showStorage = true
+		showStorage = true,
+		serverGroupLabel = 'Xuva'
 	} = $props<{
 		active?: SettingsSection;
 		section?: 'primary' | 'secondary';
 		showStorage?: boolean;
+		serverGroupLabel?: string;
 	}>();
 </script>
 
 {#if section === 'primary'}
-	<p class="settings-nav-group">Lorivo Server</p>
+	<p class="settings-nav-group">{serverGroupLabel || 'Xuva'}</p>
 	<SidebarItem label="Dashboard" href="/settings#dashboard" active={active === 'dashboard'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -111,7 +114,22 @@
 				</svg>
 			{/snippet}
 		</SidebarItem>
+		<SidebarItem label="Discovery" href="/settings#discovery" active={active === 'discovery'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M12 7v10M8 11h8M6 7h12v10H6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
 	{/if}
+	<SidebarItem label="Users" href="/settings#admin-access" active={active === 'admin-access'}>
+		{#snippet icon()}
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<circle cx="12" cy="8.4" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5" />
+				<path d="M6.2 18.2c1.4-2.7 3.5-4 5.8-4s4.4 1.3 5.8 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+			</svg>
+		{/snippet}
+	</SidebarItem>
 
 	<p class="settings-nav-group">Devices</p>
 	<SidebarItem label="Pairing" href="/settings#pairing" active={active === 'pairing'}>
@@ -129,25 +147,15 @@
 			</svg>
 		{/snippet}
 	</SidebarItem>
-	<SidebarItem label="Discovery" href="/settings#discovery" active={active === 'discovery'}>
-		{#snippet icon()}
-			<svg viewBox="0 0 24 24" aria-hidden="true">
-				<path d="M12 7v10M8 11h8M6 7h12v10H6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-			</svg>
-		{/snippet}
-	</SidebarItem>
-
-	<p class="settings-nav-group">Access</p>
-	<SidebarItem label="Owner Access" href="/settings#owner-access" active={active === 'owner-access'}>
-		{#snippet icon()}
-			<svg viewBox="0 0 24 24" aria-hidden="true">
-				<circle cx="12" cy="8.4" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5" />
-				<path d="M6.2 18.2c1.4-2.7 3.5-4 5.8-4s4.4 1.3 5.8 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-			</svg>
-		{/snippet}
-	</SidebarItem>
-
 	<p class="settings-nav-group">Advanced</p>
+	<SidebarItem label="Planned (Placeholder)" href="/settings#planned-tools" active={active === 'planned-tools'}>
+		{#snippet icon()}
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M6 6.5h12v11H6z" fill="none" stroke="currentColor" stroke-width="1.5" />
+				<path d="M9 10h6M9 13h6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+			</svg>
+		{/snippet}
+	</SidebarItem>
 	<SidebarItem label="About" href="/settings#about" active={active === 'about'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -176,7 +184,7 @@
 <style>
 	.settings-nav-group {
 		margin: 10px 10px 2px;
-		color: color-mix(in srgb, var(--lorivo-color-text-soft) 84%, transparent);
+		color: color-mix(in srgb, var(--xuva-color-text-soft) 84%, transparent);
 		font-size: 0.69rem;
 		font-weight: 750;
 		letter-spacing: 0.09em;

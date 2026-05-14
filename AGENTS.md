@@ -1,4 +1,4 @@
-# Lorivo Agent Map
+# Xuva Agent Map
 
 This file is the short entry point for agent work. Do not turn it into a full manual. The repository-local docs below are the system of record.
 
