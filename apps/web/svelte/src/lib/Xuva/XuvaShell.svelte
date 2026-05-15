@@ -25,9 +25,11 @@
 	let mediaNavItems = $state<MediaNavItem[]>(buildMediaNavItems());
 	let sidebarPinned = $state(false);
 	let desktopViewport = $state(false);
+	let shiftViewport = $state(false);
 	const sidebarPreferenceKey = 'xuva.sidebar.media.pinned.v1';
 	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
 	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
+	const drawerShifted = $derived.by(() => shiftViewport && drawerOpen);
 
 	const activeRoute = $derived.by(() => {
 		if (currentPath.startsWith('/movies')) return 'movies';
@@ -47,6 +49,7 @@
 
 	function syncViewportState(): void {
 		desktopViewport = isDesktopSidebarViewport();
+		shiftViewport = typeof window !== 'undefined' && window.innerWidth >= 768;
 		if (!desktopViewport) menuOpen = false;
 	}
 
@@ -92,7 +95,7 @@
 	}
 </script>
 
-<div class="xuva-app-shell" class:xuva-app-shell--drawer-open={drawerPersistent}>
+<div class="xuva-app-shell" class:xuva-app-shell--drawer-open={drawerShifted}>
 	<AppDrawer
 		open={drawerOpen}
 		label="Main navigation"
