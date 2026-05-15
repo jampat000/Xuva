@@ -3,7 +3,7 @@
 	import { Menu, Search, Settings } from 'lucide-svelte';
 	import Logo from '\$lib/Xuva/Logo.svelte';
 	import ProfileMenu from '$lib/components/shell/ProfileMenu.svelte';
-	import { getAuthSessionIfAvailable, logout } from '$lib/api/auth';
+	import { getAuthSession, logout } from '$lib/api/auth';
 	import { ApiClientError } from '$lib/api/client';
 
 	let {
@@ -33,11 +33,11 @@
 
 	onMount(() => {
 		if (avatarInitialsOverride || avatarNameOverride) return;
-		// Keep public routes quiet: do not probe protected session endpoints from the top bar.
 		avatarName = 'Signed out';
 		avatarInitials = 'SO';
 		avatarRole = 'Sign in required';
 		canSignOut = false;
+		void loadProfile();
 	});
 
 	$effect(() => {
@@ -47,7 +47,7 @@
 
 	async function loadProfile(): Promise<void> {
 		try {
-			const session = await getAuthSessionIfAvailable().catch((error: unknown) => {
+			const session = await getAuthSession().catch((error: unknown) => {
 				if (isApiStatus(error, 401)) return null;
 				throw error;
 			});
@@ -117,12 +117,12 @@
 				type="button"
 				data-testid="media-menu-button"
 				data-xuva-menu-trigger
-				class="topbar-menu-button inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/8 bg-[#111827]/72 text-white/85 transition hover:border-white/20 hover:bg-white/8"
+				class="topbar-menu-button inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/8 bg-[#111827]/72 text-white/85 transition hover:border-white/20 hover:bg-white/8"
 				aria-label="Open menu"
 				aria-expanded={menuOpen}
 				onclick={onMenuToggle}
 			>
-				<Menu size={20} />
+				<Menu size={17} />
 			</button>
 		{:else}
 			<span class="topbar-menu-spacer" aria-hidden="true"></span>
@@ -139,7 +139,6 @@
 		>
 			<Logo />
 		</a>
-		<span class="topbar-brand-spacer" aria-hidden="true"></span>
 	</div>
 	<div class="flex max-w-2xl flex-1 justify-center">
 		<div class="relative w-full max-w-[640px]">
@@ -176,10 +175,10 @@
 <style>
 	.topbar-brand-rail {
 		display: grid;
-		grid-template-columns: 40px minmax(116px, auto) 40px;
+		grid-template-columns: 36px auto;
 		align-items: center;
-		column-gap: 8px;
-		margin-left: 14px;
+		column-gap: 10px;
+		margin-left: 0;
 	}
 
 	.topbar-brand {
@@ -191,7 +190,7 @@
 		text-decoration: none;
 		opacity: 1;
 		transform: none;
-		justify-self: center;
+		justify-self: start;
 	}
 
 	.topbar-brand--drawer-open {
@@ -205,16 +204,10 @@
 		justify-content: flex-start;
 	}
 
-	.topbar-brand-spacer {
-		display: inline-flex;
-		width: 40px;
-		height: 40px;
-	}
-
 	.topbar-menu-spacer {
 		display: inline-flex;
-		width: 40px;
-		height: 40px;
+		width: 36px;
+		height: 36px;
 	}
 
 	.topbar-utility-button {

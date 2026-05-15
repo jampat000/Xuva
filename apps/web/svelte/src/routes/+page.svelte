@@ -294,21 +294,13 @@
 			playHref={heroPlayHref}
 			detailHref={heroDetailHref}
 		/>
-		<Row title="Continue Watching">
-			{#if continueWatching.length > 0}
+		{#if continueWatching.length > 0}
+			<Row title="Continue Watching">
 				{#each continueWatching as m (m.title)}
 					<LandscapeCard item={m} />
 				{/each}
-			{:else}
-				<div class="min-w-[280px] flex-1">
-					<XuvaEmptyState
-						compact
-						title="Nothing in progress yet."
-						description="Start a movie or episode and it will appear here."
-					/>
-				</div>
-			{/if}
-		</Row>
+			</Row>
+		{/if}
 		<Row title="Recently Added Movies">
 			{#if recentMovies.length > 0}
 				{#each recentMovies as m (m.title)}
@@ -338,7 +330,7 @@
 <style>
 	.next-step-list {
 		display: grid;
-		gap: 0;
+		gap: 0.55rem;
 	}
 
 	.next-step-row {
@@ -347,17 +339,14 @@
 		column-gap: 0.9rem;
 		row-gap: 0.25rem;
 		align-items: start;
-		padding: 0.95rem 0;
-		border-top: 1px solid rgb(255 255 255 / 8%);
+		padding: 0.72rem 0;
 		text-decoration: none;
 		transition:
-			border-color 0.2s ease,
 			background 0.2s ease;
 	}
 
 	.next-step-list > :first-child {
-		padding-top: 0;
-		border-top: 0;
+		padding-top: 0.72rem;
 	}
 
 	.next-step-row:hover {

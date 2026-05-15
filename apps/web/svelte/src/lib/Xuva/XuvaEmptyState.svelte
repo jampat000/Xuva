@@ -54,7 +54,6 @@
 
 <style>
 	.empty-state {
-		border-top: 1px solid rgb(255 255 255 / 10%);
 		padding: 1rem 0;
 	}
 
@@ -116,7 +115,6 @@
 	.empty-state__body {
 		margin-top: 1rem;
 		padding-top: 0.9rem;
-		border-top: 1px solid rgb(255 255 255 / 10%);
 	}
 
 	.empty-state__actions {

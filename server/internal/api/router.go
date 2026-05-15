@@ -198,8 +198,87 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/playback/decision", playbackDecisionHandler(deps))
 	mux.HandleFunc("GET /api/playback/route", playbackRouteHandler(deps))
 	handleProtected(mux, deps, "GET /play/{id}", playerHandler(deps))
-	mux.Handle("GET /", webapp.RootHandler())
+	mux.Handle("GET /", webRootHandler(deps))
 	return withObservability(deps, withSecurity(deps, withResolvedSession(deps, mux)))
+}
+
+func webRootHandler(deps Deps) http.Handler {
+	root := webapp.RootHandler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() || !isHistoryRoutePath(r.URL.Path) {
+			root.ServeHTTP(w, r)
+			return
+		}
+
+		normalizedPath := normalizeHistoryPath(r.URL.Path)
+		if normalizedPath == "" {
+			normalizedPath = "/"
+		}
+		resolved, hasSession := auth.ResolvedSessionFromContext(r.Context())
+		isSignedIn := hasSession && strings.TrimSpace(resolved.Principal.ID) != ""
+		role := strings.ToLower(strings.TrimSpace(resolved.Principal.Role))
+		isAdmin := role == "admin"
+
+		if !isSignedIn {
+			if normalizedPath == "/signin" {
+				root.ServeHTTP(w, r)
+				return
+			}
+			if normalizedPath == "/setup-wizard" {
+				needsBootstrap, err := deps.Auth.RequiresBootstrap(r.Context())
+				if err == nil && needsBootstrap {
+					root.ServeHTTP(w, r)
+					return
+				}
+			}
+			http.Redirect(w, r, "/signin", http.StatusTemporaryRedirect)
+			return
+		}
+
+		if normalizedPath == "/signin" || normalizedPath == "/setup-wizard" {
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}
+		if normalizedPath == "/settings" || strings.HasPrefix(normalizedPath, "/settings/") {
+			if !isAdmin {
+				http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+				return
+			}
+		}
+
+		root.ServeHTTP(w, r)
+	})
+}
+
+func isHistoryRoutePath(requestPath string) bool {
+	if requestPath == "" || requestPath == "/" {
+		return true
+	}
+	if strings.HasPrefix(requestPath, "/api/") ||
+		strings.HasPrefix(requestPath, "/_app/") ||
+		strings.HasPrefix(requestPath, "/legacy/") ||
+		strings.HasPrefix(requestPath, "/next/") ||
+		requestPath == "/admin" ||
+		strings.HasPrefix(requestPath, "/admin/") {
+		return false
+	}
+	lastSegment := requestPath
+	if slash := strings.LastIndex(lastSegment, "/"); slash >= 0 {
+		lastSegment = lastSegment[slash+1:]
+	}
+	return !strings.Contains(lastSegment, ".")
+}
+
+func normalizeHistoryPath(requestPath string) string {
+	trimmed := strings.TrimSpace(requestPath)
+	if trimmed == "" {
+		return "/"
+	}
+	if trimmed == "/" {
+		return "/"
+	}
+	normalized := "/" + strings.Trim(trimmed, "/")
+	return normalized
 }
 
 type statusRecorder struct {

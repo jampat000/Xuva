@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Info, Play } from 'lucide-svelte';
+	import ArtworkFallback from '$lib/components/media/ArtworkFallback.svelte';
 
 	let {
 		heroPoster = '',
@@ -26,7 +27,7 @@
 	const clampedProgress = $derived(Math.max(0, Math.min(100, Number(progress) || 0)));
 </script>
 
-<section class="relative mx-4 mt-4 h-[540px] min-h-[520px] overflow-hidden border-y border-white/10 sm:mx-6 lg:mx-8 lg:h-[560px]">
+<section class="relative mx-4 mt-4 h-[540px] min-h-[520px] overflow-hidden sm:mx-6 lg:mx-8 lg:h-[560px]">
 	{#if heroBackdrop}
 		<img
 			src={heroBackdrop}
@@ -81,8 +82,8 @@
 			</div>
 		{:else}
 			<div class="hidden md:block">
-				<div class="grid h-[400px] w-[276px] place-items-center rounded-xl border border-white/10 bg-[#111827]/70 shadow-2xl shadow-black/60 xl:h-[440px] xl:w-[304px]">
-					<div class="h-20 w-20 rounded-full bg-[#7C5CFF]/25"></div>
+				<div class="h-[400px] w-[276px] overflow-hidden rounded-xl border border-white/10 bg-[#111827]/70 shadow-2xl shadow-black/60 xl:h-[440px] xl:w-[304px]">
+					<ArtworkFallback variant="poster" title={title} meta={meta} showCopy={false} />
 				</div>
 			</div>
 		{/if}

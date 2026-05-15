@@ -94,6 +94,7 @@
 		label="Settings navigation"
 		testId="settings-menu-drawer"
 		drawerWidth="252px"
+		showCloseButton={false}
 		showBackdrop={!drawerPersistent}
 		dismissOnInteractOutside={!drawerPersistent}
 		closeOnNavigate={!drawerPersistent}
@@ -210,7 +211,6 @@
 		background:
 			linear-gradient(180deg, rgb(249 251 255 / 96%), rgb(242 246 252 / 84%) 72%, transparent),
 			transparent;
-		border-bottom: 1px solid rgb(15 23 42 / 12%);
 	}
 
 	.server-shell__topbar-row {
@@ -287,10 +287,6 @@
 		--xuva-brand-wordmark-shadow: none;
 	}
 
-	:global([data-shell='server'] .app-drawer__brand) {
-		margin-top: 6px;
-	}
-
 	:global([data-shell='server'] .v-sidebar) {
 		height: 100%;
 		padding: 0;
@@ -342,6 +338,26 @@
 		.server-shell__surface {
 			width: 100%;
 			margin-left: 0;
+		}
+
+		:global([data-shell='server'] .v-sidebar) {
+			display: flex;
+			flex-direction: column;
+			padding: 0;
+			gap: 11px;
+		}
+
+		:global([data-shell='server'] .v-sidebar__brand) {
+			margin: 6px 8px 10px;
+			padding: 0;
+			justify-content: center;
+		}
+
+		:global([data-shell='server'] .v-sidebar__nav) {
+			display: grid;
+			gap: 5px;
+			overflow: visible;
+			padding-bottom: 0;
 		}
 	}
 </style>
