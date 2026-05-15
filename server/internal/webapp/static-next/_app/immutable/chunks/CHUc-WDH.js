@@ -1,0 +1,1 @@
+var e=`Xuva`;function t(e){return String(e??``).trim()||`Xuva`}function n(n){let r=t(n);return r===`Xuva`?e:`${r} · Xuva`}export{n,t};
