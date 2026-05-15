@@ -1,11 +1,11 @@
 {
-  "buildID": "20260514040310-8bc81ffb0f590f06",
-  "publishedAt": "2026-05-14T04:03:10.662Z",
+  "buildID": "20260515050108-5aa97754c32a9ec5",
+  "publishedAt": "2026-05-15T05:01:08.833Z",
   "basePath": "/",
   "sourceApp": "apps/web/svelte",
   "staticOutput": "server/internal/webapp/static-next",
-  "gitCommit": "7fb33dcb",
-  "indexHash": "8bc81ffb0f590f06",
+  "gitCommit": "f5e3c5e",
+  "indexHash": "5aa97754c32a9ec5",
   "routePatterns": [
     "/",
     "/collections",
@@ -15,6 +15,7 @@
     "/recently-added",
     "/settings",
     "/setup",
+    "/setup-wizard",
     "/signin",
     "/tv",
     "/tv/[id]",

@@ -3,7 +3,7 @@
 	import { XuvaButton, XuvaPanel } from '$lib/components';
 	import {
 		bootstrapAccount,
-		getAuthSession,
+		getAuthSessionIfAvailable,
 		getClientBootstrap,
 		login
 	} from '$lib/api/auth';
@@ -50,15 +50,16 @@
 		errorMessage = '';
 		statusMessage = '';
 
-		try {
+	try {
 			const bootstrap = await getClientBootstrap();
 			const auth = bootstrap.auth || {};
-			mode = auth.bootstrapAllowed ? 'bootstrap' : 'signin';
+			const wantsSetup = new URL(window.location.href).searchParams.get('setup') === '1';
+			mode = wantsSetup && auth.bootstrapAllowed ? 'bootstrap' : 'signin';
 			bootstrapStep = 'language';
 			username = asText(auth.defaultUsername) || username;
 			serverName = asText((bootstrap as { server?: { name?: unknown } })?.server?.name) || 'Xuva';
 
-			const session = await getAuthSession().catch((error: unknown) => {
+			const session = await getAuthSessionIfAvailable().catch((error: unknown) => {
 				if (isApiStatus(error, 401)) return null;
 				throw error;
 			});

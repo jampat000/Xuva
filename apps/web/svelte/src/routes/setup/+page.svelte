@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { XuvaButton, XuvaPanel } from '$lib/components';
 
-	const setupWizardPath = '/signin';
+	const setupWizardPath = '/settings#libraries';
 
 	onMount(() => {
 		window.location.replace(setupWizardPath);
@@ -11,9 +11,9 @@
 
 <div class="setup-redirect">
 	<div class="setup-redirect__card">
-		<XuvaPanel title="Opening Setup Wizard" subtitle="Redirecting to the Xuva setup flow.">
+		<XuvaPanel title="Opening Libraries" subtitle="Redirecting to the Libraries settings section.">
 			<div class="setup-redirect__actions">
-				<XuvaButton variant="primary" href={setupWizardPath}>Open setup wizard</XuvaButton>
+				<XuvaButton variant="primary" href={setupWizardPath}>Open Libraries</XuvaButton>
 				<XuvaButton variant="ghost" href="/">Back to Home</XuvaButton>
 			</div>
 		</XuvaPanel>

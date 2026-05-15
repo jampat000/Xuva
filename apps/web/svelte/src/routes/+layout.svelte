@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { getSettings } from '$lib/api/operator';
+	import { getClientBootstrap } from '$lib/api/auth';
 	import { xuvaTitle, normalizeServerName } from '$lib/server-name';
 	import '../app.css';
 	import '$lib/styles/tokens.css';
@@ -32,8 +32,9 @@
 
 	async function loadServerName(): Promise<void> {
 		try {
-			const payload = await getSettings();
-			serverName = normalizeServerName(payload.config?.serverName);
+			const payload = await getClientBootstrap();
+			const server = (payload as { server?: { name?: string } }).server;
+			serverName = normalizeServerName(server?.name);
 		} catch {
 			serverName = 'Xuva';
 		} finally {
@@ -44,7 +45,11 @@
 
 <svelte:head>
 	<title>Xuva</title>
-	<link rel="icon" href="/favicon.svg" />
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+	<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<meta name="theme-color" content="#7C3AED" />
 	<meta
 		name="description" content="Xuva private cinema and personal media server."
 	/>

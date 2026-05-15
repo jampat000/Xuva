@@ -1,4 +1,8 @@
-import { getAuthSession, type AuthSessionResponse, type AuthSessionUser } from '$lib/api/auth';
+import {
+	getAuthSessionIfAvailable,
+	type AuthSessionResponse,
+	type AuthSessionUser
+} from '$lib/api/auth';
 import { ApiClientError, apiClient } from '$lib/api/client';
 import {
 	getClientHome,
@@ -44,7 +48,7 @@ export async function loadSecondaryRouteContext({
 	forceEmpty?: boolean;
 	limit?: number;
 }): Promise<SecondaryRouteContext> {
-	const sessionPayload = await getAuthSession(apiClient).catch((error: unknown) => {
+	const sessionPayload = await getAuthSessionIfAvailable(apiClient).catch((error: unknown) => {
 		if (isApiStatus(error, 401)) return null;
 		throw error;
 	});

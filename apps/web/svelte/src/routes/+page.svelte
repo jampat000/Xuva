@@ -3,7 +3,6 @@
 	import { getMovies, getSeries, type MovieListItem, type SeriesListItem } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
 	import {
-		getClientHome,
 		getLibraries,
 		getPlaybackRecent,
 		type ClientHomeItem,
@@ -67,7 +66,7 @@
 		librariesPayload: LibrariesResponse;
 	}> {
 		const [homeResult, playbackRecentResult, librariesResult] = await Promise.allSettled([
-			getClientHome(apiClient, 24),
+			Promise.reject(new Error('public home avoids protected client home route')),
 			getPlaybackRecent(apiClient, 12),
 			getLibraries(apiClient)
 		]);
@@ -246,7 +245,7 @@
 				description="Add your media folders, scan your library, and Xuva will fill this home screen with what you're watching and what's new."
 			>
 				<nav class="next-step-list" aria-label="Library setup steps">
-					<a class="next-step-row" href="/setup">
+					<a class="next-step-row" href="/settings#libraries">
 						<em class="next-step-row__step">01</em>
 						<div>
 							<strong>Add a library</strong>
@@ -276,7 +275,7 @@
 					</a>
 				</nav>
 				{#snippet primaryAction()}
-					<XuvaButton variant="primary" href="/setup">Add a library</XuvaButton>
+					<XuvaButton variant="primary" href="/settings#libraries">Add a library</XuvaButton>
 				{/snippet}
 				{#snippet secondaryAction()}
 					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>

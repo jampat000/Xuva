@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { Menu } from 'lucide-svelte';
 	import { logout } from '$lib/api/auth';
 	import AppDrawer from './AppDrawer.svelte';
-	import XuvaShell from './XuvaShell.svelte';
 	import ProfileMenu from './ProfileMenu.svelte';
 	import ServerSidebar from './ServerSidebar.svelte';
 	import SettingsBrand from './SettingsBrand.svelte';
-	import SettingsNav from './SettingsNav.svelte';
+	import {
+		isDesktopSidebarViewport,
+		readSidebarPinnedPreference,
+		writeSidebarPinnedPreference
+	} from '$lib/navigation/sidebar-preferences';
 
 	let {
 		active = 'dashboard',
@@ -45,10 +47,58 @@
 		children?: Snippet;
 	}>();
 
-	let settingsMenuOpen = $state(false);
+	let menuOpen = $state(false);
+	let sidebarPinned = $state(false);
+	let desktopViewport = $state(false);
+	const sidebarPreferenceKey = 'xuva.sidebar.settings.pinned.v1';
+	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
+	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
 
-	function closeSettingsMenu(): void {
-		settingsMenuOpen = false;
+	onMount(() => {
+		syncViewportState();
+		sidebarPinned = readSidebarPinnedPreference(sidebarPreferenceKey);
+		const handleResize = () => syncViewportState();
+		const handleKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') closeMenu();
+		};
+		window.addEventListener('resize', handleResize);
+		window.addEventListener('keydown', handleKeydown);
+		return () => {
+			window.removeEventListener('resize', handleResize);
+			window.removeEventListener('keydown', handleKeydown);
+		};
+	});
+
+	function syncViewportState(): void {
+		desktopViewport = isDesktopSidebarViewport();
+		if (!desktopViewport) menuOpen = false;
+	}
+
+	function closeMenu(): void {
+		if (desktopViewport && sidebarPinned) {
+			sidebarPinned = false;
+			writeSidebarPinnedPreference(sidebarPreferenceKey, false);
+		}
+		menuOpen = false;
+		document.querySelector<HTMLElement>('[data-testid="settings-menu-button"]')?.focus();
+	}
+
+	function toggleMenu(): void {
+		if (desktopViewport && sidebarPinned) {
+			sidebarPinned = false;
+			writeSidebarPinnedPreference(sidebarPreferenceKey, false);
+			menuOpen = false;
+			return;
+		}
+		menuOpen = !menuOpen;
+		if (!menuOpen) document.querySelector<HTMLElement>('[data-testid="settings-menu-button"]')?.focus();
+	}
+
+	function togglePinned(): void {
+		if (!desktopViewport) return;
+		sidebarPinned = !sidebarPinned;
+		writeSidebarPinnedPreference(sidebarPreferenceKey, sidebarPinned);
+		if (!sidebarPinned) menuOpen = false;
 	}
 
 	async function signOut(): Promise<void> {
@@ -58,72 +108,100 @@
 			if (typeof window !== 'undefined') window.location.href = '/signin';
 		}
 	}
-
-	onMount(() => {
-		const handleKeydown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape') {
-				closeSettingsMenu();
-			}
-		};
-		window.addEventListener('keydown', handleKeydown);
-		return () => window.removeEventListener('keydown', handleKeydown);
-	});
 </script>
 
-<div class="server-shell" data-shell="server">
+<div class="server-shell" class:server-shell--drawer-open={drawerPersistent} data-shell="server">
 	<AppDrawer
-		open={settingsMenuOpen}
+		open={drawerOpen}
 		label="Settings navigation"
 		testId="settings-menu-drawer"
 		drawerWidth="252px"
-		onClose={closeSettingsMenu}
+		showBackdrop={!drawerPersistent}
+		dismissOnInteractOutside={!drawerPersistent}
+		closeOnNavigate={!drawerPersistent}
+		onClose={closeMenu}
 	>
 		{#snippet brand()}
 			<SettingsBrand />
 		{/snippet}
 		{#snippet main()}
-			<SettingsNav {active} {showStorage} {serverGroupLabel} />
+			<ServerSidebar {active} {showStorage} {serverGroupLabel} showBrand={false} />
 		{/snippet}
 		{#snippet bottom()}
-			<SettingsNav section="secondary" />
+			<a href="/" class="app-drawer__link app-drawer__link--back">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path
+						d="M14.5 5 8 12l6.5 7"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.7"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+				Back to Media
+			</a>
+			{#if desktopViewport}
+				<button
+					type="button"
+					class="app-drawer__link"
+					aria-pressed={sidebarPinned}
+					aria-label={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+					onclick={togglePinned}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path
+							d="M8 4.8h8l-1.4 4.1 2.7 2.8v1.1H12.8v5.8l-1.6.8v-6.6H6.7v-1.1l2.7-2.8Z"
+							fill="none"
+							stroke="currentColor"
+							stroke-linejoin="round"
+							stroke-width="1.55"
+						/>
+					</svg>
+					{sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+				</button>
+			{/if}
 		{/snippet}
 	</AppDrawer>
 
 	<div class="server-shell__surface" data-testid="settings-shell-surface">
-		<XuvaShell density="default">
-			{#snippet sidebar()}
-				<div class="server-shell__sidebar-panel" data-testid="settings-mode-sidebar">
-					<ServerSidebar {active} {showStorage} {serverGroupLabel} />
-				</div>
-			{/snippet}
-
-			{#snippet topbar()}
-				<div class="server-shell__topbar-row">
+		<header class="server-shell__topbar">
+			<div class="server-shell__topbar-row">
+				<div class="server-shell__nav-controls">
 					<button
 						type="button"
-						class="server-shell__menu-button"
 						data-testid="settings-menu-button"
 						data-xuva-menu-trigger
-						aria-label="Open menu"
-						aria-expanded={settingsMenuOpen}
-						onclick={() => (settingsMenuOpen = !settingsMenuOpen)}
+						class="server-shell__utility-button"
+						aria-label="Open settings navigation"
+						aria-expanded={drawerOpen}
+						onclick={toggleMenu}
 					>
-						<Menu size={19} />
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path
+								d="M5 7h14M5 12h14M5 17h14"
+								fill="none"
+								stroke="currentColor"
+								stroke-linecap="round"
+								stroke-width="1.8"
+							/>
+						</svg>
 					</button>
-					<div class="server-shell__topbar-spacer" aria-hidden="true"></div>
-					<ProfileMenu
-						initials={userInitials}
-						name={userDisplayName || 'User'}
-						role={userRole || 'User'}
-						canSignOut={canSignOut}
-						changePasswordHref="/settings#admin-access"
-						onSignOut={signOut}
-					/>
 				</div>
-			{/snippet}
+				<ProfileMenu
+					initials={userInitials}
+					name={userDisplayName || 'User'}
+					role={userRole || 'User'}
+					canSignOut={canSignOut}
+					changePasswordHref="/settings#admin-access"
+					onSignOut={signOut}
+				/>
+			</div>
+		</header>
 
+		<main class="server-shell__main">
 			{@render children?.()}
-		</XuvaShell>
+		</main>
 	</div>
 </div>
 
@@ -161,107 +239,111 @@
 	.server-shell__surface {
 		min-height: 100dvh;
 		width: 100%;
+		transition:
+			margin-left 260ms var(--xuva-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+			width 260ms var(--xuva-drawer-ease, cubic-bezier(0.22, 1, 0.36, 1));
 	}
 
-	.server-shell__topbar-row {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 10px;
-		width: 100%;
-	}
-
-	.server-shell__topbar-spacer {
-		min-width: 0;
-	}
-
-	.server-shell__menu-button {
-		display: inline-flex;
-		width: 40px;
-		height: 40px;
-		border-radius: 8px;
-		border: 1px solid rgb(15 23 42 / 14%);
-		background: rgb(255 255 255 / 72%);
-		color: color-mix(in srgb, var(--xuva-color-text) 84%, transparent);
-		align-items: center;
-		justify-content: center;
-	}
-
-	:global([data-shell='server'] .v-shell) {
-		display: block;
-		min-height: 100dvh;
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 44%), transparent 24%),
-			linear-gradient(180deg, #f0f4f9 0%, #e7edf5 100%);
-	}
-
-	:global([data-shell='server'] .v-shell__sidebar) {
-		position: fixed;
-		inset: 0 auto 0 0;
-		z-index: 42;
-		width: 252px;
-		height: 100dvh;
-		border-right-color: rgb(154 167 255 / 12%);
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 60%), rgb(255 255 255 / 20%) 34%, transparent),
-			radial-gradient(circle at 20% -12%, rgb(255 255 255 / 40%) 0%, transparent 46%),
-			radial-gradient(circle at 88% 112%, rgb(206 216 233 / 26%) 0%, transparent 44%),
-			var(--xuva-color-bg-sidebar);
-		box-shadow:
-			inset -1px 0 0 rgb(255 255 255 / 62%),
-			12px 0 34px rgb(15 23 42 / 10%);
-	}
-
-	.server-shell__sidebar-panel {
-		height: 100%;
-	}
-
-	:global([data-shell='server'] .v-shell__topbar) {
+	.server-shell__topbar {
 		position: sticky;
 		top: 0;
 		z-index: 30;
+		padding: 18px 28px 10px;
 		background:
 			linear-gradient(180deg, rgb(249 251 255 / 96%), rgb(242 246 252 / 84%) 72%, transparent),
 			transparent;
 		border-bottom: 1px solid rgb(15 23 42 / 12%);
 	}
 
-	:global([data-shell='server'] .v-shell__main) {
-		width: calc(100% - 252px);
-		min-height: 100dvh;
-		margin-left: 252px;
+	.server-shell__topbar-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+	}
+
+	.server-shell__nav-controls {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.server-shell__utility-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		border: 1px solid rgb(15 23 42 / 12%);
+		background: rgb(255 255 255 / 72%);
+		color: color-mix(in srgb, var(--xuva-color-text) 82%, transparent);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%);
+		transition:
+			border-color 180ms ease,
+			background-color 180ms ease,
+			color 180ms ease,
+			box-shadow 180ms ease;
+	}
+
+	.server-shell__utility-button:hover,
+	.server-shell__utility-button:focus-visible {
+		border-color: rgb(99 102 241 / 28%);
+		background: rgb(255 255 255 / 94%);
+		color: var(--xuva-color-text);
+		outline: none;
+	}
+
+	.server-shell__utility-button svg {
+		width: 18px;
+		height: 18px;
+	}
+
+	.server-shell__main {
+		min-height: calc(100dvh - 69px);
 		padding: 20px 32px 28px;
 	}
 
-	:global([data-shell='server'] .v-shell__main h1),
-	:global([data-shell='server'] .v-shell__main h2),
-	:global([data-shell='server'] .v-shell__main h3),
-	:global([data-shell='server'] .v-shell__main h4) {
-		color: var(--xuva-color-text) !important;
+	.server-shell--drawer-open .server-shell__surface {
+		width: calc(100% - var(--xuva-drawer-width, 252px));
+		margin-left: var(--xuva-drawer-width, 252px);
+	}
+
+	:global([data-shell='server'] .app-drawer) {
+		background:
+			linear-gradient(180deg, rgb(255 255 255 / 72%), rgb(255 255 255 / 26%) 34%, transparent),
+			radial-gradient(circle at 20% -12%, rgb(255 255 255 / 42%) 0%, transparent 44%),
+			radial-gradient(circle at 84% 112%, rgb(210 219 235 / 28%) 0%, transparent 44%),
+			var(--xuva-color-bg-sidebar);
+	}
+
+	:global([data-shell='server'] .app-drawer__brand .v-brand) {
+		--xuva-brand-wordmark-color: #0f172a;
+		--xuva-brand-wordmark-shadow: none;
+	}
+
+	:global([data-shell='server'] .app-drawer__brand) {
+		margin-top: 6px;
 	}
 
 	:global([data-shell='server'] .v-sidebar) {
-		padding: 16px 10px 16px;
+		height: 100%;
+		padding: 0;
 		overflow-y: auto;
 	}
 
 	:global([data-shell='server'] .v-sidebar__brand) {
 		justify-content: center;
-		margin: 1px 8px 9px;
-		min-height: 34px;
+		margin: 6px 8px 10px;
+		min-height: 28px;
 	}
 
 	:global([data-shell='server'] .v-sidebar__brand .v-brand) {
-		min-height: 34px;
+		min-height: 28px;
 		justify-content: center;
-	}
-
-	:global([data-shell='server'] .v-brand) {
 		--xuva-brand-wordmark-color: #0f172a;
 		--xuva-brand-wordmark-shadow: none;
-		--xuva-brand-mark-primary: #6a5ce8;
-		--xuva-brand-mark-secondary: #0f172a;
-		--xuva-brand-mark-shadow: drop-shadow(0 6px 10px rgb(15 23 42 / 14%));
 	}
 
 	:global([data-shell='server'] .sidebar-item) {
@@ -284,42 +366,18 @@
 		color: var(--xuva-settings-accent);
 	}
 
-	:global([data-shell='server'] .app-drawer) {
-		background:
-			linear-gradient(180deg, rgb(255 255 255 / 72%), rgb(255 255 255 / 26%) 34%, transparent),
-			radial-gradient(circle at 20% -12%, rgb(255 255 255 / 42%) 0%, transparent 44%),
-			radial-gradient(circle at 84% 112%, rgb(210 219 235 / 28%) 0%, transparent 44%),
-			var(--xuva-color-bg-sidebar);
-	}
-
-	@media (max-width: 980px) {
-		:global([data-shell='server'] .v-shell) {
-			display: grid;
-			grid-template-columns: 1fr;
+	@media (max-width: 979px) {
+		.server-shell__topbar {
+			padding: 14px 14px 8px;
 		}
 
-		:global([data-shell='server'] .v-shell__sidebar) {
-			display: none;
-		}
-
-		:global([data-shell='server'] .v-shell__main) {
-			width: 100%;
-			margin-left: 0;
+		.server-shell__main {
 			padding: 14px 14px 20px;
 		}
-	}
 
-	@media (min-width: 981px) {
-		.server-shell__topbar-row {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-
-		.server-shell__menu-button {
-			display: none;
-		}
-
-		:global([data-shell='server'] .app-drawer) {
-			display: none;
+		.server-shell__surface {
+			width: 100%;
+			margin-left: 0;
 		}
 	}
 </style>

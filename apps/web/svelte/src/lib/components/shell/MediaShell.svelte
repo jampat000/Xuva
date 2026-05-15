@@ -1,10 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { Film, Folder, Home, Settings, Tv } from 'lucide-svelte';
+	import { Film, Home, Settings, Tv } from 'lucide-svelte';
 	import AppDrawer from './AppDrawer.svelte';
 	import XuvaBrand from './XuvaBrand.svelte';
 	import TopBar from '\$lib/Xuva/TopBar.svelte';
+	import { getLibraries, type LibraryRecord } from '$lib/api/home';
+	import { buildMediaNavItems, type MediaNavItem } from '$lib/navigation/media-nav';
+	import {
+		isDesktopSidebarViewport,
+		readSidebarPinnedPreference,
+		writeSidebarPinnedPreference
+	} from '$lib/navigation/sidebar-preferences';
 
 	type ActiveRoute =
 		| 'home'
@@ -13,23 +20,15 @@
 		| 'collections'
 		| 'watchlist'
 		| 'continue-watching'
-		| 'recently-added'
-		| 'setup';
+		| 'recently-added';
 
-	interface NavItem {
-		id: ActiveRoute | 'settings';
+	interface DrawerBottomItem {
+		id: 'settings';
 		label: string;
 		href: string;
 	}
 
-	const mediaNavItems: NavItem[] = [
-		{ id: 'home', label: 'Home', href: '/' },
-		{ id: 'movies', label: 'Movies', href: '/movies' },
-		{ id: 'tv', label: 'TV', href: '/tv' },
-		{ id: 'setup', label: 'Libraries', href: '/settings#libraries' }
-	];
-
-	const drawerBottomItems: NavItem[] = [{ id: 'settings', label: 'Settings', href: '/settings' }];
+	const drawerBottomItems: DrawerBottomItem[] = [{ id: 'settings', label: 'Settings', href: '/settings' }];
 
 	let {
 		active = 'home',
@@ -46,28 +45,82 @@
 	}>();
 
 	let menuOpen = $state(false);
+	let libraries = $state<LibraryRecord[]>([]);
+	let mediaNavItems = $state<MediaNavItem[]>(buildMediaNavItems());
+	let sidebarPinned = $state(false);
+	let desktopViewport = $state(false);
+	const sidebarPreferenceKey = 'xuva.sidebar.media.pinned.v1';
+	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
+	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
 
 	function closeMenu(): void {
+		if (desktopViewport && sidebarPinned) {
+			sidebarPinned = false;
+			writeSidebarPinnedPreference(sidebarPreferenceKey, false);
+		}
 		menuOpen = false;
 	}
 
 	onMount(() => {
+		syncViewportState();
+		sidebarPinned = readSidebarPinnedPreference(sidebarPreferenceKey);
+		const handleResize = () => syncViewportState();
+		void loadLibraries();
 		const handleKeydown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') {
 				closeMenu();
 			}
 		};
+		window.addEventListener('resize', handleResize);
 		window.addEventListener('keydown', handleKeydown);
-		return () => window.removeEventListener('keydown', handleKeydown);
+		return () => {
+			window.removeEventListener('resize', handleResize);
+			window.removeEventListener('keydown', handleKeydown);
+		};
 	});
+
+	function syncViewportState(): void {
+		desktopViewport = isDesktopSidebarViewport();
+		if (!desktopViewport) menuOpen = false;
+	}
+
+	async function loadLibraries(): Promise<void> {
+		try {
+			const payload = await getLibraries();
+			libraries = payload.libraries || [];
+			mediaNavItems = buildMediaNavItems(libraries);
+		} catch {
+			mediaNavItems = buildMediaNavItems();
+		}
+	}
+
+	function toggleMenu(): void {
+		if (desktopViewport && sidebarPinned) {
+			sidebarPinned = false;
+			writeSidebarPinnedPreference(sidebarPreferenceKey, false);
+			menuOpen = false;
+			return;
+		}
+		menuOpen = !menuOpen;
+	}
+
+	function togglePinned(): void {
+		if (!desktopViewport) return;
+		sidebarPinned = !sidebarPinned;
+		writeSidebarPinnedPreference(sidebarPreferenceKey, sidebarPinned);
+		if (!sidebarPinned) menuOpen = false;
+	}
 </script>
 
-<div class="media-shell" class:media-shell--drawer-open={menuOpen} data-shell="media">
+<div class="media-shell" class:media-shell--drawer-open={drawerPersistent} data-shell="media">
 	<AppDrawer
-		open={menuOpen}
+		open={drawerOpen}
 		label="Main navigation"
 		testId="media-menu-drawer"
 		drawerWidth="252px"
+		showBackdrop={!drawerPersistent}
+		dismissOnInteractOutside={!drawerPersistent}
+		closeOnNavigate={!drawerPersistent}
 		onClose={closeMenu}
 	>
 		{#snippet brand()}
@@ -80,10 +133,8 @@
 						<Home size={19} />
 					{:else if item.id === 'movies'}
 						<Film size={19} />
-					{:else if item.id === 'tv'}
-						<Tv size={19} />
 					{:else}
-						<Folder size={19} />
+						<Tv size={19} />
 					{/if}
 					{item.label}
 				</a>
@@ -96,17 +147,35 @@
 					{item.label}
 				</a>
 			{/each}
+			{#if desktopViewport}
+				<button
+					type="button"
+					class="app-drawer__link"
+					aria-pressed={sidebarPinned}
+					aria-label={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+					onclick={togglePinned}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path
+							d="M8 4.8h8l-1.4 4.1 2.7 2.8v1.1H12.8v5.8l-1.6.8v-6.6H6.7v-1.1l2.7-2.8Z"
+							fill="none"
+							stroke="currentColor"
+							stroke-linejoin="round"
+							stroke-width="1.55"
+						/>
+					</svg>
+					{sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+				</button>
+			{/if}
 		{/snippet}
 	</AppDrawer>
 
 	<div class="media-shell__surface" data-testid="media-shell-surface">
 		<TopBar
-			{menuOpen}
-			onMenuToggle={() => (menuOpen = !menuOpen)}
+			menuOpen={drawerOpen}
+			onMenuToggle={toggleMenu}
 			onMenuClose={closeMenu}
-			showSettingsShortcut={false}
 			bind:searchValue
-			avatarInitialsOverride={userInitials}
 		/>
 
 		<div class="media-shell__content" class:media-shell__content--with-companion={Boolean(companion)}>

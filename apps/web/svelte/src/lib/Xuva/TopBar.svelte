@@ -3,7 +3,7 @@
 	import { Menu, Search, Settings } from 'lucide-svelte';
 	import Logo from '\$lib/Xuva/Logo.svelte';
 	import ProfileMenu from '$lib/components/shell/ProfileMenu.svelte';
-	import { getAuthSession, logout } from '$lib/api/auth';
+	import { getAuthSessionIfAvailable, logout } from '$lib/api/auth';
 	import { ApiClientError } from '$lib/api/client';
 
 	let {
@@ -33,7 +33,11 @@
 
 	onMount(() => {
 		if (avatarInitialsOverride || avatarNameOverride) return;
-		void loadProfile();
+		// Keep public routes quiet: do not probe protected session endpoints from the top bar.
+		avatarName = 'Signed out';
+		avatarInitials = 'SO';
+		avatarRole = 'Sign in required';
+		canSignOut = false;
 	});
 
 	$effect(() => {
@@ -43,7 +47,7 @@
 
 	async function loadProfile(): Promise<void> {
 		try {
-			const session = await getAuthSession().catch((error: unknown) => {
+			const session = await getAuthSessionIfAvailable().catch((error: unknown) => {
 				if (isApiStatus(error, 401)) return null;
 				throw error;
 			});
@@ -152,7 +156,7 @@
 		{#if showSettingsShortcut}
 			<a
 				href="/settings"
-				class="hidden h-10 w-10 items-center justify-center rounded-lg border border-white/8 bg-[#111827]/72 text-white/72 transition hover:border-white/20 hover:bg-white/8 hover:text-white sm:inline-flex"
+				class="topbar-utility-button hidden sm:inline-flex"
 				aria-label="Open Settings"
 			>
 				<Settings size={18} />
@@ -172,7 +176,7 @@
 <style>
 	.topbar-brand-rail {
 		display: grid;
-		grid-template-columns: 40px minmax(118px, auto) 40px;
+		grid-template-columns: 40px minmax(116px, auto) 40px;
 		align-items: center;
 		column-gap: 8px;
 		margin-left: 14px;
@@ -181,7 +185,7 @@
 	.topbar-brand {
 		display: inline-flex;
 		align-items: center;
-		width: 118px;
+		width: 116px;
 		min-width: 0;
 		overflow: hidden;
 		text-decoration: none;
@@ -197,7 +201,7 @@
 	}
 
 	.topbar-brand :global(.v-brand) {
-		min-height: 34px;
+		min-height: 28px;
 		justify-content: flex-start;
 	}
 
@@ -212,4 +216,30 @@
 		width: 40px;
 		height: 40px;
 	}
+
+	.topbar-utility-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		border: 1px solid rgb(255 255 255 / 8%);
+		background: rgb(17 24 39 / 72%);
+		color: rgb(255 255 255 / 72%);
+		transition:
+			border-color 180ms ease,
+			background-color 180ms ease,
+			color 180ms ease,
+			box-shadow 180ms ease;
+	}
+
+	.topbar-utility-button:hover,
+	.topbar-utility-button:focus-visible {
+		border-color: rgb(255 255 255 / 20%);
+		background: rgb(255 255 255 / 8%);
+		color: white;
+		outline: none;
+	}
+
 </style>

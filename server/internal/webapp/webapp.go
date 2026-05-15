@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 )
@@ -44,6 +45,8 @@ func RootHandler() http.Handler {
 		info, err := fs.Stat(staticFS, relativePath)
 		if err == nil && !info.IsDir() {
 			if relativePath == "build-info.json" || strings.HasSuffix(relativePath, ".html") {
+				setNoStoreHeaders(w)
+			} else if shouldDisableAssetCaching() {
 				setNoStoreHeaders(w)
 			} else {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -98,4 +101,9 @@ func setNoStoreHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+}
+
+func shouldDisableAssetCaching() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv("XUVA_WEB_DISABLE_ASSET_CACHE")))
+	return value == "1" || value == "true" || value == "yes"
 }
