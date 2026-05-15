@@ -49,10 +49,11 @@
 	let mediaNavItems = $state<MediaNavItem[]>(buildMediaNavItems());
 	let sidebarPinned = $state(false);
 	let desktopViewport = $state(false);
+	let shiftViewport = $state(false);
 	const sidebarPreferenceKey = 'xuva.sidebar.media.pinned.v1';
 	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
 	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
-	const drawerShifted = $derived.by(() => desktopViewport && drawerOpen);
+	const drawerShifted = $derived.by(() => shiftViewport && drawerOpen);
 
 	function closeMenu(): void {
 		if (desktopViewport && sidebarPinned) {
@@ -82,6 +83,7 @@
 
 	function syncViewportState(): void {
 		desktopViewport = isDesktopSidebarViewport();
+		shiftViewport = typeof window !== 'undefined' && window.innerWidth >= 768;
 		if (!desktopViewport) menuOpen = false;
 	}
 
