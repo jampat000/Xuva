@@ -18,7 +18,7 @@
 	import {
 		createUser,
 		deleteUser,
-		getAuthSession,
+		getAuthSessionIfAvailable,
 		getClientBootstrap,
 		getUsers,
 		logout,
@@ -428,6 +428,7 @@
 	const requiresOwnerSignIn = $derived.by(() => !authDisabled && !canManageSettings);
 	const ownerAccessMessage = $derived.by(() => 'Sign in as an admin to manage Xuva settings.');
 	const ownerActionLabel = $derived.by(() => (ownerSetupPending ? 'Create Admin Account' : 'Sign In'));
+	const ownerActionHref = $derived.by(() => (ownerSetupPending ? '/setup-wizard' : '/signin'));
 	const ownerActionDetail = $derived.by(() => {
 		const defaultUsername = asText(clientBootstrap.auth?.defaultUsername);
 		if (ownerSetupPending) {
@@ -754,12 +755,13 @@
 	});
 
 	async function loadSettingsSurface(silent = false): Promise<void> {
-		if (!silent) {
-			isLoading = true;
-			loadError = '';
-		}
-		metadataReviewError = '';
-		pairingRequestsError = '';
+	if (!silent) {
+		isLoading = true;
+		loadError = '';
+	}
+	librarySettingsMessage = '';
+	metadataReviewError = '';
+	pairingRequestsError = '';
 		approvedDevicesError = '';
 		usersError = '';
 		libraryLoadError = '';
@@ -772,7 +774,7 @@
 		try {
 			const [bootstrapPayload, sessionPayload, settingsPayload] = await Promise.all([
 				getClientBootstrap(apiClient).catch(() => ({} as ClientBootstrapResponse)),
-				getAuthSession(apiClient).catch((error: unknown) => {
+				getAuthSessionIfAvailable(apiClient).catch((error: unknown) => {
 					if (isApiStatus(error, 401)) return {} as AuthSessionResponse;
 					throw error;
 				}),
@@ -854,12 +856,8 @@
 
 			clientBootstrap = bootstrapPayload || {};
 			authDisabled = Boolean(sessionPayload?.authDisabled);
-			if (Object.prototype.hasOwnProperty.call(sessionPayload || {}, 'user')) {
-				user = sessionPayload?.user || null;
-			}
-			if (Object.prototype.hasOwnProperty.call(sessionPayload?.session || {}, 'expiresAt')) {
-				sessionExpiresAt = asText(sessionPayload?.session?.expiresAt);
-			}
+			user = authDisabled ? null : sessionPayload?.user || null;
+			sessionExpiresAt = authDisabled ? '' : asText(sessionPayload?.session?.expiresAt);
 			libraries = librariesPayload.libraries || [];
 			summary = summaryPayload || {};
 			health = healthPayload || {};
@@ -891,12 +889,8 @@
 			const nextUserRole = nextSessionUser ? accountTypeLabel(nextSessionUser.role) : '';
 			shellIdentity = {
 				serverName: displayServerName(settingsPayload.config?.serverName),
-				userDisplayName: nextSessionUser
-					? nextUserDisplayName
-					: asText(shellIdentity.userDisplayName),
-				userRole: nextSessionUser
-					? nextUserRole
-					: asText(shellIdentity.userRole)
+				userDisplayName: nextSessionUser ? nextUserDisplayName : '',
+				userRole: nextSessionUser ? nextUserRole : ''
 			};
 			writeSettingsShellIdentity(shellIdentity);
 			syncReviewDrafts(reviewPayload.items || []);
@@ -958,12 +952,13 @@
 		}
 	}
 
-	async function startMovieScan(): Promise<void> {
-		isScanningMovies = true;
-		actionMessage = '';
-		try {
-			await scanMovies(apiClient, 50);
-			actionMessage = 'Movie scan started.';
+async function startMovieScan(): Promise<void> {
+	isScanningMovies = true;
+	actionMessage = '';
+	librarySettingsMessage = '';
+	try {
+		await scanMovies(apiClient, 50);
+		actionMessage = 'Movie scan started.';
 			await loadSettingsSurface(true);
 		} catch (error) {
 			actionMessage = formatLoadError(error);
@@ -972,12 +967,13 @@
 		}
 	}
 
-	async function startTVScan(): Promise<void> {
-		isScanningTV = true;
-		actionMessage = '';
-		try {
-			await scanTV(apiClient, 50);
-			actionMessage = 'TV scan started.';
+async function startTVScan(): Promise<void> {
+	isScanningTV = true;
+	actionMessage = '';
+	librarySettingsMessage = '';
+	try {
+		await scanTV(apiClient, 50);
+		actionMessage = 'TV scan started.';
 			await loadSettingsSurface(true);
 		} catch (error) {
 			actionMessage = formatLoadError(error);
@@ -986,11 +982,12 @@
 		}
 	}
 
-	async function refreshMovieMetadata(): Promise<void> {
-		isRefreshingMovies = true;
-		actionMessage = '';
-		try {
-			const result = await refreshMetadataBatch('movie', apiClient, 25);
+async function refreshMovieMetadata(): Promise<void> {
+	isRefreshingMovies = true;
+	actionMessage = '';
+	librarySettingsMessage = '';
+	try {
+		const result = await refreshMetadataBatch('movie', apiClient, 25);
 			actionMessage = metadataRefreshMessage(result.warnings, 'Movie metadata refresh accepted.');
 			await loadSettingsSurface(true);
 		} catch (error) {
@@ -1000,11 +997,12 @@
 		}
 	}
 
-	async function refreshTVMetadata(): Promise<void> {
-		isRefreshingTV = true;
-		actionMessage = '';
-		try {
-			const result = await refreshMetadataBatch('series', apiClient, 25);
+async function refreshTVMetadata(): Promise<void> {
+	isRefreshingTV = true;
+	actionMessage = '';
+	librarySettingsMessage = '';
+	try {
+		const result = await refreshMetadataBatch('series', apiClient, 25);
 			actionMessage = metadataRefreshMessage(result.warnings, 'TV metadata refresh accepted.');
 			await loadSettingsSurface(true);
 		} catch (error) {
@@ -1431,14 +1429,15 @@
 		}
 	}
 
-	async function scanLibraryItem(library: LibraryRecord): Promise<void> {
-		const id = asText(library.id);
-		if (!id || !canManageSettings) return;
-		activeLibraryActionID = id;
-		activeLibraryActionKind = 'scan';
-		actionMessage = '';
-		try {
-			await startLibraryScan(id, apiClient);
+async function scanLibraryItem(library: LibraryRecord): Promise<void> {
+	const id = asText(library.id);
+	if (!id || !canManageSettings) return;
+	activeLibraryActionID = id;
+	activeLibraryActionKind = 'scan';
+	actionMessage = '';
+	librarySettingsMessage = '';
+	try {
+		await startLibraryScan(id, apiClient);
 			actionMessage = `${libraryDisplayName(library)} scan started.`;
 			await loadSettingsSurface(true);
 		} catch (error) {
@@ -1449,16 +1448,17 @@
 		}
 	}
 
-	async function removeLibraryItem(library: LibraryRecord): Promise<void> {
-		const id = asText(library.id);
-		if (!id || !canManageSettings || typeof window === 'undefined') return;
-		const confirmed = window.confirm('Remove this library from Xuva? Media files are not deleted.');
-		if (!confirmed) return;
-		activeLibraryActionID = id;
-		activeLibraryActionKind = 'remove';
-		actionMessage = '';
-		try {
-			await deleteLibrary(id, apiClient);
+async function removeLibraryItem(library: LibraryRecord): Promise<void> {
+	const id = asText(library.id);
+	if (!id || !canManageSettings || typeof window === 'undefined') return;
+	const confirmed = window.confirm('Remove this library from Xuva? Media files are not deleted.');
+	if (!confirmed) return;
+	activeLibraryActionID = id;
+	activeLibraryActionKind = 'remove';
+	actionMessage = '';
+	librarySettingsMessage = '';
+	try {
+		await deleteLibrary(id, apiClient);
 			actionMessage = `${libraryDisplayName(library)} removed.`;
 			await loadSettingsSurface(true);
 		} catch (error) {
@@ -1484,6 +1484,7 @@
 		librarySettingsError = '';
 		librarySettingsMessage = '';
 		try {
+			const addedLibraryMessage = `${newLibraryKindDraft === 'movies' ? 'Movies' : 'TV'} library added.`;
 			await saveLibrary(
 				{
 					kind: newLibraryKindDraft,
@@ -1494,8 +1495,8 @@
 			);
 			newLibraryNameDraft = '';
 			newLibraryPathDraft = '';
-			librarySettingsMessage = `${newLibraryKindDraft === 'movies' ? 'Movies' : 'TV'} library added.`;
 			await loadSettingsSurface(false);
+			librarySettingsMessage = addedLibraryMessage;
 		} catch (error) {
 			librarySettingsError = formatLoadError(error);
 		} finally {
@@ -1566,6 +1567,7 @@
 			passwordDraft = '';
 			confirmPasswordDraft = '';
 			usersActionMessage = 'Password updated.';
+			await loadSettingsSurface(true);
 		} catch (error) {
 			usersError = formatLoadError(error);
 		} finally {
@@ -2454,7 +2456,7 @@
 				<XuvaPanel title="Admin sign-in required" subtitle={ownerAccessMessage}>
 					<p class="settings-note settings-note--inline">{ownerActionDetail}</p>
 					<div class="status-actions">
-						<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+						<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 					</div>
 				</XuvaPanel>
 			{/if}
@@ -2696,7 +2698,7 @@
 							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+								<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
@@ -2716,7 +2718,7 @@
 								{isSavingScanningAutomation ? 'Saving...' : 'Save Scanning Settings'}
 							</XuvaButton>
 						{:else if !authDisabled}
-							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{/if}
 					{/snippet}
 					{#if liveStatusError}
@@ -2857,7 +2859,7 @@
 							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+								<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
@@ -2879,7 +2881,7 @@
 								{isSavingMetadataSources ? 'Saving Metadata Sources...' : 'Save Metadata Sources'}
 							</XuvaButton>
 						{:else if canShowSignIn}
-							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{/if}
 					{/snippet}
 					<div class="settings-subsection">
@@ -2952,7 +2954,7 @@
 								</div>
 								<div class="status-actions">
 									{#if canShowSignIn}
-										<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+										<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 									{/if}
 								</div>
 							</div>
@@ -2981,7 +2983,7 @@
 								<p class="settings-note">Sign in as an admin to update metadata.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+									<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
@@ -2990,7 +2992,7 @@
 						{/if}
 						<div class="metadata-review-list" data-testid="metadata-review-list">
 							{#if isLoadingMetadataReview}
-								<p class="settings-note">Loading metadata review items…</p>
+								<p class="settings-note">Loading metadata review items...</p>
 							{:else if reviewItems.length === 0}
 								<p class="settings-note">No metadata review items right now.</p>
 							{:else}
@@ -2999,7 +3001,7 @@
 										<div class="review-card__head">
 											<div>
 												<h4>{asText(item.title) || 'Metadata item'}</h4>
-												<p>{reviewKindLabel(item.kind)} · {reviewReasonSummary(item.reviewReason)}</p>
+												<p>{reviewKindLabel(item.kind)} - {reviewReasonSummary(item.reviewReason)}</p>
 											</div>
 											<span class="status-pill status-pill--warn">Needs review</span>
 										</div>
@@ -3022,7 +3024,7 @@
 										{#if reviewExpanded[reviewItemKey(item)]}
 											<div class="review-card__details">
 												{#if metadataRecordsLoading[reviewItemKey(item)]}
-													<p class="settings-note">Loading records…</p>
+													<p class="settings-note">Loading records...</p>
 												{:else}
 													{#if metadataRecordsError[reviewItemKey(item)]}
 														<p class="settings-error">{metadataRecordsError[reviewItemKey(item)]}</p>
@@ -3146,7 +3148,7 @@
 									<div class="version-group-card">
 										<div>
 											<strong>{asText(item.title) || 'Version group'}</strong>
-											<span>{reviewKindLabel(item.kind)} · {asCount(item.versionCount)} versions</span>
+											<span>{reviewKindLabel(item.kind)} - {asCount(item.versionCount)} versions</span>
 										</div>
 										{#if versionGroupLink(item)}
 											<XuvaButton variant="ghost" size="sm" href={versionGroupLink(item)}>
@@ -3194,7 +3196,7 @@
 								{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Policy'}
 							</XuvaButton>
 						{:else if !authDisabled}
-							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{/if}
 					{/snippet}
 					<div class="stat-grid stat-grid--compact">
@@ -3243,7 +3245,7 @@
 							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+								<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
@@ -3285,7 +3287,7 @@
 								</XuvaButton>
 							{/if}
 						{:else if !authDisabled}
-							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{/if}
 					{/snippet}
 					<div class="stat-grid stat-grid--compact">
@@ -3516,7 +3518,7 @@
 							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+								<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}
@@ -3538,7 +3540,7 @@
 						{#if activeSection === 'admin-access' && canManageUsers}
 							<XuvaButton variant="primary" href="#admin-access-add-user">Create User</XuvaButton>
 						{:else if activeSection === 'admin-access' && canShowSignIn}
-							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{:else if activeSection === 'pairing'}
 							<XuvaButton variant="primary" onclick={() => void loadSettingsSurface(false)}>Refresh Pairing</XuvaButton>
 						{:else if activeSection === 'approved-devices'}
@@ -3669,7 +3671,7 @@
 								<p class="settings-note">Sign in with your admin account to view and manage user accounts.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+									<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
@@ -3690,7 +3692,7 @@
 						<p class="settings-note">Devices still need admin approval before they can connect.</p>
 						{#if canManageSettings || authDisabled}
 							{#if isLoadingPairingRequests}
-								<p class="settings-note">Loading pairing requests…</p>
+								<p class="settings-note">Loading pairing requests...</p>
 							{:else if pairingRequests.length > 0}
 								<div class="pairing-request-list" data-testid="pairing-request-list">
 									{#each pairingRequests as request (request.id)}
@@ -3766,7 +3768,7 @@
 								<p class="settings-note">Sign in as an admin to update device pairing.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+									<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
@@ -3782,7 +3784,7 @@
 						<p class="settings-note">Recent activity is not tracked yet.</p>
 						{#if canManageSettings || authDisabled}
 							{#if isLoadingApprovedDevices}
-								<p class="settings-note">Loading approved devices…</p>
+								<p class="settings-note">Loading approved devices...</p>
 							{:else if approvedDevices.length > 0}
 								<div class="pairing-request-list approved-device-list" data-testid="approved-device-list">
 									{#each approvedDevices as device (device.id)}
@@ -3838,7 +3840,7 @@
 								<p class="settings-note">Sign in as an admin to manage approved devices.</p>
 								<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 								<div class="status-actions">
-									<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+									<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 								</div>
 							</div>
 						{/if}
@@ -3910,7 +3912,7 @@
 								{isSavingServerName ? 'Saving...' : 'Save Server Name'}
 							</XuvaButton>
 						{:else if activeSection === 'general' && !authDisabled}
-							<XuvaButton variant="primary" href="/signin">{ownerActionLabel}</XuvaButton>
+							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{:else if activeSection === 'network'}
 							<XuvaButton variant="primary" href="#discovery">Open Discovery</XuvaButton>
 						{:else if activeSection === 'discovery'}
@@ -3994,7 +3996,7 @@
 							<p class="settings-note">Sign in as an admin to manage Xuva settings.</p>
 							<p class="settings-auth-callout__detail">{ownerActionDetail}</p>
 							<div class="status-actions">
-								<XuvaButton variant="primary" size="sm" href="/signin">{ownerActionLabel}</XuvaButton>
+								<XuvaButton variant="primary" size="sm" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 							</div>
 						</div>
 					{/if}

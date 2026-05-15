@@ -61,7 +61,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		min-height: 34px;
+		min-height: 28px;
 		margin: 0 8px 10px;
 	}
 

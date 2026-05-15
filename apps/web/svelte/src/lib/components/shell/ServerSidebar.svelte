@@ -6,7 +6,8 @@
 	let {
 		active = 'dashboard',
 		showStorage = true,
-		serverGroupLabel = 'Xuva'
+		serverGroupLabel = 'Xuva',
+		showBrand = true
 	} = $props<{
 		active?:
 			| 'dashboard'
@@ -26,19 +27,18 @@
 			| 'about';
 		showStorage?: boolean;
 		serverGroupLabel?: string;
+		showBrand?: boolean;
 	}>();
 </script>
 
 <XuvaSidebar>
-	{#snippet brand()}
-		<SettingsBrand />
-	{/snippet}
+	{#if showBrand}
+		{#snippet brand()}
+			<SettingsBrand />
+		{/snippet}
+	{/if}
 
 	{#snippet primary()}
 		<SettingsNav {active} {showStorage} {serverGroupLabel} />
-	{/snippet}
-
-	{#snippet secondary()}
-		<SettingsNav section="secondary" />
 	{/snippet}
 </XuvaSidebar>

@@ -24,13 +24,11 @@
 
 <section class={compact ? 'empty-state empty-state--compact' : 'empty-state'}>
 	<div class="empty-state__content">
-		<div class="empty-state__visual" aria-hidden="true">
-			{#if visual}
+		{#if visual}
+			<div class="empty-state__visual" aria-hidden="true">
 				{@render visual()}
-			{:else}
-				<span>L</span>
-			{/if}
-		</div>
+			</div>
+		{/if}
 		<div class="empty-state__copy">
 			{#if eyebrow}
 				<p class="empty-state__eyebrow">{eyebrow}</p>

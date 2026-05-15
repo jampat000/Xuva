@@ -1,4 +1,4 @@
-import { readAuthToken, writeAuthToken } from './token-store';
+import { clearAuthToken, readAuthToken, writeAuthToken } from './token-store';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -201,6 +201,7 @@ export function createApiClient({
 			const payload = parsePayload(rawText, path, response.status) as ApiErrorShape;
 
 			if (!response.ok) {
+				if (response.status === 401) clearAuthToken();
 				throw new ApiClientError(payload?.error || response.statusText, {
 					status: response.status,
 					path,

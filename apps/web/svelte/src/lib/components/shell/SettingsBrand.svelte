@@ -13,6 +13,6 @@
 		justify-content: center;
 		gap: 0;
 		min-width: 0;
-		min-height: 34px;
+		min-height: 28px;
 	}
 </style>

@@ -1,4 +1,5 @@
 import { apiClient, type ApiClient } from './client';
+import { clearAuthToken, readAuthToken, writeAuthToken } from './token-store';
 
 export interface AuthSessionUser {
 	id: string;
@@ -17,6 +18,7 @@ export interface AuthSessionResponse {
 	user?: AuthSessionUser;
 	session?: AuthSession;
 	csrfToken?: string;
+	sessionToken?: string;
 	error?: string;
 	[key: string]: unknown;
 }
@@ -73,6 +75,15 @@ export async function getAuthSession(client: ApiClient = apiClient): Promise<Aut
 	return client.request<AuthSessionResponse>('/api/auth/session');
 }
 
+export async function getAuthSessionIfAvailable(
+	client: ApiClient = apiClient
+): Promise<AuthSessionResponse | null> {
+	// Avoid probing protected session routes when there is no local auth token.
+	// This keeps signed-out public pages free from expected 401 network noise.
+	if (!readAuthToken()) return null;
+	return getAuthSession(client);
+}
+
 export async function getClientBootstrap(client: ApiClient = apiClient): Promise<ClientBootstrapResponse> {
 	return client.request<ClientBootstrapResponse>('/api/client/bootstrap');
 }
@@ -81,18 +92,32 @@ export async function login(
 	payload: LoginRequest,
 	client: ApiClient = apiClient
 ): Promise<AuthSessionResponse> {
-	return client.send<AuthSessionResponse, LoginRequest>('/api/auth/login', payload, 'POST');
+	const response = await client.send<AuthSessionResponse, LoginRequest>('/api/auth/login', payload, 'POST');
+	const token = String(response.sessionToken ?? '').trim();
+	if (token) writeAuthToken(token);
+	return response;
 }
 
 export async function bootstrapAccount(
 	payload: BootstrapRequest,
 	client: ApiClient = apiClient
 ): Promise<AuthSessionResponse> {
-	return client.send<AuthSessionResponse, BootstrapRequest>('/api/auth/bootstrap', payload, 'POST');
+	const response = await client.send<AuthSessionResponse, BootstrapRequest>(
+		'/api/auth/bootstrap',
+		payload,
+		'POST'
+	);
+	const token = String(response.sessionToken ?? '').trim();
+	if (token) writeAuthToken(token);
+	return response;
 }
 
 export async function logout(client: ApiClient = apiClient): Promise<{ status: string }> {
-	return client.send<{ status: string }, Record<string, never>>('/api/auth/logout', {}, 'POST');
+	try {
+		return await client.send<{ status: string }, Record<string, never>>('/api/auth/logout', {}, 'POST');
+	} finally {
+		clearAuthToken();
+	}
 }
 
 export async function getUsers(client: ApiClient = apiClient): Promise<ListUsersResponse> {

@@ -9,6 +9,9 @@
 		testId = 'app-menu-drawer',
 		closeLabel = 'Close menu',
 		drawerWidth = '252px',
+		showBackdrop = true,
+		dismissOnInteractOutside = true,
+		closeOnNavigate = true,
 		onClose = () => {},
 		brand,
 		main,
@@ -19,6 +22,9 @@
 		testId?: string;
 		closeLabel?: string;
 		drawerWidth?: string;
+		showBackdrop?: boolean;
+		dismissOnInteractOutside?: boolean;
+		closeOnNavigate?: boolean;
 		onClose?: () => void;
 		brand?: Snippet;
 		main?: Snippet;
@@ -35,6 +41,7 @@
 		};
 
 		const handlePointerDown = (event: PointerEvent) => {
+			if (!dismissOnInteractOutside) return;
 			const target = event.target;
 			if (!(target instanceof Element)) return;
 			if (target.closest('[data-xuva-drawer], [data-xuva-menu-trigger]')) return;
@@ -42,6 +49,7 @@
 		};
 
 		const handleClick = (event: MouseEvent) => {
+			if (!closeOnNavigate) return;
 			const target = event.target;
 			if (!(target instanceof Element)) return;
 			if (drawerElement?.contains(target) && target.closest('a')) onClose();
@@ -63,7 +71,7 @@
 	});
 </script>
 
-{#if open}
+{#if open && showBackdrop}
 	<button
 		type="button"
 		class="app-drawer__backdrop"
@@ -161,8 +169,8 @@
 		align-items: center;
 		justify-content: center;
 		min-width: 0;
-		min-height: 34px;
-		margin-left: -9px;
+		min-height: 28px;
+		margin-left: 0;
 		margin-top: 0;
 		opacity: 0;
 		transform: none;
@@ -175,7 +183,7 @@
 	}
 
 	.app-drawer__brand :global(.v-brand) {
-		min-height: 34px;
+		min-height: 28px;
 		justify-content: center;
 	}
 
@@ -286,12 +294,6 @@
 		height: 19px;
 		flex: 0 0 auto;
 		color: color-mix(in srgb, currentColor 90%, var(--xuva-color-accent-teal) 10%);
-	}
-
-	@media (min-width: 768px) {
-		.app-drawer__backdrop {
-			display: none;
-		}
 	}
 
 	@media (max-width: 767px) {

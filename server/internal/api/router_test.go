@@ -1973,6 +1973,40 @@ func TestAuthzAdminCanManageUsers(t *testing.T) {
 	}
 }
 
+func TestAuthPasswordUpdateRefreshesCurrentSession(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	password := client.requestJSON(t, router, http.MethodPost, "/api/users/admin/password", map[string]any{
+		"password": "test-password-456!",
+	})
+	if password.status != http.StatusOK {
+		t.Fatalf("expected password update 200, got %d: %s", password.status, password.body)
+	}
+	if password.payload["sessionToken"] == "" {
+		t.Fatalf("expected refreshed sessionToken in password update response, got %#v", password.payload)
+	}
+
+	session := client.requestJSON(t, router, http.MethodGet, "/api/auth/session", nil)
+	if session.status != http.StatusOK {
+		t.Fatalf("expected refreshed session 200, got %d: %s", session.status, session.body)
+	}
+
+	logout := client.requestJSON(t, router, http.MethodPost, "/api/auth/logout", map[string]any{})
+	if logout.status != http.StatusOK {
+		t.Fatalf("expected logout 200 after password refresh, got %d: %s", logout.status, logout.body)
+	}
+
+	relogin := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-456!",
+	})
+	if relogin.status != http.StatusOK {
+		t.Fatalf("expected relogin with updated password 200, got %d: %s", relogin.status, relogin.body)
+	}
+}
+
 func TestAuthzStandardCannotManageUsers(t *testing.T) {
 	deps := testDepsWithAuth(t, time.Now())
 	if _, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard"); err != nil {

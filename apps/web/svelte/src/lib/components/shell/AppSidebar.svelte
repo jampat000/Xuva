@@ -178,7 +178,7 @@
 					</SidebarItem>
 				{/each}
 			{:else}
-				<SidebarItem label="Add Library" href="/setup">
+				<SidebarItem label="Add Library" href="/settings#libraries">
 					{#snippet icon()}
 						<span class="library-glyph library-glyph--empty">
 							<svg viewBox="0 0 24 24" aria-hidden="true">

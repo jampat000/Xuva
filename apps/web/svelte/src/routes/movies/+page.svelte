@@ -205,7 +205,7 @@
 						</XuvaButton>
 					{/snippet}
 					{#snippet secondaryAction()}
-						<XuvaButton variant="secondary" href="/setup">Add Library</XuvaButton>
+						<XuvaButton variant="secondary" href="/settings#libraries">Add Library</XuvaButton>
 					{/snippet}
 				</XuvaEmptyState>
 			</section>

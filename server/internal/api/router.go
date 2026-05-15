@@ -669,7 +669,35 @@ func usersPasswordHandler(deps Deps) http.HandlerFunc {
 		publishDomainAudit(deps, r, "audit.auth", "user.password.update", "allowed", map[string]any{
 			"targetUserId": userID,
 		})
-		writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
+		responsePayload := map[string]any{"status": "updated"}
+		if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok && resolved.Principal.ID == userID {
+			principal, session, token, err := deps.Auth.Authenticate(
+				r.Context(),
+				resolved.Principal.Username,
+				payload.Password,
+				requestRemoteAddr(r),
+				r.UserAgent(),
+			)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "password updated but session refresh failed")
+				return
+			}
+			refreshed := auth.ResolvedSession{Principal: principal, Session: session, Token: token}
+			writeAuthCookies(w, r, refreshed)
+			w.Header().Set("X-Auth-Token", token)
+			responsePayload["user"] = map[string]any{
+				"id":          principal.ID,
+				"username":    principal.Username,
+				"displayName": principal.DisplayName,
+				"role":        principal.Role,
+			}
+			responsePayload["session"] = map[string]any{
+				"id":        session.ID,
+				"expiresAt": session.ExpiresAt.Format(time.RFC3339),
+			}
+			responsePayload["sessionToken"] = token
+		}
+		writeJSON(w, http.StatusOK, responsePayload)
 	}
 }
 
@@ -5022,7 +5050,7 @@ func movieScanHandler(deps Deps) http.HandlerFunc {
 			firstLibraryPathByKind(deps.Libraries, libraries.KindMovies),
 		)
 		if path == "" {
-			writeError(w, http.StatusBadRequest, "movie library path is required")
+			writeError(w, http.StatusBadRequest, "Add a Movies library folder before scanning movies.")
 			return
 		}
 		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindMovies, Path: path, SampleLimit: request.SampleLimit})
@@ -5047,7 +5075,7 @@ func tvScanHandler(deps Deps) http.HandlerFunc {
 			firstLibraryPathByKind(deps.Libraries, libraries.KindTV),
 		)
 		if path == "" {
-			writeError(w, http.StatusBadRequest, "tv library path is required")
+			writeError(w, http.StatusBadRequest, "Add a TV library folder before scanning TV.")
 			return
 		}
 		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindTV, Path: path, SampleLimit: request.SampleLimit})
@@ -5077,7 +5105,7 @@ func allLibrariesScanHandler(deps Deps) http.HandlerFunc {
 			firstLibraryPathByKind(deps.Libraries, libraries.KindTV),
 		)
 		if moviesPath == "" && tvPath == "" {
-			writeError(w, http.StatusBadRequest, "at least one movie or tv library path is required")
+			writeError(w, http.StatusBadRequest, "Add a Movies or TV library folder before starting a library scan.")
 			return
 		}
 
