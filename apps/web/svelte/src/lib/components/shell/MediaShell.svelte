@@ -52,6 +52,7 @@
 	const sidebarPreferenceKey = 'xuva.sidebar.media.pinned.v1';
 	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
 	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
+	const drawerShifted = $derived.by(() => desktopViewport && drawerOpen);
 
 	function closeMenu(): void {
 		if (desktopViewport && sidebarPinned) {
@@ -112,7 +113,7 @@
 	}
 </script>
 
-<div class="media-shell" class:media-shell--drawer-open={drawerPersistent} data-shell="media">
+<div class="media-shell" class:media-shell--drawer-open={drawerShifted} data-shell="media">
 	<AppDrawer
 		open={drawerOpen}
 		label="Main navigation"

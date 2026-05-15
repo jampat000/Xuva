@@ -6,11 +6,7 @@
 	import ProfileMenu from './ProfileMenu.svelte';
 	import ServerSidebar from './ServerSidebar.svelte';
 	import SettingsBrand from './SettingsBrand.svelte';
-	import {
-		isDesktopSidebarViewport,
-		readSidebarPinnedPreference,
-		writeSidebarPinnedPreference
-	} from '$lib/navigation/sidebar-preferences';
+	import { isDesktopSidebarViewport } from '$lib/navigation/sidebar-preferences';
 
 	let {
 		active = 'dashboard',
@@ -48,15 +44,12 @@
 	}>();
 
 	let menuOpen = $state(false);
-	let sidebarPinned = $state(false);
 	let desktopViewport = $state(false);
-	const sidebarPreferenceKey = 'xuva.sidebar.settings.pinned.v1';
-	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
-	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
+	const drawerOpen = $derived.by(() => (desktopViewport ? true : menuOpen));
+	const drawerPersistent = $derived.by(() => desktopViewport);
 
 	onMount(() => {
 		syncViewportState();
-		sidebarPinned = readSidebarPinnedPreference(sidebarPreferenceKey);
 		const handleResize = () => syncViewportState();
 		const handleKeydown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') closeMenu();
@@ -75,30 +68,15 @@
 	}
 
 	function closeMenu(): void {
-		if (desktopViewport && sidebarPinned) {
-			sidebarPinned = false;
-			writeSidebarPinnedPreference(sidebarPreferenceKey, false);
-		}
+		if (desktopViewport) return;
 		menuOpen = false;
 		document.querySelector<HTMLElement>('[data-testid="settings-menu-button"]')?.focus();
 	}
 
 	function toggleMenu(): void {
-		if (desktopViewport && sidebarPinned) {
-			sidebarPinned = false;
-			writeSidebarPinnedPreference(sidebarPreferenceKey, false);
-			menuOpen = false;
-			return;
-		}
+		if (desktopViewport) return;
 		menuOpen = !menuOpen;
 		if (!menuOpen) document.querySelector<HTMLElement>('[data-testid="settings-menu-button"]')?.focus();
-	}
-
-	function togglePinned(): void {
-		if (!desktopViewport) return;
-		sidebarPinned = !sidebarPinned;
-		writeSidebarPinnedPreference(sidebarPreferenceKey, sidebarPinned);
-		if (!sidebarPinned) menuOpen = false;
 	}
 
 	async function signOut(): Promise<void> {
@@ -141,26 +119,6 @@
 				</svg>
 				Back to Media
 			</a>
-			{#if desktopViewport}
-				<button
-					type="button"
-					class="app-drawer__link"
-					aria-pressed={sidebarPinned}
-					aria-label={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
-					onclick={togglePinned}
-				>
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path
-							d="M8 4.8h8l-1.4 4.1 2.7 2.8v1.1H12.8v5.8l-1.6.8v-6.6H6.7v-1.1l2.7-2.8Z"
-							fill="none"
-							stroke="currentColor"
-							stroke-linejoin="round"
-							stroke-width="1.55"
-						/>
-					</svg>
-					{sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
-				</button>
-			{/if}
 		{/snippet}
 	</AppDrawer>
 
@@ -285,6 +243,12 @@
 			background-color 180ms ease,
 			color 180ms ease,
 			box-shadow 180ms ease;
+	}
+
+	@media (min-width: 980px) {
+		.server-shell__utility-button {
+			display: none;
+		}
 	}
 
 	.server-shell__utility-button:hover,
