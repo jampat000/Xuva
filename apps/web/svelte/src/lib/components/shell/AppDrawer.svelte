@@ -8,11 +8,16 @@
 		label = 'Main navigation',
 		testId = 'app-menu-drawer',
 		closeLabel = 'Close menu',
+		showCloseButton = true,
+		showPinButton = false,
+		pinLabel = 'Pin sidebar',
+		pinned = false,
 		drawerWidth = '252px',
 		showBackdrop = true,
 		dismissOnInteractOutside = true,
 		closeOnNavigate = true,
 		onClose = () => {},
+		onPinToggle = () => {},
 		brand,
 		main,
 		bottom
@@ -21,11 +26,16 @@
 		label?: string;
 		testId?: string;
 		closeLabel?: string;
+		showCloseButton?: boolean;
+		showPinButton?: boolean;
+		pinLabel?: string;
+		pinned?: boolean;
 		drawerWidth?: string;
 		showBackdrop?: boolean;
 		dismissOnInteractOutside?: boolean;
 		closeOnNavigate?: boolean;
 		onClose?: () => void;
+		onPinToggle?: () => void;
 		brand?: Snippet;
 		main?: Snippet;
 		bottom?: Snippet;
@@ -92,13 +102,36 @@
 	data-testid={testId}
 >
 	<div class="app-drawer__header">
-		<span class="app-drawer__header-spacer" aria-hidden="true"></span>
 		<div class="app-drawer__brand" data-testid="drawer-brand">
 			{@render brand?.()}
 		</div>
-		<button type="button" class="app-drawer__close" aria-label={closeLabel} onclick={onClose}>
-			<X size={18} />
-		</button>
+		{#if showCloseButton}
+			<button type="button" class="app-drawer__close" aria-label={closeLabel} onclick={onClose}>
+				<X size={14} />
+			</button>
+		{:else if showPinButton}
+			<button
+				type="button"
+				class="app-drawer__pin"
+				aria-label={pinLabel}
+				aria-pressed={pinned}
+				data-pinned={pinned ? 'true' : 'false'}
+				onclick={onPinToggle}
+			>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path
+						d="M8 4.8h8l-1.4 4.1 2.7 2.8v1.1H12.8v5.8l-1.6.8v-6.6H6.7v-1.1l2.7-2.8Z"
+						fill="none"
+						stroke="currentColor"
+						stroke-linejoin="round"
+						stroke-width="1.55"
+					/>
+				</svg>
+			</button>
+			<span class="app-drawer__header-spacer" aria-hidden="true"></span>
+		{:else}
+			<span class="app-drawer__header-spacer" aria-hidden="true"></span>
+		{/if}
 	</div>
 
 	<nav class="app-drawer__main" aria-label={label}>
@@ -156,18 +189,23 @@
 	}
 
 	.app-drawer__header {
+		position: relative;
 		display: grid;
-		grid-template-columns: 40px minmax(0, 1fr) 40px;
-		align-items: center;
-		gap: 10px;
-		min-height: 40px;
-		padding: 0 4px 8px 0;
+		grid-template-columns: minmax(0, 1fr);
+		justify-items: stretch;
+		align-items: start;
+		gap: 8px;
+		min-height: 34px;
+		padding: 0;
+		margin-bottom: 6px;
 	}
 
 	.app-drawer__brand {
 		display: flex;
-		align-items: center;
-		justify-content: center;
+		align-items: flex-start;
+		justify-content: flex-start;
+		justify-self: stretch;
+		width: 100%;
 		min-width: 0;
 		min-height: 28px;
 		margin-left: 0;
@@ -184,34 +222,77 @@
 
 	.app-drawer__brand :global(.v-brand) {
 		min-height: 28px;
-		justify-content: center;
+		width: 100%;
+		max-width: 100%;
+		justify-content: flex-start;
+		align-items: flex-start;
+	}
+
+	.app-drawer__brand :global(.xuva-wordmark) {
+		width: 100%;
+		justify-content: flex-start;
 	}
 
 	.app-drawer__header-spacer {
-		display: inline-flex;
-		width: 40px;
-		height: 40px;
+		display: block;
+		height: 0;
+		line-height: 0;
+		font-size: 0;
 	}
 
 	.app-drawer__close {
+		position: absolute;
+		top: 1px;
+		right: 0;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
+		width: 32px;
+		height: 32px;
+		border-radius: 10px;
 		border: 1px solid rgb(255 255 255 / 14%);
 		background: linear-gradient(180deg, rgb(255 255 255 / 8%), rgb(255 255 255 / 3%));
 		color: color-mix(in srgb, var(--xuva-color-text) 88%, transparent);
 		box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
 	}
 
+	.app-drawer__pin {
+		position: absolute;
+		top: 1px;
+		right: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 10px;
+		border: 1px solid rgb(255 255 255 / 14%);
+		background: linear-gradient(180deg, rgb(255 255 255 / 8%), rgb(255 255 255 / 3%));
+		color: color-mix(in srgb, var(--xuva-color-text) 88%, transparent);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+	}
+
+	.app-drawer__pin svg {
+		width: 14px;
+		height: 14px;
+	}
+
 	.app-drawer__close:hover,
-	.app-drawer__close:focus-visible {
+	.app-drawer__close:focus-visible,
+	.app-drawer__pin:hover,
+	.app-drawer__pin:focus-visible {
 		border-color: rgb(255 255 255 / 28%);
 		background: rgb(255 255 255 / 9%);
 		color: var(--xuva-color-text);
 		outline: none;
+	}
+
+	.app-drawer__pin[data-pinned='true'] {
+		border-color: rgb(124 92 255 / 52%);
+		background:
+			linear-gradient(180deg, rgb(124 92 255 / 30%), rgb(124 92 255 / 14%)),
+			rgb(255 255 255 / 8%);
+		color: color-mix(in srgb, var(--xuva-color-text) 92%, white 8%);
 	}
 
 	.app-drawer__main,

@@ -35,7 +35,6 @@
 	}
 
 	.v-panel {
-		border-top: 1px solid rgb(255 255 255 / 10%);
 		padding: 0.95rem 0 0.35rem;
 	}
 
@@ -43,7 +42,6 @@
 		display: grid;
 		gap: 0;
 		padding: 0 0.15rem 0.7rem;
-		border-bottom: 1px solid rgb(255 255 255 / 9%);
 	}
 
 	.v-panel__body {

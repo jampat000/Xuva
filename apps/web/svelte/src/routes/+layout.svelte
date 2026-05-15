@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { getClientBootstrap } from '$lib/api/auth';
+	import { getAuthSession, getClientBootstrap } from '$lib/api/auth';
 	import { xuvaTitle, normalizeServerName } from '$lib/server-name';
 	import '../app.css';
 	import '$lib/styles/tokens.css';
@@ -9,6 +9,7 @@
 
 	let { children } = $props();
 	let serverName = $state('Xuva');
+	let accessCheckInFlight = false;
 
 	function applyTitle(): void {
 		if (typeof document === 'undefined') return;
@@ -17,10 +18,14 @@
 		}, 0);
 	}
 
-	afterNavigate(applyTitle);
+	afterNavigate(() => {
+		applyTitle();
+		void enforceRouteAccess();
+	});
 
 	onMount(() => {
 		void loadServerName();
+		void enforceRouteAccess();
 		const handleServerNameChanged = (event: Event) => {
 			const detail = (event as CustomEvent<{ serverName?: string }>).detail;
 			serverName = normalizeServerName(detail?.serverName);
@@ -40,6 +45,64 @@
 		} finally {
 			applyTitle();
 		}
+	}
+
+	async function enforceRouteAccess(): Promise<void> {
+		if (typeof window === 'undefined') return;
+		if (accessCheckInFlight) return;
+		accessCheckInFlight = true;
+		try {
+			const path = window.location.pathname || '/';
+			const isSignIn = path.startsWith('/signin');
+			const isSetupWizard = path.startsWith('/setup-wizard');
+			const bootstrap = await getClientBootstrap().catch(() => null);
+			const authRequired = Boolean((bootstrap as { auth?: { required?: boolean } } | null)?.auth?.required);
+			const bootstrapAllowed = Boolean(
+				(bootstrap as { auth?: { bootstrapAllowed?: boolean } } | null)?.auth?.bootstrapAllowed
+			);
+			if (!authRequired) return;
+
+			const session = await getAuthSession().catch(() => null);
+			const role = asText(session?.user?.role).toLowerCase();
+			const isAdmin = role === 'admin';
+			const isSignedIn = Boolean(session?.user);
+
+			if (!isSignedIn) {
+				if (isSetupWizard && !bootstrapAllowed) {
+					redirectTo('/signin');
+					return;
+				}
+				if (!isSignIn && !(isSetupWizard && bootstrapAllowed)) {
+					redirectTo('/signin');
+					return;
+				}
+				return;
+			}
+
+			if (isSignIn || isSetupWizard) {
+				redirectTo('/');
+				return;
+			}
+
+			if (path.startsWith('/settings') && !isAdmin) {
+				redirectTo('/');
+			}
+		} catch {
+			// Keep layout resilient if auth checks fail transiently.
+		} finally {
+			accessCheckInFlight = false;
+		}
+	}
+
+	function redirectTo(targetPath: string): void {
+		if (typeof window === 'undefined') return;
+		const currentPath = window.location.pathname || '/';
+		if (currentPath === targetPath) return;
+		window.location.replace(targetPath);
+	}
+
+	function asText(value: unknown): string {
+		return String(value ?? '').trim();
 	}
 </script>
 

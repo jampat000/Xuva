@@ -144,11 +144,8 @@ export function buildHomeViewModel(input: BuildHomeViewModelInput): HomeViewMode
 			: parsedRows.recentlyAddedItems.filter((item) => item.kind === 'series'),
 		12
 	);
-	const realContinue = fillRailItems(
-		recentItems.length > 0 ? recentItems : parsedRows.continueItems,
-		[...realMovies, ...realTV, ...parsedRows.recentlyAddedItems],
-		6
-	);
+	const continueCandidates = recentItems.length > 0 ? recentItems : parsedRows.continueItems;
+	const realContinue = uniqueLimit(continueCandidates.filter(isInProgressItem), 6);
 	const realWatchlist = uniqueLimit(parsedRows.watchlistItems, 6);
 
 	const realLibraries = input.librariesPayload.libraries || [];
@@ -381,29 +378,6 @@ function buildEmptyHero(): HomeDisplayItem {
 	};
 }
 
-function fillRailItems(
-	primary: HomeDisplayItem[],
-	fallback: HomeDisplayItem[],
-	limit: number
-): HomeDisplayItem[] {
-	const output: HomeDisplayItem[] = [];
-	const seen = new Set<string>();
-
-	const append = (items: HomeDisplayItem[]): void => {
-		for (const item of items) {
-			const key = uniqueKey(item);
-			if (!key || seen.has(key)) continue;
-			seen.add(key);
-			output.push(item);
-			if (output.length >= limit) return;
-		}
-	};
-
-	append(primary);
-	if (output.length < limit) append(fallback);
-	return output;
-}
-
 function uniqueLimit(items: HomeDisplayItem[], limit: number): HomeDisplayItem[] {
 	const output: HomeDisplayItem[] = [];
 	const seen = new Set<string>();
@@ -415,6 +389,10 @@ function uniqueLimit(items: HomeDisplayItem[], limit: number): HomeDisplayItem[]
 		if (output.length >= limit) break;
 	}
 	return output;
+}
+
+function isInProgressItem(item: HomeDisplayItem): boolean {
+	return item.progressPercent > 0 && item.progressPercent < 100;
 }
 
 function uniqueKey(item: HomeDisplayItem): string {
@@ -460,19 +438,13 @@ function normalizeKind(rawKind: string): string {
 function resolvePosterUrl(kind: string, id: string, provided: string): string {
 	const direct = asText(provided);
 	if (direct) return direct;
-	if (!isArtworkEntity(kind) || !id) return '';
-	return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral&type=poster`;
+	return '';
 }
 
 function resolveBackdropUrl(kind: string, id: string, provided: string, posterUrl: string): string {
 	const direct = asText(provided);
 	if (direct) return direct;
-	if (!isArtworkEntity(kind) || !id) return posterUrl;
-	return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral&type=backdrop`;
-}
-
-function isArtworkEntity(kind: string): boolean {
-	return kind === 'movie' || kind === 'series';
+	return posterUrl;
 }
 
 function parseBooleanFlag(value: string | null): boolean | undefined {

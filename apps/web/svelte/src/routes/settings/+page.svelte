@@ -18,7 +18,7 @@
 	import {
 		createUser,
 		deleteUser,
-		getAuthSessionIfAvailable,
+		getAuthSession,
 		getClientBootstrap,
 		getUsers,
 		logout,
@@ -411,14 +411,24 @@
 		return asText(shellIdentity.userRole);
 	});
 	const shellDisplayNameForShell = $derived.by(() => {
-		if (isLoading) return asText(shellIdentity.userDisplayName) || userDisplayName;
-		return userDisplayName;
+		if (isLoading) {
+			const cached = asText(shellIdentity.userDisplayName);
+			if (cached) return cached;
+		}
+		if (userDisplayName) return userDisplayName;
+		if (authDisabled) return 'Local access';
+		return 'Signed out';
 	});
 	const shellRoleForShell = $derived.by(() => {
-		if (isLoading) return asText(shellIdentity.userRole) || userRoleLabel;
-		return userRoleLabel;
+		if (isLoading) {
+			const cached = asText(shellIdentity.userRole);
+			if (cached) return cached;
+		}
+		if (userRoleLabel) return userRoleLabel;
+		if (authDisabled) return 'No sign-in mode';
+		return 'Sign in required';
 	});
-	const userInitials = $derived.by(() => initialsForName(shellUserDisplayName || 'User'));
+	const userInitials = $derived.by(() => initialsForName(shellDisplayNameForShell || 'Signed out'));
 	const serverDisplayName = $derived.by(() => displayServerName(settings.config?.serverName));
 	const canManageSettings = $derived.by(() => authDisabled || asText(user?.role).toLowerCase() === 'admin');
 	const hasLibraryLoadError = $derived.by(() => Boolean(libraryLoadError));
@@ -774,7 +784,7 @@
 		try {
 			const [bootstrapPayload, sessionPayload, settingsPayload] = await Promise.all([
 				getClientBootstrap(apiClient).catch(() => ({} as ClientBootstrapResponse)),
-				getAuthSessionIfAvailable(apiClient).catch((error: unknown) => {
+				getAuthSession(apiClient).catch((error: unknown) => {
 					if (isApiStatus(error, 401)) return {} as AuthSessionResponse;
 					throw error;
 				}),
@@ -858,6 +868,14 @@
 			authDisabled = Boolean(sessionPayload?.authDisabled);
 			user = authDisabled ? null : sessionPayload?.user || null;
 			sessionExpiresAt = authDisabled ? '' : asText(sessionPayload?.session?.expiresAt);
+			if (!authDisabled && !sessionPayload?.user) {
+				if (typeof window !== 'undefined') window.location.replace('/signin');
+				return;
+			}
+			if (!authDisabled && asText(sessionPayload?.user?.role).toLowerCase() !== 'admin') {
+				if (typeof window !== 'undefined') window.location.replace('/');
+				return;
+			}
 			libraries = librariesPayload.libraries || [];
 			summary = summaryPayload || {};
 			health = healthPayload || {};
@@ -2419,7 +2437,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 <ServerShell
 	active={activeSection}
 	showStorage={true}
-	serverGroupLabel={shellServerName}
+	serverGroupLabel={serverDisplayName}
 	userDisplayName={shellDisplayNameForShell}
 	userRole={shellRoleForShell}
 	{userInitials}
@@ -3651,8 +3669,8 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 									<label class="settings-field">
 										<span>Role</span>
 										<select bind:value={newUserRoleDraft}>
-											<option value="standard">User</option>
-											<option value="admin">Admin</option>
+											<option value="standard">User (media only)</option>
+											<option value="admin">Admin (full access)</option>
 										</select>
 									</label>
 									<div class="status-actions">
@@ -4014,7 +4032,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		--settings-accent-border: var(--xuva-settings-accent-border, rgb(106 116 217 / 24%));
 		--settings-surface: color-mix(in srgb, var(--xuva-color-bg-panel, #f5f7fb) 92%, white 8%);
 		--settings-surface-elevated: color-mix(in srgb, var(--xuva-color-bg-panel-elevated, #fff) 96%, #eef2f8 4%);
-		--settings-divider: color-mix(in srgb, var(--settings-accent-border) 32%, var(--xuva-color-border-soft));
+		--settings-divider: transparent;
 		--settings-input-bg: color-mix(in srgb, var(--settings-surface-elevated) 96%, #e9eef7 4%);
 		--settings-input-readonly-bg: color-mix(in srgb, var(--settings-surface) 92%, #e6ecf6 8%);
 		display: grid;
@@ -4083,7 +4101,6 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		min-height: 0;
 		align-content: start;
 		padding: 11px 0;
-		border-top: 1px solid var(--settings-divider);
 		border-radius: 0;
 		background: transparent;
 		color: var(--xuva-color-text);
@@ -4319,7 +4336,6 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		display: grid;
 		gap: 8px;
 		padding: 10px 0 0;
-		border-top: 1px solid var(--settings-divider);
 		background: transparent;
 	}
 

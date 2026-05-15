@@ -19,9 +19,11 @@
 </script>
 
 <div class="v-sidebar">
-	<div class="v-sidebar__brand">
-		{@render brand?.()}
-	</div>
+	{#if brand}
+		<div class="v-sidebar__brand">
+			{@render brand()}
+		</div>
+	{/if}
 
 	<nav class="v-sidebar__nav" aria-label="Primary navigation">
 		{@render primary?.()}

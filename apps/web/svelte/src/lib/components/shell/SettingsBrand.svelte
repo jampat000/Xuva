@@ -3,15 +3,16 @@
 </script>
 
 <div class="settings-brand">
-	<XuvaBrand />
+	<XuvaBrand showBlurb={true} />
 </div>
 
 <style>
 	.settings-brand {
 		display: flex;
 		align-items: center;
-		justify-content: center;
+		justify-content: flex-start;
 		gap: 0;
+		width: 100%;
 		min-width: 0;
 		min-height: 28px;
 	}

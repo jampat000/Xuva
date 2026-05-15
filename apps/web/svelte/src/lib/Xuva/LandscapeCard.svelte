@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Play } from 'lucide-svelte';
+	import ArtworkFallback from '$lib/components/media/ArtworkFallback.svelte';
 
 	type ContinueWatchingItem = {
 		title: string;
@@ -9,14 +10,25 @@
 	};
 
 	let { item }: { item: ContinueWatchingItem } = $props();
+
+	let imageFailed = $state(false);
+
+	$effect(() => {
+		imageFailed = !item.img;
+	});
 </script>
 
 <div class="group w-[280px] flex-shrink-0 cursor-pointer transition duration-200 hover:-translate-y-1 sm:w-[320px]">
 	<div class="relative aspect-video overflow-hidden rounded-lg bg-[#1F2937]">
-		{#if item.img}
-			<img src={item.img} alt={item.title} class="h-full w-full object-cover brightness-90 transition group-hover:brightness-100" />
+		{#if !imageFailed}
+			<img
+				src={item.img}
+				alt={item.title}
+				class="h-full w-full object-cover brightness-90 transition group-hover:brightness-100"
+				onerror={() => (imageFailed = true)}
+			/>
 		{:else}
-			<div class="h-full w-full bg-[radial-gradient(circle_at_70%_30%,rgba(124,92,255,0.22),transparent_36%),linear-gradient(135deg,#1F2937,#0B1120)]"></div>
+			<ArtworkFallback variant="landscape" title={item.title} meta={item.sub} showCopy={false} />
 		{/if}
 		<div class="absolute inset-0 grid place-items-center">
 			<div class="grid h-12 w-12 place-items-center rounded-full bg-black/55 shadow-lg shadow-black/30 backdrop-blur transition duration-200 group-hover:bg-[#7C5CFF] group-hover:shadow-[#7C5CFF]/25">

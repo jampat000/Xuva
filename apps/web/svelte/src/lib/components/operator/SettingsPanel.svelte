@@ -46,7 +46,6 @@
 		display: grid;
 		gap: var(--xuva-space-3);
 		padding: 0.95rem 0 0.45rem;
-		border-top: 1px solid var(--xuva-color-border-soft);
 	}
 
 	header {
@@ -55,7 +54,6 @@
 		justify-content: space-between;
 		gap: var(--xuva-space-3);
 		padding-bottom: 0.8rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--xuva-color-border-soft) 88%, transparent);
 	}
 
 	h2 {

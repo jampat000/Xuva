@@ -32,7 +32,7 @@
 </script>
 
 {#if section === 'primary'}
-	<p class="settings-nav-group">{serverGroupLabel || 'Xuva'}</p>
+	<p class="settings-nav-group settings-nav-group--server">{serverGroupLabel || 'Xuva'}</p>
 	<SidebarItem label="Dashboard" href="/settings#dashboard" active={active === 'dashboard'}>
 		{#snippet icon()}
 			<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -183,11 +183,20 @@
 
 <style>
 	.settings-nav-group {
-		margin: 10px 10px 2px;
+		margin: 6px 10px 2px;
 		color: color-mix(in srgb, var(--xuva-color-text-soft) 84%, transparent);
 		font-size: 0.69rem;
 		font-weight: 750;
 		letter-spacing: 0.09em;
 		text-transform: uppercase;
+	}
+
+	.settings-nav-group--server {
+		letter-spacing: 0.04em;
+		text-transform: none;
+	}
+
+	.settings-nav-group:first-child {
+		margin-top: 6px;
 	}
 </style>

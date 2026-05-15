@@ -3,10 +3,14 @@
 	import type { Snippet } from 'svelte';
 	import { Film, Home, Settings, Tv } from 'lucide-svelte';
 	import AppDrawer from '$lib/components/shell/AppDrawer.svelte';
+	import XuvaBrand from '$lib/components/shell/XuvaBrand.svelte';
 	import TopBar from '\$lib/Xuva/TopBar.svelte';
-	import Logo from '\$lib/Xuva/Logo.svelte';
+	import { getAuthSession } from '$lib/api/auth';
+	import { getClientBootstrap } from '$lib/api/auth';
 	import { getLibraries, type LibraryRecord } from '$lib/api/home';
+	import { getSettings } from '$lib/api/operator';
 	import { buildMediaNavItems, type MediaNavItem } from '$lib/navigation/media-nav';
+	import { normalizeServerName } from '$lib/server-name';
 	import {
 		isDesktopSidebarViewport,
 		readSidebarPinnedPreference,
@@ -21,15 +25,15 @@
 
 	let menuOpen = $state(false);
 	let currentPath = $state('/');
+	let serverGroupLabel = $state('Xuva');
 	let libraries = $state<LibraryRecord[]>([]);
 	let mediaNavItems = $state<MediaNavItem[]>(buildMediaNavItems());
+	let canAccessSettings = $state(false);
 	let sidebarPinned = $state(false);
 	let desktopViewport = $state(false);
-	let shiftViewport = $state(false);
 	const sidebarPreferenceKey = 'xuva.sidebar.media.pinned.v1';
 	const drawerOpen = $derived.by(() => (desktopViewport && sidebarPinned ? true : menuOpen));
 	const drawerPersistent = $derived.by(() => desktopViewport && sidebarPinned);
-	const drawerShifted = $derived.by(() => shiftViewport && drawerOpen);
 
 	const activeRoute = $derived.by(() => {
 		if (currentPath.startsWith('/movies')) return 'movies';
@@ -42,14 +46,23 @@
 		syncViewportState();
 		sidebarPinned = readSidebarPinnedPreference(sidebarPreferenceKey);
 		const handleResize = () => syncViewportState();
+		const handleServerNameChanged = (event: Event) => {
+			const detail = (event as CustomEvent<{ serverName?: string }>).detail;
+			serverGroupLabel = normalizeServerName(detail?.serverName);
+		};
 		window.addEventListener('resize', handleResize);
+		window.addEventListener('xuva:server-name-changed', handleServerNameChanged);
 		void loadLibraries();
-		return () => window.removeEventListener('resize', handleResize);
+		void loadServerName();
+		void loadSessionAccess();
+		return () => {
+			window.removeEventListener('resize', handleResize);
+			window.removeEventListener('xuva:server-name-changed', handleServerNameChanged);
+		};
 	});
 
 	function syncViewportState(): void {
 		desktopViewport = isDesktopSidebarViewport();
-		shiftViewport = typeof window !== 'undefined' && window.innerWidth >= 768;
 		if (!desktopViewport) menuOpen = false;
 	}
 
@@ -61,6 +74,68 @@
 		} catch {
 			mediaNavItems = buildMediaNavItems();
 		}
+	}
+
+	async function loadServerName(): Promise<void> {
+		let configuredName = '';
+		try {
+			configuredName = await loadServerNameFromBootstrap();
+			if (!configuredName) {
+				const payload = await getClientBootstrap().catch(() => null);
+				const server = (payload as { server?: { name?: string } } | null)?.server;
+				configuredName = asText(server?.name);
+			}
+			if (!configuredName) {
+				const settingsPayload = await getSettings().catch(() => null);
+				configuredName = asText(settingsPayload?.config?.serverName);
+			}
+			if (!configuredName && typeof document !== 'undefined') {
+				const title = asText(document.title);
+				configuredName = title.endsWith('· Xuva') ? asText(title.replace(/\s*·\s*Xuva$/, '')) : '';
+			}
+		} catch {
+			configuredName = '';
+		}
+		serverGroupLabel = normalizeServerName(configuredName);
+	}
+
+	async function loadServerNameFromBootstrap(): Promise<string> {
+		if (typeof window === 'undefined') return '';
+		try {
+			const response = await window.fetch('/api/client/bootstrap', { credentials: 'include' });
+			if (!response.ok) return '';
+			const payload = (await response.json()) as { server?: { name?: string } };
+			return asText(payload?.server?.name);
+		} catch {
+			return '';
+		}
+	}
+
+	async function loadSessionAccess(): Promise<void> {
+		try {
+			const session = await getAuthSession().catch(() => null);
+			if (!session) {
+				if (typeof window !== 'undefined') window.location.replace('/signin');
+				return;
+			}
+			if (session?.authDisabled) {
+				canAccessSettings = true;
+				return;
+			}
+			const role = asText(session?.user?.role).toLowerCase();
+			if (!role) {
+				if (typeof window !== 'undefined') window.location.replace('/signin');
+				return;
+			}
+			canAccessSettings = role === 'admin';
+		} catch {
+			canAccessSettings = false;
+			if (typeof window !== 'undefined') window.location.replace('/signin');
+		}
+	}
+
+	function asText(value: unknown): string {
+		return String(value ?? '').trim();
 	}
 
 	function closeMenu(): void {
@@ -95,20 +170,29 @@
 	}
 </script>
 
-<div class="xuva-app-shell" class:xuva-app-shell--drawer-open={drawerShifted}>
+<div class="xuva-app-shell" class:xuva-app-shell--drawer-open={drawerOpen}>
 	<AppDrawer
 		open={drawerOpen}
 		label="Main navigation"
 		testId="media-menu-drawer"
+		drawerWidth="252px"
+		showCloseButton={false}
+		showPinButton={desktopViewport}
+		pinLabel={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+		pinned={sidebarPinned}
 		showBackdrop={!drawerPersistent}
 		dismissOnInteractOutside={!drawerPersistent}
 		closeOnNavigate={!drawerPersistent}
 		onClose={closeMenu}
+		onPinToggle={togglePinned}
 	>
 		{#snippet brand()}
-			<Logo />
+			<div class="media-brand">
+				<XuvaBrand showBlurb={true} />
+			</div>
 		{/snippet}
 		{#snippet main()}
+			<p class="media-nav-group">{serverGroupLabel}</p>
 			{#each mediaNavItems as item (item.id)}
 				<a class="app-drawer__link" href={item.href} aria-current={linkCurrent(item.id)}>
 					{#if item.id === 'home'}
@@ -123,29 +207,11 @@
 			{/each}
 		{/snippet}
 		{#snippet bottom()}
-			<a class="app-drawer__link" href="/settings">
-				<Settings size={19} />
-				Settings
-			</a>
-			{#if desktopViewport}
-				<button
-					type="button"
-					class="app-drawer__link"
-					aria-pressed={sidebarPinned}
-					aria-label={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
-					onclick={togglePinned}
-				>
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path
-							d="M8 4.8h8l-1.4 4.1 2.7 2.8v1.1H12.8v5.8l-1.6.8v-6.6H6.7v-1.1l2.7-2.8Z"
-							fill="none"
-							stroke="currentColor"
-							stroke-linejoin="round"
-							stroke-width="1.55"
-						/>
-					</svg>
-					{sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
-				</button>
+			{#if canAccessSettings}
+				<a class="app-drawer__link" href="/settings">
+					<Settings size={19} />
+					Settings
+				</a>
 			{/if}
 		{/snippet}
 	</AppDrawer>
@@ -155,6 +221,7 @@
 			menuOpen={drawerOpen}
 			onMenuToggle={toggleMenu}
 			onMenuClose={closeMenu}
+			showSettingsShortcut={canAccessSettings}
 		/>
 		{@render children()}
 		<div class="h-16"></div>
@@ -184,8 +251,13 @@
 
 	@media (min-width: 768px) {
 		.xuva-app-shell--drawer-open .xuva-app-surface {
-			width: calc(100% - var(--xuva-drawer-width, 320px));
-			margin-left: var(--xuva-drawer-width, 320px);
+			width: calc(100% - var(--xuva-drawer-width, 252px));
+			margin-left: var(--xuva-drawer-width, 252px);
+		}
+
+		:global([data-testid='media-menu-drawer'][data-state='open']) ~ .xuva-app-surface {
+			width: calc(100% - var(--xuva-drawer-width, 252px));
+			margin-left: var(--xuva-drawer-width, 252px);
 		}
 	}
 
@@ -193,5 +265,23 @@
 		.xuva-app-surface {
 			transition: none;
 		}
+	}
+
+	.media-nav-group {
+		margin: 6px 10px 2px;
+		color: color-mix(in srgb, var(--xuva-color-text-soft) 84%, transparent);
+		font-size: 0.69rem;
+		font-weight: 750;
+		letter-spacing: 0.04em;
+	}
+
+	.media-brand {
+		display: flex;
+		align-items: center;
+		justify-content: flex-start;
+		gap: 0;
+		width: 100%;
+		min-width: 0;
+		min-height: 28px;
 	}
 </style>

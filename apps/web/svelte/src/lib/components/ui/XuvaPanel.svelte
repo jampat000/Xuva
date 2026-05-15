@@ -45,7 +45,6 @@
 		justify-content: space-between;
 		gap: var(--xuva-space-4);
 		padding-bottom: 0.55rem;
-		border-bottom: 1px solid var(--xuva-color-border-soft);
 	}
 
 	h2 {

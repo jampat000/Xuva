@@ -1,4 +1,6 @@
 <script lang="ts">
+	import XuvaLogo from '$lib/components/brand/XuvaLogo.svelte';
+
 	type ArtworkVariant = 'poster' | 'landscape' | 'hero';
 
 	let {
@@ -47,7 +49,9 @@
 			{/if}
 		</div>
 	{:else}
-		<span class="artwork-fallback__mark artwork-fallback__mark--solo" aria-hidden="true"></span>
+		<div class="artwork-fallback__logo" aria-hidden="true">
+			<XuvaLogo size={52} title="Xuva placeholder" />
+		</div>
 	{/if}
 </div>
 
@@ -136,11 +140,12 @@
 		transform: rotate(45deg);
 	}
 
-	.artwork-fallback__mark--solo {
+	.artwork-fallback__logo {
 		position: absolute;
-		left: var(--xuva-space-3);
-		bottom: var(--xuva-space-3);
+		inset: 0;
 		z-index: 1;
+		display: grid;
+		place-items: center;
 	}
 
 	strong {

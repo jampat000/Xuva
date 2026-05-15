@@ -133,6 +133,106 @@ func TestRootSupportsHistoryFallbackForMigratedRoutes(t *testing.T) {
 	}
 }
 
+func TestRootRedirectsSignedOutHistoryRoutesWhenAuthEnabled(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	paths := []string{"/", "/movies", "/tv/series-route-id", "/settings", "/collections"}
+
+	for _, routePath := range paths {
+		request := httptest.NewRequest(http.MethodGet, "http://xuva.test"+routePath, nil)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("expected %s to redirect to sign-in with 307, got %d", routePath, response.Code)
+		}
+		if location := response.Header().Get("Location"); location != "/signin" {
+			t.Fatalf("expected %s redirect location /signin, got %q", routePath, location)
+		}
+	}
+}
+
+func TestRootAllowsSignInAndAssetsWhenSignedOut(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+
+	signInRequest := httptest.NewRequest(http.MethodGet, "http://xuva.test/signin", nil)
+	signInResponse := httptest.NewRecorder()
+	router.ServeHTTP(signInResponse, signInRequest)
+	if signInResponse.Code != http.StatusOK {
+		t.Fatalf("expected /signin 200, got %d", signInResponse.Code)
+	}
+
+	assetRequest := httptest.NewRequest(http.MethodGet, "http://xuva.test/favicon.svg", nil)
+	assetResponse := httptest.NewRecorder()
+	router.ServeHTTP(assetResponse, assetRequest)
+	if assetResponse.Code != http.StatusOK {
+		t.Fatalf("expected /favicon.svg 200, got %d", assetResponse.Code)
+	}
+}
+
+func TestRootAllowsSetupWizardWhenBootstrapPendingAndSignedOut(t *testing.T) {
+	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
+
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/setup-wizard", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected /setup-wizard 200 while bootstrap is pending, got %d", response.Code)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if !bytes.Contains(body, []byte("__sveltekit_")) {
+		t.Fatalf("expected setup wizard route to return svelte shell while bootstrap is pending")
+	}
+}
+
+func TestRootRedirectsSetupWizardWhenBootstrapIsComplete(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/setup-wizard", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected /setup-wizard to redirect after bootstrap completion, got %d", response.Code)
+	}
+	if location := response.Header().Get("Location"); location != "/signin" {
+		t.Fatalf("expected /setup-wizard redirect location /signin after bootstrap completion, got %q", location)
+	}
+}
+
+func TestRootRedirectsStandardUserAwayFromSettings(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	adminClient := newAuthTestClient(t)
+	loginAs(t, adminClient, router, "admin", "test-password-123!")
+
+	createUser := adminClient.requestJSON(t, router, http.MethodPost, "/api/users", map[string]any{
+		"username":    "standard-user",
+		"displayName": "Standard User",
+		"password":    "test-password-123!",
+		"role":        "standard",
+	})
+	if createUser.status != http.StatusCreated {
+		t.Fatalf("expected standard user creation 201, got %d: %s", createUser.status, createUser.body)
+	}
+
+	standardClient := newAuthTestClient(t)
+	loginAs(t, standardClient, router, "standard-user", "test-password-123!")
+
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/settings", nil)
+	standardClient.apply(request, false)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected standard user /settings to redirect with 307, got %d", response.Code)
+	}
+	if location := response.Header().Get("Location"); location != "/" {
+		t.Fatalf("expected standard user /settings redirect to /, got %q", location)
+	}
+}
+
 func TestRootDoesNotServeRemovedAdminRoute(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/admin", nil)

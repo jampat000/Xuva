@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import process from 'node:process';
@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, '..');
 const staticNextDir = path.resolve(appDir, '../../../server/internal/webapp/static-next');
+const staticNextBackupDir = path.resolve(appDir, '../../../server/internal/webapp/static-next.__backup');
 const keepFiles = new Set(['.gitignore', 'README.md']);
 const staticNextGitignore = `*
 !.gitignore
@@ -48,6 +49,30 @@ async function cleanStaticNextDirectory() {
 				})
 			)
 	);
+}
+
+async function snapshotExistingStaticNext() {
+	await rm(staticNextBackupDir, { recursive: true, force: true });
+	try {
+		await rename(staticNextDir, staticNextBackupDir);
+	} catch (error) {
+		const maybeMissing = String(error?.code || '').toUpperCase();
+		if (maybeMissing !== 'ENOENT') throw error;
+	}
+}
+
+async function restoreStaticNextSnapshot() {
+	await rm(staticNextDir, { recursive: true, force: true });
+	try {
+		await rename(staticNextBackupDir, staticNextDir);
+	} catch (error) {
+		const maybeMissing = String(error?.code || '').toUpperCase();
+		if (maybeMissing !== 'ENOENT') throw error;
+	}
+}
+
+async function discardStaticNextSnapshot() {
+	await rm(staticNextBackupDir, { recursive: true, force: true });
 }
 
 const textAssetExtensions = new Set(['.css', '.html', '.js', '.json', '.md', '.svg', '.txt']);
@@ -156,8 +181,15 @@ async function ensureManagedFiles() {
 	await writeFile(path.join(staticNextDir, 'README.md'), staticNextReadme, 'utf8');
 }
 
-await cleanStaticNextDirectory();
-runNpmBuild();
-await normalizeStaticNextTextFiles();
-await writeBuildInfo();
-await ensureManagedFiles();
+await snapshotExistingStaticNext();
+try {
+	await cleanStaticNextDirectory();
+	runNpmBuild();
+	await normalizeStaticNextTextFiles();
+	await writeBuildInfo();
+	await ensureManagedFiles();
+	await discardStaticNextSnapshot();
+} catch (error) {
+	await restoreStaticNextSnapshot();
+	throw error;
+}
