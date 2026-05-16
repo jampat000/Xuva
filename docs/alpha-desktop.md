@@ -24,6 +24,8 @@ Response:
 
 The bridge should open the operating system's native folder picker. On Windows this gives users local drives, mapped drives, Quick Access, and reachable NAS/UNC paths under the signed-in user's permissions. If the bridge is absent, returns no path, or the user is running headless/dev, the web UI falls back to `GET /api/settings/folders/browse`.
 
+The desktop shell also exposes `window.xuvaDesktop.restartServer()` for explicit "Restart Xuva" actions.
+
 ## Alpha Scope
 
 - Windows tray/taskbar app starts and supervises the Go server.
@@ -33,6 +35,12 @@ The bridge should open the operating system's native folder picker. On Windows t
 - Web fallback remains available for dev/headless/local browser usage.
 - No vendor relay infrastructure is introduced.
 
+## Shell Choice (Alpha)
+
+- Shell: Electron (Windows-first alpha).
+- Why now: fastest path to tray/taskbar UX, native folder picker bridge, and local Go process supervision with minimal extra platform plumbing.
+- Revisit trigger: if package size, startup time, or maintenance overhead becomes a release blocker, re-evaluate shell after alpha feedback.
+
 ## Validation
 
 - Add a movie library from a local drive.
@@ -40,3 +48,10 @@ The bridge should open the operating system's native folder picker. On Windows t
 - Move transcode/cache folders and verify settings remain visible before restart.
 - Restart from the desktop shell and verify active runtime folders use the saved locations.
 - Confirm the same screens still work in dev without the desktop bridge.
+
+## Restart Runbook
+
+- `Restart Xuva` is an explicit operator action from the desktop shell bridge.
+- Expected behavior: desktop shell restarts the supervised Go child process and the web UI reconnects to `127.0.0.1:8097`.
+- If restart fails, keep current process state and surface a user-visible error instead of silent exit.
+- If bridge is unavailable, web UI keeps server/web fallback behavior and does not pretend restart was executed.

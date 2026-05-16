@@ -201,7 +201,15 @@
 
 	function playHref(item: HomeDisplayItem): string {
 		const mediaSourceId = item.playMediaSourceId || item.mediaSourceId;
-		return mediaSourceId ? `/play/${encodeURIComponent(mediaSourceId)}` : '';
+		if (!mediaSourceId) return '';
+		const params = new URLSearchParams();
+		params.set('clientProfile', 'web');
+		params.set('routeType', 'lan');
+		params.set('supportsAdaptive', 'true');
+		params.set('autoplayIntent', '1');
+		params.set('strictAutoplay', '1');
+		params.set('forcePlayable', 'true');
+		return `/play/${encodeURIComponent(mediaSourceId)}?${params.toString()}`;
 	}
 
 	function formatLoadError(error: unknown): string {

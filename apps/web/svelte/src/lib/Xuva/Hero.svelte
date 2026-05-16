@@ -52,7 +52,10 @@
 			{#if playHref || detailHref || clampedProgress > 0}
 				<div class="mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
 					{#if playHref}
-						<a href={playHref} class="inline-flex min-h-[60px] items-center gap-3 rounded-md !bg-[#7C5CFF] px-8 py-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:!bg-[#6a4af0] hover:brightness-110 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120] sm:px-10">
+						<a
+							href={playHref}
+							class="inline-flex min-h-[60px] items-center gap-3 rounded-md !bg-[#7C5CFF] px-8 py-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:!bg-[#6a4af0] hover:brightness-110 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C5CFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1120] sm:px-10"
+						>
 							<Play size={18} class="fill-white text-white" /> Resume
 						</a>
 					{/if}

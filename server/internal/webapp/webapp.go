@@ -4,6 +4,8 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -13,6 +15,10 @@ import (
 var assets embed.FS
 
 func RootHandler() http.Handler {
+	if proxy := devProxyHandler(); proxy != nil {
+		return proxy
+	}
+
 	staticFS, err := fs.Sub(assets, "static-next")
 	if err != nil {
 		panic(err)
@@ -106,4 +112,35 @@ func setNoStoreHeaders(w http.ResponseWriter) {
 func shouldDisableAssetCaching() bool {
 	value := strings.TrimSpace(strings.ToLower(os.Getenv("XUVA_WEB_DISABLE_ASSET_CACHE")))
 	return value == "1" || value == "true" || value == "yes"
+}
+
+func devProxyHandler() http.Handler {
+	origin := strings.TrimSpace(os.Getenv("XUVA_WEB_DEV_ORIGIN"))
+	if origin == "" {
+		return nil
+	}
+	target, err := url.Parse(origin)
+	if err != nil || target.Scheme == "" || target.Host == "" {
+		return nil
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = target.Host
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") ||
+			strings.HasPrefix(r.URL.Path, "/play/") ||
+			r.URL.Path == "/admin" ||
+			strings.HasPrefix(r.URL.Path, "/admin/") ||
+			strings.HasPrefix(r.URL.Path, "/legacy/") ||
+			r.URL.Path == "/legacy" ||
+			strings.HasPrefix(r.URL.Path, "/next/") ||
+			r.URL.Path == "/next" {
+			http.NotFound(w, r)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	})
 }

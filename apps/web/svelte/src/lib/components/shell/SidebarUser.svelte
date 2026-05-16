@@ -78,6 +78,7 @@
 		height: 38px;
 		border-radius: 50%;
 		object-fit: cover;
+		object-position: center;
 	}
 
 	.sidebar-user__fallback {

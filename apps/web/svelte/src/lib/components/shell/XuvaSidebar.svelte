@@ -7,7 +7,8 @@
 		secondary,
 		libraries,
 		profile,
-		showProfile = false
+		showProfile = false,
+		children
 	} = $props<{
 		brand?: Snippet;
 		primary?: Snippet;
@@ -15,6 +16,7 @@
 		libraries?: Snippet;
 		profile?: Snippet;
 		showProfile?: boolean;
+		children?: Snippet;
 	}>();
 </script>
 

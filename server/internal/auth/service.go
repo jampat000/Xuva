@@ -38,6 +38,7 @@ type Principal struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
+	AvatarURL   string `json:"avatarUrl,omitempty"`
 	Role        string `json:"role"`
 }
 
@@ -45,6 +46,7 @@ type UserAccount struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
+	AvatarURL   string `json:"avatarUrl,omitempty"`
 	Role        string `json:"role"`
 	CreatedAt   string `json:"createdAt,omitempty"`
 }
@@ -92,6 +94,7 @@ type userRecord struct {
 	ID               string
 	Username         string
 	DisplayName      string
+	AvatarURL        string
 	Role             string
 	PasswordHash     string
 	LockedUntil      string
@@ -264,7 +267,7 @@ func (s *Service) ListUsers(ctx context.Context) ([]UserAccount, error) {
 		return nil, ErrUnauthorized
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, username, display_name, role, created_at
+		SELECT id, username, display_name, avatar_url, role, created_at
 		FROM users
 		WHERE username <> ''
 		ORDER BY LOWER(username) ASC
@@ -277,7 +280,7 @@ func (s *Service) ListUsers(ctx context.Context) ([]UserAccount, error) {
 	out := []UserAccount{}
 	for rows.Next() {
 		var account UserAccount
-		if err := rows.Scan(&account.ID, &account.Username, &account.DisplayName, &account.Role, &account.CreatedAt); err != nil {
+		if err := rows.Scan(&account.ID, &account.Username, &account.DisplayName, &account.AvatarURL, &account.Role, &account.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, account)
@@ -336,6 +339,45 @@ func (s *Service) DeleteUser(ctx context.Context, userID string) error {
 		return ErrUserNotFound
 	}
 	return nil
+}
+
+func (s *Service) UpdateUserProfile(ctx context.Context, userID string, displayName string, avatarURL string) (Principal, error) {
+	if s.Disabled() {
+		return Principal{}, ErrUnauthorized
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return Principal{}, ErrUserNotFound
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return Principal{}, errors.New("display name is required")
+	}
+	now := timestamp(time.Now())
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET display_name = ?, avatar_url = ?, updated_at = ?
+		WHERE id = ? AND username <> ''
+	`, displayName, strings.TrimSpace(avatarURL), now, userID)
+	if err != nil {
+		return Principal{}, err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return Principal{}, ErrUserNotFound
+	}
+	var principal Principal
+	err = s.db.QueryRowContext(ctx, `
+		SELECT id, username, display_name, avatar_url, role
+		FROM users
+		WHERE id = ?
+	`, userID).Scan(&principal.ID, &principal.Username, &principal.DisplayName, &principal.AvatarURL, &principal.Role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Principal{}, ErrUserNotFound
+	}
+	if err != nil {
+		return Principal{}, err
+	}
+	return principal, nil
 }
 
 func (s *Service) SetUserPassword(ctx context.Context, userID string, password string) error {
@@ -424,7 +466,7 @@ func (s *Service) Authenticate(ctx context.Context, username string, password st
 		return Principal{}, Session{}, "", err
 	}
 	s.clearUnknownFailure(key)
-	principal := Principal{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Role: user.Role}
+	principal := Principal{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, AvatarURL: user.AvatarURL, Role: user.Role}
 	session, token, err := s.issueSession(ctx, principal, remoteAddr, userAgent)
 	if err != nil {
 		return Principal{}, Session{}, "", err
@@ -446,6 +488,7 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 		UserID      string
 		Username    string
 		DisplayName string
+		AvatarURL   string
 		Role        string
 		SecretHash  string
 		CSRFToken   string
@@ -455,11 +498,11 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 		RevokedAt   string
 	}{}
 	err = s.db.QueryRowContext(ctx, `
-		SELECT s.id, s.user_id, u.username, u.display_name, u.role, s.secret_hash, s.csrf_token, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at
+		SELECT s.id, s.user_id, u.username, u.display_name, u.avatar_url, u.role, s.secret_hash, s.csrf_token, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.id = ?
-	`, id).Scan(&row.SessionID, &row.UserID, &row.Username, &row.DisplayName, &row.Role, &row.SecretHash, &row.CSRFToken, &row.CreatedAt, &row.LastSeenAt, &row.ExpiresAt, &row.RevokedAt)
+	`, id).Scan(&row.SessionID, &row.UserID, &row.Username, &row.DisplayName, &row.AvatarURL, &row.Role, &row.SecretHash, &row.CSRFToken, &row.CreatedAt, &row.LastSeenAt, &row.ExpiresAt, &row.RevokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ResolvedSession{}, ErrUnauthorized
 	}
@@ -522,7 +565,7 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 		}
 	}
 	return ResolvedSession{
-		Principal: Principal{ID: row.UserID, Username: row.Username, DisplayName: row.DisplayName, Role: row.Role},
+		Principal: Principal{ID: row.UserID, Username: row.Username, DisplayName: row.DisplayName, AvatarURL: row.AvatarURL, Role: row.Role},
 		Session: Session{
 			ID:        row.SessionID,
 			UserID:    row.UserID,
@@ -566,10 +609,10 @@ func (s *Service) lookupUser(ctx context.Context, username string) (userRecord, 
 	name := normalizeUsername(username)
 	var user userRecord
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, username, display_name, role, password_hash, locked_until, failed_login_count, last_failed_at
+		SELECT id, username, display_name, avatar_url, role, password_hash, locked_until, failed_login_count, last_failed_at
 		FROM users
 		WHERE username = ? COLLATE NOCASE
-	`, name).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Role, &user.PasswordHash, &user.LockedUntil, &user.FailedLoginCount, &user.LastFailedAt)
+	`, name).Scan(&user.ID, &user.Username, &user.DisplayName, &user.AvatarURL, &user.Role, &user.PasswordHash, &user.LockedUntil, &user.FailedLoginCount, &user.LastFailedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return userRecord{}, false, nil
 	}

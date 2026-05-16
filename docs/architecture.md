@@ -14,6 +14,21 @@ Client app
   -> Local media files
 ```
 
+## Operating Standards
+
+Xuva is a server/client system. The server is the product runtime and clients are delivery surfaces.
+
+Production standards:
+
+- Playback startup for direct play should be predictably low-latency under normal LAN conditions.
+- Playback route decisions must be deterministic for the same source profile and client capability input.
+- Active playback sessions must not be starved by scans, metadata jobs, or background probes.
+- Resume position and watched state updates must be durable across server restart and process recovery.
+- API contracts should be backward-compatible by default, with explicit versioning for breaking changes.
+- Bounded queues and resource limits are mandatory for scan, probe, transcode, and download workloads.
+- Server restart/recovery must preserve critical runtime state and return to service without manual data repair.
+- Multi-client concurrency should degrade gracefully with clear user-facing reason codes when limits are hit.
+
 ## Server
 
 Preferred starting stack:

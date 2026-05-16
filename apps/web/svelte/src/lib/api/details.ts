@@ -142,7 +142,7 @@ export interface PlaybackRouteResponse {
 	protocol?: string;
 	policy?: string;
 	decision?: PlaybackDecisionResponse;
-	fallbackOptions?: string[];
+	fallbackOptions?: Array<{ id?: string; label?: string; description?: string }>;
 }
 
 export interface PlaybackQueryOptions {
@@ -157,6 +157,18 @@ export interface PlaybackQueryOptions {
 	subtitleMode?: string;
 	subtitleTrackActive?: boolean;
 	supportsAdaptive?: boolean;
+}
+
+export interface DeviceProfile {
+	id?: string;
+	name?: string;
+	containers?: string[];
+	videoCodecs?: string[];
+	audioCodecs?: string[];
+	subtitleCodecs?: string[];
+	supportsHdr?: boolean;
+	supportsToneMapping?: boolean;
+	supportsHls?: boolean;
 }
 
 export function getMovieDetail(
@@ -228,6 +240,23 @@ export function getPlaybackRoute(
 ): Promise<PlaybackRouteResponse> {
 	const query = playbackQueryString(mediaSourceId, options);
 	return client.request<PlaybackRouteResponse>(`/api/playback/route?${query}`);
+}
+
+export function getDeviceProfiles(
+	client: ApiClient = apiClient
+): Promise<{ profiles?: DeviceProfile[] }> {
+	return client.request<{ profiles?: DeviceProfile[] }>('/api/devices/profiles');
+}
+
+export function startMediaProbe(
+	mediaSourceId: string,
+	client: ApiClient = apiClient
+): Promise<{ id?: string; status?: string }> {
+	return client.send<{ id?: string; status?: string }, Record<string, never>>(
+		`/api/media-sources/${encodeURIComponent(mediaSourceId)}/probe`,
+		{},
+		'POST'
+	);
 }
 
 function playbackQueryString(mediaSourceId: string, options: PlaybackQueryOptions): string {

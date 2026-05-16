@@ -1,6 +1,8 @@
 package jobs
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/jampat000/Xuva/server/internal/resources"
@@ -33,5 +35,22 @@ func TestQueueNormalizesInvalidWorkerCount(t *testing.T) {
 
 	if queue.Workers != 1 {
 		t.Fatalf("expected workers to normalize to 1, got %d", queue.Workers)
+	}
+	if queue.MaxQueued < 4 {
+		t.Fatalf("expected max queued floor of 4, got %d", queue.MaxQueued)
+	}
+}
+
+func TestQueueSubmitRejectsWhenSaturated(t *testing.T) {
+	queue := NewQueue("scan", resources.Background, 1)
+	ctx := context.Background()
+	for i := 0; i < queue.MaxQueued; i++ {
+		if err := queue.Submit(ctx, func(context.Context) {}); err != nil {
+			t.Fatalf("fill queue failed at %d: %v", i, err)
+		}
+	}
+	err := queue.Submit(ctx, func(context.Context) {})
+	if !errors.Is(err, ErrQueueSaturated) {
+		t.Fatalf("expected ErrQueueSaturated, got %v", err)
 	}
 }

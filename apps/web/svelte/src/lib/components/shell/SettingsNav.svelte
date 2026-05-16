@@ -11,6 +11,7 @@
 		| 'transcoding'
 		| 'storage'
 		| 'network'
+		| 'migration'
 		| 'pairing'
 		| 'approved-devices'
 		| 'discovery'
@@ -111,6 +112,14 @@
 			{#snippet icon()}
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path d="M4.8 12a10 10 0 0 1 14.4 0M7.8 15a6.2 6.2 0 0 1 8.4 0M11.1 18a2.1 2.1 0 0 1 1.8 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+				</svg>
+			{/snippet}
+		</SidebarItem>
+		<SidebarItem label="Migration" href="/settings#migration" active={active === 'migration'}>
+			{#snippet icon()}
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M6 6.5h5.2l1.5 2h5.3v9H6z" fill="none" stroke="currentColor" stroke-width="1.5" />
+					<path d="m10.5 12.3 1.5 1.5 2.4-2.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 				</svg>
 			{/snippet}
 		</SidebarItem>

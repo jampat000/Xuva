@@ -57,6 +57,7 @@ type Service struct {
 	requests map[string]requestCounter
 	events   map[string]eventCounter
 	timeline []TimelineEntry
+	playback playbackSLOState
 }
 
 type requestCounter struct {
@@ -78,7 +79,12 @@ type eventCounter struct {
 }
 
 func NewService() *Service {
-	return &Service{requests: map[string]requestCounter{}, events: map[string]eventCounter{}, timeline: []TimelineEntry{}}
+	return &Service{
+		requests: map[string]requestCounter{},
+		events:   map[string]eventCounter{},
+		timeline: []TimelineEntry{},
+		playback: newPlaybackSLOState(),
+	}
 }
 
 func WithCorrelationID(ctx context.Context, id string) context.Context {
@@ -164,6 +170,7 @@ func (s *Service) observeEventData(eventType string, data any, createdAt time.Ti
 	counter.count++
 	counter.lastSeenAt = createdAt
 	s.events[eventType] = counter
+	s.observePlaybackEventLocked(eventType, data, createdAt)
 	s.appendTimeline(TimelineEntry{
 		Kind:      "event",
 		Type:      eventType,
@@ -172,6 +179,15 @@ func (s *Service) observeEventData(eventType string, data any, createdAt time.Ti
 		Detail:    eventDetail(data),
 		CreatedAt: formatTime(createdAt),
 	})
+}
+
+func (s *Service) PlaybackSLO() PlaybackSLOMetrics {
+	if s == nil {
+		return PlaybackSLOMetrics{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.playback.snapshot()
 }
 
 func (s *Service) Subscribe(ctx context.Context, bus *events.Bus) {

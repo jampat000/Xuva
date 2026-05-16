@@ -33,35 +33,37 @@ const (
 )
 
 type Request struct {
-	MediaSourceID  string `json:"mediaSourceId"`
-	Mode           Mode   `json:"mode"`
-	SourcePath     string `json:"sourcePath,omitempty"`
-	Acceleration   string `json:"acceleration,omitempty"`
-	VideoEncoder   string `json:"videoEncoder,omitempty"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
-	MaxAttempts    int    `json:"maxAttempts,omitempty"`
+	MediaSourceID   string `json:"mediaSourceId"`
+	Mode            Mode   `json:"mode"`
+	SourcePath      string `json:"sourcePath,omitempty"`
+	AudioTrackIndex int    `json:"audioTrackIndex,omitempty"`
+	Acceleration    string `json:"acceleration,omitempty"`
+	VideoEncoder    string `json:"videoEncoder,omitempty"`
+	TimeoutSeconds  int    `json:"timeoutSeconds,omitempty"`
+	MaxAttempts     int    `json:"maxAttempts,omitempty"`
 }
 
 type Job struct {
-	ID            string    `json:"id"`
-	MediaSourceID string    `json:"mediaSourceId"`
-	Mode          Mode      `json:"mode"`
-	Status        Status    `json:"status"`
-	SourcePath    string    `json:"sourcePath,omitempty"`
-	OutputPath    string    `json:"outputPath,omitempty"`
-	Command       []string  `json:"command,omitempty"`
-	Acceleration  string    `json:"acceleration,omitempty"`
-	VideoEncoder  string    `json:"videoEncoder,omitempty"`
-	Attempts      int       `json:"attempts"`
-	MaxAttempts   int       `json:"maxAttempts"`
-	Timeout       string    `json:"timeout,omitempty"`
-	CreatedAt     time.Time `json:"createdAt"`
-	StartedAt     time.Time `json:"startedAt,omitempty"`
-	CompletedAt   time.Time `json:"completedAt,omitempty"`
-	Error         string    `json:"error,omitempty"`
-	FailureClass  string    `json:"failureClass,omitempty"`
-	ReasonCode    string    `json:"reasonCode,omitempty"`
-	Remediation   string    `json:"remediation,omitempty"`
+	ID              string    `json:"id"`
+	MediaSourceID   string    `json:"mediaSourceId"`
+	Mode            Mode      `json:"mode"`
+	Status          Status    `json:"status"`
+	SourcePath      string    `json:"sourcePath,omitempty"`
+	OutputPath      string    `json:"outputPath,omitempty"`
+	AudioTrackIndex int       `json:"audioTrackIndex,omitempty"`
+	Command         []string  `json:"command,omitempty"`
+	Acceleration    string    `json:"acceleration,omitempty"`
+	VideoEncoder    string    `json:"videoEncoder,omitempty"`
+	Attempts        int       `json:"attempts"`
+	MaxAttempts     int       `json:"maxAttempts"`
+	Timeout         string    `json:"timeout,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	StartedAt       time.Time `json:"startedAt,omitempty"`
+	CompletedAt     time.Time `json:"completedAt,omitempty"`
+	Error           string    `json:"error,omitempty"`
+	FailureClass    string    `json:"failureClass,omitempty"`
+	ReasonCode      string    `json:"reasonCode,omitempty"`
+	Remediation     string    `json:"remediation,omitempty"`
 }
 
 type Service struct {
@@ -106,7 +108,7 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	if maxAttempts <= 0 {
 		maxAttempts = 2
 	}
-	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: time.Now().UTC(), MaxAttempts: maxAttempts}
+	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, AudioTrackIndex: request.AudioTrackIndex, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: time.Now().UTC(), MaxAttempts: maxAttempts}
 	if request.TimeoutSeconds > 0 {
 		job.Timeout = (time.Duration(request.TimeoutSeconds) * time.Second).String()
 	}
@@ -262,7 +264,12 @@ func (s *Service) command(job Job) []string {
 	args := []string{s.ffmpeg, "-y", "-i", job.SourcePath}
 	switch job.Mode {
 	case ModeTranscode:
-		args = append(args, "-map", "0:v:0", "-map", "0:a?")
+		args = append(args, "-map", "0:v:0")
+		if job.AudioTrackIndex > 0 {
+			args = append(args, "-map", "0:"+intString(job.AudioTrackIndex)+"?")
+		} else {
+			args = append(args, "-map", "0:a?")
+		}
 		if job.Acceleration == "hardware" && job.VideoEncoder != "" {
 			args = append(args, "-c:v", job.VideoEncoder, "-b:v", "8000k", "-maxrate", "9000k", "-bufsize", "18000k")
 		} else {
@@ -293,11 +300,11 @@ func (s *Service) List() []Job {
 	return output
 }
 
-func (s *Service) FindCompleted(mediaSourceID string, mode Mode) (Job, bool) {
+func (s *Service) FindCompleted(mediaSourceID string, mode Mode, audioTrackIndex int) (Job, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, job := range s.jobs {
-		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.Status == StatusCompleted && job.OutputPath != "" {
+		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.AudioTrackIndex == audioTrackIndex && job.Status == StatusCompleted && job.OutputPath != "" {
 			if _, err := os.Stat(job.OutputPath); err == nil {
 				return job, true
 			}
@@ -306,15 +313,39 @@ func (s *Service) FindCompleted(mediaSourceID string, mode Mode) (Job, bool) {
 	return Job{}, false
 }
 
-func (s *Service) FindActive(mediaSourceID string, mode Mode) (Job, bool) {
+func (s *Service) FindActive(mediaSourceID string, mode Mode, audioTrackIndex int) (Job, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, job := range s.jobs {
-		if job.MediaSourceID == mediaSourceID && job.Mode == mode && (job.Status == StatusQueued || job.Status == StatusRunning) {
+		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.AudioTrackIndex == audioTrackIndex && (job.Status == StatusQueued || job.Status == StatusRunning) {
 			return job, true
 		}
 	}
 	return Job{}, false
+}
+
+func (s *Service) CancelActiveForMediaSource(mediaSourceID string) int {
+	if mediaSourceID == "" {
+		return 0
+	}
+	s.mu.RLock()
+	ids := make([]string, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		if job.MediaSourceID != mediaSourceID {
+			continue
+		}
+		if job.Status == StatusQueued || job.Status == StatusRunning {
+			ids = append(ids, job.ID)
+		}
+	}
+	s.mu.RUnlock()
+	cancelled := 0
+	for _, id := range ids {
+		if _, ok := s.Cancel(id); ok {
+			cancelled++
+		}
+	}
+	return cancelled
 }
 
 func (s *Service) store(job Job) { s.mu.Lock(); defer s.mu.Unlock(); s.jobs[job.ID] = job }
@@ -409,6 +440,28 @@ func stringID(value uint64) string {
 		i--
 		digits[i] = byte('0' + value%10)
 		value /= 10
+	}
+	return string(digits[i:])
+}
+
+func intString(value int) string {
+	if value == 0 {
+		return "0"
+	}
+	negative := value < 0
+	if negative {
+		value = -value
+	}
+	var digits [20]byte
+	i := len(digits)
+	for value > 0 {
+		i--
+		digits[i] = byte('0' + value%10)
+		value /= 10
+	}
+	if negative {
+		i--
+		digits[i] = '-'
 	}
 	return string(digits[i:])
 }

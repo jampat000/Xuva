@@ -77,8 +77,7 @@ export function resolveArtworkUrl(
 ): string {
 	const provided = asText(metadataValue);
 	if (provided) return provided;
-	if (!id) return '';
-	return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral&type=${type}`;
+	return '';
 }
 
 export function formatRuntime(durationSeconds: number): string {
@@ -171,12 +170,19 @@ export function watchedLabel(state: PlaybackStateResponse | null): string {
 
 export function playbackModeLabel(decision: PlaybackDecisionResponse | null): string {
 	const mode = asText(decision?.mode);
-	if (mode) return mode;
-	return 'Pending decision';
+	if (!mode) return 'Ready to play';
+	if (isTransientPlaybackMode(mode)) return 'Ready to play';
+	return mode;
 }
 
 export function playbackReasonLabel(decision: PlaybackDecisionResponse | null): string {
+	if (isTransientPlaybackMode(asText(decision?.mode))) {
+		return 'Playback details are refreshing in the background.';
+	}
 	const reasonText = asText(decision?.reasonText) || asText(decision?.reason);
+	if (isTransientPlaybackReason(reasonText)) {
+		return 'Playback details are refreshing in the background.';
+	}
 	if (reasonText) return reasonText;
 	return 'Playback route has not been resolved yet.';
 }
@@ -215,6 +221,37 @@ function pad2(value: number): string {
 
 function asText(value: unknown): string {
 	return String(value ?? '').trim();
+}
+
+function isTransientPlaybackMode(value: string): boolean {
+	const normalized = asText(value).toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+	if (!normalized) return true;
+	return (
+		normalized === 'updating' ||
+		normalized === 'starting' ||
+		normalized === 'playing' ||
+		normalized === 'paused' ||
+		normalized === 'stopped' ||
+		normalized === 'idle' ||
+		normalized === 'pending' ||
+		normalized.includes('updat') ||
+		normalized.includes('wait') ||
+		normalized.includes('check') ||
+		normalized.includes('load')
+	);
+}
+
+function isTransientPlaybackReason(value: string): boolean {
+	const normalized = asText(value).toLowerCase();
+	if (!normalized) return false;
+	return (
+		normalized.includes('updat') ||
+		normalized.includes('wait') ||
+		normalized.includes('checking') ||
+		normalized.includes('loading') ||
+		normalized.includes('preparing') ||
+		normalized.includes('queued')
+	);
 }
 
 function escapeRegex(value: string): string {

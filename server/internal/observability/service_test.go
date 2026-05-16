@@ -25,3 +25,14 @@ func TestEvaluateAlertsDetectsAPIErrorRate(t *testing.T) {
 		t.Fatalf("expected actionable api alert, got %#v", alerts[0])
 	}
 }
+
+func TestEvaluatePlaybackSLOAlertsDetectsStartupRegression(t *testing.T) {
+	alerts := EvaluatePlaybackSLOAlerts(PlaybackSLOMetrics{
+		SessionsWithFirstHeartbeat: 10,
+		StartupUnder5sRate:         0.8,
+		StartupP95Ms:               9200,
+	})
+	if len(alerts) < 2 {
+		t.Fatalf("expected startup alerts, got %#v", alerts)
+	}
+}

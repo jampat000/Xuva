@@ -1179,8 +1179,11 @@ func (s *Service) ListRatings(ctx context.Context, kind string, itemID string) (
 }
 
 func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly bool) ([]MediaSourceItem, error) {
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 {
 		limit = 100
+	}
+	if limit > 5000 {
+		limit = 5000
 	}
 	filter := ""
 	if unprobedOnly {
@@ -1312,7 +1315,7 @@ func (s *Service) GetMediaSourceTracks(ctx context.Context, id string) (MediaSou
 }
 
 func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result ProbeResult) error {
-	_, err := s.db.ExecContext(ctx, `
+	const saveStatement = `
 		INSERT INTO media_probes(media_source_id, container, duration_seconds, bitrate, video_codec, width, height, audio_streams, subtitle_streams, raw_json, probed_at)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(media_source_id) DO UPDATE SET
@@ -1326,8 +1329,35 @@ func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result Pr
 			subtitle_streams = excluded.subtitle_streams,
 			raw_json = excluded.raw_json,
 			probed_at = excluded.probed_at
-	`, mediaSourceID, result.Container, result.DurationSeconds, result.Bitrate, result.VideoCodec, result.Width, result.Height, result.AudioStreams, result.SubtitleStreams, result.RawJSON, timestamp(time.Now()))
-	return err
+	`
+	var lastErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		if _, err := s.db.ExecContext(ctx, saveStatement, mediaSourceID, result.Container, result.DurationSeconds, result.Bitrate, result.VideoCodec, result.Width, result.Height, result.AudioStreams, result.SubtitleStreams, result.RawJSON, timestamp(time.Now())); err != nil {
+			lastErr = err
+			if !isSQLiteBusyError(err) || attempt == 5 {
+				return err
+			}
+			backoff := time.Duration(attempt*120) * time.Millisecond
+			timer := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
+
+func isSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "sqlite_busy") || strings.Contains(text, "database is locked")
 }
 
 func scanMediaSources(rows *sql.Rows) ([]MediaSourceItem, error) {

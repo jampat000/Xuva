@@ -29,6 +29,7 @@
 	let avatarInitials = $state('U');
 	let avatarName = $state('');
 	let avatarRole = $state('User');
+	let avatarUrl = $state('');
 	let canSignOut = $state(false);
 
 	onMount(() => {
@@ -55,6 +56,7 @@
 			if (userName) {
 				avatarName = userName;
 				avatarInitials = initialsForName(userName);
+				avatarUrl = asText(session?.user?.avatarUrl);
 				avatarRole = roleLabel(session?.user?.role);
 				canSignOut = true;
 				return;
@@ -62,12 +64,14 @@
 			if (session?.authDisabled) {
 				avatarName = 'Local access';
 				avatarInitials = 'L';
+				avatarUrl = '';
 				avatarRole = 'No sign-in mode';
 				canSignOut = false;
 				return;
 			}
 			avatarName = 'Signed out';
 			avatarInitials = 'SO';
+			avatarUrl = '';
 			avatarRole = 'Sign in required';
 			canSignOut = false;
 		} catch {
@@ -165,6 +169,7 @@
 			initials={avatarInitials}
 			name={avatarName || 'User'}
 			role={avatarRole}
+			{avatarUrl}
 			canSignOut={canSignOut}
 			changePasswordHref="/settings#admin-access"
 			onSignOut={signOut}

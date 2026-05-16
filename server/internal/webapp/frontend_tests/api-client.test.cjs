@@ -90,3 +90,60 @@ test("auth token falls back when localStorage is unavailable", () => {
     writeAuthToken("");
   }
 });
+
+test("migration dry-run request uses POST with JSON body", async () => {
+  let capturedPath = "";
+  let capturedMethod = "";
+  let capturedBody = "";
+  let capturedContentType = "";
+  const client = createApiClient(async (path, options = {}) => {
+    capturedPath = path;
+    capturedMethod = String(options.method || "GET");
+    capturedBody = String(options.body || "");
+    capturedContentType = String((options.headers || {})["Content-Type"] || "");
+    return response(200, JSON.stringify({ status: "dry_run" }));
+  });
+
+  const payload = {
+    payload: '{"schema":"xuva.migration.v1","source":"generic","items":[{"id":"item-001","kind":"movie"}]}',
+    scopes: ["playback", "metadata"],
+  };
+  await client.send("/api/migrations/dry-run", payload, "POST");
+
+  assert.equal(capturedPath, "/api/migrations/dry-run");
+  assert.equal(capturedMethod, "POST");
+  assert.equal(capturedContentType, "application/json");
+  assert.deepEqual(JSON.parse(capturedBody), payload);
+});
+
+test("migration import request preserves selected import keys", async () => {
+  let capturedBody = "";
+  const client = createApiClient(async (_path, options = {}) => {
+    capturedBody = String(options.body || "");
+    return response(200, JSON.stringify({ status: "completed" }));
+  });
+
+  const payload = {
+    payload: '{"schema":"xuva.migration.v1","source":"plex","items":[{"id":"item-001","kind":"movie"},{"id":"item-002","kind":"episode"}]}',
+    scopes: ["playback"],
+    selectedImportKeys: ["item-001"],
+  };
+  await client.send("/api/migrations/import", payload, "POST");
+  assert.deepEqual(JSON.parse(capturedBody), payload);
+});
+
+test("migration rollback request URL-encodes run id", async () => {
+  let capturedPath = "";
+  const client = createApiClient(async (path) => {
+    capturedPath = path;
+    return response(200, JSON.stringify({ status: "rolled_back" }));
+  });
+
+  const runID = "migration_20260516T010203_1/with space";
+  await client.send(`/api/migrations/runs/${encodeURIComponent(runID)}/rollback`, {}, "POST");
+
+  assert.equal(
+    capturedPath,
+    "/api/migrations/runs/migration_20260516T010203_1%2Fwith%20space/rollback",
+  );
+});

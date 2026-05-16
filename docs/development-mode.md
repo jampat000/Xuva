@@ -16,13 +16,21 @@ Run from repo root:
 ./tools/run-desktop-owner.ps1
 ```
 
+Live web dev mode (no republish/restart for Svelte edits):
+
+```powershell
+./tools/run-desktop-owner.ps1 -WebDev
+```
+
+In `-WebDev` mode, Xuva proxies web routes to Vite (`http://127.0.0.1:5173`) while API/playback routes still come from Go on `127.0.0.1:8097`.
+
 ## Why stale UI happens
 
 Xuva web assets are embedded into Go from:
 
 - `server/internal/webapp/static-next`
 
-If you change Svelte files but do not republish static output and restart the Go server, the running app may still serve older assets.
+If you run without `-WebDev`, Xuva serves embedded static assets. Svelte source edits require republish/restart in that mode.
 
 The canonical script rebuilds and republishes frontend assets before starting the server to avoid stale runtime mismatches.
 

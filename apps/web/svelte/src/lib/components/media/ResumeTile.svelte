@@ -149,9 +149,10 @@
 		font-size: 0.98rem;
 		font-weight: 660;
 		letter-spacing: -0.01em;
-		display: -webkit-box;
-		-webkit-line-clamp: 1;
-		-webkit-box-orient: vertical;
+	display: -webkit-box;
+	line-clamp: 1;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
 		overflow: hidden;
 	}
 
@@ -160,9 +161,10 @@
 		font-size: 0.75rem;
 		color: color-mix(in srgb, var(--xuva-color-text-muted) 92%, transparent);
 		margin-top: 4px;
-		display: -webkit-box;
-		-webkit-line-clamp: 1;
-		-webkit-box-orient: vertical;
+	display: -webkit-box;
+	line-clamp: 1;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
 		overflow: hidden;
 	}
 

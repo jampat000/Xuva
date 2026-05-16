@@ -1,0 +1,13 @@
+{
+  "name": "xuva-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Xuva desktop alpha shell",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}

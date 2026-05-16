@@ -19,7 +19,7 @@ Operational events created by API actions also include `correlationId`, so an op
 
 - `GET /api/health`: liveness and subsystem checks. Returns `200` even when degraded so monitors can distinguish process liveness from readiness.
 - `GET /api/ready`: readiness. Returns `503` when a required runtime path is unavailable or a queue is saturated.
-- `GET /api/metrics`: API request latency/errors, queue depth, active workers, event counts, playback/transcode/download/probe outcome counts, and generated alerts.
+- `GET /api/metrics`: API request latency/errors, queue depth, active workers, event counts, playback/transcode/download/probe outcome counts, playback startup/recovery SLOs, and generated alerts.
 
 ## Baseline Alerts
 
@@ -27,6 +27,8 @@ Operational events created by API actions also include `correlationId`, so an op
 | --- | --- | --- |
 | `queue_saturated` | Active workers are at capacity and queued work is waiting. | Pause background scans/checks, wait for active jobs, or increase worker limits. |
 | `api_error_rate` | A route has at least 5 requests and 20% or more are server errors. | Search logs by the last `correlation_id`, inspect `/api/ready`, then check the related subsystem. |
+| `playback_startup_slo` / `playback_startup_p95` | Startup heartbeat SLO degraded or startup p95 exceeds threshold. | Check transcode/scan queue pressure, route-change churn, and client profile/network path. |
+| `adaptive_recovery_slo` | Too many adaptive stalls recover too slowly. | Lower remote bitrate defaults and validate throughput diagnostics for impacted clients. |
 | `path.*` degraded | Runtime folder is missing, not a directory, or not writable. | Fix permissions or move the folder in Settings before starting heavy work. |
 
 ## First Response Flow

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import ArtworkFallback from '$lib/components/media/ArtworkFallback.svelte';
 
 	let {
 		title,
@@ -26,6 +27,11 @@
 	} = $props();
 
 	const boundedProgress = $derived(Math.max(0, Math.min(100, Math.round(Number(progress || 0)))));
+	let posterFailed = $state(false);
+
+	$effect(() => {
+		posterFailed = !posterUrl;
+	});
 </script>
 
 <section class="relative mx-4 mt-4 min-h-[520px] overflow-hidden border-y border-white/10 sm:mx-6 lg:mx-8 lg:min-h-[560px]">
@@ -58,14 +64,17 @@
 				{/if}
 			</div>
 		</div>
-		{#if posterUrl}
-			<div class="hidden md:block">
+		<div class="hidden md:block h-[400px] w-[276px] overflow-hidden rounded-xl shadow-2xl shadow-black/60 ring-1 ring-white/10 xl:h-[440px] xl:w-[304px]">
+			{#if !posterFailed}
 				<img
 					src={posterUrl}
 					alt={`${title} poster`}
-					class="h-[400px] w-[276px] rounded-xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 xl:h-[440px] xl:w-[304px]"
+					class="h-full w-full object-cover"
+					onerror={() => (posterFailed = true)}
 				/>
+			{:else}
+				<ArtworkFallback variant="poster" {title} meta={meta} showCopy={false} />
+			{/if}
 			</div>
-		{/if}
 	</div>
 </section>

@@ -153,7 +153,29 @@ export function itemDetailHref(item: HomeDisplayItem): string | undefined {
 export function itemPlayHref(item: HomeDisplayItem): string | undefined {
 	const mediaSourceID = asText(item.playMediaSourceId || item.mediaSourceId);
 	if (!mediaSourceID) return undefined;
-	return `/play/${encodeURIComponent(mediaSourceID)}`;
+	return buildPlayHref(mediaSourceID);
+}
+
+export function buildPlayHref(
+	mediaSourceID: string,
+	options: {
+		clientProfile?: string;
+		routeType?: 'lan' | 'remote';
+		supportsAdaptive?: boolean;
+		startFromZero?: boolean;
+	} = {}
+): string {
+	const id = asText(mediaSourceID);
+	if (!id) return '';
+	const params = new URLSearchParams();
+	params.set('clientProfile', asText(options.clientProfile) || 'web');
+	params.set('routeType', asText(options.routeType) === 'lan' ? 'lan' : 'remote');
+	params.set('supportsAdaptive', options.supportsAdaptive === false ? 'false' : 'true');
+	params.set('autoplayIntent', '1');
+	params.set('strictAutoplay', '1');
+	params.set('forcePlayable', 'true');
+	if (options.startFromZero) params.set('start', '0');
+	return `/play/${encodeURIComponent(id)}?${params.toString()}`;
 }
 
 export function asText(value: unknown): string {

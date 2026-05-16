@@ -22,6 +22,7 @@
 		getClientBootstrap,
 		getUsers,
 		logout,
+		updateUser,
 		updateUserPassword,
 		type AuthSessionResponse,
 		type AuthSessionUser,
@@ -45,9 +46,14 @@
 		getCatalogSummary,
 		getDiscoveryStatus,
 		getDownloads,
+		getMigrationFormats,
+		getMigrationRuns,
 		getPairingRequests,
 		getPerformanceSettings,
 		getProbes,
+		rollbackMigrationRun,
+		runMigrationDryRun,
+		runMigrationImport,
 		runHardwareTest,
 		getScans,
 		getSessions,
@@ -62,6 +68,8 @@
 		type CatalogSummaryResponse,
 		type DiscoveryStatusResponse,
 		type DownloadJobItem,
+		type MigrationFormat,
+		type MigrationRunReport,
 		type PerformanceSettingsResponse,
 		type PairingRequestItem,
 		type ProbeJobItem,
@@ -96,6 +104,7 @@
 		| 'transcoding'
 		| 'storage'
 		| 'network'
+		| 'migration'
 		| 'pairing'
 		| 'approved-devices'
 		| 'discovery'
@@ -165,11 +174,17 @@
 		year: string;
 	}
 
-	interface SettingsShellIdentity {
-		serverName: string;
-		userDisplayName: string;
-		userRole: string;
-	}
+interface SettingsShellIdentity {
+	serverName: string;
+	userDisplayName: string;
+	userAvatarUrl: string;
+	userRole: string;
+}
+
+interface DesktopBridge {
+	pickFolder?: (request?: { title?: string; currentPath?: string; purpose?: string }) => Promise<{ path?: string } | string>;
+	restartServer?: () => Promise<{ ok?: boolean } | void>;
+}
 
 	let isLoading = $state(true);
 	let isScanningMovies = $state(false);
@@ -182,9 +197,14 @@
 	let isSavingStorage = $state(false);
 	let isSavingTranscoding = $state(false);
 	let isSavingMetadataSources = $state(false);
+let isRunningMigrationDryRun = $state(false);
+let isRunningMigrationImport = $state(false);
+let isRunningMigrationRollback = $state(false);
+let isRestartingDesktop = $state(false);
 	let isTestingHardware = $state(false);
 	let isSigningOut = $state(false);
 	let isSavingPassword = $state(false);
+	let isSavingUserProfile = $state(false);
 	let isCreatingUser = $state(false);
 	let isDeletingUser = $state(false);
 	let isSavingLibrary = $state(false);
@@ -203,6 +223,8 @@
 	let metadataReviewError = $state('');
 	let pairingRequestsError = $state('');
 	let approvedDevicesError = $state('');
+	let migrationError = $state('');
+	let migrationMessage = $state('');
 	let usersError = $state('');
 	let usersActionMessage = $state('');
 	let libraryLoadError = $state('');
@@ -241,6 +263,9 @@
 	let users = $state<UserAccount[]>([]);
 	let reviewItems = $state<ReviewItem[]>([]);
 	let versionGroups = $state<VersionGroup[]>([]);
+	let migrationFormats = $state<MigrationFormat[]>([]);
+	let migrationRuns = $state<MigrationRunReport[]>([]);
+	let migrationPreview = $state<MigrationRunReport | null>(null);
 	let metadataRecordsByItem = $state<Record<string, MetadataRecordsResponse>>({});
 	let metadataRecordsLoading = $state<Record<string, boolean>>({});
 	let metadataRecordsError = $state<Record<string, string>>({});
@@ -289,11 +314,18 @@
 	let newLibraryKindDraft = $state<'movies' | 'tv'>('movies');
 	let newLibraryNameDraft = $state('');
 	let newLibraryPathDraft = $state('');
+	let migrationPayloadDraft = $state('');
+	let migrationSourceDraft = $state<'plex' | 'emby' | 'jellyfin' | 'generic'>('generic');
+	let migrationScopePlayback = $state(true);
+	let migrationScopeMetadata = $state(true);
+	let selectedMigrationImportKeys = $state<Record<string, boolean>>({});
 	let shellIdentity = $state<SettingsShellIdentity>({
 		serverName: 'Xuva',
 		userDisplayName: '',
+		userAvatarUrl: '',
 		userRole: ''
 	});
+	let userProfileDrafts = $state<Record<string, { displayName: string; avatarUrl: string }>>({});
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	const SETTINGS_SHELL_IDENTITY_KEY = 'xuva.settings.shell.identity.v1';
@@ -409,6 +441,10 @@
 	const shellUserRole = $derived.by(() => {
 		if (user) return userRoleLabel;
 		return asText(shellIdentity.userRole);
+	});
+	const shellUserAvatarUrl = $derived.by(() => {
+		if (user) return asText(user.avatarUrl);
+		return asText(shellIdentity.userAvatarUrl);
 	});
 	const shellDisplayNameForShell = $derived.by(() => {
 		if (isLoading) {
@@ -733,10 +769,19 @@
 			? actionMessage
 			: ''
 	);
-	const serverNameSaveMessage = $derived.by(() => (actionMessage === 'Server name saved.' ? actionMessage : ''));
-	const selectedTitle = $derived.by(() => {
-		return sectionTitle(activeSection);
-	});
+const serverNameSaveMessage = $derived.by(() => (actionMessage === 'Server name saved.' ? actionMessage : ''));
+const desktopBridgeAvailable = $derived.by(() => Boolean(desktopBridge()));
+const desktopBridgeCanPickFolders = $derived.by(() => Boolean(desktopBridge()?.pickFolder));
+const desktopBridgeCanRestart = $derived.by(() => Boolean(desktopBridge()?.restartServer));
+const desktopBridgeStatus = $derived.by(() => {
+	if (!desktopBridgeAvailable) return 'Web fallback';
+	if (desktopBridgeCanPickFolders && desktopBridgeCanRestart) return 'Desktop bridge ready';
+	if (desktopBridgeCanPickFolders) return 'Folder bridge only';
+	return 'Bridge limited';
+});
+const selectedTitle = $derived.by(() => {
+	return sectionTitle(activeSection);
+});
 	const selectedDescription = $derived.by(() => {
 		return sectionDescription(activeSection);
 	});
@@ -773,6 +818,7 @@
 	metadataReviewError = '';
 	pairingRequestsError = '';
 		approvedDevicesError = '';
+		migrationError = '';
 		usersError = '';
 		libraryLoadError = '';
 		liveStatusError = '';
@@ -908,6 +954,7 @@
 			shellIdentity = {
 				serverName: displayServerName(settingsPayload.config?.serverName),
 				userDisplayName: nextSessionUser ? nextUserDisplayName : '',
+				userAvatarUrl: asText(nextSessionUser?.avatarUrl),
 				userRole: nextSessionUser ? nextUserRole : ''
 			};
 			writeSettingsShellIdentity(shellIdentity);
@@ -932,9 +979,29 @@
 					return { devices: [] };
 				});
 				approvedDevices = approvedDevicesPayload.devices || [];
+				const migrationFormatsPayload = await getMigrationFormats(apiClient).catch((error: unknown) => {
+					if (isApiStatus(error, 401) || isApiStatus(error, 403)) {
+						migrationError = '';
+						return { formats: [] };
+					}
+					migrationError = formatLoadError(error);
+					return { formats: [] };
+				});
+				migrationFormats = migrationFormatsPayload.formats || [];
+				const migrationRunsPayload = await getMigrationRuns(apiClient).catch((error: unknown) => {
+					if (isApiStatus(error, 401) || isApiStatus(error, 403)) {
+						migrationError = '';
+						return { runs: [] };
+					}
+					migrationError = formatLoadError(error);
+					return { runs: [] };
+				});
+				migrationRuns = migrationRunsPayload.runs || [];
 			} else {
 				pairingRequests = [];
 				approvedDevices = [];
+				migrationFormats = [];
+				migrationRuns = [];
 			}
 			if (sessionPayload?.user && !sessionPayload?.authDisabled) {
 				const usersPayload = await getUsers(apiClient).catch((error: unknown) => {
@@ -946,8 +1013,10 @@
 					return { users: [] as UserAccount[] };
 				});
 				users = usersPayload.users || [];
+				syncUserProfileDrafts(users);
 			} else {
 				users = [];
+				userProfileDrafts = {};
 			}
 			lastUpdatedLabel = new Date().toLocaleTimeString();
 		} catch (error) {
@@ -957,6 +1026,44 @@
 			isLoadingPairingRequests = false;
 			isLoadingApprovedDevices = false;
 			isLoading = false;
+		}
+	}
+
+	function desktopBridge(): DesktopBridge | null {
+		if (typeof window === 'undefined') return null;
+		const root = window as unknown as { xuvaDesktop?: DesktopBridge; XuvaDesktop?: DesktopBridge };
+		return root.xuvaDesktop || root.XuvaDesktop || null;
+	}
+
+	async function tryDesktopPickFolder(currentPath: string, purpose: string): Promise<string> {
+		const bridge = desktopBridge();
+		if (!bridge || typeof bridge.pickFolder !== 'function') return '';
+		const result = await bridge.pickFolder({
+			title: 'Choose folder',
+			currentPath: currentPath || '',
+			purpose
+		});
+		if (typeof result === 'string') return result.trim();
+		return asText(result?.path);
+	}
+
+	async function restartServerNow(): Promise<void> {
+		if (isRestartingDesktop || !canManageSettings) return;
+		const bridge = desktopBridge();
+		if (!bridge || typeof bridge.restartServer !== 'function') {
+			actionMessage = 'Restart required. No desktop bridge is available in this mode.';
+			return;
+		}
+		isRestartingDesktop = true;
+		actionMessage = '';
+		try {
+			await bridge.restartServer();
+			actionMessage = 'Restart requested. Xuva will reconnect automatically.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			actionMessage = formatLoadError(error);
+		} finally {
+			isRestartingDesktop = false;
 		}
 	}
 
@@ -1327,6 +1434,12 @@ async function refreshTVMetadata(): Promise<void> {
 		isBrowsingStorage = true;
 		storageSettingsError = '';
 		try {
+			const picked = await tryDesktopPickFolder(path || asText(storageDraft[field]), field);
+			if (picked) {
+				activeStorageBrowseField = field;
+				storageDraft[field] = picked;
+				return;
+			}
 			activeStorageBrowseField = field;
 			storageFolderBrowse = await browseFolder(path || asText(storageDraft[field]), apiClient);
 		} catch (error) {
@@ -1527,6 +1640,11 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		isBrowsingLibrary = true;
 		librarySettingsError = '';
 		try {
+			const picked = await tryDesktopPickFolder(path || asText(newLibraryPathDraft), 'library');
+			if (picked) {
+				newLibraryPathDraft = picked;
+				return;
+			}
 			libraryFolderBrowse = await browseFolder(path || asText(newLibraryPathDraft), apiClient);
 		} catch (error) {
 			librarySettingsError = formatLoadError(error);
@@ -1553,6 +1671,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 			shellIdentity = {
 				...shellIdentity,
 				userDisplayName: '',
+				userAvatarUrl: '',
 				userRole: ''
 			};
 			writeSettingsShellIdentity(shellIdentity);
@@ -1698,6 +1817,146 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		}
 	}
 
+	function syncUserProfileDrafts(accounts: UserAccount[]): void {
+		const next: Record<string, { displayName: string; avatarUrl: string }> = {};
+		for (const account of accounts) {
+			const id = asText(account.id);
+			if (!id) continue;
+			next[id] = {
+				displayName: asText(account.displayName || account.username),
+				avatarUrl: asText(account.avatarUrl)
+			};
+		}
+		userProfileDrafts = next;
+	}
+
+	function userProfileDraft(account: UserAccount): { displayName: string; avatarUrl: string } {
+		const id = asText(account.id);
+		return (
+			userProfileDrafts[id] || {
+				displayName: asText(account.displayName || account.username),
+				avatarUrl: asText(account.avatarUrl)
+			}
+		);
+	}
+
+	async function saveUserProfile(account: UserAccount): Promise<void> {
+		if (!canManageUsers || isSavingUserProfile || isDeletingUser) return;
+		const id = asText(account.id);
+		if (!id) return;
+		const draft = userProfileDraft(account);
+		usersActionMessage = '';
+		usersError = '';
+		isSavingUserProfile = true;
+		activeUserID = id;
+		try {
+			await updateUser(
+				id,
+				{
+					displayName: asText(draft.displayName),
+					avatarUrl: asText(draft.avatarUrl)
+				},
+				apiClient
+			);
+			usersActionMessage = 'User profile updated.';
+			await loadSettingsSurface(true);
+		} catch (error) {
+			usersError = formatLoadError(error);
+		} finally {
+			isSavingUserProfile = false;
+			activeUserID = '';
+		}
+	}
+
+	function migrationScopes(): string[] {
+		const scopes: string[] = [];
+		if (migrationScopePlayback) scopes.push('playback');
+		if (migrationScopeMetadata) scopes.push('metadata');
+		return scopes;
+	}
+
+	function selectedMigrationKeysFromPreview(): string[] {
+		if (!migrationPreview?.items) return [];
+		return migrationPreview.items
+			.filter((item) => {
+				const key = asText(item.importKey);
+				if (!key) return false;
+				return Boolean(selectedMigrationImportKeys[key]);
+			})
+			.map((item) => asText(item.importKey))
+			.filter(Boolean);
+	}
+
+	async function previewMigration(): Promise<void> {
+		if (!canManageSettings) return;
+		isRunningMigrationDryRun = true;
+		migrationError = '';
+		migrationMessage = '';
+		try {
+			const report = await runMigrationDryRun(
+				{
+					payload: migrationPayloadDraft,
+					scopes: migrationScopes()
+				},
+				apiClient
+			);
+			migrationPreview = report;
+			selectedMigrationImportKeys = {};
+			for (const item of report.items || []) {
+				const key = asText(item.importKey);
+				if (!key) continue;
+				selectedMigrationImportKeys[key] = asText(item.outcome) === 'importable';
+			}
+			migrationMessage = 'Preview generated.';
+		} catch (error) {
+			migrationError = formatLoadError(error);
+		} finally {
+			isRunningMigrationDryRun = false;
+		}
+	}
+
+	async function importMigration(): Promise<void> {
+		if (!canManageSettings || !migrationPreview) return;
+		isRunningMigrationImport = true;
+		migrationError = '';
+		migrationMessage = '';
+		try {
+			const report = await runMigrationImport(
+				{
+					payload: migrationPayloadDraft,
+					scopes: migrationScopes(),
+					selectedImportKeys: selectedMigrationKeysFromPreview()
+				},
+				apiClient
+			);
+			migrationPreview = report;
+			migrationMessage = `Import complete${asText(report.runId) ? ` (${asText(report.runId)})` : ''}.`;
+			const runs = await getMigrationRuns(apiClient);
+			migrationRuns = runs.runs || [];
+		} catch (error) {
+			migrationError = formatLoadError(error);
+		} finally {
+			isRunningMigrationImport = false;
+		}
+	}
+
+	async function rollbackMigration(runID: string): Promise<void> {
+		if (!canManageSettings || !asText(runID)) return;
+		isRunningMigrationRollback = true;
+		migrationError = '';
+		migrationMessage = '';
+		try {
+			const report = await rollbackMigrationRun(runID, apiClient);
+			migrationMessage = `Rollback complete${asText(report.runId) ? ` (${asText(report.runId)})` : ''}.`;
+			const runs = await getMigrationRuns(apiClient);
+			migrationRuns = runs.runs || [];
+		} catch (error) {
+			migrationError = formatLoadError(error);
+		} finally {
+			isRunningMigrationRollback = false;
+		}
+	}
+
 	function syncSectionFromHash(): void {
 		if (typeof window === 'undefined') return;
 		const candidate = window.location.hash.replace(/^#/, '');
@@ -1720,6 +1979,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 			'transcoding',
 			'storage',
 			'network',
+			'migration',
 			'pairing',
 			'approved-devices',
 			'discovery',
@@ -1742,6 +2002,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 			transcoding: 'transcoding',
 			storage: 'storage',
 			network: 'network',
+			migration: 'migration',
 			access: 'admin-access',
 			users: 'admin-access',
 			'owner-access': 'admin-access',
@@ -2052,19 +2313,20 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 
 	function readSettingsShellIdentity(): SettingsShellIdentity {
 		if (typeof window === 'undefined') {
-			return { serverName: 'Xuva', userDisplayName: '', userRole: '' };
+			return { serverName: 'Xuva', userDisplayName: '', userAvatarUrl: '', userRole: '' };
 		}
 		try {
 			const raw = window.localStorage.getItem(SETTINGS_SHELL_IDENTITY_KEY);
-			if (!raw) return { serverName: 'Xuva', userDisplayName: '', userRole: '' };
+			if (!raw) return { serverName: 'Xuva', userDisplayName: '', userAvatarUrl: '', userRole: '' };
 			const parsed = JSON.parse(raw) as Partial<SettingsShellIdentity>;
 			return {
 				serverName: displayServerName(parsed?.serverName),
 				userDisplayName: asText(parsed?.userDisplayName),
+				userAvatarUrl: asText(parsed?.userAvatarUrl),
 				userRole: asText(parsed?.userRole)
 			};
 		} catch {
-			return { serverName: 'Xuva', userDisplayName: '', userRole: '' };
+			return { serverName: 'Xuva', userDisplayName: '', userAvatarUrl: '', userRole: '' };
 		}
 	}
 
@@ -2400,6 +2662,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 			transcoding: 'Transcoding',
 			storage: 'Storage',
 			network: 'Network',
+			migration: 'Migration',
 			pairing: 'Pairing',
 			'approved-devices': 'Approved Devices',
 			discovery: 'Discovery',
@@ -2420,6 +2683,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 			transcoding: 'Transcoding folder and conversion mode controls.',
 			storage: 'Folder paths for metadata, cache, scratch, and app data.',
 			network: 'Network visibility and local discovery status.',
+			migration: 'Preview and import watched state, resume points, and metadata IDs from supported exports.',
 			pairing: 'Pending device pairing requests that need admin review.',
 			'approved-devices': 'Approved devices that can connect to this server.',
 			discovery: 'Local mDNS / Bonjour advertisement status and service identity.',
@@ -2440,6 +2704,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 	serverGroupLabel={serverDisplayName}
 	userDisplayName={shellDisplayNameForShell}
 	userRole={shellRoleForShell}
+	userAvatarUrl={shellUserAvatarUrl}
 	{userInitials}
 	canSignOut={!isLoading && Boolean(user) && !authDisabled}
 >
@@ -3213,6 +3478,11 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 							>
 								{isSavingPlaybackPolicy ? 'Saving...' : 'Save Playback Policy'}
 							</XuvaButton>
+							{#if desktopBridgeCanRestart}
+								<XuvaButton variant="secondary" disabled={isRestartingDesktop} onclick={restartServerNow}>
+									{isRestartingDesktop ? 'Restarting...' : 'Restart Xuva'}
+								</XuvaButton>
+							{/if}
 						{:else if !authDisabled}
 							<XuvaButton variant="primary" href={ownerActionHref}>{ownerActionLabel}</XuvaButton>
 						{/if}
@@ -3225,6 +3495,7 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 						/>
 						<XuvaStat label="Compatibility Support" value={asText(performance.hardwareAcceleration?.status) || 'Unknown'} meta="Shows whether Xuva can help when a device needs a different playback format." />
 						<XuvaStat label="Active Sessions" value={asCount(activeSessionCount)} meta={sessionsUnavailable ? 'Sign in to view current playback sessions.' : 'Current playback sessions.'} tone={activeSessionCount > 0 ? 'warn' : 'good'} />
+						<XuvaStat label="Desktop Bridge" value={desktopBridgeStatus} meta="Native folder picker and restart control status." tone={desktopBridgeAvailable ? 'good' : 'neutral'} />
 					</div>
 					{#if liveStatusError}
 						<p class="settings-error">{liveStatusError}</p>
@@ -3302,6 +3573,11 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 									onclick={saveStorageSettings}
 								>
 									{isSavingStorage ? 'Saving...' : 'Save Storage Settings'}
+								</XuvaButton>
+							{/if}
+							{#if desktopBridgeCanRestart}
+								<XuvaButton variant="secondary" disabled={isRestartingDesktop} onclick={restartServerNow}>
+									{isRestartingDesktop ? 'Restarting...' : 'Restart Xuva'}
 								</XuvaButton>
 							{/if}
 						{:else if !authDisabled}
@@ -3627,18 +3903,59 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 												{#if asText(account.createdAt)}
 													<p class="review-card__reason">Created {formatDateTime(account.createdAt)}</p>
 												{/if}
-												{#if asText(account.id) !== asText(user?.id)}
-													<div class="status-actions">
+												<div class="settings-stack users-profile-form">
+													<label class="settings-field">
+														<span>Display name</span>
+														<input
+															value={userProfileDraft(account).displayName}
+															maxlength="80"
+															oninput={(event) => {
+																const id = asText(account.id);
+																const next = event.currentTarget as HTMLInputElement;
+																userProfileDrafts = {
+																	...userProfileDrafts,
+																	[id]: { ...userProfileDraft(account), displayName: next.value }
+																};
+															}}
+														/>
+													</label>
+													<label class="settings-field" style="grid-column: 1 / -1;">
+														<span>Avatar image URL</span>
+														<input
+															value={userProfileDraft(account).avatarUrl}
+															placeholder="https://example.com/avatar.jpg"
+															inputmode="url"
+															oninput={(event) => {
+																const id = asText(account.id);
+																const next = event.currentTarget as HTMLInputElement;
+																userProfileDrafts = {
+																	...userProfileDrafts,
+																	[id]: { ...userProfileDraft(account), avatarUrl: next.value }
+																};
+															}}
+														/>
+													</label>
+												</div>
+												<div class="status-actions">
+													<XuvaButton
+														variant="secondary"
+														size="sm"
+														disabled={isSavingUserProfile && activeUserID === asText(account.id)}
+														onclick={() => saveUserProfile(account)}
+													>
+														{isSavingUserProfile && activeUserID === asText(account.id) ? 'Saving...' : 'Save'}
+													</XuvaButton>
+													{#if asText(account.id) !== asText(user?.id)}
 														<XuvaButton
 															variant="danger"
 															size="sm"
-															disabled={isDeletingUser && activeUserID === asText(account.id)}
+															disabled={(isDeletingUser || isSavingUserProfile) && activeUserID === asText(account.id)}
 															onclick={() => removeUserAccount(account)}
 														>
 															{isDeletingUser && activeUserID === asText(account.id) ? 'Removing...' : 'Remove'}
 														</XuvaButton>
-													</div>
-												{/if}
+													{/if}
+												</div>
 											</article>
 										{/each}
 									</div>
@@ -3864,6 +4181,121 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 						{/if}
 					</div>
 					{/if}
+				</SettingsPanel>
+			</section>
+
+			{:else if activeSection === 'migration'}
+			<section id="migration" class="settings-section" data-testid="settings-section-content" data-section="migration">
+				<SettingsPanel
+					title="Migration"
+					description="Preview and import watched state, resume points, and metadata IDs from supported exports."
+					status={migrationError ? 'warning' : 'healthy'}
+				>
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Import Bundle</h3>
+								<p>Paste a `xuva.migration.v1` JSON bundle, run a dry-run preview, then import selected rows.</p>
+								<p class="settings-note">Supported formats: {asCount(migrationFormats.length)}</p>
+							</div>
+						</div>
+						{#if canManageSettings}
+							<div class="settings-field">
+								<span>Source</span>
+								<select bind:value={migrationSourceDraft}>
+									<option value="generic">Generic</option>
+									<option value="plex">Plex</option>
+									<option value="emby">Emby</option>
+									<option value="jellyfin">Jellyfin</option>
+								</select>
+							</div>
+							<div class="status-actions">
+								<label><input type="checkbox" bind:checked={migrationScopePlayback} /> Playback</label>
+								<label><input type="checkbox" bind:checked={migrationScopeMetadata} /> Metadata IDs</label>
+							</div>
+							<label class="settings-field">
+								<span>Migration payload (JSON)</span>
+								<textarea rows="10" bind:value={migrationPayloadDraft} placeholder="Paste xuva.migration.v1 JSON bundle"></textarea>
+							</label>
+							<div class="status-actions">
+								<XuvaButton variant="primary" disabled={isRunningMigrationDryRun} onclick={previewMigration}>
+									{isRunningMigrationDryRun ? 'Previewing...' : 'Run Dry-Run Preview'}
+								</XuvaButton>
+								<XuvaButton variant="secondary" disabled={isRunningMigrationImport || !migrationPreview} onclick={importMigration}>
+									{isRunningMigrationImport ? 'Importing...' : 'Run Import'}
+								</XuvaButton>
+							</div>
+						{:else}
+							<p class="settings-note">Sign in as an admin to run imports.</p>
+						{/if}
+						{#if migrationMessage}
+							<p class="settings-feedback">{migrationMessage}</p>
+						{/if}
+						{#if migrationError}
+							<p class="settings-error">{migrationError}</p>
+						{/if}
+					</div>
+
+					{#if migrationPreview}
+						<div class="settings-subsection">
+							<div class="settings-subsection__head">
+								<div>
+									<h3>Preview</h3>
+									<p>
+										Total {asCount(migrationPreview.summary?.total)} · Importable {asCount(migrationPreview.summary?.importable)} · Conflicts {asCount(migrationPreview.summary?.conflicted)}
+									</p>
+								</div>
+							</div>
+							<div class="pairing-request-list">
+								{#each migrationPreview.items || [] as item (item.importKey)}
+									<article class="pairing-request-card">
+										<div class="pairing-request-card__head">
+											<div>
+												<h4>{asText(item.title) || asText(item.importKey)}</h4>
+												<p>{asText(item.kind)} · {asText(item.outcome)}</p>
+											</div>
+											{#if canManageSettings && asText(item.outcome) === 'importable' && asText(item.importKey)}
+												<label><input type="checkbox" bind:checked={selectedMigrationImportKeys[asText(item.importKey)]} /> Include</label>
+											{/if}
+										</div>
+										{#if asText(item.reasonText)}
+											<p>{asText(item.reasonText)}</p>
+										{/if}
+									</article>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					<div class="settings-subsection">
+						<div class="settings-subsection__head">
+							<div>
+								<h3>Recent Runs</h3>
+								<p>Latest migration runs with rollback for completed imports.</p>
+							</div>
+						</div>
+						{#if migrationRuns.length === 0}
+							<p class="settings-note">No migration runs yet.</p>
+						{:else}
+							<div class="pairing-request-list">
+								{#each migrationRuns as run (run.runId)}
+									<article class="pairing-request-card">
+										<div class="pairing-request-card__head">
+											<div>
+												<h4>{asText(run.runId)}</h4>
+												<p>{asText(run.status)} · {formatDateTime(run.createdAt)}</p>
+											</div>
+											{#if canManageSettings && asText(run.status) === 'completed' && asText(run.runId)}
+												<XuvaButton variant="secondary" size="sm" disabled={isRunningMigrationRollback} onclick={() => void rollbackMigration(asText(run.runId))}>
+													{isRunningMigrationRollback ? 'Rolling back...' : 'Rollback'}
+												</XuvaButton>
+											{/if}
+										</div>
+									</article>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</SettingsPanel>
 			</section>
 
@@ -4692,6 +5124,18 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 		width: 100%;
 	}
 
+	.settings-field textarea {
+		min-height: 180px;
+		border: 1px solid var(--settings-divider);
+		border-radius: 4px;
+		background: var(--settings-input-bg);
+		color: var(--xuva-color-text);
+		font: inherit;
+		padding: 10px 12px;
+		width: 100%;
+		resize: vertical;
+	}
+
 	.settings-field select {
 		min-height: 42px;
 		border: 1px solid var(--settings-divider);
@@ -4760,7 +5204,8 @@ async function removeLibraryItem(library: LibraryRecord): Promise<void> {
 	}
 
 	.users-password-form,
-	.users-create-form {
+	.users-create-form,
+	.users-profile-form {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 10px 12px;
 	}

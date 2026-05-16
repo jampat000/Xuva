@@ -93,6 +93,7 @@ export interface DownloadJobItem {
 
 export interface SessionItem {
 	id?: string;
+	mediaSourceId?: string;
 	title?: string;
 	sourceName?: string;
 	deviceId?: string;
@@ -153,6 +154,80 @@ export interface ApprovedDeviceItem {
 
 export interface ApprovedDevicesResponse {
 	devices?: ApprovedDeviceItem[];
+}
+
+export interface MigrationFormat {
+	id?: string;
+	label?: string;
+	description?: string;
+	sources?: string[];
+	schema?: string;
+	validationRules?: string[];
+}
+
+export interface MigrationFormatsResponse {
+	formats?: MigrationFormat[];
+}
+
+export interface MigrationSummary {
+	total?: number;
+	importable?: number;
+	imported?: number;
+	skipped?: number;
+	conflicted?: number;
+	verified?: number;
+	failed?: number;
+	rolledBack?: number;
+}
+
+export interface MigrationVerification {
+	checked?: number;
+	passed?: number;
+	failed?: number;
+}
+
+export interface MigrationItemReport {
+	importKey?: string;
+	kind?: string;
+	title?: string;
+	outcome?: string;
+	reasonCode?: string;
+	reasonText?: string;
+	changes?: string[];
+	target?: {
+		kind?: string;
+		itemId?: string;
+		mediaSourceId?: string;
+		title?: string;
+	};
+	externalIds?: Record<string, string>;
+}
+
+export interface MigrationRunReport {
+	runId?: string;
+	schema?: string;
+	source?: string;
+	scopes?: string[];
+	status?: string;
+	createdAt?: string;
+	completedAt?: string;
+	rolledBackAt?: string;
+	summary?: MigrationSummary;
+	verification?: MigrationVerification;
+	items?: MigrationItemReport[];
+	warnings?: string[];
+	error?: string;
+}
+
+export interface MigrationRunsResponse {
+	runs?: MigrationRunReport[];
+}
+
+export interface MigrationRequest {
+	payload: string;
+	scopes?: string[];
+	userId?: string;
+	selectedImportKeys?: string[];
 }
 
 export interface DiscoveryStatusResponse {
@@ -364,6 +439,56 @@ export function getPairingRequests(client: ApiClient = apiClient): Promise<Pairi
 
 export function getApprovedDevices(client: ApiClient = apiClient): Promise<ApprovedDevicesResponse> {
 	return client.request<ApprovedDevicesResponse>('/api/devices');
+}
+
+export function getMigrationFormats(
+	client: ApiClient = apiClient
+): Promise<MigrationFormatsResponse> {
+	return client.request<MigrationFormatsResponse>('/api/migrations/formats');
+}
+
+export function getMigrationRuns(client: ApiClient = apiClient): Promise<MigrationRunsResponse> {
+	return client.request<MigrationRunsResponse>('/api/migrations/runs');
+}
+
+export function getMigrationRun(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MigrationRunReport> {
+	return client.request<MigrationRunReport>(`/api/migrations/runs/${encodeURIComponent(id)}`);
+}
+
+export function runMigrationDryRun(
+	payload: MigrationRequest,
+	client: ApiClient = apiClient
+): Promise<MigrationRunReport> {
+	return client.send<MigrationRunReport, MigrationRequest>(
+		'/api/migrations/dry-run',
+		payload,
+		'POST'
+	);
+}
+
+export function runMigrationImport(
+	payload: MigrationRequest,
+	client: ApiClient = apiClient
+): Promise<MigrationRunReport> {
+	return client.send<MigrationRunReport, MigrationRequest>(
+		'/api/migrations/import',
+		payload,
+		'POST'
+	);
+}
+
+export function rollbackMigrationRun(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<MigrationRunReport> {
+	return client.send<MigrationRunReport, Record<string, never>>(
+		`/api/migrations/runs/${encodeURIComponent(id)}/rollback`,
+		{},
+		'POST'
+	);
 }
 
 export function getDiscoveryStatus(

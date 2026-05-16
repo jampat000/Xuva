@@ -218,7 +218,7 @@ function seriesSorter(sort: SeriesSort): (a: SeriesCardModel, b: SeriesCardModel
 
 function resolvePosterUrl(kind: 'movie' | 'series', id: string, metadataPosterUrl: string): string {
 	if (metadataPosterUrl) return metadataPosterUrl;
-	return `/api/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?style=neutral&type=poster`;
+	return '';
 }
 
 function resolveYear(

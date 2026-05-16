@@ -40,6 +40,9 @@
 >
 	<div class="artwork-fallback__ambient"></div>
 	<div class="artwork-fallback__line"></div>
+	<div class="artwork-fallback__logo" data-mode={showCopy ? 'badge' : 'center'} aria-hidden="true">
+		<XuvaLogo size={showCopy ? 28 : 52} title="Xuva placeholder" />
+	</div>
 	{#if showCopy}
 		<div class="artwork-fallback__copy">
 			<span class="artwork-fallback__mark" aria-hidden="true"></span>
@@ -47,10 +50,6 @@
 			{#if meta}
 				<p>{meta}</p>
 			{/if}
-		</div>
-	{:else}
-		<div class="artwork-fallback__logo" aria-hidden="true">
-			<XuvaLogo size={52} title="Xuva placeholder" />
 		</div>
 	{/if}
 </div>
@@ -142,10 +141,19 @@
 
 	.artwork-fallback__logo {
 		position: absolute;
-		inset: 0;
 		z-index: 1;
+	}
+
+	.artwork-fallback__logo[data-mode='center'] {
+		inset: 0;
 		display: grid;
 		place-items: center;
+	}
+
+	.artwork-fallback__logo[data-mode='badge'] {
+		top: var(--xuva-space-3);
+		right: var(--xuva-space-3);
+		opacity: 0.88;
 	}
 
 	strong {

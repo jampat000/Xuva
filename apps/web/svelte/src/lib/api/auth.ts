@@ -5,6 +5,7 @@ export interface AuthSessionUser {
 	id: string;
 	username: string;
 	displayName: string;
+	avatarUrl?: string;
 	role: string;
 }
 
@@ -56,6 +57,7 @@ export interface UserAccount {
 	id: string;
 	username: string;
 	displayName: string;
+	avatarUrl?: string;
 	role: string;
 	createdAt?: string;
 }
@@ -69,6 +71,11 @@ export interface CreateUserRequest {
 	password: string;
 	displayName?: string;
 	role: 'admin' | 'standard';
+}
+
+export interface UpdateUserRequest {
+	displayName: string;
+	avatarUrl?: string;
 }
 
 export async function getAuthSession(client: ApiClient = apiClient): Promise<AuthSessionResponse> {
@@ -139,6 +146,18 @@ export async function deleteUser(
 		`/api/users/${encodeURIComponent(userID)}`,
 		{},
 		'DELETE'
+	);
+}
+
+export async function updateUser(
+	userID: string,
+	payload: UpdateUserRequest,
+	client: ApiClient = apiClient
+): Promise<{ user: UserAccount }> {
+	return client.send<{ user: UserAccount }, UpdateUserRequest>(
+		`/api/users/${encodeURIComponent(userID)}`,
+		payload,
+		'PATCH'
 	);
 }
 

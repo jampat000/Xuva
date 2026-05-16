@@ -3,6 +3,7 @@
 	import ViewerQuickActions, { type ViewerQuickAction } from './ViewerQuickActions.svelte';
 	import XuvaStat from '../ui/XuvaStat.svelte';
 	import XuvaSurface from '../ui/XuvaSurface.svelte';
+	import { buildPlayHref } from '$lib/secondary/media-routes';
 
 	interface SummaryModel {
 		libraryCount: number;
@@ -71,9 +72,7 @@
 					{#each watchlistItems.slice(0, 4) as item (item.id)}
 						<li>
 							<a
-								href={item.playMediaSourceId
-									? `/play/${encodeURIComponent(item.playMediaSourceId)}`
-									: '#homeHero'}
+								href={item.playMediaSourceId ? buildPlayHref(item.playMediaSourceId) : '#homeHero'}
 							>
 								<span class="watchlist-thumb">
 									<ArtworkFallback
