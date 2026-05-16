@@ -29,6 +29,7 @@ var routePolicies = map[string]routePolicy{
 	"POST /api/auth/logout":         route("POST /api/auth/logout", "auth", "session.logout", roleAdmin, roleStandard),
 	"GET /api/users":                route("GET /api/users", "auth", "users.list", roleAdmin),
 	"POST /api/users":               route("POST /api/users", "auth", "user.create", roleAdmin),
+	"PATCH /api/users/{id}":         route("PATCH /api/users/{id}", "auth", "user.update", roleAdmin),
 	"DELETE /api/users/{id}":        route("DELETE /api/users/{id}", "auth", "user.delete", roleAdmin),
 	"POST /api/users/{id}/password": route("POST /api/users/{id}/password", "auth", "user.password.update", roleAdmin),
 

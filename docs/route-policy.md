@@ -18,6 +18,7 @@ Public client bootstrap routes:
 | `POST /api/auth/logout` | auth | `session.logout` | admin, standard |
 | `GET /api/users` | auth | `users.list` | admin |
 | `POST /api/users` | auth | `user.create` | admin |
+| `PATCH /api/users/{id}` | auth | `user.update` | admin |
 | `DELETE /api/users/{id}` | auth | `user.delete` | admin |
 | `POST /api/users/{id}/password` | auth | `user.password.update` | admin |
 | `POST /api/libraries` | libraries | `library.save` | admin |

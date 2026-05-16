@@ -19,6 +19,7 @@
 			| 'transcoding'
 			| 'storage'
 			| 'network'
+			| 'migration'
 			| 'pairing'
 			| 'approved-devices'
 			| 'discovery'

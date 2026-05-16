@@ -3,19 +3,25 @@
 	import { Play } from 'lucide-svelte';
 	import { scanTV } from '$lib/api/browse';
 	import { ApiClientError, apiClient } from '$lib/api/client';
+	import { getSessions, type SessionItem } from '$lib/api/operator';
 	import {
+		getDeviceProfiles,
 		getMediaSourceDetail,
 		getMediaSourceSubtitles,
 		getMediaSourceTracks,
 		getPlaybackDecision,
+		getPlaybackRoute,
 		getPlaybackState,
 		getSeriesDetail,
+		startMediaProbe,
 		listMediaSources,
+		type DeviceProfile,
 		type EpisodeBrief,
 		type MediaSourceItem,
 		type MediaSourceSubtitlesResponse,
 		type MediaSourceTracksResponse,
 		type PlaybackDecisionResponse,
+		type PlaybackRouteResponse,
 		type PlaybackStateResponse,
 		type SeasonDetail,
 		type SeriesDetailResponse
@@ -86,6 +92,28 @@
 	let selectedSource = $state<EpisodeSourceModel | null>(null);
 	let selectedSourceLoading = $state(false);
 	let selectedSourceError = $state('');
+	let deviceProfiles = $state<DeviceProfile[]>([]);
+	let analyzerProfileId = $state('web');
+	let analyzerRouteType = $state<'lan' | 'remote'>('lan');
+	let analyzerMaxBitrate = $state('');
+	let analyzerAudioTrackIndex = $state(0);
+	let analyzerSubtitleTrackIndex = $state(0);
+	let analyzerSubtitleEnabled = $state(false);
+	let analyzerBusy = $state(false);
+	let analyzerError = $state('');
+	let analyzerDecision = $state<PlaybackDecisionResponse | null>(null);
+	let analyzerRoute = $state<PlaybackRouteResponse | null>(null);
+	let analyzerMatrixBusy = $state(false);
+	let analyzerMatrixError = $state('');
+	let analyzerMatrix = $state<Array<{ profileId: string; profileName: string; mode: string; reason: string }>>([]);
+	let probingSourceId = $state('');
+	let probeStatusSourceId = $state('');
+	let probeStatusTone = $state<'info' | 'success' | 'error'>('info');
+	let probeStatusMessage = $state('');
+	let livePlaybackSourceId = $state('');
+	let livePlaybackSession = $state<SessionItem | null>(null);
+	let livePlaybackState = $state<PlaybackStateResponse | null>(null);
+	let livePlaybackError = $state('');
 
 	const seriesID = $derived.by(() => asText(series?.id) || asText(params.id));
 	const seriesTitle = $derived.by(() =>
@@ -107,11 +135,11 @@
 	const selectedEpisode = $derived.by(() => findEpisodeById(seasons, selectedEpisodeId));
 	const selectedPlayHref = $derived.by(() => {
 		const mediaSourceId = asText(selectedEpisode?.mediaSourceId);
-		return mediaSourceId ? `/play/${encodeURIComponent(mediaSourceId)}` : '';
+		return mediaSourceId ? playHrefWithOptions(mediaSourceId) : '';
 	});
 	const selectedStartHref = $derived.by(() => {
 		const mediaSourceId = asText(selectedEpisode?.mediaSourceId);
-		return mediaSourceId ? `/play/${encodeURIComponent(mediaSourceId)}?start=0` : '';
+		return mediaSourceId ? playHrefWithOptions(mediaSourceId, true) : '';
 	});
 	const selectedPlayLabel = $derived.by(() =>
 		isResumeState(selectedEpisode?.state || null) ? 'Resume' : 'Play'
@@ -128,6 +156,10 @@
 
 	onMount(() => {
 		void loadSeriesDetails();
+		const ticker = window.setInterval(() => {
+			void refreshLivePlayback();
+		}, 2500);
+		return () => window.clearInterval(ticker);
 	});
 
 	$effect(() => {
@@ -136,9 +168,22 @@
 			selectedSource = null;
 			selectedSourceError = '';
 			selectedSourceLoading = false;
+			analyzerDecision = null;
+			analyzerRoute = null;
+			analyzerMatrix = [];
 			return;
 		}
 		void loadSelectedEpisodeSource(mediaSourceId, selectedEpisode?.state || null);
+	});
+
+	$effect(() => {
+		const source = selectedSource;
+		if (!source) return;
+		analyzerAudioTrackIndex = preferredTrackIndex(source.tracks.audioTracks);
+		analyzerSubtitleTrackIndex = preferredTrackIndex(source.tracks.subtitleTracks);
+		analyzerSubtitleEnabled = false;
+		void refreshAnalyzer();
+		void refreshDeviceMatrix();
 	});
 
 	async function loadSeriesDetails(): Promise<void> {
@@ -147,10 +192,12 @@
 		selectedSource = null;
 		selectedSourceError = '';
 		try {
-			const [seriesPayload, mediaSourcePayload] = await Promise.all([
+			const [seriesPayload, mediaSourcePayload, profilesPayload] = await Promise.all([
 				getSeriesDetail(asText(params.id), apiClient),
-				listMediaSources(apiClient, 1500).catch(() => ({ mediaSources: [] }))
+				listMediaSources(apiClient, 1500).catch(() => ({ mediaSources: [] })),
+				getDeviceProfiles(apiClient).catch(() => ({ profiles: [] }))
 			]);
+			deviceProfiles = profilesPayload.profiles || [];
 
 			series = seriesPayload;
 
@@ -304,6 +351,198 @@
 		return parts.join(' - ');
 	}
 
+	function currentPlaybackOptions() {
+		const source = selectedSource;
+		const profileId = asText(analyzerProfileId) || 'web';
+		const profile = deviceProfiles.find((item) => asText(item.id) === profileId);
+		const maxBitrate = Number.parseInt(asText(analyzerMaxBitrate), 10);
+		const normalizedMaxBitrate = Number.isFinite(maxBitrate) && maxBitrate > 0 ? maxBitrate : 0;
+		const audioTrack = Number.isFinite(analyzerAudioTrackIndex) ? analyzerAudioTrackIndex : 0;
+		const subtitleTrack = Number.isFinite(analyzerSubtitleTrackIndex) ? analyzerSubtitleTrackIndex : 0;
+		const audio = source?.tracks.audioTracks?.find((item) => Number(item.index || 0) === audioTrack);
+		const subtitle = source?.tracks.subtitleTracks?.find((item) => Number(item.index || 0) === subtitleTrack);
+		return {
+			clientProfile: profileId,
+			routeType: analyzerRouteType,
+			maxNetworkBitrate: normalizedMaxBitrate,
+			audioTrackIndex: audioTrack,
+			audioCodec: asText(audio?.codec),
+			audioChannels: Number(audio?.channels || 0),
+			subtitleTrackIndex: subtitleTrack,
+			subtitleCodec: asText(subtitle?.codec),
+			subtitleTrackActive: analyzerSubtitleEnabled,
+			supportsAdaptive: Boolean(profile?.supportsHls)
+		};
+	}
+
+	function preferredTrackIndex(
+		tracks: Array<{ index?: number; default?: boolean }> | null | undefined
+	): number {
+		if (!Array.isArray(tracks) || tracks.length === 0) return 0;
+		const preferred = tracks.find((item) => Boolean(item?.default));
+		if (preferred && Number.isFinite(Number(preferred.index))) return Number(preferred.index);
+		const first = tracks[0];
+		return Number.isFinite(Number(first?.index)) ? Number(first?.index) : 0;
+	}
+
+	async function refreshAnalyzer(): Promise<void> {
+		const source = selectedSource;
+		if (!source) return;
+		analyzerBusy = true;
+		analyzerError = '';
+		try {
+			const options = currentPlaybackOptions();
+			const [decision, route] = await Promise.all([
+				getPlaybackDecision(source.mediaSourceId, options, apiClient),
+				getPlaybackRoute(source.mediaSourceId, options, apiClient)
+			]);
+			analyzerDecision = decision;
+			analyzerRoute = route;
+		} catch (error) {
+			analyzerError = formatLoadError(error);
+			analyzerDecision = null;
+			analyzerRoute = null;
+		} finally {
+			analyzerBusy = false;
+		}
+	}
+
+	async function refreshDeviceMatrix(): Promise<void> {
+		const source = selectedSource;
+		if (!source || deviceProfiles.length === 0) {
+			analyzerMatrix = [];
+			return;
+		}
+		analyzerMatrixBusy = true;
+		analyzerMatrixError = '';
+		try {
+			const rows = await Promise.all(
+				deviceProfiles.map(async (profile) => {
+					const profileId = asText(profile.id) || 'web';
+					const decision = await getPlaybackDecision(
+						source.mediaSourceId,
+						{
+							clientProfile: profileId,
+							routeType: analyzerRouteType,
+							maxNetworkBitrate: 0,
+							audioTrackIndex: analyzerAudioTrackIndex,
+							subtitleTrackIndex: analyzerSubtitleTrackIndex,
+							subtitleTrackActive: analyzerSubtitleEnabled,
+							supportsAdaptive: Boolean(profile.supportsHls)
+						},
+						apiClient
+					);
+					return {
+						profileId,
+						profileName: asText(profile.name) || profileId,
+						mode: asText(decision.mode) || 'Pending',
+						reason: asText(decision.reasonText || decision.reason) || 'No reason available.'
+					};
+				})
+			);
+			analyzerMatrix = rows;
+		} catch (error) {
+			analyzerMatrixError = formatLoadError(error);
+			analyzerMatrix = [];
+		} finally {
+			analyzerMatrixBusy = false;
+		}
+	}
+
+	async function runMediaCheck(mediaSourceId: string): Promise<void> {
+		const id = asText(mediaSourceId);
+		if (!id || probingSourceId) return;
+		probingSourceId = id;
+		probeStatusSourceId = id;
+		probeStatusTone = 'info';
+		probeStatusMessage = 'Queued media check. This can take a moment on large files.';
+		actionMessage = '';
+		try {
+			await startMediaProbe(id, apiClient);
+			probeStatusTone = 'success';
+			probeStatusMessage = 'Media check started. Refreshing source details.';
+			actionMessage = 'Media check started. Refreshing source details...';
+			await loadSelectedEpisodeSource(id, selectedEpisode?.state || null);
+			await refreshAnalyzer();
+			await refreshDeviceMatrix();
+		} catch (error) {
+			probeStatusTone = 'error';
+			probeStatusMessage = formatLoadError(error);
+			actionMessage = formatLoadError(error);
+		} finally {
+			probingSourceId = '';
+		}
+	}
+
+	function playHrefWithOptions(sourceId: string, startFromZero = false): string {
+		const id = asText(sourceId);
+		if (!id) return '';
+		const params = new URLSearchParams();
+		const options = currentPlaybackOptions();
+		params.set('clientProfile', options.clientProfile);
+		params.set('routeType', options.routeType);
+		params.set('supportsAdaptive', options.supportsAdaptive ? 'true' : 'false');
+		params.set('audioTrackIndex', String(options.audioTrackIndex));
+		params.set('subtitleTrackIndex', String(options.subtitleTrackIndex));
+		params.set('subtitleTrackActive', options.subtitleTrackActive ? 'true' : 'false');
+		params.set('autoplayIntent', '1');
+		params.set('strictAutoplay', '1');
+		params.set('forcePlayable', 'true');
+		if (options.maxNetworkBitrate > 0) params.set('maxNetworkBitrate', String(options.maxNetworkBitrate));
+		if (startFromZero) params.set('start', '0');
+		return `/play/${encodeURIComponent(id)}?${params.toString()}`;
+	}
+
+	function playbackRouteLabel(mode: string): string {
+		const value = asText(mode).toLowerCase();
+		const normalized = value.replace(/[^a-z]+/g, ' ').trim();
+		if (!value) return '';
+		if (
+			normalized === 'updating' ||
+			normalized === 'starting' ||
+			normalized === 'playing' ||
+			normalized === 'paused' ||
+			normalized === 'stopped' ||
+			normalized === 'idle' ||
+			normalized === 'pending' ||
+			normalized.includes('updat') ||
+			normalized.includes('wait') ||
+			normalized.includes('check') ||
+			normalized.includes('load')
+		) {
+			return '';
+		}
+		if (value.includes('audio-transcode')) return 'Transcoding audio';
+		if (value.includes('transcode')) return 'Transcoding video/audio';
+		if (value.includes('remux')) return 'Repackaging stream';
+		if (value.includes('adaptive')) return 'Adaptive stream';
+		if (value.includes('direct')) return 'Direct play';
+		if (value.includes('decision deferred')) return 'Decision pending';
+		return '';
+	}
+
+	function markPlayingLive(sourceId: string): void {
+		livePlaybackSourceId = asText(sourceId);
+		void refreshLivePlayback();
+	}
+
+	async function refreshLivePlayback(): Promise<void> {
+		const sourceId = asText(livePlaybackSourceId || selectedSource?.mediaSourceId || selectedEpisode?.mediaSourceId);
+		if (!sourceId) return;
+		livePlaybackError = '';
+		try {
+			const [sessionsPayload, statePayload] = await Promise.all([
+				getSessions(apiClient),
+				getPlaybackState(sourceId, apiClient).catch(() => null)
+			]);
+			const session = (sessionsPayload.sessions || []).find((item) => asText(item.mediaSourceId) === sourceId) || null;
+			livePlaybackSession = session;
+			livePlaybackState = statePayload;
+		} catch (error) {
+			livePlaybackError = formatLoadError(error);
+		}
+	}
+
 	function asText(value: unknown): string {
 		return String(value ?? '').trim();
 	}
@@ -377,16 +616,48 @@
 		>
 			{#snippet actions()}
 				{#if selectedPlayHref}
-					<XuvaButton variant="primary" href={selectedPlayHref}>
+					<XuvaButton
+						variant="primary"
+						href={selectedPlayHref}
+						onclick={() => selectedEpisode && markPlayingLive(selectedEpisode.mediaSourceId)}
+					>
 						<Play size={18} class="fill-white text-white" />
 						{selectedPlayLabel}
 					</XuvaButton>
-					<XuvaButton variant="secondary" href={selectedStartHref}>Start Over</XuvaButton>
+					<XuvaButton
+						variant="secondary"
+						href={selectedStartHref}
+						onclick={() => selectedEpisode && markPlayingLive(selectedEpisode.mediaSourceId)}
+					>
+						Start Over
+					</XuvaButton>
 				{:else}
 					<XuvaButton variant="primary" disabled>Play</XuvaButton>
 				{/if}
 			{/snippet}
 		</DetailHero>
+
+		{#if asText(livePlaybackSourceId || selectedEpisode?.mediaSourceId || selectedSource?.mediaSourceId)}
+			<section class="px-4 pt-4 sm:px-6 lg:px-8">
+				<div class="rounded-md border border-[#34D3E6]/25 bg-[#081826]/70 p-4">
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<p class="text-sm font-semibold text-[#8DE6EC]">Playing Live</p>
+						{#if playbackRouteLabel(asText(livePlaybackSession?.mode || livePlaybackSession?.route))}
+							<p class="text-xs text-white/60">{playbackRouteLabel(asText(livePlaybackSession?.mode || livePlaybackSession?.route))}</p>
+						{/if}
+					</div>
+					<div class="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+						<div class="h-full rounded-full bg-[#34D3E6]" style={`width: ${Math.max(0, Math.min(100, Number(livePlaybackState?.percent || 0)))}%`}></div>
+					</div>
+					<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/65">
+						<span>{Math.round(Math.max(0, Math.min(100, Number(livePlaybackState?.percent || 0)))) > 0 ? `${Math.round(Math.max(0, Math.min(100, Number(livePlaybackState?.percent || 0))))}% watched` : 'Unplayed'}</span>
+					</div>
+					{#if livePlaybackError}
+						<p class="mt-2 text-xs text-red-200/80">{livePlaybackError}</p>
+					{/if}
+				</div>
+			</section>
+		{/if}
 
 		<DetailSection title="Seasons and Episodes" subtitle="Browse episodes and start playback.">
 			{#if seasons.length === 0}
@@ -426,14 +697,16 @@
 													<XuvaButton
 														variant="primary"
 														size="sm"
-														href={`/play/${encodeURIComponent(episode.mediaSourceId)}`}
+														href={playHrefWithOptions(episode.mediaSourceId)}
+														onclick={() => markPlayingLive(episode.mediaSourceId)}
 													>
 														{isResumeState(episode.state) ? 'Resume' : 'Play'}
 													</XuvaButton>
 													<XuvaButton
 														variant="secondary"
 														size="sm"
-														href={`/play/${encodeURIComponent(episode.mediaSourceId)}?start=0`}
+														href={playHrefWithOptions(episode.mediaSourceId, true)}
+														onclick={() => markPlayingLive(episode.mediaSourceId)}
 													>
 														Start Over
 													</XuvaButton>
@@ -476,6 +749,31 @@
 					</div>
 					<p class="mt-5 text-sm font-semibold text-white">{playbackModeLabel(selectedSource.decision)}</p>
 					<p class="mt-1 text-sm leading-relaxed text-white/55">{playbackReasonLabel(selectedSource.decision)}</p>
+					{#if analyzerRoute}
+						<p class="mt-2 text-sm text-white/55">
+							Route: {asText(analyzerRoute.route) || 'pending'} - {asText(analyzerRoute.status) || 'pending'}
+						</p>
+					{/if}
+					<div class="mt-3 flex flex-wrap gap-3">
+						{#if !Boolean(selectedSource.source?.probed)}
+							<XuvaButton
+								variant="secondary"
+								size="sm"
+								onclick={() => selectedSource && runMediaCheck(selectedSource.mediaSourceId)}
+								disabled={probingSourceId === (selectedSource?.mediaSourceId ?? '')}
+							>
+								{probingSourceId === (selectedSource?.mediaSourceId ?? '') ? 'Checking File...' : 'Run Media Check'}
+							</XuvaButton>
+							{#if probeStatusMessage && probeStatusSourceId === (selectedSource?.mediaSourceId ?? '')}
+								<p class={`text-xs ${probeStatusTone === 'error' ? 'text-red-200/80' : probeStatusTone === 'success' ? 'text-emerald-200/80' : 'text-white/60'}`}>
+									{probeStatusMessage}
+								</p>
+							{/if}
+						{/if}
+						<XuvaButton variant="ghost" size="sm" onclick={refreshAnalyzer} disabled={analyzerBusy}>
+							{analyzerBusy ? 'Refreshing...' : 'Refresh Decision'}
+						</XuvaButton>
+					</div>
 					<dl class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 							<div class="rounded-sm border border-white/10 bg-white/[0.02] p-3">
 								<dt class="text-xs uppercase tracking-[0.08em] text-white/40">Quality</dt>
@@ -537,6 +835,106 @@
 							{/if}
 							<p class="mt-3 text-sm text-white/50">Sidecar subtitles: {(selectedSource.subtitles.sidecars || []).length}</p>
 						</article>
+					</div>
+					<div class="mt-4 rounded-md border border-white/10 bg-[#111827]/55 p-4">
+						<h3 class="text-sm font-semibold text-white">Playback Analyzer</h3>
+						<div class="mt-3 grid gap-4 lg:grid-cols-2">
+							<label class="settings-field">
+								<span>Device profile</span>
+								<select bind:value={analyzerProfileId} onchange={() => void refreshAnalyzer()}>
+									{#each deviceProfiles as profile (profile.id)}
+										<option value={asText(profile.id)}>{asText(profile.name) || asText(profile.id)}</option>
+									{/each}
+								</select>
+							</label>
+							<label class="settings-field">
+								<span>Route type</span>
+								<select bind:value={analyzerRouteType} onchange={() => { void refreshAnalyzer(); void refreshDeviceMatrix(); }}>
+									<option value="lan">LAN</option>
+									<option value="remote">Remote</option>
+								</select>
+							</label>
+							<label class="settings-field">
+								<span>Max network bitrate (bps, optional)</span>
+								<input bind:value={analyzerMaxBitrate} inputmode="numeric" placeholder="8000000" onblur={() => void refreshAnalyzer()} />
+							</label>
+							<label class="settings-field">
+								<span>Audio track</span>
+								<select bind:value={analyzerAudioTrackIndex} onchange={() => { void refreshAnalyzer(); void refreshDeviceMatrix(); }}>
+									{#each selectedSource.tracks.audioTracks || [] as track, index (index)}
+										<option value={Number(track.index || 0)}>
+											{formatTrackSummary(track.codec, track.language, Number(track.channels || 0))}
+										</option>
+									{/each}
+								</select>
+							</label>
+							<label class="settings-field">
+								<span>Subtitle mode</span>
+								<select bind:value={analyzerSubtitleEnabled} onchange={() => { void refreshAnalyzer(); void refreshDeviceMatrix(); }}>
+									<option value={false}>Off</option>
+									<option value={true}>On</option>
+								</select>
+							</label>
+							<label class="settings-field">
+								<span>Subtitle track</span>
+								<select bind:value={analyzerSubtitleTrackIndex} onchange={() => { void refreshAnalyzer(); void refreshDeviceMatrix(); }}>
+									{#each selectedSource.tracks.subtitleTracks || [] as track, index (index)}
+										<option value={Number(track.index || 0)}>
+											{formatTrackSummary(track.codec, track.language)}
+										</option>
+									{/each}
+								</select>
+							</label>
+						</div>
+						<div class="mt-4 flex flex-wrap gap-3">
+							<XuvaButton variant="primary" onclick={refreshAnalyzer} disabled={analyzerBusy}>
+								{analyzerBusy ? 'Analyzing...' : 'Analyze Playback'}
+							</XuvaButton>
+							<XuvaButton variant="secondary" onclick={refreshDeviceMatrix} disabled={analyzerMatrixBusy}>
+								{analyzerMatrixBusy ? 'Checking Devices...' : 'Refresh Device Matrix'}
+							</XuvaButton>
+							<XuvaButton
+								variant="ghost"
+								href={playHrefWithOptions(selectedSource?.mediaSourceId ?? '')}
+								onclick={() => selectedSource && markPlayingLive(selectedSource.mediaSourceId)}
+							>
+								Play With These Options
+							</XuvaButton>
+						</div>
+						{#if analyzerError}
+							<p class="mt-3 text-sm text-red-200/80">{analyzerError}</p>
+						{/if}
+						{#if analyzerDecision}
+							<div class="mt-4 rounded-sm border border-white/10 bg-white/[0.02] p-3">
+								<p class="text-sm font-semibold text-white">{playbackModeLabel(analyzerDecision)}</p>
+								<p class="mt-1 text-sm text-white/60">{playbackReasonLabel(analyzerDecision)}</p>
+								{#if analyzerRoute}
+									<p class="mt-2 text-sm text-white/55">
+										Route: {asText(analyzerRoute.route) || 'pending'} - {asText(analyzerRoute.status) || 'pending'}
+									</p>
+								{/if}
+							</div>
+						{/if}
+						<div class="mt-4">
+							<h4 class="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Device Compatibility Matrix</h4>
+							{#if analyzerMatrixError}
+								<p class="mt-2 text-sm text-red-200/80">{analyzerMatrixError}</p>
+							{:else if analyzerMatrixBusy}
+								<p class="mt-2 text-sm text-white/55">Analyzing device profiles...</p>
+							{:else if analyzerMatrix.length === 0}
+								<p class="mt-2 text-sm text-white/55">No device profile results yet.</p>
+							{:else}
+								<div class="mt-2 grid gap-2">
+									{#each analyzerMatrix as row (row.profileId)}
+										<div class="rounded-sm border border-white/10 bg-white/[0.02] p-3">
+											<p class="text-sm font-semibold text-white">{row.profileName}</p>
+											<p class="text-sm text-white/70">{row.mode}</p>
+											<p class="text-xs text-white/50">{row.reason}</p>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
 					</div>
 			{/if}
 		</DetailSection>

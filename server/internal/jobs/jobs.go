@@ -12,12 +12,13 @@ import (
 type Job func(context.Context)
 
 type Queue struct {
-	Name    string                  `json:"name"`
-	Class   resources.WorkloadClass `json:"class"`
-	Workers int                     `json:"workers"`
-	jobs    chan Job
-	started sync.Once
-	active  atomic.Int64
+	Name      string                  `json:"name"`
+	Class     resources.WorkloadClass `json:"class"`
+	Workers   int                     `json:"workers"`
+	MaxQueued int                     `json:"maxQueued"`
+	jobs      chan Job
+	started   sync.Once
+	active    atomic.Int64
 }
 
 type Registry struct {
@@ -25,6 +26,8 @@ type Registry struct {
 	Probe     *Queue
 	Transcode *Queue
 }
+
+var ErrQueueSaturated = errors.New("queue is saturated")
 
 func NewRegistry(manager *resources.Manager) *Registry {
 	limits := manager.Limits()
@@ -39,11 +42,16 @@ func NewQueue(name string, class resources.WorkloadClass, workers int) *Queue {
 	if workers < 1 {
 		workers = 1
 	}
+	maxQueued := workers * 4
+	if maxQueued < 4 {
+		maxQueued = 4
+	}
 	return &Queue{
-		Name:    name,
-		Class:   class,
-		Workers: workers,
-		jobs:    make(chan Job, workers*4),
+		Name:      name,
+		Class:     class,
+		Workers:   workers,
+		MaxQueued: maxQueued,
+		jobs:      make(chan Job, maxQueued),
 	}
 }
 
@@ -52,10 +60,15 @@ func (q *Queue) Submit(ctx context.Context, job Job) error {
 		return errors.New("nil job")
 	}
 	select {
-	case q.jobs <- job:
-		return nil
 	case <-ctx.Done():
 		return ctx.Err()
+	default:
+	}
+	select {
+	case q.jobs <- job:
+		return nil
+	default:
+		return ErrQueueSaturated
 	}
 }
 
@@ -93,9 +106,11 @@ func (r *Registry) Snapshot() []map[string]any {
 			"name":              queue.Name,
 			"class":             queue.Class,
 			"workers":           queue.Workers,
+			"maxQueued":         queue.MaxQueued,
 			"queued":            len(queue.jobs),
 			"active":            active,
 			"workerUtilization": float64(active) / float64(queue.Workers),
+			"queueUtilization":  float64(len(queue.jobs)) / float64(queue.MaxQueued),
 		})
 	}
 	return output

@@ -10,6 +10,34 @@ node tools/agent-check.cjs
 
 It checks the agent map, docs index, execution-plan folders, and protected route policy alignment.
 
+## Dev Health Check
+
+Check whether Go (`127.0.0.1:8097`) and Vite (`127.0.0.1:5173`) are both reachable in live WebDev mode:
+
+```powershell
+./tools/dev-health.ps1
+```
+
+## Install/Upgrade Rollback Rehearsal
+
+Run a local, non-destructive rehearsal that backs up `settings.json` + `xuva.db`, simulates an upgrade mutation in staging, and verifies rollback by hash:
+
+```powershell
+./tools/rehearse-install-upgrade-rollback.ps1
+```
+
+Custom data/output roots:
+
+```powershell
+./tools/rehearse-install-upgrade-rollback.ps1 -DataDir "data" -OutputRoot "artifacts/rehearsals"
+```
+
+When Xuva is actively running and the database file is locked, run settings-only rehearsal mode:
+
+```powershell
+./tools/rehearse-install-upgrade-rollback.ps1 -DataDir "server/data" -SkipDatabase
+```
+
 ## Media Scanner
 
 `xuva_scan.py` inventories a local or mapped NAS media folder and optionally runs `ffprobe` for stream metadata.

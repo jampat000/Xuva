@@ -442,6 +442,12 @@ func TestRequestCorrelationAndMetrics(t *testing.T) {
 	if _, ok := firstQueue["workerUtilization"]; !ok {
 		t.Fatalf("expected worker utilization in queue metric, got %#v", firstQueue)
 	}
+	if _, ok := firstQueue["maxQueued"]; !ok {
+		t.Fatalf("expected maxQueued in queue metric, got %#v", firstQueue)
+	}
+	if _, ok := metrics["playbackSLO"]; !ok {
+		t.Fatalf("expected playbackSLO metric block, got %#v", metrics)
+	}
 }
 
 func TestClientBootstrapDefaultsToAppleTVContract(t *testing.T) {
@@ -1405,6 +1411,44 @@ func TestMetadataProvidersEndpointUsesStrictManagedModeHealth(t *testing.T) {
 	}
 }
 
+func TestPlayerPageIncludesDirectStreamRecoveryFlow(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Heat (1995)", "Heat.1995.1080p.BluRay.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	scan := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, scan["id"].(string))
+
+	sources := getJSON(t, router, "/api/media-sources?limit=1")
+	list, _ := sources["mediaSources"].([]any)
+	if len(list) == 0 {
+		t.Fatalf("expected at least one media source, got %#v", sources)
+	}
+	sourceID, _ := list[0].(map[string]any)["id"].(string)
+	if strings.TrimSpace(sourceID) == "" {
+		t.Fatalf("expected media source id, got %#v", list[0])
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/play/"+sourceID, nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected player page 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := response.Body.String()
+	for _, fragment := range []string{
+		"Direct retry",
+		"auth_token",
+		"handlePlaybackFailure(\"abort\")",
+		"authorizeStream(forceRefresh = false)",
+	} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("expected player page to include %q", fragment)
+		}
+	}
+}
+
 func TestPlaybackStateAndSessions(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Heat (1995)", "Heat.1995.1080p.BluRay.mkv"))
@@ -1702,6 +1746,52 @@ func TestAdaptiveStreamingPlanManifestAndTelemetry(t *testing.T) {
 	}
 }
 
+func TestPlaybackRouteForcePlayableBypassesPolicyBlock(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Force Play Test (2026)", "Force.Play.Test.2026.Remux.2160p.mkv"))
+
+	deps := testDeps(t, time.Now())
+	deps.Config.PlaybackPolicy = "original_only"
+	router := NewRouter(deps)
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	sources := getJSON(t, router, "/api/media-sources")
+	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+	if err := deps.Catalog.SaveProbe(context.Background(), sourceID, catalog.ProbeResult{
+		Container:       "matroska",
+		DurationSeconds: 5400,
+		Bitrate:         54_000_000,
+		VideoCodec:      "hevc",
+		Width:           3840,
+		Height:          2160,
+		AudioStreams:    1,
+		RawJSON:         `{"streams":[]}`,
+	}); err != nil {
+		t.Fatalf("save probe: %v", err)
+	}
+
+	blocked := getJSON(t, router, "/api/playback/route?mediaSourceId="+sourceID+"&clientProfile=web&routeType=lan&supportsAdaptive=true")
+	if blocked["status"] != "blocked_by_policy" {
+		t.Fatalf("expected blocked_by_policy without forcePlayable, got %#v", blocked)
+	}
+
+	forced := getJSON(t, router, "/api/playback/route?mediaSourceId="+sourceID+"&clientProfile=web&routeType=lan&supportsAdaptive=true&forcePlayable=true")
+	if forced["status"] == "blocked_by_policy" {
+		t.Fatalf("expected forcePlayable to bypass policy block, got %#v", forced)
+	}
+}
+
+func TestTrackByIndexPrefersDefaultTrackWhenRequestedIndexMissing(t *testing.T) {
+	tracks := []probe.Track{
+		{Index: 1, Codec: "aac", Default: false},
+		{Index: 4, Codec: "ac3", Default: true},
+	}
+	selected := trackByIndex(tracks, 99)
+	if selected.Index != 4 {
+		t.Fatalf("expected default track index 4, got %#v", selected)
+	}
+}
+
 func TestAuthProtectedRouteRequiresSession(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
@@ -1910,6 +2000,55 @@ func TestAuthMutationRejectsMissingCSRF(t *testing.T) {
 	}
 }
 
+func TestMigrationMutationRejectsMissingCSRF(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+
+	login := client.requestJSON(t, router, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "admin",
+		"password": "test-password-123!",
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.status, login.body)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "http://xuva.test/api/migrations/dry-run", bytes.NewReader(mustJSON(t, map[string]any{
+		"payload": `{"schema":"xuva.migration.v1","source":"generic","items":[{"id":"item-001","kind":"movie","title":"Test"}]}`,
+	})))
+	request.Header.Set("Content-Type", "application/json")
+	client.apply(request, false)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected migration dry-run without csrf to return 403, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestMigrationRoutesRejectStandardUser(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	adminClient := newAuthTestClient(t)
+	loginAs(t, adminClient, router, "admin", "test-password-123!")
+
+	createUser := adminClient.requestJSON(t, router, http.MethodPost, "/api/users", map[string]any{
+		"username":    "standard-user",
+		"displayName": "Standard User",
+		"password":    "test-password-123!",
+		"role":        "standard",
+	})
+	if createUser.status != http.StatusCreated {
+		t.Fatalf("expected standard user creation 201, got %d: %s", createUser.status, createUser.body)
+	}
+
+	standardClient := newAuthTestClient(t)
+	loginAs(t, standardClient, router, "standard-user", "test-password-123!")
+
+	formats := standardClient.requestJSON(t, router, http.MethodGet, "/api/migrations/formats", nil)
+	if formats.status != http.StatusForbidden {
+		t.Fatalf("expected standard user migration formats 403, got %d: %s", formats.status, formats.body)
+	}
+}
+
 func TestAuthHeaderTokenAllowsProtectedRouteWithoutCookies(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 	client := newAuthTestClient(t)
@@ -2066,10 +2205,44 @@ func TestAuthzAdminCanManageUsers(t *testing.T) {
 	if password.status != http.StatusOK {
 		t.Fatalf("expected password update 200, got %d: %s", password.status, password.body)
 	}
+	profile := client.requestJSON(t, router, http.MethodPatch, "/api/users/"+userID, map[string]any{
+		"displayName": "Viewer Profile",
+		"avatarUrl":   "https://cdn.example.com/viewer.jpg",
+	})
+	if profile.status != http.StatusOK {
+		t.Fatalf("expected profile update 200, got %d: %s", profile.status, profile.body)
+	}
+	updated := profile.payload["user"].(map[string]any)
+	if updated["avatarUrl"] != "https://cdn.example.com/viewer.jpg" {
+		t.Fatalf("expected avatarUrl in profile update response, got %#v", profile.payload)
+	}
 
 	deleteResp := client.requestJSON(t, router, http.MethodDelete, "/api/users/"+userID, map[string]any{})
 	if deleteResp.status != http.StatusOK {
 		t.Fatalf("expected delete user 200, got %d: %s", deleteResp.status, deleteResp.body)
+	}
+}
+
+func TestAuthUserUpdateRejectsMissingCSRF(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	created, err := deps.Auth.CreateUser(context.Background(), "viewer", "viewer-password-123!", "Viewer", "standard")
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	req := httptest.NewRequest(http.MethodPatch, "http://xuva.test/api/users/"+created.ID, bytes.NewReader(mustJSON(t, map[string]any{
+		"displayName": "Viewer Updated",
+		"avatarUrl":   "https://cdn.example.com/viewer.png",
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	client.apply(req, false)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without csrf header, got %d: %s", res.Code, res.Body.String())
 	}
 }
 
@@ -2134,6 +2307,13 @@ func TestAuthzStandardCannotManageUsers(t *testing.T) {
 	})
 	if password.status != http.StatusForbidden {
 		t.Fatalf("expected standard user password update 403, got %d: %s", password.status, password.body)
+	}
+	profile := client.requestJSON(t, router, http.MethodPatch, "/api/users/admin", map[string]any{
+		"displayName": "Admin Updated",
+		"avatarUrl":   "https://cdn.example.com/admin.png",
+	})
+	if profile.status != http.StatusForbidden {
+		t.Fatalf("expected standard user profile update 403, got %d: %s", profile.status, profile.body)
 	}
 	deleteResp := client.requestJSON(t, router, http.MethodDelete, "/api/users/admin", map[string]any{})
 	if deleteResp.status != http.StatusForbidden {
@@ -2630,6 +2810,29 @@ func TestSignedStreamTokenEndpointReturnsBoundURL(t *testing.T) {
 
 	if token.status != http.StatusOK || token.payload["streamUrl"] == "" || token.payload["token"] == "" {
 		t.Fatalf("expected bound stream token response, got %d: %#v", token.status, token.payload)
+	}
+}
+
+func TestProbeStartReturns429WhenQueueSaturated(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	total := deps.Jobs.Probe.Workers + deps.Jobs.Probe.MaxQueued
+	for i := 0; i < total; i++ {
+		if err := deps.Jobs.Probe.Submit(context.Background(), func(context.Context) { <-block }); err != nil {
+			t.Fatalf("saturate probe queue failed at %d: %v", i, err)
+		}
+	}
+
+	response := client.requestJSON(t, router, http.MethodPost, "/api/probes", map[string]any{
+		"limit": 5,
+	})
+	if response.status != http.StatusTooManyRequests {
+		t.Fatalf("expected probe start 429 when queue saturated, got %d: %s", response.status, response.body)
 	}
 }
 

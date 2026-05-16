@@ -107,6 +107,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/auth/logout", authLogoutHandler(deps))
 	handleProtected(mux, deps, "GET /api/users", usersListHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/users", usersCreateHandler(deps))
+	handleProtectedCSRF(mux, deps, "PATCH /api/users/{id}", usersUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "DELETE /api/users/{id}", usersDeleteHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/users/{id}/password", usersPasswordHandler(deps))
 	mux.HandleFunc("GET /api/events", eventsHandler(deps))
@@ -468,6 +469,7 @@ func authLoginHandler(deps Deps) http.HandlerFunc {
 				"id":          principal.ID,
 				"username":    principal.Username,
 				"displayName": principal.DisplayName,
+				"avatarUrl":   principal.AvatarURL,
 				"role":        principal.Role,
 			},
 			"session": map[string]any{
@@ -522,6 +524,7 @@ func authBootstrapHandler(deps Deps) http.HandlerFunc {
 				"id":          createdPrincipal.ID,
 				"username":    createdPrincipal.Username,
 				"displayName": createdPrincipal.DisplayName,
+				"avatarUrl":   createdPrincipal.AvatarURL,
 				"role":        createdPrincipal.Role,
 			},
 			"session": map[string]any{
@@ -589,6 +592,7 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 				"id":          resolved.Principal.ID,
 				"username":    resolved.Principal.Username,
 				"displayName": resolved.Principal.DisplayName,
+				"avatarUrl":   resolved.Principal.AvatarURL,
 				"role":        resolved.Principal.Role,
 			},
 		}
@@ -672,6 +676,60 @@ func usersCreateHandler(deps Deps) http.HandlerFunc {
 				"id":          principal.ID,
 				"username":    principal.Username,
 				"displayName": principal.DisplayName,
+				"avatarUrl":   principal.AvatarURL,
+				"role":        principal.Role,
+			},
+		})
+	}
+}
+
+func usersUpdateHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		DisplayName string `json:"displayName"`
+		AvatarURL   string `json:"avatarUrl"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeError(w, http.StatusServiceUnavailable, "user accounts are not available")
+			return
+		}
+		userID := strings.TrimSpace(r.PathValue("id"))
+		if userID == "" {
+			writeError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		avatarURL, err := normalizeAvatarURL(payload.AvatarURL)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		principal, err := deps.Auth.UpdateUserProfile(r.Context(), userID, payload.DisplayName, avatarURL)
+		if err != nil {
+			switch {
+			case errors.Is(err, auth.ErrUnauthorized):
+				writeError(w, http.StatusUnauthorized, "authentication required")
+			case errors.Is(err, auth.ErrUserNotFound):
+				writeError(w, http.StatusNotFound, "user not found")
+			case strings.Contains(strings.ToLower(err.Error()), "display name"):
+				writeError(w, http.StatusBadRequest, err.Error())
+			default:
+				writeError(w, http.StatusInternalServerError, "user update failed")
+			}
+			return
+		}
+		publishDomainAudit(deps, r, "audit.auth", "user.update", "allowed", map[string]any{
+			"targetUserId": principal.ID,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user": map[string]any{
+				"id":          principal.ID,
+				"username":    principal.Username,
+				"displayName": principal.DisplayName,
+				"avatarUrl":   principal.AvatarURL,
 				"role":        principal.Role,
 			},
 		})
@@ -768,6 +826,7 @@ func usersPasswordHandler(deps Deps) http.HandlerFunc {
 				"id":          principal.ID,
 				"username":    principal.Username,
 				"displayName": principal.DisplayName,
+				"avatarUrl":   principal.AvatarURL,
 				"role":        principal.Role,
 			}
 			responsePayload["session"] = map[string]any{
@@ -778,6 +837,28 @@ func usersPasswordHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, responsePayload)
 	}
+}
+
+func normalizeAvatarURL(value string) (string, error) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return "", nil
+	}
+	if len(raw) > 1024 {
+		return "", errors.New("avatar URL is too long")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", errors.New("avatar URL must be valid")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return "", errors.New("avatar URL must start with http:// or https://")
+	}
+	if strings.TrimSpace(parsed.Host) == "" {
+		return "", errors.New("avatar URL host is required")
+	}
+	return parsed.String(), nil
 }
 
 func writeAuthCookies(w http.ResponseWriter, r *http.Request, resolved auth.ResolvedSession) {
@@ -836,6 +917,13 @@ func hasHeaderAuthToken(r *http.Request) bool {
 	}
 	parts := strings.SplitN(authz, " ", 2)
 	return len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "Bearer") && strings.TrimSpace(parts[1]) != ""
+}
+
+func queueRejectionStatus(err error, fallback int) int {
+	if errors.Is(err, jobs.ErrQueueSaturated) {
+		return http.StatusTooManyRequests
+	}
+	return fallback
 }
 
 func requestHostIsLoopback(r *http.Request) bool {
@@ -915,18 +1003,25 @@ func metricsHandler(deps Deps) http.HandlerFunc {
 		if deps.Observe != nil {
 			timeline = deps.Observe.Recent(60)
 		}
+		playbackSLO := observability.PlaybackSLOMetrics{}
+		if deps.Observe != nil {
+			playbackSLO = deps.Observe.PlaybackSLO()
+		}
+		alerts := observability.EvaluateAlerts(queues, requests)
+		alerts = append(alerts, observability.EvaluatePlaybackSLOAlerts(playbackSLO)...)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"requests": requests,
-			"queues":   queues,
-			"events":   events,
-			"timeline": timeline,
+			"requests":    requests,
+			"queues":      queues,
+			"events":      events,
+			"timeline":    timeline,
+			"playbackSLO": playbackSLO,
 			"outcomes": map[string]any{
 				"sessions":  sessionOutcomeCounts(deps),
 				"transcode": transcodeOutcomeCounts(deps),
 				"downloads": downloadOutcomeCounts(deps),
 				"probes":    probeOutcomeCounts(deps),
 			},
-			"alerts": observability.EvaluateAlerts(queues, requests),
+			"alerts": alerts,
 		})
 	}
 }
@@ -1246,7 +1341,7 @@ func libraryScanByIDHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: kind, LibraryID: library.ID, Path: library.Path})
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		publishDomainAudit(deps, r, "audit.library", "library.scan", "allowed", map[string]any{
@@ -1731,7 +1826,8 @@ func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.Media
 	if decision.Mode == playback.Remux {
 		mode = transcode.ModeRemux
 	}
-	if job, ok := deps.Transcode.FindCompleted(source.ID, mode); ok {
+	audioTrackIndex := resolvedAudioTrackIndex(r.Context(), deps, source.ID, payload.AudioTrackIndex)
+	if job, ok := deps.Transcode.FindCompleted(source.ID, mode, audioTrackIndex); ok {
 		return map[string]any{
 			"route":    string(mode),
 			"status":   "ready",
@@ -1740,7 +1836,7 @@ func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.Media
 			"decision": decision,
 		}, http.StatusOK, nil
 	}
-	if job, ok := deps.Transcode.FindActive(source.ID, mode); ok {
+	if job, ok := deps.Transcode.FindActive(source.ID, mode, audioTrackIndex); ok {
 		return map[string]any{
 			"route":    string(mode),
 			"status":   string(job.Status),
@@ -1748,7 +1844,7 @@ func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.Media
 			"decision": decision,
 		}, http.StatusAccepted, nil
 	}
-	request := transcode.Request{MediaSourceID: source.ID, Mode: mode, SourcePath: source.Path}
+	request := transcode.Request{MediaSourceID: source.ID, Mode: mode, SourcePath: source.Path, AudioTrackIndex: audioTrackIndex}
 	if mode == transcode.ModeTranscode {
 		if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
 			request.Acceleration = "hardware"
@@ -1757,7 +1853,7 @@ func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.Media
 	}
 	job, err := deps.Transcode.Start(r.Context(), request)
 	if err != nil {
-		return nil, http.StatusBadRequest, err
+		return nil, queueRejectionStatus(err, http.StatusBadRequest), err
 	}
 	return map[string]any{
 		"route":    string(mode),
@@ -2213,6 +2309,7 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 		if artType == "" {
 			artType = "poster"
 		}
+		disableFallback := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("fallback")), "none")
 		if !safePathSegment(kind) || !safePathSegment(id) || !safePathSegment(artType) {
 			writeError(w, http.StatusBadRequest, "invalid artwork path")
 			return
@@ -2250,6 +2347,10 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			if item, ok, err := deps.Catalog.GetSeries(r.Context(), id); err == nil && ok {
 				title = item.Title
 			}
+		}
+		if disableFallback {
+			writeError(w, http.StatusNotFound, "artwork not found")
+			return
 		}
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -2307,9 +2408,19 @@ func fallbackArtworkSVG(title string, artType string) string {
     <stop stop-color="#5bc2d6" stop-opacity="0.2"/>
     <stop offset="1" stop-color="#5bc2d6" stop-opacity="0"/>
   </radialGradient>
+  <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#A78BFA"/>
+    <stop offset="0.55" stop-color="#7C3AED"/>
+    <stop offset="1" stop-color="#DB2777"/>
+  </linearGradient>
 </defs>
 <rect width="1280" height="720" fill="url(#bg)"/>
 <rect width="1280" height="720" fill="url(#glow)"/>
+<g transform="translate(546 266)">
+  <rect x="0" y="0" width="188" height="188" rx="28" fill="#0f1f34" fill-opacity="0.78" stroke="#d7ebf8" stroke-opacity="0.18" stroke-width="2"/>
+  <path d="M46 40 L78 40 L146 94 L100 94 Z" fill="url(#logo)"/>
+  <path d="M46 148 L78 148 L146 94 L100 94 Z" fill="url(#logo)"/>
+</g>
 </svg>`
 	}
 	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
@@ -2322,10 +2433,20 @@ func fallbackArtworkSVG(title string, artType string) string {
     <stop stop-color="#61d0e2" stop-opacity="0.24"/>
     <stop offset="1" stop-color="#61d0e2" stop-opacity="0"/>
   </radialGradient>
+  <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#A78BFA"/>
+    <stop offset="0.55" stop-color="#7C3AED"/>
+    <stop offset="1" stop-color="#DB2777"/>
+  </linearGradient>
 </defs>
 <rect width="600" height="900" fill="url(#g)"/>
 <rect width="600" height="900" fill="url(#glow)"/>
 <rect x="26" y="26" width="548" height="848" rx="22" fill="none" stroke="#d7ebf8" stroke-opacity="0.12" stroke-width="2"/>
+<g transform="translate(176 298)">
+  <rect x="0" y="0" width="248" height="248" rx="34" fill="#0f1f34" fill-opacity="0.78" stroke="#d7ebf8" stroke-opacity="0.18" stroke-width="2"/>
+  <path d="M60 54 L102 54 L192 126 L128 126 Z" fill="url(#logo)"/>
+  <path d="M60 194 L102 194 L192 126 L128 126 Z" fill="url(#logo)"/>
+</g>
 <text x="72" y="702" fill="#ecf5fc" fill-opacity="0.9" font-family="Inter,Segoe UI,sans-serif" font-size="40" font-weight="760">%s</text>
 </svg>`, safeTitle)
 }
@@ -3509,7 +3630,7 @@ func probeStartHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Probes.Start(r.Context(), request)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		publishOperationalEvent(deps, r, "api.probe.accepted", map[string]any{
@@ -3519,6 +3640,21 @@ func probeStartHandler(deps Deps) http.HandlerFunc {
 		})
 		writeJSON(w, http.StatusAccepted, job)
 	}
+}
+
+func ensureMediaFileAccessible(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return os.ErrNotExist
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return os.ErrInvalid
+	}
+	return nil
 }
 
 func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
@@ -3535,6 +3671,10 @@ func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
 		}
 		if !ok {
 			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		if err := ensureMediaFileAccessible(item.Path); err != nil {
+			writeError(w, http.StatusNotFound, "media file is unavailable from the configured library path")
 			return
 		}
 		http.ServeFile(w, r, item.Path)
@@ -3608,13 +3748,24 @@ func playerHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		title := item.Name
+		artworkKind := ""
+		artworkID := ""
 		if display, ok, err := deps.Catalog.GetMediaSourceDisplay(r.Context(), id); err != nil {
 			writeError(w, http.StatusInternalServerError, "media source display lookup failed")
 			return
 		} else if ok && display.Title != "" {
 			title = display.Title
+			artworkKind = strings.TrimSpace(display.ArtworkKind)
+			artworkID = strings.TrimSpace(display.ArtworkID)
+		}
+		artworkURL := ""
+		if artworkKind != "" && artworkID != "" {
+			artworkURL = "/api/artwork/" + url.PathEscape(artworkKind) + "/" + url.PathEscape(artworkID) + "?type=backdrop&fallback=none"
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 		_, _ = fmt.Fprintf(w, `<!doctype html>
 <html lang="en">
 <head>
@@ -3624,17 +3775,17 @@ func playerHandler(deps Deps) http.HandlerFunc {
   <style>
     :root {
       color-scheme: dark;
-      --void:#050505;
-      --panel:rgba(14,14,13,.78);
-      --panel-strong:rgba(24,24,22,.9);
-      --text:#f7f1e7;
-      --soft:#d6cec0;
-      --muted:#9d9487;
-      --champagne:#d4b06f;
-      --ice:#9adbd4;
-      --green:#98d99e;
-      --warn:#e0b86e;
-      --line:rgba(245,240,231,.14);
+      --void:#071224;
+      --panel:rgba(8,14,26,.82);
+      --panel-strong:rgba(12,20,34,.94);
+      --text:#f5f8ff;
+      --soft:#c0d0e6;
+      --muted:#88a0be;
+      --champagne:#7c5cff;
+      --ice:#8de1da;
+      --green:#7fd9a7;
+      --warn:#7c5cff;
+      --line:rgba(193,212,237,.2);
       --shadow:0 28px 90px rgba(0,0,0,.56);
     }
     * { box-sizing: border-box; }
@@ -3643,62 +3794,100 @@ func playerHandler(deps Deps) http.HandlerFunc {
       min-height:100vh;
       overflow:hidden;
       background:
-        radial-gradient(circle at 16%% -10%%, rgba(212,176,111,.15), transparent 30rem),
-        radial-gradient(circle at 86%% 4%%, rgba(154,219,212,.13), transparent 34rem),
+        radial-gradient(circle at 16%% -10%%, rgba(211,173,102,.17), transparent 30rem),
+        radial-gradient(circle at 86%% 4%%, rgba(135,219,211,.13), transparent 34rem),
         var(--void);
       color:var(--text);
       font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing:0;
     }
-    .player-shell { min-height:100vh; display:grid; grid-template-rows:auto 1fr; background:#030303; }
+    .player-shell { min-height:100vh; display:grid; grid-template-rows:auto 1fr; background:linear-gradient(180deg,#060f1f,#040a16); }
     .topbar {
       position:fixed;
       z-index:5;
       inset:18px 18px auto;
       display:flex;
       align-items:center;
-      justify-content:space-between;
+      justify-content:flex-start;
       gap:16px;
       pointer-events:none;
       transition:opacity .16s ease, transform .16s ease;
     }
-    .hud-toggle {
-      position:fixed;
-      z-index:6;
-      right:clamp(18px, 2vw, 34px);
-      bottom:clamp(18px, 2vw, 34px);
-      opacity:0;
-      transform:translateY(8px);
-      transition:opacity .16s ease, transform .16s ease;
-      pointer-events:none;
-    }
-    .brand, .status-pill {
+    .now-art {
+      position:relative;
       display:inline-flex;
       align-items:center;
-      min-height:38px;
-      padding:0 14px;
-      border:1px solid var(--line);
-      border-radius:999px;
-      background:var(--panel);
-      backdrop-filter:blur(20px);
-      box-shadow:0 14px 48px rgba(0,0,0,.34);
-      font-size:13px;
-      font-weight:850;
-      white-space:nowrap;
+      justify-content:center;
+      padding:0;
+      width:56px;
+      height:56px;
+      overflow:visible;
+      border:0;
+      background:transparent;
+      box-shadow:none;
     }
-    .brand b { color:var(--champagne); margin-right:8px; }
-    .status-pill { color:var(--ice); }
+    .now-art img {
+      width:100%%;
+      height:100%%;
+      object-fit:cover;
+      display:block;
+    }
+    .now-art__logo {
+      width:52px;
+      height:52px;
+      display:block;
+    }
+    .now-art img + .now-art__logo {
+      display:none;
+    }
+    .now-art.show-logo .now-art__logo {
+      display:block;
+    }
     video {
       width:100vw;
       height:100vh;
-      object-fit:contain;
-      background:linear-gradient(180deg,#020202,#050505);
+      object-fit:cover;
+      background:linear-gradient(180deg,#020814,#051022);
+    }
+    .stage-veil {
+      position:fixed;
+      z-index:3;
+      inset:0;
+      pointer-events:none;
+      background:
+        linear-gradient(180deg, rgba(3,9,20,.08) 0%%, rgba(3,9,20,.12) 38%%, rgba(3,9,20,.55) 100%%),
+        radial-gradient(circle at 14%% 84%%, rgba(124,92,255,.08), transparent 48%%),
+        radial-gradient(circle at 84%% 12%%, rgba(135,219,211,.08), transparent 46%%);
+    }
+    .autoplay-guard {
+      position:fixed;
+      inset:0;
+      z-index:7;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(4,10,22,.36);
+      backdrop-filter:blur(2px);
+      pointer-events:auto;
+    }
+    .autoplay-guard.show { display:flex; }
+    .autoplay-guard button {
+      min-height:46px;
+      padding:0 20px;
+      border-radius:10px;
+      border:1px solid rgba(193,212,237,.26);
+      background:linear-gradient(135deg,#7c5cff,#5d7dff);
+      color:#f5f8ff;
+      font-size:14px;
+      font-weight:900;
+      letter-spacing:.01em;
+      cursor:pointer;
     }
     .overlay {
       position:fixed;
       z-index:4;
       left:50%%;
-      width:min(96vw, 1760px);
+      width:min(95vw, 1820px);
       bottom:clamp(18px, 2vw, 34px);
       transform:translateX(-50%%);
       display:block;
@@ -3711,28 +3900,23 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     body.is-idle .overlay { transform:translate(-50%%, 10px); }
     body.is-idle .topbar { transform:translateY(10px); }
-    body.is-idle .hud-toggle {
-      opacity:1;
-      transform:none;
-      pointer-events:auto;
-    }
     .panel {
       border:1px solid var(--line);
-      border-radius:12px;
+      border-radius:14px;
       background:var(--panel);
       backdrop-filter:blur(22px);
-      padding:clamp(16px, 1.4vw, 24px);
+      padding:clamp(12px, 1.1vw, 18px);
       box-shadow:var(--shadow);
       min-width:0;
     }
     .player-dock {
       display:grid;
-      grid-template-columns:minmax(0, 1fr) minmax(330px, 420px);
-      gap:clamp(18px, 1.8vw, 30px);
+      grid-template-columns:minmax(0, 1fr) minmax(320px, 420px);
+      gap:clamp(14px, 1.2vw, 22px);
       align-items:stretch;
       max-width:100%%;
       overflow:visible;
-      min-height:clamp(170px, 15vh, 220px);
+      min-height:clamp(170px, 18vh, 260px);
       pointer-events:auto;
     }
     .player-primary {
@@ -3743,14 +3927,14 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }
     .eyebrow {
       color:var(--champagne);
-      font-size:12px;
+      font-size:11px;
       font-weight:900;
       text-transform:uppercase;
     }
     h1 {
       margin:5px 0 0;
       max-width:100%%;
-      font-size:clamp(30px, 2.15vw, 46px);
+      font-size:clamp(34px, 2.5vw, 50px);
       line-height:1.02;
       font-weight:900;
       white-space:normal;
@@ -3760,55 +3944,59 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .meta {
       display:flex;
       flex-wrap:wrap;
-      gap:8px;
-      margin-top:12px;
+      gap:6px;
+      margin-top:8px;
     }
     .chip {
       display:inline-flex;
       align-items:center;
-      min-height:30px;
-      padding:0 11px;
+      min-height:28px;
+      padding:0 9px;
       border:1px solid var(--line);
       border-radius:999px;
-      background:rgba(245,240,231,.055);
+      background:rgba(124,92,255,.14);
       color:var(--soft);
-      font-size:13px;
+      font-size:12px;
       font-weight:800;
       white-space:nowrap;
     }
-    .chip.good { color:var(--green); border-color:rgba(152,217,158,.28); background:rgba(152,217,158,.08); }
-    .chip.route { color:var(--ice); border-color:rgba(154,219,212,.3); background:rgba(154,219,212,.08); }
-    .chip.warn { color:var(--warn); border-color:rgba(224,184,110,.3); background:rgba(224,184,110,.08); }
+    .chip.good { color:var(--green); border-color:rgba(127,217,167,.34); background:rgba(127,217,167,.14); }
+    .chip.route { color:var(--ice); border-color:rgba(141,225,218,.34); background:rgba(141,225,218,.14); }
+    .chip.warn { color:#cbbcff; border-color:rgba(124,92,255,.36); background:rgba(124,92,255,.15); }
     .control-stack {
       display:flex;
       justify-content:flex-start;
       align-items:center;
-      gap:10px;
+      gap:8px;
       flex-wrap:wrap;
-      padding-top:12px;
+      padding-top:8px;
     }
     button, a.button {
       pointer-events:auto;
-      min-height:42px;
+      min-height:34px;
       display:inline-flex;
       align-items:center;
       justify-content:center;
-      padding:0 16px;
+      padding:0 12px;
       border:1px solid var(--line);
       border-radius:8px;
-      background:rgba(245,240,231,.07);
+      background:rgba(193,212,237,.1);
       color:var(--text);
       font:inherit;
-      font-size:14px;
+      font-size:13px;
       font-weight:850;
       text-decoration:none;
       cursor:pointer;
       white-space:nowrap;
       vertical-align:middle;
     }
-    button.primary { border-color:transparent; background:var(--champagne); color:#11100d; }
+    button:disabled {
+      opacity:.52;
+      cursor:default;
+    }
+    button.primary { border-color:transparent; background:linear-gradient(135deg,#7c5cff,#5d7dff); color:#f5f8ff; }
     .icon-button {
-      width:42px;
+      width:34px;
       padding:0;
       display:inline-grid;
       place-items:center;
@@ -3818,18 +4006,18 @@ func playerHandler(deps Deps) http.HandlerFunc {
       grid-template-columns:max-content minmax(0, 1fr) max-content;
       gap:12px;
       align-items:center;
-      margin-top:14px;
+      margin-top:10px;
     }
     .seek-row span {
       color:var(--soft);
-      font-size:13px;
+      font-size:11px;
       font-weight:850;
-      min-width:4.5em;
+      min-width:3.8em;
       text-align:center;
     }
     input[type="range"] {
       width:100%%;
-      accent-color:var(--champagne);
+      accent-color:#7c5cff;
       cursor:pointer;
     }
     .control-field,
@@ -3837,14 +4025,14 @@ func playerHandler(deps Deps) http.HandlerFunc {
       position:relative;
       display:inline-flex;
       align-items:center;
-      gap:8px;
-      min-height:42px;
-      padding:0 12px;
+      gap:6px;
+      min-height:34px;
+      padding:0 10px;
       border:1px solid var(--line);
       border-radius:8px;
-      background:rgba(245,240,231,.055);
+      background:rgba(193,212,237,.1);
       color:var(--soft);
-      font-size:13px;
+      font-size:12px;
       font-weight:850;
       white-space:nowrap;
     }
@@ -3883,7 +4071,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
     .menu-control.open .player-menu { display:grid; gap:4px; }
     .player-menu button {
       justify-content:flex-start;
-      min-height:34px;
+      min-height:28px;
       width:100%%;
       border-color:transparent;
       background:transparent;
@@ -3897,60 +4085,64 @@ func playerHandler(deps Deps) http.HandlerFunc {
       border-color:rgba(245,240,231,.09);
     }
     .volume {
-      width:110px;
+      width:92px;
     }
     .forecast {
       display:grid;
       gap:10px;
       align-content:start;
-      padding-left:clamp(14px, 1.2vw, 22px);
+      padding-left:clamp(16px, 1.2vw, 24px);
       border-left:1px solid rgba(245,240,231,.1);
     }
     .forecast h2 {
       margin:0;
-      font-size:14px;
+      font-size:11px;
       text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--soft);
     }
     .decision {
       display:grid;
       gap:6px;
-      padding:13px;
+      padding:10px;
       border:1px solid rgba(154,219,212,.32);
-      border-radius:9px;
-      background:rgba(154,219,212,.075);
+      border-radius:10px;
+      background:linear-gradient(180deg, rgba(141,225,218,.12), rgba(141,225,218,.06));
     }
-    .decision strong { color:var(--ice); font-size:22px; line-height:1.05; }
-    .decision span { color:var(--soft); font-size:13px; line-height:1.35; }
+    .decision strong { color:var(--ice); font-size:24px; line-height:1.05; letter-spacing:-.02em; }
+    .decision span { color:var(--soft); font-size:12px; line-height:1.35; }
     .kv { display:grid; gap:0; }
     .kv div {
       display:grid;
       grid-template-columns:max-content minmax(0,1fr);
       gap:16px;
-      padding:10px 0;
+      padding:7px 0;
       border-top:1px solid rgba(245,240,231,.09);
-      font-size:13px;
+      font-size:12px;
     }
-    .kv span:first-child { color:var(--muted); font-weight:800; }
+    .kv span:first-child { color:var(--muted); font-weight:820; }
     .kv span:last-child { color:var(--text); font-weight:850; text-align:right; }
-    .hint { margin-top:8px; color:var(--muted); font-size:12px; font-weight:750; }
+    .hint { margin-top:6px; color:var(--muted); font-size:11px; font-weight:760; }
     @media (max-width: 900px) {
-      .overlay { grid-template-columns:1fr; left:12px; right:12px; width:auto; bottom:12px; transform:none; }
+      .overlay { grid-template-columns:1fr; left:10px; right:10px; width:auto; bottom:10px; transform:none; }
       body.is-idle .overlay { transform:translateY(10px); }
       .player-dock { grid-template-columns:1fr; }
       .control-stack { justify-content:flex-start; }
       .forecast { display:none; }
-      h1 { font-size:clamp(24px, 8vw, 38px); white-space:normal; text-wrap:balance; }
+      h1 { font-size:clamp(30px, 8vw, 40px); white-space:normal; text-wrap:balance; }
     }
   </style>
 </head>
 <body>
   <div class="player-shell">
     <div class="topbar">
-      <div class="brand"><b>V</b> Xuva Player</div>
-      <div class="status-pill" id="sessionState">Starting</div>
+      <div class="now-art" aria-label="Now playing artwork">%s</div>
     </div>
-    <button class="hud-toggle" id="hudToggle" type="button">Controls</button>
-    <video id="player" autoplay></video>
+    <video id="player" autoplay playsinline></video>
+    <div class="stage-veil" aria-hidden="true"></div>
+    <div id="autoplayGuard" class="autoplay-guard" aria-live="polite">
+      <button id="autoplayGuardButton" type="button">Start Playback</button>
+    </div>
   </div>
   <div class="overlay">
     <section class="panel player-dock">
@@ -3971,7 +4163,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
           <span id="durationTime">--:--</span>
         </div>
         <div class="control-stack">
-          <button class="primary" id="playToggle" type="button">Pause</button>
+          <button class="primary" id="playToggleButton" type="button">Play</button>
           <button class="icon-button" id="backButton" type="button" aria-label="Back 10 seconds">-10</button>
           <button class="icon-button" id="forwardButton" type="button" aria-label="Forward 10 seconds">+10</button>
           <button id="restartButton" type="button">Restart</button>
@@ -3985,11 +4177,11 @@ func playerHandler(deps Deps) http.HandlerFunc {
       </div>
       <aside class="forecast">
         <h2>Playback Forecast</h2>
-        <div class="decision"><strong id="forecastMode">Checking</strong><span id="forecastReason">Inspecting selected source and client profile.</span></div>
+        <div class="decision"><strong id="forecastMode">Checking</strong><span id="forecastReason">Inspecting this file and your player profile to pick the cleanest playback path.</span></div>
         <div class="kv">
           <div><span>Client</span><span>Web</span></div>
           <div><span>Route</span><span id="forecastRoute">LAN direct</span></div>
-          <div><span>Server</span><span id="forecastServer">Low impact</span></div>
+          <div><span>Server</span><span id="forecastServer">No server conversion</span></div>
         </div>
       </aside>
     </section>
@@ -4000,20 +4192,35 @@ func playerHandler(deps Deps) http.HandlerFunc {
     let sessionId = "";
     let saveInFlight = false;
     let queuedSaveStatus = "";
+    let negotiatedRouteReady = false;
     let isSeeking = false;
+    let userPaused = false;
+    let autoplayBootMuted = false;
+    let autoplayAttemptInFlight = false;
+    let autoplaySettled = false;
+    let autoplayRecoveryBlockedUntil = 0;
+    let lastUserGestureAt = 0;
     let lastMouseMove = Date.now();
     let signedStream = null;
     let currentDecision = {};
     let currentRoute = "";
+    let metadataLoaded = false;
+    let directRetryAttempted = false;
+    let fallbackRouteAttempted = false;
+    let failureRecoveryInFlight = false;
+    let suppressAbortUntil = 0;
+    let audioHealthCheckTimer = 0;
+    let audioHealthFallbackAttempted = false;
     const player = document.getElementById("player");
-    const sessionState = document.getElementById("sessionState");
-    const playToggle = document.getElementById("playToggle");
+    const autoplayGuard = document.getElementById("autoplayGuard");
+    const autoplayGuardButton = document.getElementById("autoplayGuardButton");
+    const sessionState = document.getElementById("sessionState") || { textContent: "" };
+    const playToggleButton = document.getElementById("playToggleButton");
     const backButton = document.getElementById("backButton");
     const forwardButton = document.getElementById("forwardButton");
     const restartButton = document.getElementById("restartButton");
     const markButton = document.getElementById("markButton");
     const fullscreenButton = document.getElementById("fullscreenButton");
-    const hudToggle = document.getElementById("hudToggle");
     const decisionMode = document.getElementById("decisionMode");
     const progressChip = document.getElementById("progressChip");
     const subtitleChip = document.getElementById("subtitleChip");
@@ -4035,19 +4242,84 @@ func playerHandler(deps Deps) http.HandlerFunc {
     let idleTimer = 0;
     const speedOptions = ["0.75", "1", "1.25", "1.5", "2"];
     let selectedSubtitleTrack = "-1";
+    const queryParams = new URLSearchParams(window.location.search);
+    const playbackProfile = queryParams.get("clientProfile") || "web";
+    const playbackRouteType = queryParams.get("routeType") || "lan";
+    const autoplayIntent = queryParams.get("autoplayIntent") === "1";
+    const strictAutoplay = queryParams.get("strictAutoplay") === "1";
+    const playbackSupportsAdaptive = queryParams.get("supportsAdaptive") === "true";
+    const playbackForcePlayable = queryParams.get("forcePlayable") === "true";
+    const playbackAudioTrackIndex = Number.parseInt(queryParams.get("audioTrackIndex") || "0", 10) || 0;
+    const playbackSubtitleTrackIndex = Number.parseInt(queryParams.get("subtitleTrackIndex") || "0", 10) || 0;
+    const playbackSubtitleTrackActive = queryParams.get("subtitleTrackActive") === "true";
+    const playbackMaxNetworkBitrate = Number.parseInt(queryParams.get("maxNetworkBitrate") || "0", 10) || 0;
+
+    function playbackQuery() {
+      const params = new URLSearchParams();
+      params.set("mediaSourceId", mediaSourceId);
+      params.set("clientProfile", playbackProfile);
+      params.set("routeType", playbackRouteType);
+      params.set("supportsAdaptive", playbackSupportsAdaptive ? "true" : "false");
+      if (playbackForcePlayable) params.set("forcePlayable", "true");
+      if (playbackAudioTrackIndex > 0) params.set("audioTrackIndex", String(playbackAudioTrackIndex));
+      if (playbackSubtitleTrackIndex > 0) params.set("subtitleTrackIndex", String(playbackSubtitleTrackIndex));
+      if (playbackSubtitleTrackActive) params.set("subtitleTrackActive", "true");
+      if (playbackMaxNetworkBitrate > 0) params.set("maxNetworkBitrate", String(playbackMaxNetworkBitrate));
+      return params.toString();
+    }
 
     function csrfToken() {
       return document.cookie.split(";").map(item => item.trim()).find(item => item.startsWith("xuva_csrf="))?.split("=").slice(1).join("=") || "";
     }
+    function authToken() {
+      try {
+        const local = window.localStorage?.getItem("xuva-auth-token") || "";
+        if (String(local).trim()) return String(local).trim();
+      } catch {}
+      try {
+        const session = window.sessionStorage?.getItem("xuva-auth-token") || "";
+        if (String(session).trim()) return String(session).trim();
+      } catch {}
+      try {
+        const raw = String(window.name || "");
+        const pair = raw.split(";").map(item => item.trim()).find(item => item.startsWith("xuvaAuthToken="));
+        if (pair) return decodeURIComponent(pair.split("=").slice(1).join("=")).trim();
+      } catch {}
+      return "";
+    }
     async function send(path, body, method = "POST", keepalive = false) {
       const token = csrfToken();
+      const auth = authToken();
       const headers = { "Content-Type": "application/json" };
       if (token) headers["X-CSRF-Token"] = decodeURIComponent(token);
-      const response = await fetch(path, { method, keepalive, headers, body: JSON.stringify(body || {}) });
+      if (auth) headers["X-Auth-Token"] = auth;
+      const response = await fetch(path, { method, keepalive, credentials: "include", headers, body: JSON.stringify(body || {}) });
       return response.ok ? response.json() : {};
     }
     async function getJSON(path, fallback = {}) {
-      return fetch(path).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
+      const auth = authToken();
+      const headers = auth ? { "X-Auth-Token": auth } : {};
+      return fetch(path, { credentials: "include", headers }).then(r => r.ok ? r.json() : fallback).catch(() => fallback);
+    }
+    async function getJSONWithStatus(path, fallback = {}) {
+      const auth = authToken();
+      const headers = auth ? { "X-Auth-Token": auth } : {};
+      try {
+        const response = await fetch(path, { credentials: "include", headers });
+        let payload = fallback;
+        try {
+          payload = await response.json();
+        } catch (_) {
+          payload = fallback;
+        }
+        return {
+          ok: response.ok,
+          status: response.status,
+          payload: payload || fallback
+        };
+      } catch (_) {
+        return { ok: false, status: 0, payload: fallback };
+      }
     }
     function formatTime(value) {
       value = Math.max(0, Math.floor(Number(value || 0)));
@@ -4071,45 +4343,359 @@ func playerHandler(deps Deps) http.HandlerFunc {
     function progressBody(status) {
       return { progressSeconds: player.currentTime || 0, durationSeconds: Number.isFinite(player.duration) ? player.duration : 0, status: status || (player.paused ? "paused" : "playing") };
     }
+    function samePlaybackSource(nextURL) {
+      const candidate = String(nextURL || "").trim();
+      if (!candidate) return false;
+      const current = String(player.currentSrc || player.src || "").trim();
+      if (!current) return false;
+      try {
+        return new URL(candidate, window.location.href).href === new URL(current, window.location.href).href;
+      } catch (_) {
+        return candidate === current;
+      }
+    }
+    function setPlaybackSource(nextURL) {
+      const candidate = String(nextURL || "").trim();
+      if (!candidate || samePlaybackSource(candidate)) return false;
+      metadataLoaded = false;
+      suppressAbortUntil = Date.now() + 1800;
+      if (audioHealthCheckTimer) {
+        clearTimeout(audioHealthCheckTimer);
+        audioHealthCheckTimer = 0;
+      }
+      audioHealthFallbackAttempted = false;
+      player.src = candidate;
+      autoplaySettled = false;
+      autoplayAttemptInFlight = false;
+      return true;
+    }
+    async function recoverAudibleAutoplay() {
+      if (!strictAutoplay) return;
+      if (!autoplayBootMuted) return;
+      if (!player) return;
+      if (!document.hasFocus()) return;
+      try {
+        player.muted = false;
+        await player.play();
+        autoplayBootMuted = false;
+        autoplayGuard.classList.remove("show");
+      } catch (_) {
+        player.muted = true;
+        autoplayGuard.classList.add("show");
+      }
+    }
+    function markUserGesture() {
+      lastUserGestureAt = Date.now();
+      autoplayRecoveryBlockedUntil = 0;
+    }
+    function audioDecodedBytes() {
+      const candidate = Number(player && player.webkitAudioDecodedByteCount);
+      if (Number.isFinite(candidate)) return candidate;
+      return -1;
+    }
+    function scheduleAudioHealthCheck() {
+      if (audioHealthCheckTimer) {
+        clearTimeout(audioHealthCheckTimer);
+        audioHealthCheckTimer = 0;
+      }
+      if (audioHealthFallbackAttempted) return;
+      if (currentRoute !== "direct") return;
+      if (player.muted || Number(player.volume || 0) <= 0) return;
+      const startAt = audioDecodedBytes();
+      if (startAt < 0) return;
+      const startedAt = Date.now();
+      audioHealthCheckTimer = setTimeout(async () => {
+        audioHealthCheckTimer = 0;
+        if (userPaused || player.paused || player.ended) return;
+        if (currentRoute !== "direct") return;
+        if (player.muted || Number(player.volume || 0) <= 0) return;
+        if ((player.currentTime || 0) < 6) return;
+        if (Date.now() - startedAt < 5000) return;
+        const now = audioDecodedBytes();
+        if (now > startAt) return;
+        audioHealthFallbackAttempted = true;
+        fallbackRouteAttempted = true;
+        sessionState.textContent = "Trying audio fallback";
+        forecastMode.textContent = "Audio fallback";
+        forecastReason.textContent = "Direct video is running but no decodable audio was detected. Trying a compatibility fallback route.";
+        await resolvePlaybackRoute({
+          reasonHint: "unsupported_codec",
+          allowDirectFallback: false,
+          preserveActivePlayback: false
+        });
+      }, 7000);
+    }
+    function hasActivePlaybackSource() {
+      const current = String(player.currentSrc || player.src || "").trim();
+      if (!current) return false;
+      return Boolean(metadataLoaded || player.readyState > 0 || !player.paused);
+    }
+    function failureInfo(kind) {
+      switch (String(kind || "")) {
+        case "auth_token":
+          return { code: "auth_token", mode: "Auth/Token", reason: "Stream authorization was rejected or expired. Xuva should refresh the stream token and retry." };
+        case "unsupported_codec":
+          return { code: "unsupported_codec", mode: "Unsupported codec", reason: "This browser cannot decode the current source. Xuva needs a remux/transcode fallback path." };
+        case "abort":
+          return { code: "abort", mode: "Stream aborted", reason: "The browser aborted playback before media metadata loaded." };
+        case "network":
+          return { code: "network", mode: "Network", reason: "The stream could not be read due to a network-level playback error." };
+        case "source_unavailable":
+          return { code: "source_unavailable", mode: "Source unavailable", reason: "The media source could not be accessed from storage." };
+        case "server_error":
+          return { code: "server_error", mode: "Server error", reason: "The server returned an error while opening this stream." };
+        default:
+          return { code: "unknown", mode: "Unknown", reason: "Playback failed before metadata and Xuva could not determine a single root cause." };
+      }
+    }
+    function classifyFailureFromPlayer(eventType) {
+      const code = player.error && player.error.code ? Number(player.error.code) : 0;
+      if (code === 4) return "unsupported_codec";
+      if (code === 2) return "network";
+      if (code === 1 || eventType === "abort") return "abort";
+      return "unknown";
+    }
+    async function inspectCurrentSourceFailure() {
+      const src = String(player.currentSrc || player.src || "").trim();
+      if (!src) return "";
+      const auth = authToken();
+      const headers = auth ? { "X-Auth-Token": auth } : {};
+      try {
+        const head = await fetch(src, { method: "HEAD", credentials: "include", headers });
+        if (head.status === 401 || head.status === 403) return "auth_token";
+        if (head.status === 404) return "source_unavailable";
+        if (head.status >= 500) return "server_error";
+      } catch (_) {}
+      return "";
+    }
+    async function resolveFailureKind(baseKind) {
+      const kind = String(baseKind || "unknown");
+      if (kind === "unsupported_codec") return kind;
+      const inspected = await inspectCurrentSourceFailure();
+      return inspected || kind;
+    }
+    async function handlePlaybackFailure(eventType) {
+      if (userPaused) return;
+      if (failureRecoveryInFlight) return;
+      if (eventType === "abort" && Date.now() < suppressAbortUntil) return;
+      const earlyFailure = !metadataLoaded && player.readyState < 1;
+      const baseKind = classifyFailureFromPlayer(eventType);
+      const kind = await resolveFailureKind(baseKind);
+      const info = failureInfo(kind);
+      if (earlyFailure && currentRoute === "direct" && !directRetryAttempted) {
+        failureRecoveryInFlight = true;
+        directRetryAttempted = true;
+        sessionState.textContent = "Refreshing stream";
+        forecastMode.textContent = "Direct retry";
+        forecastReason.textContent = "Direct stream failed before metadata. Refreshing stream token and retrying once.";
+        try {
+          signedStream = null;
+          const refreshed = await authorizeStream(true);
+          if (refreshed.streamUrl && setPlaybackSource(refreshed.streamUrl)) {
+            await requestAutoplay();
+            return;
+          }
+        } finally {
+          failureRecoveryInFlight = false;
+        }
+      }
+      if (earlyFailure && !fallbackRouteAttempted) {
+        failureRecoveryInFlight = true;
+        fallbackRouteAttempted = true;
+        sessionState.textContent = "Trying fallback route";
+        forecastMode.textContent = "Fallback";
+        forecastReason.textContent = info.reason + " Trying a fallback playback route now.";
+        try {
+          await resolvePlaybackRoute({
+            reasonHint: info.code,
+            allowDirectFallback: false,
+            forceTokenRefresh: info.code === "auth_token",
+            preserveActivePlayback: false
+          });
+          return;
+        } finally {
+          failureRecoveryInFlight = false;
+        }
+      }
+      sessionState.textContent = "Playback failed";
+      forecastMode.textContent = "Playback failed";
+      forecastReason.textContent = info.reason;
+    }
+    async function requestAutoplay() {
+      if (!player || userPaused) return false;
+      if (Date.now() < autoplayRecoveryBlockedUntil && Date.now() - lastUserGestureAt > 1200) {
+        autoplayGuard.classList.add("show");
+        return false;
+      }
+      if (!player.paused) {
+        autoplaySettled = true;
+        autoplayGuard.classList.remove("show");
+        return true;
+      }
+      if (autoplayAttemptInFlight) return false;
+      autoplayAttemptInFlight = true;
+      try {
+        player.muted = false;
+        await player.play();
+        autoplaySettled = true;
+        autoplayBootMuted = false;
+        autoplayGuard.classList.remove("show");
+        return true;
+      } catch (error) {
+        const blockedByPolicy = String(error && error.name ? error.name : "").toLowerCase() === "notallowederror";
+        if (strictAutoplay && blockedByPolicy) {
+          autoplayBootMuted = false;
+          autoplaySettled = false;
+          player.muted = false;
+          autoplayRecoveryBlockedUntil = Date.now() + 1800;
+          autoplayGuard.classList.add("show");
+          return false;
+        }
+        try {
+          player.muted = true;
+          autoplayBootMuted = true;
+          await player.play();
+          autoplaySettled = true;
+          autoplayGuard.classList.add("show");
+          void recoverAudibleAutoplay();
+          return true;
+        } catch (_) {
+          autoplaySettled = false;
+          autoplayGuard.classList.add("show");
+          return false;
+        }
+      } finally {
+        autoplayAttemptInFlight = false;
+      }
+    }
+    function normalizeSessionMode(mode) {
+      const value = String(mode || "").trim().toLowerCase();
+      if (!value) return "direct";
+      if (value.includes("adaptive") || value.includes("hls")) return "adaptive";
+      if (value.includes("transcode") || value.includes("convert")) return "transcode";
+      if (value.includes("remux") || value.includes("repackage")) return "remux";
+      if (value.includes("direct")) return "direct";
+      return "direct";
+    }
     async function loadForecast() {
-      const decision = await getJSON("/api/playback/decision?mediaSourceId=" + mediaSourceId + "&clientProfile=web");
+      const decision = await getJSON("/api/playback/decision?" + playbackQuery());
       currentDecision = decision || {};
       const mode = decision.mode || "direct";
       const label = mode.replaceAll("_", " ");
       decisionMode.textContent = label;
       decisionMode.className = "chip " + (mode === "direct" ? "good" : mode === "remux" ? "route" : "warn");
       forecastMode.textContent = label;
-      forecastReason.textContent = decision.reason || "Direct file stream is available for this client.";
-      forecastServer.textContent = mode === "direct" ? "Low impact" : "Server work required";
+      forecastReason.textContent = decision.reason || "Direct file playback is ready for this device profile.";
+      forecastServer.textContent = mode === "direct" ? "No server conversion" : "Server work required";
       forecastRoute.textContent = label;
-      return mode;
+      return normalizeSessionMode(mode);
+    }
+    async function ensureProbeReady() {
+      if ((currentDecision.reasonCode || "") !== "probe_required") return;
+      sessionState.textContent = "Analyzing media";
+      forecastReason.textContent = "Inspecting this file to choose the best playback route.";
+      await send("/api/media-sources/" + mediaSourceId + "/probe", {}, "POST").catch(() => {});
+      for (let attempt = 0; attempt < 18; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        const nextDecision = await getJSON("/api/playback/decision?" + playbackQuery());
+        if (nextDecision && (nextDecision.reasonCode || "") !== "probe_required") {
+          currentDecision = nextDecision;
+          const mode = nextDecision.mode || "direct";
+          const label = mode.replaceAll("_", " ");
+          decisionMode.textContent = label;
+          decisionMode.className = "chip " + (mode === "direct" ? "good" : mode === "remux" ? "route" : "warn");
+          forecastMode.textContent = label;
+          forecastReason.textContent = nextDecision.reason || nextDecision.reasonText || "Playback route selected.";
+          forecastServer.textContent = mode === "direct" ? "No server conversion" : "Server work required";
+          forecastRoute.textContent = label;
+          const nextMode = normalizeSessionMode(nextDecision.mode || "direct");
+          const activePlayback = hasActivePlaybackSource();
+          const routeNeedsCorrection = activePlayback && (currentRoute || "direct") === "direct" && nextMode !== "direct";
+          const shouldRetryPlayback = autoplayIntent && !userPaused && (!activePlayback || !autoplaySettled || routeNeedsCorrection);
+          if (shouldRetryPlayback) {
+            await resolvePlaybackRoute({
+              reasonHint: "probe_completed",
+              allowDirectFallback: true,
+              preserveActivePlayback: !routeNeedsCorrection
+            });
+          }
+          return;
+        }
+      }
     }
     function supportsNativeHLS() {
       if (!player || typeof player.canPlayType !== "function") return false;
       return Boolean(player.canPlayType("application/vnd.apple.mpegurl") || player.canPlayType("application/x-mpegURL"));
     }
-    async function playbackURLForRoute(route) {
+    async function playbackURLForRoute(route, options = {}) {
       if (route.protocol === "hls" && route.manifestUrl) {
         if (supportsNativeHLS()) return route.manifestUrl;
         return "";
       }
       if (route.url) {
         if (route.route === "direct") {
-          const signed = await authorizeStream();
-          return signed.streamUrl || route.url;
+          const signed = await authorizeStream(Boolean(options.forceTokenRefresh));
+          return signed.streamUrl || "";
         }
         return route.url;
       }
       return "";
     }
-    async function resolvePlaybackRoute() {
+    async function resolvePlaybackRoute(options = {}) {
+      const allowDirectFallback = options.allowDirectFallback !== false;
+      const preserveActivePlayback = options.preserveActivePlayback !== false;
+      const previousRoute = currentRoute || "";
       sessionState.textContent = "Selecting route";
-      const route = await getJSON("/api/playback/route?mediaSourceId=" + mediaSourceId + "&clientProfile=web", {});
-      currentRoute = route.route || currentRoute;
+      const routeResult = await getJSONWithStatus("/api/playback/route?" + playbackQuery(), {});
+      const route = routeResult.payload || {};
+      if (!routeResult.ok) {
+        const routeErrorText = String(route.error || "").toLowerCase();
+        const queueSaturated =
+          routeResult.status === 429 ||
+          routeErrorText.includes("queue is saturated") ||
+          routeErrorText.includes("queue saturated") ||
+          routeErrorText.includes("queue_rejected") ||
+          routeErrorText.includes("queue rejected");
+        if (queueSaturated) {
+          const queueRetryAttempt = Number(options.queueRetryAttempt || 0);
+          if (queueRetryAttempt < 60) {
+            sessionState.textContent = "Waiting for transcode capacity";
+            forecastMode.textContent = "Queue retry";
+            forecastReason.textContent = "Xuva is already preparing other conversions. Retrying this playback automatically when a worker is free.";
+            forecastServer.textContent = "Waiting for conversion slot";
+            forecastRoute.textContent = "Transcode queue";
+            setTimeout(() => {
+              void resolvePlaybackRoute({
+                ...options,
+                queueRetryAttempt: queueRetryAttempt + 1,
+                allowDirectFallback: false
+              });
+            }, 2200);
+            return "queued";
+          }
+          sessionState.textContent = "Playback queue busy";
+          forecastMode.textContent = "Queue busy";
+          forecastReason.textContent = "Xuva could not start conversion in time because all conversion workers are busy. Try again shortly.";
+          forecastServer.textContent = "No slot available";
+          forecastRoute.textContent = "Transcode queue";
+          await updateInspectorRoute("blocked", currentDecision);
+          return "blocked";
+        }
+      }
+      const routeCandidate = route.route || previousRoute || "direct";
+      currentRoute = routeCandidate;
       if (route.status === "blocked_by_policy") {
         const policy = route.policy || {};
         const decision = route.decision || {};
         const fallbacks = route.fallbackOptions || [];
+        if (hasActivePlaybackSource()) {
+          sessionState.textContent = "Playing";
+          forecastMode.textContent = "Policy advisory";
+          forecastReason.textContent = (policy.label || "Current policy") + " would block automatic " + (decision.mode || "fallback route") + ", but current direct playback remains active.";
+          forecastServer.textContent = "No route change applied";
+          forecastRoute.textContent = "Direct (active)";
+          return "direct";
+        }
         player.removeAttribute("src");
         sessionState.textContent = "Playback blocked by policy";
         forecastMode.textContent = "Fallback needed";
@@ -4121,13 +4707,45 @@ func playerHandler(deps Deps) http.HandlerFunc {
         }
         return "blocked";
       }
+      if (route.status === "source_unavailable") {
+        if (hasActivePlaybackSource()) {
+          sessionState.textContent = "Playing";
+          forecastMode.textContent = "Source advisory";
+          forecastReason.textContent = "Source is currently unavailable for new route negotiation, but active playback is still running.";
+          forecastServer.textContent = "No route change applied";
+          forecastRoute.textContent = "Direct (active)";
+          return "direct";
+        }
+        player.removeAttribute("src");
+        sessionState.textContent = "Source unavailable";
+        forecastMode.textContent = "Source unavailable";
+        forecastReason.textContent = (route.decision && (route.decision.reasonText || route.decision.reason)) || "Media file is unavailable from the configured library path.";
+        forecastServer.textContent = "Storage access required";
+        forecastRoute.textContent = "Blocked";
+        return "blocked";
+      }
       if (route.status === "ready") {
-        const playbackURL = await playbackURLForRoute(route);
+        const nextRoute = route.route || routeCandidate || "direct";
+        const canPreserveActive = preserveActivePlayback && hasActivePlaybackSource() && (negotiatedRouteReady || (previousRoute && nextRoute === previousRoute) || nextRoute === "direct");
+        if (canPreserveActive) {
+          currentRoute = previousRoute || nextRoute || "direct";
+          negotiatedRouteReady = true;
+          sessionState.textContent = "Playing";
+          forecastMode.textContent = "Route advisory";
+          forecastReason.textContent = "Playback route was reevaluated while media is already playing. Xuva keeps current playback active and applies route updates on the next start.";
+          forecastServer.textContent = "No route change applied";
+          forecastRoute.textContent = nextRoute + " available";
+          await updateInspectorRoute(currentRoute || nextRoute || "direct", route.decision || currentDecision);
+          return currentRoute || nextRoute || "direct";
+        }
+        const playbackURL = await playbackURLForRoute(route, options);
         if (playbackURL) {
-          player.src = playbackURL;
+          setPlaybackSource(playbackURL);
+          currentRoute = route.route || nextRoute || "direct";
           sessionState.textContent = route.route === "direct" ? "Direct stream" : route.route === "adaptive" ? "Adaptive stream" : "Prepared stream";
           await updateInspectorRoute(route.route || "direct", route.decision || currentDecision);
-          await player.play().catch(() => {});
+          await requestAutoplay();
+          negotiatedRouteReady = true;
           return route.route || "direct";
         }
         if (route.protocol === "hls" && route.manifestUrl && !supportsNativeHLS()) {
@@ -4142,18 +4760,25 @@ func playerHandler(deps Deps) http.HandlerFunc {
       if (route.job && route.job.id) {
         sessionState.textContent = "Preparing " + (route.route || "playback");
         await updateInspectorRoute(route.route || "preparing", route.decision || currentDecision);
-        setTimeout(resolvePlaybackRoute, 1800);
+        setTimeout(() => {
+          void resolvePlaybackRoute(options);
+        }, 1800);
         return route.route || "preparing";
       }
-      const signed = await authorizeStream();
-      if (signed.streamUrl) {
-        player.src = signed.streamUrl;
-        sessionState.textContent = "Direct fallback";
-        await updateInspectorRoute("direct", currentDecision);
-        return "direct";
+      if (allowDirectFallback) {
+        const signed = await authorizeStream(Boolean(options.forceTokenRefresh));
+        if (signed.streamUrl) {
+          setPlaybackSource(signed.streamUrl);
+          sessionState.textContent = "Direct fallback";
+          await updateInspectorRoute("direct", currentDecision);
+          await requestAutoplay();
+          return "direct";
+        }
       }
       sessionState.textContent = "Playback unavailable";
-      forecastReason.textContent = "Xuva could not resolve a playable route for this browser. Check source compatibility and playback policy.";
+      const fallbackReason = String(options.reasonHint || "").trim();
+      const suffix = fallbackReason ? " Last failure: " + failureInfo(fallbackReason).mode + "." : "";
+      forecastReason.textContent = "Xuva could not resolve a playable route for this browser. Check source compatibility and playback policy." + suffix;
       await updateInspectorRoute("blocked", currentDecision);
       return "blocked";
     }
@@ -4166,13 +4791,13 @@ func playerHandler(deps Deps) http.HandlerFunc {
         reasonText: decision.reasonText || decision.reason || "",
         serverImpact: decision.estimatedCpuCost === "high" ? "High server load" : decision.estimatedCpuCost === "medium" ? "Moderate server load" : "Low impact",
         selectedTracks: {
-          audio: "Default",
+          audio: playbackAudioTrackIndex > 0 ? ("Track " + String(playbackAudioTrackIndex)) : "Default",
           subtitles: subtitleButton.textContent || "Off"
         }
       }, "PATCH").catch(() => {});
     }
-    async function authorizeStream() {
-      if (signedStream && signedStream.streamUrl) return signedStream;
+    async function authorizeStream(forceRefresh = false) {
+      if (!forceRefresh && signedStream && signedStream.streamUrl) return signedStream;
       if (!sessionId) return {};
       signedStream = await send("/api/media-sources/" + mediaSourceId + "/stream-token", { sessionId, deviceId: "web" });
       return signedStream || {};
@@ -4208,9 +4833,24 @@ func playerHandler(deps Deps) http.HandlerFunc {
       }, { once: true });
     }
     async function startSession(mode) {
-      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", clientProfile: "web", mode, route: mode });
+      if (sessionId) return;
+      const session = await send("/api/sessions", { mediaSourceId, deviceId: "web", clientProfile: playbackProfile, mode, route: mode });
       sessionId = session.id || "";
       sessionState.textContent = sessionId ? "Live session" : "Local playback";
+    }
+    async function startImmediateDirect(preferredMode) {
+      if (!autoplayIntent) return false;
+      const preferred = normalizeSessionMode(preferredMode);
+      const reasonCode = String(currentDecision.reasonCode || "").trim().toLowerCase();
+      if (preferred !== "direct" && reasonCode !== "probe_required") return false;
+      await startSession("direct");
+      const signed = await authorizeStream();
+      if (!signed.streamUrl) return false;
+      currentRoute = "direct";
+      setPlaybackSource(signed.streamUrl);
+      sessionState.textContent = "Starting playback";
+      await requestAutoplay();
+      return true;
     }
     async function saveProgress(status) {
       if (saveInFlight) {
@@ -4249,7 +4889,7 @@ func playerHandler(deps Deps) http.HandlerFunc {
       if (!isSeeking) {
         seekBar.value = Number.isFinite(player.duration) && player.duration > 0 ? Math.round(((player.currentTime || 0) / player.duration) * 1000) : 0;
       }
-      playToggle.textContent = player.paused ? "Play" : "Pause";
+      if (playToggleButton) playToggleButton.textContent = player.paused ? "Play" : "Pause";
       sessionState.textContent = player.paused ? "Paused" : "Playing";
     }
     function seekBy(seconds) {
@@ -4307,7 +4947,15 @@ func playerHandler(deps Deps) http.HandlerFunc {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => document.body.classList.add("is-idle"), 900);
     }
-    playToggle.addEventListener("click", () => player.paused ? player.play() : player.pause());
+    playToggleButton.addEventListener("click", () => {
+      if (player.paused) {
+        userPaused = false;
+        void requestAutoplay();
+      } else {
+        userPaused = true;
+        player.pause();
+      }
+    });
     backButton.addEventListener("click", () => seekBy(-10));
     forwardButton.addEventListener("click", () => seekBy(10));
     restartButton.addEventListener("click", () => { player.currentTime = 0; player.play(); saveProgress("playing"); });
@@ -4345,13 +4993,30 @@ func playerHandler(deps Deps) http.HandlerFunc {
       refreshProgress();
       saveProgress(player.paused ? "paused" : "playing");
     });
-    hudToggle.addEventListener("click", () => showHud(4200));
     player.addEventListener("timeupdate", refreshProgress);
-    player.addEventListener("loadedmetadata", refreshProgress);
-    player.addEventListener("play", () => { refreshProgress(); saveProgress("playing"); hideHudSoon(); });
+    player.addEventListener("loadedmetadata", () => {
+      metadataLoaded = true;
+      refreshProgress();
+    });
+    player.addEventListener("error", () => {
+      void handlePlaybackFailure("error");
+    });
+    player.addEventListener("abort", () => {
+      void handlePlaybackFailure("abort");
+    });
+    player.addEventListener("play", () => {
+      userPaused = false;
+      autoplaySettled = true;
+      autoplayGuard.classList.remove("show");
+      refreshProgress();
+      saveProgress("playing");
+      hideHudSoon();
+      scheduleAudioHealthCheck();
+    });
     player.addEventListener("pause", () => { refreshProgress(); saveProgress("paused"); showHud(4200); });
     player.addEventListener("ended", () => stopSession("completed"));
     window.addEventListener("keydown", event => {
+      markUserGesture();
       if (event.target && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
       if (event.code === "Space") { event.preventDefault(); player.paused ? player.play() : player.pause(); }
       if (event.code === "ArrowRight") seekBy(10);
@@ -4360,6 +5025,33 @@ func playerHandler(deps Deps) http.HandlerFunc {
     });
     window.addEventListener("mousemove", () => {
       showHud();
+    });
+    window.addEventListener("focus", () => {
+      if (player.paused && !userPaused && !autoplaySettled) void requestAutoplay();
+      void recoverAudibleAutoplay();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && player.paused && !userPaused && !autoplaySettled) {
+        void requestAutoplay();
+      }
+      if (document.visibilityState === "visible") void recoverAudibleAutoplay();
+    });
+    function releaseMutedBoot() {
+      markUserGesture();
+      if (!player.muted) return;
+      if (!autoplayBootMuted) return;
+      autoplayBootMuted = false;
+      player.muted = false;
+      void requestAutoplay();
+    }
+    window.addEventListener("pointerdown", releaseMutedBoot);
+    window.addEventListener("keydown", releaseMutedBoot);
+    autoplayGuardButton.addEventListener("click", async () => {
+      markUserGesture();
+      userPaused = false;
+      autoplayBootMuted = false;
+      player.muted = false;
+      await requestAutoplay();
     });
     window.addEventListener("pointerdown", event => {
       if (event.target === player || event.target === document.body) showHud();
@@ -4371,19 +5063,45 @@ func playerHandler(deps Deps) http.HandlerFunc {
     }, 2000);
     window.addEventListener("beforeunload", () => { stopSession("stopped"); });
     (async function boot() {
-      await loadResumeState();
-      const mode = await loadForecast();
-      await startSession(mode);
-      await resolvePlaybackRoute();
-      await loadSubtitles();
-      fitPlayerTitle();
-      refreshProgress();
-      showHud(2400);
+      try {
+        await loadResumeState();
+        const mode = await loadForecast();
+        await startSession(mode);
+        await startImmediateDirect(mode);
+        ensureProbeReady().catch(() => {});
+        await resolvePlaybackRoute();
+        await loadSubtitles();
+        fitPlayerTitle();
+        refreshProgress();
+        showHud(2400);
+      } catch (error) {
+        sessionState.textContent = "Playback unavailable";
+        forecastReason.textContent = error && error.message ? error.message : "Player could not start. Retry in a moment.";
+      }
     })();
   </script>
 </body>
-</html>`, html.EscapeString(title), html.EscapeString(title), id)
+</html>`, html.EscapeString(title), posterMarkup(artworkURL), html.EscapeString(title), id)
 	}
+}
+
+func posterMarkup(src string) string {
+	src = strings.TrimSpace(src)
+	logo := `<svg class="now-art__logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<defs>
+  <linearGradient id="xuva-play-logo" x1="4" y1="32" x2="60" y2="32" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="#A78BFA"/>
+    <stop offset="55%" stop-color="#7C3AED"/>
+    <stop offset="100%" stop-color="#DB2777"/>
+  </linearGradient>
+</defs>
+<path d="M 4 4 L 16 4 L 60 32 L 30 32 Z" fill="url(#xuva-play-logo)"/>
+<path d="M 4 60 L 16 60 L 60 32 L 30 32 Z" fill="url(#xuva-play-logo)"/>
+</svg>`
+	if src == "" {
+		return logo
+	}
+	return `<img src="` + html.EscapeString(src) + `" alt="" loading="eager" decoding="async" onerror="this.remove(); this.parentElement && this.parentElement.classList.add('show-logo');">` + logo
 }
 
 func mediaSourceSubtitlesHandler(deps Deps) http.HandlerFunc {
@@ -4587,7 +5305,7 @@ func workStartHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Transcode.Start(r.Context(), request)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		publishOperationalEvent(deps, r, "api.work.accepted", map[string]any{
@@ -4669,7 +5387,7 @@ func downloadStartHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Downloads.Start(r.Context(), request)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		publishOperationalEvent(deps, r, "api.download.accepted", map[string]any{
@@ -5065,6 +5783,18 @@ func sessionStopHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "session not found")
 			return
 		}
+		if deps.Transcode != nil && strings.TrimSpace(session.MediaSourceID) != "" {
+			otherSessionActive := false
+			for _, active := range deps.Sessions.List() {
+				if active.MediaSourceID == session.MediaSourceID {
+					otherSessionActive = true
+					break
+				}
+			}
+			if !otherSessionActive {
+				deps.Transcode.CancelActiveForMediaSource(session.MediaSourceID)
+			}
+		}
 		writeJSON(w, http.StatusOK, session)
 	}
 }
@@ -5134,7 +5864,7 @@ func movieScanHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindMovies, Path: path, SampleLimit: request.SampleLimit})
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
@@ -5159,7 +5889,7 @@ func tvScanHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindTV, Path: path, SampleLimit: request.SampleLimit})
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
@@ -5190,7 +5920,7 @@ func allLibrariesScanHandler(deps Deps) http.HandlerFunc {
 
 		job, err := deps.Scans.Start(r.Context(), scans.Request{Kind: scans.KindAll, MoviesPath: moviesPath, TVPath: tvPath, SampleLimit: request.SampleLimit})
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, job)
@@ -5392,6 +6122,18 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "media source not found")
 			return
 		}
+		if err := ensureMediaFileAccessible(item.Path); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"route":  "blocked",
+				"status": "source_unavailable",
+				"decision": map[string]any{
+					"mode":       "Blocked",
+					"reasonCode": "source_unavailable",
+					"reasonText": "Media file is unavailable from the configured library path.",
+				},
+			})
+			return
+		}
 		decision := playbackDecisionForSource(r.Context(), deps, r, item)
 		if decision.Mode == playback.DirectPlay || decision.Mode == playback.DecisionDeferred {
 			writeJSON(w, http.StatusOK, map[string]any{
@@ -5402,7 +6144,8 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
-		if !playbackPolicyAllows(deps.Config.PlaybackPolicy, decision) {
+		forcePlayable := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("forcePlayable")), "true")
+		if !forcePlayable && !playbackPolicyAllows(deps.Config.PlaybackPolicy, decision) {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"route":           "blocked",
 				"status":          "blocked_by_policy",
@@ -5430,7 +6173,8 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 		if decision.Mode == playback.Remux {
 			mode = transcode.ModeRemux
 		}
-		if job, ok := deps.Transcode.FindCompleted(mediaSourceID, mode); ok {
+		audioTrackIndex := resolvedAudioTrackIndex(r.Context(), deps, mediaSourceID, queryInt(r, "audioTrackIndex", 0))
+		if job, ok := deps.Transcode.FindCompleted(mediaSourceID, mode, audioTrackIndex); ok {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"route":    string(mode),
 				"status":   "ready",
@@ -5440,7 +6184,7 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
-		if job, ok := deps.Transcode.FindActive(mediaSourceID, mode); ok {
+		if job, ok := deps.Transcode.FindActive(mediaSourceID, mode, audioTrackIndex); ok {
 			writeJSON(w, http.StatusAccepted, map[string]any{
 				"route":    string(mode),
 				"status":   string(job.Status),
@@ -5449,7 +6193,7 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
-		request := transcode.Request{MediaSourceID: mediaSourceID, Mode: mode, SourcePath: item.Path}
+		request := transcode.Request{MediaSourceID: mediaSourceID, Mode: mode, SourcePath: item.Path, AudioTrackIndex: audioTrackIndex}
 		if mode == transcode.ModeTranscode {
 			if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
 				request.Acceleration = "hardware"
@@ -5458,7 +6202,7 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 		}
 		job, err := deps.Transcode.Start(r.Context(), request)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, queueRejectionStatus(err, http.StatusBadRequest), err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{
@@ -5568,7 +6312,20 @@ func trackByIndex(tracks []probe.Track, index int) probe.Track {
 			return track
 		}
 	}
+	for _, track := range tracks {
+		if track.Default {
+			return track
+		}
+	}
 	return tracks[0]
+}
+
+func resolvedAudioTrackIndex(ctx context.Context, deps Deps, mediaSourceID string, requestedIndex int) int {
+	tracks, ok, err := deps.Catalog.GetMediaSourceTracks(ctx, mediaSourceID)
+	if err != nil || !ok || len(tracks.AudioTracks) == 0 {
+		return 0
+	}
+	return trackByIndex(tracks.AudioTracks, requestedIndex).Index
 }
 
 type libraryScanRequest struct {

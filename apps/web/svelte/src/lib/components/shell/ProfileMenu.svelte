@@ -3,6 +3,7 @@
 		initials = 'U',
 		name = 'User',
 		role = 'User',
+		avatarUrl = '',
 		changePasswordHref = '/settings#admin-access',
 		canSignOut = false,
 		signInHref = '/signin',
@@ -11,6 +12,7 @@
 		initials?: string;
 		name?: string;
 		role?: string;
+		avatarUrl?: string;
 		changePasswordHref?: string;
 		canSignOut?: boolean;
 		signInHref?: string;
@@ -67,7 +69,11 @@
 		aria-expanded={open}
 		onclick={toggleMenu}
 	>
-		<span class="profile-menu__avatar">{initials}</span>
+		{#if avatarUrl}
+			<img class="profile-menu__avatar-image" src={avatarUrl} alt="" loading="lazy" />
+		{:else}
+			<span class="profile-menu__avatar">{initials}</span>
+		{/if}
 	</button>
 
 	{#if open}
@@ -126,6 +132,15 @@
 		color: var(--profile-menu-avatar-color);
 		font-size: 0.72rem;
 		font-weight: 700;
+	}
+
+	.profile-menu__avatar-image {
+		width: 30px;
+		height: 30px;
+		border-radius: 999px;
+		object-fit: cover;
+		object-position: center;
+		display: block;
 	}
 
 	.profile-menu__panel {

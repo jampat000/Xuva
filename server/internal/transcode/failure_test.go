@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -100,6 +102,138 @@ func TestCancelStopsWorkAndCleansOutput(t *testing.T) {
 	}
 	if _, err := os.Stat(cancelled.OutputPath); !os.IsNotExist(err) {
 		t.Fatalf("expected cancel cleanup for %s, stat err=%v", cancelled.OutputPath, err)
+	}
+}
+
+func TestCommandUsesRequestedAudioTrackWhenProvided(t *testing.T) {
+	service := newTestService(t, "ffmpeg")
+	job := Job{
+		Mode:            ModeTranscode,
+		SourcePath:      "input.mkv",
+		OutputPath:      "output.mp4",
+		AudioTrackIndex: 5,
+	}
+	args := service.command(job)
+	expectedPrefix := []string{"ffmpeg", "-y", "-i", "input.mkv", "-map", "0:v:0", "-map", "0:5?"}
+	if len(args) < len(expectedPrefix) {
+		t.Fatalf("expected command prefix length %d, got %d (%#v)", len(expectedPrefix), len(args), args)
+	}
+	if !reflect.DeepEqual(args[:len(expectedPrefix)], expectedPrefix) {
+		t.Fatalf("expected command prefix %#v, got %#v", expectedPrefix, args[:len(expectedPrefix)])
+	}
+}
+
+func TestFindCompletedAndActiveAreScopedByAudioTrack(t *testing.T) {
+	service := newTestService(t, "ffmpeg")
+	firstOut := filepath.Join(t.TempDir(), "a.mp4")
+	secondOut := filepath.Join(t.TempDir(), "b.mp4")
+	if err := os.WriteFile(firstOut, []byte("a"), 0o644); err != nil {
+		t.Fatalf("write first output: %v", err)
+	}
+	if err := os.WriteFile(secondOut, []byte("b"), 0o644); err != nil {
+		t.Fatalf("write second output: %v", err)
+	}
+	now := time.Now().UTC()
+	service.store(Job{
+		ID:              "completed-audio-1",
+		MediaSourceID:   "source-1",
+		Mode:            ModeTranscode,
+		AudioTrackIndex: 1,
+		Status:          StatusCompleted,
+		OutputPath:      firstOut,
+		CreatedAt:       now,
+		CompletedAt:     now,
+	})
+	service.store(Job{
+		ID:              "running-audio-2",
+		MediaSourceID:   "source-1",
+		Mode:            ModeTranscode,
+		AudioTrackIndex: 2,
+		Status:          StatusRunning,
+		OutputPath:      secondOut,
+		CreatedAt:       now,
+		StartedAt:       now,
+	})
+
+	completed, ok := service.FindCompleted("source-1", ModeTranscode, 1)
+	if !ok || completed.ID != "completed-audio-1" {
+		t.Fatalf("expected completed job for audio track 1, got ok=%v job=%#v", ok, completed)
+	}
+	if _, ok := service.FindCompleted("source-1", ModeTranscode, 2); ok {
+		t.Fatalf("did not expect completed job for audio track 2")
+	}
+
+	active, ok := service.FindActive("source-1", ModeTranscode, 2)
+	if !ok || active.ID != "running-audio-2" {
+		t.Fatalf("expected active job for audio track 2, got ok=%v job=%#v", ok, active)
+	}
+	if _, ok := service.FindActive("source-1", ModeTranscode, 1); ok {
+		t.Fatalf("did not expect active job for audio track 1")
+	}
+}
+
+func TestCancelActiveForMediaSourceOnlyCancelsMatchingActiveJobs(t *testing.T) {
+	service := newTestService(t, "ffmpeg")
+	now := time.Now().UTC()
+	canceledIDs := []string{}
+	service.store(Job{
+		ID:            "queued-match",
+		MediaSourceID: "source-1",
+		Mode:          ModeTranscode,
+		Status:        StatusQueued,
+		CreatedAt:     now,
+	})
+	service.storeCancel("queued-match", func() { canceledIDs = append(canceledIDs, "queued-match") })
+	service.store(Job{
+		ID:            "running-match",
+		MediaSourceID: "source-1",
+		Mode:          ModeTranscode,
+		Status:        StatusRunning,
+		CreatedAt:     now,
+		StartedAt:     now,
+	})
+	service.storeCancel("running-match", func() { canceledIDs = append(canceledIDs, "running-match") })
+	service.store(Job{
+		ID:            "completed-match",
+		MediaSourceID: "source-1",
+		Mode:          ModeTranscode,
+		Status:        StatusCompleted,
+		CreatedAt:     now,
+		CompletedAt:   now,
+	})
+	service.store(Job{
+		ID:            "running-other",
+		MediaSourceID: "source-2",
+		Mode:          ModeTranscode,
+		Status:        StatusRunning,
+		CreatedAt:     now,
+		StartedAt:     now,
+	})
+	service.storeCancel("running-other", func() { canceledIDs = append(canceledIDs, "running-other") })
+
+	cancelled := service.CancelActiveForMediaSource("source-1")
+	if cancelled != 2 {
+		t.Fatalf("expected 2 cancelled jobs, got %d", cancelled)
+	}
+	queued, _ := service.Get("queued-match")
+	if queued.Status != StatusCanceled {
+		t.Fatalf("expected queued match to be cancelled, got %#v", queued)
+	}
+	running, _ := service.Get("running-match")
+	if running.Status != StatusCanceled {
+		t.Fatalf("expected running match to be cancelled, got %#v", running)
+	}
+	completed, _ := service.Get("completed-match")
+	if completed.Status != StatusCompleted {
+		t.Fatalf("expected completed job to remain completed, got %#v", completed)
+	}
+	other, _ := service.Get("running-other")
+	if other.Status != StatusRunning {
+		t.Fatalf("expected other source running job to remain active, got %#v", other)
+	}
+	sort.Strings(canceledIDs)
+	if !reflect.DeepEqual(canceledIDs, []string{"queued-match", "running-match"}) {
+		t.Fatalf("unexpected cancel callbacks: %#v", canceledIDs)
 	}
 }
 

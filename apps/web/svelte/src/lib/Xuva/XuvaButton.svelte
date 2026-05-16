@@ -8,6 +8,8 @@
 		variant = 'primary',
 		size = 'md',
 		href = '',
+		target = '',
+		rel = '',
 		disabled = false,
 		onclick,
 		children
@@ -15,6 +17,8 @@
 		variant?: ButtonVariant;
 		size?: ButtonSize;
 		href?: string;
+		target?: string;
+		rel?: string;
 		disabled?: boolean;
 		onclick?: (event: MouseEvent) => void;
 		children: Snippet;
@@ -36,10 +40,15 @@
 	});
 	const disabledClass = $derived(disabled ? 'pointer-events-none opacity-50' : '');
 	const className = $derived(`${baseClass} ${sizeClass} ${variantClass} ${disabledClass}`);
+
+	function handleLinkClick(event: MouseEvent): void {
+		if (disabled || !href) return;
+		if (onclick) onclick(event);
+	}
 </script>
 
 {#if href && !disabled}
-	<a class={className} {href}>
+	<a class={className} {href} {target} {rel} onclick={handleLinkClick}>
 		{@render children()}
 	</a>
 {:else if href && disabled}

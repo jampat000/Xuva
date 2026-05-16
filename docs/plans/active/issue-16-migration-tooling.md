@@ -4,6 +4,13 @@
 
 Ship a real migration path for watched state, resume position, and core metadata identifiers so Xuva is easier to adopt from Plex, Emby, or Jellyfin.
 
+## Fit-for-Purpose Criteria
+
+- Imports must be deterministic and auditable (preview -> selective import -> verification).
+- Rollback must restore both playback-state and metadata identifier state for the selected run.
+- Conflict classification must prevent ambiguous multi-version writes to playback state.
+- Migration endpoints and UI must remain admin-scoped with explicit user intent.
+
 ## Context
 
 - Issue: `#16 P3.3 Migration and Adoption Tooling`
@@ -29,11 +36,11 @@ Ship a real migration path for watched state, resume position, and core metadata
 
 ## Steps
 
-- [ ] Add migration persistence tables and service.
-- [ ] Add dry-run/import/rollback API routes and tests.
-- [ ] Add Settings UI for preview/import/rollback.
-- [ ] Add docs and fixture coverage.
-- [ ] Run full verification sweep.
+- [x] Add migration persistence tables and service.
+- [x] Add dry-run/import/rollback API routes and tests.
+- [x] Add Settings UI for preview/import/rollback.
+- [x] Add docs and fixture coverage.
+- [x] Run full verification sweep.
 
 ## Validation
 
@@ -53,3 +60,4 @@ Ship a real migration path for watched state, resume position, and core metadata
 
 - Use one normalized JSON bundle format with source tags instead of pretending Xuva can safely ingest every vendor's private export format directly.
 - Prefer dry-run plus selective import over best-effort silent skips.
+- 2026-05-16: Added Settings migration panel with dry-run preview, selective import, run history, and rollback controls; verified with frontend contract tests and full server/web checks.

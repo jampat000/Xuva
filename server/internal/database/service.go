@@ -215,6 +215,7 @@ var migrations = []string{
 	`ALTER TABLE users ADD COLUMN locked_until TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE users ADD COLUMN last_failed_at TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username <> ''`,
 	`INSERT OR IGNORE INTO users(id, display_name, updated_at) VALUES('local', 'Local User', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
 	`UPDATE users SET role = 'standard' WHERE id = 'local' AND role = ''`,

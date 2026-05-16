@@ -13,6 +13,7 @@
 		userDisplayName = '',
 		userRole = '',
 		userInitials = 'U',
+		userAvatarUrl = '',
 		showStorage = true,
 		serverGroupLabel = 'Xuva',
 		canSignOut = false,
@@ -28,6 +29,7 @@
 			| 'transcoding'
 			| 'storage'
 			| 'network'
+			| 'migration'
 			| 'pairing'
 			| 'approved-devices'
 			| 'discovery'
@@ -37,6 +39,7 @@
 		userDisplayName?: string;
 		userRole?: string;
 		userInitials?: string;
+		userAvatarUrl?: string;
 		showStorage?: boolean;
 		serverGroupLabel?: string;
 		canSignOut?: boolean;
@@ -151,6 +154,7 @@
 					initials={userInitials}
 					name={userDisplayName || 'User'}
 					role={userRole || 'User'}
+					avatarUrl={userAvatarUrl}
 					canSignOut={canSignOut}
 					changePasswordHref="/settings#admin-access"
 					onSignOut={signOut}

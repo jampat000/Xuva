@@ -313,6 +313,7 @@
 			font-size: 0.84rem;
 			line-height: 1.36;
 			display: -webkit-box;
+			line-clamp: 3;
 			-webkit-line-clamp: 3;
 			-webkit-box-orient: vertical;
 			overflow: hidden;
