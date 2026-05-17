@@ -29,11 +29,14 @@ type Config struct {
 	TVLibraryPath         string   `json:"tvLibraryPath,omitempty"`
 	MovieMetadataSources  []string `json:"movieMetadataSources,omitempty"`
 	SeriesMetadataSources []string `json:"seriesMetadataSources,omitempty"`
+	MovieArtworkSources   []string `json:"movieArtworkSources,omitempty"`
+	SeriesArtworkSources  []string `json:"seriesArtworkSources,omitempty"`
 	FFprobePath           string   `json:"ffprobePath"`
 	FFmpegPath            string   `json:"ffmpegPath"`
 	OMDbAPIKey            string   `json:"omdbApiKey,omitempty"`
 	TMDBAPIKey            string   `json:"tmdbApiKey,omitempty"`
 	TVDBAPIKey            string   `json:"tvdbApiKey,omitempty"`
+	FanartTVAPIKey        string   `json:"fanartTvApiKey,omitempty"`
 	EventBuffer           int      `json:"eventBuffer"`
 	ScanWorkers           int      `json:"scanWorkers"`
 	ProbeWorkers          int      `json:"probeWorkers"`
@@ -71,6 +74,7 @@ func FromEnv() Config {
 		OMDbAPIKey:           envString("XUVA_OMDB_API_KEY", ""),
 		TMDBAPIKey:           envString("XUVA_TMDB_API_KEY", ""),
 		TVDBAPIKey:           envString("XUVA_TVDB_API_KEY", ""),
+		FanartTVAPIKey:       envString("XUVA_FANARTTV_API_KEY", ""),
 		EventBuffer:          envInt("XUVA_EVENT_BUFFER", 128),
 		ScanWorkers:          envInt("XUVA_SCAN_WORKERS", 1),
 		ProbeWorkers:         envInt("XUVA_PROBE_WORKERS", 2),
@@ -107,6 +111,7 @@ func FromEnv() Config {
 	cfg.OMDbAPIKey = envString("XUVA_OMDB_API_KEY", cfg.OMDbAPIKey)
 	cfg.TMDBAPIKey = envString("XUVA_TMDB_API_KEY", cfg.TMDBAPIKey)
 	cfg.TVDBAPIKey = envString("XUVA_TVDB_API_KEY", cfg.TVDBAPIKey)
+	cfg.FanartTVAPIKey = envString("XUVA_FANARTTV_API_KEY", cfg.FanartTVAPIKey)
 	cfg.EventBuffer = envInt("XUVA_EVENT_BUFFER", cfg.EventBuffer)
 	cfg.ScanWorkers = envInt("XUVA_SCAN_WORKERS", cfg.ScanWorkers)
 	cfg.ProbeWorkers = envInt("XUVA_PROBE_WORKERS", cfg.ProbeWorkers)
@@ -185,6 +190,12 @@ func merge(base Config, saved Config) Config {
 	if len(saved.SeriesMetadataSources) > 0 {
 		base.SeriesMetadataSources = append([]string(nil), saved.SeriesMetadataSources...)
 	}
+	if len(saved.MovieArtworkSources) > 0 {
+		base.MovieArtworkSources = append([]string(nil), saved.MovieArtworkSources...)
+	}
+	if len(saved.SeriesArtworkSources) > 0 {
+		base.SeriesArtworkSources = append([]string(nil), saved.SeriesArtworkSources...)
+	}
 	if saved.FFprobePath != "" {
 		base.FFprobePath = saved.FFprobePath
 	}
@@ -199,6 +210,9 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.TVDBAPIKey != "" {
 		base.TVDBAPIKey = saved.TVDBAPIKey
+	}
+	if saved.FanartTVAPIKey != "" {
+		base.FanartTVAPIKey = saved.FanartTVAPIKey
 	}
 	if saved.EventBuffer > 0 {
 		base.EventBuffer = saved.EventBuffer

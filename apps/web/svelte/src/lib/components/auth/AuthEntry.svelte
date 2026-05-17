@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { XuvaButton, XuvaPanel } from '$lib/components';
 	import {
 		bootstrapAccount,
 		getAuthSessionIfAvailable,
@@ -10,6 +9,7 @@
 	import { updateSettings } from '$lib/api/operator';
 	import { saveLibrary, startLibraryScan } from '$lib/api/setup';
 	import { ApiClientError } from '$lib/api/client';
+	import Logo from '$lib/components/Logo.svelte';
 
 	type AuthMode = 'signin' | 'bootstrap';
 	type BootstrapStep = 'language' | 'server' | 'account' | 'libraries';
@@ -42,6 +42,13 @@
 		if (bootstrapStep === 'server') return 2;
 		if (bootstrapStep === 'account') return 3;
 		return 4;
+	});
+
+	const bootstrapStepLabel = $derived.by(() => {
+		if (bootstrapStep === 'language') return 'Language';
+		if (bootstrapStep === 'server') return 'Server name';
+		if (bootstrapStep === 'account') return 'Account';
+		return 'Library paths';
 	});
 
 	onMount(() => {
@@ -149,10 +156,7 @@
 
 		isSubmitting = true;
 		try {
-			await login({
-				username: usernameValue,
-				password: passwordValue
-			});
+			await login({ username: usernameValue, password: passwordValue });
 			window.location.href = '/';
 		} catch (error) {
 			errorMessage = formatAuthError(error, 'Sign-in failed.');
@@ -168,26 +172,14 @@
 		const serverNameValue = asText(serverName);
 		const bootstrapRoleValue = bootstrapRole;
 
-		if (!usernameValue) {
-			errorMessage = 'Enter a username.';
-			return;
-		}
-		if (!displayNameValue) {
-			errorMessage = 'Enter a display name.';
-			return;
-		}
+		if (!usernameValue) { errorMessage = 'Enter a username.'; return; }
+		if (!displayNameValue) { errorMessage = 'Enter a display name.'; return; }
 		if (bootstrapRoleValue !== 'admin') {
 			errorMessage = 'The first account must be an admin account.';
 			return;
 		}
-		if (!passwordValue) {
-			errorMessage = 'Enter a password.';
-			return;
-		}
-		if (passwordValue !== confirmPassword) {
-			errorMessage = 'Passwords do not match.';
-			return;
-		}
+		if (!passwordValue) { errorMessage = 'Enter a password.'; return; }
+		if (passwordValue !== confirmPassword) { errorMessage = 'Passwords do not match.'; return; }
 
 		isSubmitting = true;
 		try {
@@ -234,24 +226,12 @@
 		try {
 			if (!skipLibraries) {
 				if (moviesPathValue) {
-					const created = await saveLibrary({
-						name: moviesNameValue,
-						kind: 'movies',
-						path: moviesPathValue
-					});
-					if (runScanAfterSave && created.id) {
-						await startLibraryScan(created.id);
-					}
+					const created = await saveLibrary({ name: moviesNameValue, kind: 'movies', path: moviesPathValue });
+					if (runScanAfterSave && created.id) await startLibraryScan(created.id);
 				}
 				if (tvPathValue) {
-					const created = await saveLibrary({
-						name: tvNameValue,
-						kind: 'tv',
-						path: tvPathValue
-					});
-					if (runScanAfterSave && created.id) {
-						await startLibraryScan(created.id);
-					}
+					const created = await saveLibrary({ name: tvNameValue, kind: 'tv', path: tvPathValue });
+					if (runScanAfterSave && created.id) await startLibraryScan(created.id);
 				}
 			}
 			window.location.href = '/';
@@ -279,214 +259,261 @@
 	}
 </script>
 
-<div class="auth-shell">
-	<div class="auth-card">
-		<XuvaPanel
-			title={mode === 'bootstrap' ? 'Initial Setup' : 'Sign in to Xuva'}
-			subtitle={mode === 'bootstrap'
-				? `Step ${bootstrapStepNumber} of 4: ${bootstrapStep === 'language' ? 'Language' : bootstrapStep === 'server' ? 'Server name' : bootstrapStep === 'account' ? 'Account' : 'Library paths'}`
-				: 'Use your account to open your library.'}
-		>
-			{#if isLoading}
-				<p class="auth-copy">Checking server authentication status...</p>
-			{:else if mode === 'signin'}
-				<form class="auth-form" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-					<label class="field">
-						<span>Username</span>
-						<input bind:value={username} autocomplete="username" />
-					</label>
-					<label class="field">
-						<span>Password</span>
-						<input type="password" bind:value={password} autocomplete="current-password" />
-					</label>
+<div class="relative flex min-h-screen flex-col items-center justify-center bg-background px-6 py-16">
+	<!-- Radial background glow -->
+	<div
+		aria-hidden="true"
+		class="pointer-events-none absolute inset-0 -z-10"
+		style="background: radial-gradient(ellipse at 30% 20%, oklch(0.62 0.22 285 / 0.18), transparent 55%), radial-gradient(ellipse at 80% 80%, oklch(0.72 0.16 255 / 0.12), transparent 55%);"
+	></div>
+	<div class="grain pointer-events-none absolute inset-0 -z-10"></div>
 
-					{#if errorMessage}
-						<p class="auth-error">{errorMessage}</p>
-					{/if}
+	<!-- Card -->
+	<div class="hairline w-full max-w-sm rounded-3xl bg-surface/60 px-8 py-10 shadow-elev backdrop-blur-xl">
+		<!-- Logo + wordmark -->
+		<div class="mb-8 flex flex-col items-center gap-3">
+			<a href="/" aria-label="Xuva home">
+				<Logo />
+			</a>
 
-					<div class="actions">
-						<XuvaButton variant="primary" type="submit" disabled={isSubmitting}>
-							{isSubmitting ? 'Signing in...' : 'Sign in'}
-						</XuvaButton>
+			{#if mode === 'bootstrap'}
+				<!-- Step indicator -->
+				<div class="mt-2 flex items-center gap-1.5">
+					{#each [1, 2, 3, 4] as step (step)}
+						<span
+							class={`h-1 rounded-full transition-all duration-300 ${
+								step === bootstrapStepNumber
+									? 'w-6 bg-primary-glow shadow-glow'
+									: step < bootstrapStepNumber
+										? 'w-3 bg-primary-glow/60'
+										: 'w-3 bg-foreground/15'
+							}`}
+						></span>
+					{/each}
+				</div>
+				<div class="text-center">
+					<div class="text-[10px] font-semibold uppercase tracking-[0.3em] text-primary-glow">
+						Setup · Step {bootstrapStepNumber} of 4
 					</div>
-				</form>
+					<h1 class="font-serif-display mt-1 text-2xl tracking-tight">
+						{bootstrapStepLabel}
+					</h1>
+				</div>
 			{:else}
-				<form class="auth-form" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-					{#if bootstrapStep === 'language'}
-						<p class="auth-copy">Choose your preferred language for this browser session.</p>
-						<label class="field">
-							<span>Language</span>
-							<select bind:value={language}>
-								<option value="en">English</option>
-								<option value="es">Spanish</option>
-								<option value="fr">French</option>
-								<option value="de">German</option>
-								<option value="it">Italian</option>
-								<option value="pt">Portuguese</option>
-							</select>
-						</label>
-					{:else if bootstrapStep === 'server'}
-						<p class="auth-copy">Choose the server name clients will see on your home network.</p>
-						<label class="field">
-							<span>Server name</span>
-							<input bind:value={serverName} maxlength="50" placeholder="Xuva" />
-						</label>
-					{:else if bootstrapStep === 'account'}
-						<p class="auth-copy">Create the first account for this server.</p>
-						<label class="field">
-							<span>Account type</span>
-							<select bind:value={bootstrapRole}>
-								<option value="admin">Admin (full access)</option>
-								<option value="standard">User (media only)</option>
-							</select>
-						</label>
-						{#if bootstrapRole === 'standard'}
-							<p class="auth-error">The first account must be Admin so setup and settings remain accessible.</p>
-						{/if}
-						<label class="field">
-							<span>Username</span>
-							<input bind:value={username} autocomplete="username" />
-						</label>
-						<label class="field">
-							<span>Display name</span>
-							<input bind:value={displayName} autocomplete="name" />
-						</label>
-						<label class="field">
-							<span>Password</span>
-							<input type="password" bind:value={password} autocomplete="new-password" />
-						</label>
-						<label class="field">
-							<span>Confirm password</span>
-							<input type="password" bind:value={confirmPassword} autocomplete="new-password" />
-						</label>
-					{:else}
-						<p class="auth-copy">Add initial library paths now, or skip and do this later from settings.</p>
-						<label class="field">
-							<span>Movies library path (optional)</span>
-							<input bind:value={moviesPath} placeholder="D:\\Media\\Movies" />
-						</label>
-						<label class="field">
-							<span>Movies library name</span>
-							<input bind:value={moviesName} placeholder="Movies" />
-						</label>
-						<label class="field">
-							<span>TV library path (optional)</span>
-							<input bind:value={tvPath} placeholder="D:\\Media\\TV" />
-						</label>
-						<label class="field">
-							<span>TV library name</span>
-							<input bind:value={tvName} placeholder="TV Shows" />
-						</label>
-						<label class="check">
-							<input type="checkbox" bind:checked={runScanAfterSave} />
-							<span>Start scan after saving library paths</span>
-						</label>
-					{/if}
-
-					{#if errorMessage}
-						<p class="auth-error">{errorMessage}</p>
-					{/if}
-					{#if statusMessage}
-						<p class="auth-status">{statusMessage}</p>
-					{/if}
-
-					<div class="actions">
-						<XuvaButton variant="primary" type="submit" disabled={isSubmitting}>
-							{#if isSubmitting}
-								{bootstrapStep === 'libraries' ? 'Finishing setup...' : 'Saving...'}
-							{:else}
-								{bootstrapStep === 'language' || bootstrapStep === 'server' ? 'Continue' : bootstrapStep === 'account' ? 'Create user' : 'Finish Setup'}
-							{/if}
-						</XuvaButton>
-						{#if bootstrapStep === 'libraries'}
-							<XuvaButton
-								variant="ghost"
-								type="button"
-								disabled={isSubmitting}
-								onclick={() => void finishBootstrap(true)}
-							>
-								Skip for now
-							</XuvaButton>
-						{/if}
-					</div>
-				</form>
+				<div class="text-center">
+					<h1 class="font-serif-display text-2xl tracking-tight">
+						Sign in to <em>Xuva</em>
+					</h1>
+					<p class="mt-1.5 text-sm text-muted-foreground">
+						Use your account to open your library.
+					</p>
+				</div>
 			{/if}
-		</XuvaPanel>
+		</div>
+
+		{#if isLoading}
+			<p class="text-center text-sm text-muted-foreground">Checking authentication status…</p>
+		{:else if mode === 'signin'}
+			<form class="space-y-4" onsubmit={(e) => { e.preventDefault(); void submit(); }}>
+				<div class="space-y-1.5">
+					<label for="username" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+						Username
+					</label>
+					<input
+						id="username"
+						bind:value={username}
+						autocomplete="username"
+						class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
+					/>
+				</div>
+				<div class="space-y-1.5">
+					<label for="password" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+						Password
+					</label>
+					<input
+						id="password"
+						type="password"
+						bind:value={password}
+						autocomplete="current-password"
+						class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
+					/>
+				</div>
+
+				{#if errorMessage}
+					<p class="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+						{errorMessage}
+					</p>
+				{/if}
+
+				<button
+					type="submit"
+					disabled={isSubmitting}
+					class="mt-2 w-full rounded-full bg-gradient-primary py-3 text-sm font-semibold text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+				>
+					{isSubmitting ? 'Signing in…' : 'Sign in'}
+				</button>
+			</form>
+		{:else}
+			<form class="space-y-4" onsubmit={(e) => { e.preventDefault(); void submit(); }}>
+				{#if bootstrapStep === 'language'}
+					<p class="text-sm text-muted-foreground">
+						Choose your preferred language for this browser session.
+					</p>
+					<div class="space-y-1.5">
+						<label for="language" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+							Language
+						</label>
+						<select
+							id="language"
+							bind:value={language}
+							class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60 focus:bg-background/70"
+						>
+							<option value="en">English</option>
+							<option value="es">Spanish</option>
+							<option value="fr">French</option>
+							<option value="de">German</option>
+							<option value="it">Italian</option>
+							<option value="pt">Portuguese</option>
+						</select>
+					</div>
+				{:else if bootstrapStep === 'server'}
+					<p class="text-sm text-muted-foreground">
+						Choose the server name clients will see on your home network.
+					</p>
+					<div class="space-y-1.5">
+						<label for="server-name" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+							Server name
+						</label>
+						<input
+							id="server-name"
+							bind:value={serverName}
+							maxlength="50"
+							placeholder="Xuva"
+							class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
+						/>
+					</div>
+				{:else if bootstrapStep === 'account'}
+					<p class="text-sm text-muted-foreground">Create the first account for this server.</p>
+					<div class="space-y-1.5">
+						<label for="account-type" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+							Account type
+						</label>
+						<select
+							id="account-type"
+							bind:value={bootstrapRole}
+							class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60 focus:bg-background/70"
+						>
+							<option value="admin">Admin (full access)</option>
+							<option value="standard">User (media only)</option>
+						</select>
+					</div>
+					{#if bootstrapRole === 'standard'}
+						<p class="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+							The first account must be Admin so setup and settings remain accessible.
+						</p>
+					{/if}
+					{#each [
+						{ id: 'bs-username', label: 'Username', bind: 'username', autocomplete: 'username' },
+						{ id: 'bs-display', label: 'Display name', bind: 'displayName', autocomplete: 'name' }
+					] as field (field.id)}
+						<div class="space-y-1.5">
+							<label for={field.id} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+								{field.label}
+							</label>
+							{#if field.bind === 'username'}
+								<input id={field.id} bind:value={username} autocomplete="username" class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+							{:else}
+								<input id={field.id} bind:value={displayName} autocomplete="name" class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+							{/if}
+						</div>
+					{/each}
+					<div class="space-y-1.5">
+						<label for="bs-password" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+							Password
+						</label>
+						<input id="bs-password" type="password" bind:value={password} autocomplete="new-password" class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+					</div>
+					<div class="space-y-1.5">
+						<label for="bs-confirm" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+							Confirm password
+						</label>
+						<input id="bs-confirm" type="password" bind:value={confirmPassword} autocomplete="new-password" class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+					</div>
+				{:else}
+					<p class="text-sm text-muted-foreground">
+						Add initial library paths now, or skip and do this later from Settings.
+					</p>
+					{#each [
+						{ id: 'movies-path', label: 'Movies library path (optional)', placeholder: 'D:\\Media\\Movies', bind: 'moviesPath' },
+						{ id: 'movies-name', label: 'Movies library name', placeholder: 'Movies', bind: 'moviesName' },
+						{ id: 'tv-path', label: 'TV library path (optional)', placeholder: 'D:\\Media\\TV', bind: 'tvPath' },
+						{ id: 'tv-name', label: 'TV library name', placeholder: 'TV Shows', bind: 'tvName' }
+					] as field (field.id)}
+						<div class="space-y-1.5">
+							<label for={field.id} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+								{field.label}
+							</label>
+							{#if field.bind === 'moviesPath'}
+								<input id={field.id} bind:value={moviesPath} placeholder={field.placeholder} class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+							{:else if field.bind === 'moviesName'}
+								<input id={field.id} bind:value={moviesName} placeholder={field.placeholder} class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+							{:else if field.bind === 'tvPath'}
+								<input id={field.id} bind:value={tvPath} placeholder={field.placeholder} class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+							{:else}
+								<input id={field.id} bind:value={tvName} placeholder={field.placeholder} class="h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70" />
+							{/if}
+						</div>
+					{/each}
+					<label class="flex cursor-pointer items-center gap-3 text-sm text-muted-foreground">
+						<input type="checkbox" bind:checked={runScanAfterSave} class="accent-primary-glow" />
+						Start scan after saving library paths
+					</label>
+				{/if}
+
+				{#if errorMessage}
+					<p class="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+						{errorMessage}
+					</p>
+				{/if}
+				{#if statusMessage}
+					<p class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary-glow">
+						{statusMessage}
+					</p>
+				{/if}
+
+				<div class="flex flex-wrap gap-2 pt-1">
+					<button
+						type="submit"
+						disabled={isSubmitting}
+						class="flex-1 rounded-full bg-gradient-primary py-3 text-sm font-semibold text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						{#if isSubmitting}
+							{bootstrapStep === 'libraries' ? 'Finishing setup…' : 'Saving…'}
+						{:else}
+							{bootstrapStep === 'language' || bootstrapStep === 'server'
+								? 'Continue'
+								: bootstrapStep === 'account'
+									? 'Create account'
+									: 'Finish setup'}
+						{/if}
+					</button>
+					{#if bootstrapStep === 'libraries'}
+						<button
+							type="button"
+							disabled={isSubmitting}
+							onclick={() => void finishBootstrap(true)}
+							class="hairline rounded-full bg-foreground/[0.04] px-5 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							Skip for now
+						</button>
+					{/if}
+				</div>
+			</form>
+		{/if}
 	</div>
+
+	<!-- Footer -->
+	<p class="mt-8 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground/50">
+		Xuva · Your cinema, everywhere
+	</p>
 </div>
-
-<style>
-	.auth-shell {
-		min-height: 100vh;
-		display: grid;
-		place-items: center;
-		padding: clamp(18px, 4vw, 40px);
-		background:
-			radial-gradient(circle at 8% 10%, rgb(126 183 169 / 14%), transparent 38%),
-			linear-gradient(180deg, #0f1723 0%, #0c131d 55%, #0a1119 100%);
-	}
-
-	.auth-card {
-		width: min(540px, 100%);
-	}
-
-	.auth-copy {
-		margin: 0;
-		color: var(--xuva-color-text-muted);
-		font-size: 0.94rem;
-	}
-
-	.auth-form {
-		display: grid;
-		gap: 10px;
-	}
-
-	.field {
-		display: grid;
-		gap: 5px;
-	}
-
-	.field span {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: var(--xuva-color-text-muted);
-	}
-
-	.field input,
-	.field select {
-		border: 1px solid var(--xuva-color-border-soft);
-		background: var(--xuva-color-surface-elevated);
-		color: var(--xuva-color-text);
-		border-radius: var(--xuva-radius-md);
-		min-height: 38px;
-		padding: 0 11px;
-		font: inherit;
-	}
-
-	.auth-error {
-		margin: 0;
-		font-size: 0.85rem;
-		color: var(--xuva-color-danger, #ff9f9f);
-	}
-
-	.auth-status {
-		margin: 0;
-		font-size: 0.85rem;
-		color: var(--xuva-color-accent-teal);
-	}
-
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 4px;
-	}
-
-	.check {
-		display: inline-flex;
-		gap: 8px;
-		align-items: center;
-		font-size: 0.88rem;
-		color: var(--xuva-color-text-muted);
-	}
-</style>

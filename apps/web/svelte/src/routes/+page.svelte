@@ -1,395 +1,128 @@
-<script lang="ts">
-	import { onMount } from 'svelte';
-	import { getMovies, getSeries, type MovieListItem, type SeriesListItem } from '$lib/api/browse';
-	import { ApiClientError, apiClient } from '$lib/api/client';
-	import {
-		getLibraries,
-		getPlaybackRecent,
-		type ClientHomeItem,
-		type ClientHomeResponse,
-		type LibrariesResponse,
-		type PlaybackRecentResponse
-	} from '$lib/api/home';
-	import {
-		buildHomeViewModel,
-		createEmptyHomeViewModel,
-		type HomeDisplayItem,
-		type HomeViewModel
-	} from '$lib/home/model';
-	import Hero from '\$lib/Xuva/Hero.svelte';
-	import LandscapeCard from '\$lib/Xuva/LandscapeCard.svelte';
-	import XuvaButton from '\$lib/Xuva/XuvaButton.svelte';
-	import XuvaEmptyState from '\$lib/Xuva/XuvaEmptyState.svelte';
-	import XuvaPanel from '\$lib/Xuva/XuvaPanel.svelte';
-	import XuvaShell from '\$lib/Xuva/XuvaShell.svelte';
-	import PosterCard from '\$lib/Xuva/PosterCard.svelte';
-	import Row from '\$lib/Xuva/Row.svelte';
+﻿<script lang="ts">
+  import heroFeatured from "$lib/assets/hero-featured.jpg";
+  import CollectionsBento from "$lib/components/CollectionsBento.svelte";
+  import ContentRow from "$lib/components/ContentRow.svelte";
+  import Header from "$lib/components/Header.svelte";
+  import Hero from "$lib/components/Hero.svelte";
+  import Logo from "$lib/components/Logo.svelte";
+  import MoodSelector from "$lib/components/MoodSelector.svelte";
+  import Top10Row from "$lib/components/Top10Row.svelte";
+  import {
+    collections,
+    continueWatching,
+    recentMovies,
+    recentSeries,
+    spotlightSlides,
+    topTen
+  } from "$lib/mock-data";
 
-	let isLoading = $state(true);
-	let loadNotice = $state('');
-	let model = $state<HomeViewModel>(createEmptyHomeViewModel());
-
-	const hero = $derived(model.hero);
-	const heroPlayHref = $derived(playHref(hero));
-	const heroDetailHref = $derived(detailHref(hero));
-	const continueWatching = $derived.by(() => model.continueItems.map(toContinueCard));
-	const recentMovies = $derived.by(() => model.movieItems.map(toPosterCard));
-	const recentTV = $derived.by(() => model.tvItems.map(toTVPosterCard));
-
-	onMount(() => {
-		void loadHome();
-	});
-
-	async function loadHome(): Promise<void> {
-		isLoading = true;
-		loadNotice = '';
-		try {
-			const { homePayload, playbackRecentPayload, librariesPayload } = await loadHomeData();
-			model = buildHomeViewModel({
-				homePayload,
-				playbackRecentPayload,
-				librariesPayload,
-				sessionPayload: null,
-				forceEmpty: false
-			});
-		} catch (error) {
-			model = createEmptyHomeViewModel();
-			loadNotice = formatLoadError(error);
-		} finally {
-			isLoading = false;
-		}
-	}
-
-	async function loadHomeData(): Promise<{
-		homePayload: ClientHomeResponse;
-		playbackRecentPayload: PlaybackRecentResponse;
-		librariesPayload: LibrariesResponse;
-	}> {
-		const [homeResult, playbackRecentResult, librariesResult] = await Promise.allSettled([
-			Promise.reject(new Error('public home avoids protected client home route')),
-			getPlaybackRecent(apiClient, 12),
-			getLibraries(apiClient)
-		]);
-
-		const playbackRecentPayload =
-			playbackRecentResult.status === 'fulfilled' ? playbackRecentResult.value : { recent: [] };
-		const librariesPayload =
-			librariesResult.status === 'fulfilled' ? librariesResult.value : { libraries: [] };
-
-		if (homeResult.status === 'fulfilled') {
-			return {
-				homePayload: homeResult.value,
-				playbackRecentPayload,
-				librariesPayload
-			};
-		}
-
-		const fallbackHomePayload = await loadCatalogHomeFallback();
-		if (fallbackHomePayload) {
-			return {
-				homePayload: fallbackHomePayload,
-				playbackRecentPayload,
-				librariesPayload
-			};
-		}
-
-		throw homeResult.reason;
-	}
-
-	async function loadCatalogHomeFallback(): Promise<ClientHomeResponse | null> {
-		const [moviesResult, seriesResult] = await Promise.allSettled([
-			getMovies(apiClient, 24),
-			getSeries(apiClient, 24)
-		]);
-
-		const movies = moviesResult.status === 'fulfilled' ? moviesResult.value.movies || [] : [];
-		const series = seriesResult.status === 'fulfilled' ? seriesResult.value.series || [] : [];
-		if (movies.length === 0 && series.length === 0) {
-			if (moviesResult.status === 'rejected' && seriesResult.status === 'rejected') return null;
-		}
-
-		const movieItems = movies.map(movieToHomeItem).filter(hasHomeIdentity);
-		const seriesItems = series.map(seriesToHomeItem).filter(hasHomeIdentity);
-		const recentlyAddedItems = [...movieItems, ...seriesItems].slice(0, 24);
-
-		return {
-			profile: 'xuva',
-			hero: movieItems[0] || seriesItems[0],
-			rows: [
-				{ id: 'continue', title: 'Continue Watching', items: [] },
-				{ id: 'movies', title: 'Movies', items: movieItems },
-				{ id: 'tv', title: 'TV Shows', items: seriesItems },
-				{ id: 'recently-added', title: 'Recently Added', items: recentlyAddedItems }
-			]
-		};
-	}
-
-	function movieToHomeItem(item: MovieListItem): ClientHomeItem {
-		const id = asText(item.id);
-		const title = asText(item.metadata?.title) || asText(item.title) || 'Untitled';
-		const year = Number(item.metadata?.year || item.year || 0);
-		return {
-			id,
-			kind: 'movie',
-			title,
-			subtitle: year > 0 ? String(year) : '',
-			description: asText(item.metadata?.overview),
-			posterUrl: asText(item.metadata?.posterUrl),
-			backdropUrl: asText(item.metadata?.backdropUrl)
-		};
-	}
-
-	function seriesToHomeItem(item: SeriesListItem): ClientHomeItem {
-		const id = asText(item.id);
-		const title = asText(item.metadata?.title) || asText(item.title) || 'Untitled';
-		const seasonCount = Number(item.seasonCount || 0);
-		const episodeCount = Number(item.episodeCount || 0);
-		const subtitle =
-			seasonCount > 0 || episodeCount > 0
-				? `${seasonCount} season${seasonCount === 1 ? '' : 's'} - ${episodeCount} episode${episodeCount === 1 ? '' : 's'}`
-				: '';
-		return {
-			id,
-			kind: 'series',
-			title,
-			subtitle,
-			description: asText(item.metadata?.overview),
-			posterUrl: asText(item.metadata?.posterUrl),
-			backdropUrl: asText(item.metadata?.backdropUrl)
-		};
-	}
-
-	function hasHomeIdentity(item: ClientHomeItem): boolean {
-		return Boolean(asText(item.id) || asText(item.title));
-	}
-
-	function toContinueCard(item: HomeDisplayItem): {
-		title: string;
-		sub: string;
-		progress: number;
-		img?: string;
-	} {
-		return {
-			title: item.title,
-			sub: item.meta || item.subtitle || 'Resume playback',
-			progress: item.progressPercent,
-			img: item.backdropUrl || item.posterUrl
-		};
-	}
-
-	function toPosterCard(item: HomeDisplayItem): { title: string; img?: string } {
-		return {
-			title: item.title,
-			img: item.posterUrl || item.backdropUrl
-		};
-	}
-
-	function toTVPosterCard(item: HomeDisplayItem): { title: string; img?: string; ep?: string } {
-		return {
-			title: item.title,
-			img: item.posterUrl || item.backdropUrl,
-			ep: item.subtitle || item.meta
-		};
-	}
-
-	function detailHref(item: HomeDisplayItem): string {
-		if (!item.id) return '';
-		if (item.kind === 'movie') return `/movies/${encodeURIComponent(item.id)}`;
-		if (item.kind === 'series') return `/tv/${encodeURIComponent(item.id)}`;
-		return '';
-	}
-
-	function playHref(item: HomeDisplayItem): string {
-		const mediaSourceId = item.playMediaSourceId || item.mediaSourceId;
-		if (!mediaSourceId) return '';
-		const params = new URLSearchParams();
-		params.set('clientProfile', 'web');
-		params.set('routeType', 'lan');
-		params.set('supportsAdaptive', 'true');
-		params.set('autoplayIntent', '1');
-		params.set('strictAutoplay', '1');
-		params.set('forcePlayable', 'true');
-		return `/play/${encodeURIComponent(mediaSourceId)}?${params.toString()}`;
-	}
-
-	function formatLoadError(error: unknown): string {
-		if (error instanceof ApiClientError) return error.userMessage || error.message;
-		if (error instanceof Error) return error.message;
-		return 'Home could not load.';
-	}
-
-	function asText(value: unknown): string {
-		return String(value ?? '').trim();
-	}
+  const currentYear = new Date().getFullYear();
 </script>
 
 <svelte:head>
-	<meta name="description" content="Xuva: your personal streaming hub for movies and TV." />
+  <title>Xuva — Your cinema, everywhere</title>
+  <meta
+    name="description"
+    content="Xuva is your personal streaming home for movies and series across every screen you own."
+  />
+  <meta property="og:title" content="Xuva — Your cinema, everywhere" />
+  <meta
+    property="og:description"
+    content="A cinematic home for your personal library — continue watching, discover what is new, and jump between movies and series."
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content={heroFeatured} />
 </svelte:head>
 
-<XuvaShell>
-	{#if isLoading}
-		<XuvaPanel title="Loading Home" subtitle="Fetching your media library from the local server." />
-	{:else if loadNotice}
-		<section class="px-4 pt-9 sm:px-6 lg:px-8">
-			<XuvaEmptyState
-				eyebrow="Connection"
-				title="Media library unavailable"
-				description="Xuva could not reach the media library service. Check that the server is running, then try again."
-			>
-				{#snippet primaryAction()}
-					<XuvaButton variant="primary" onclick={loadHome}>Retry</XuvaButton>
-				{/snippet}
-				{#snippet secondaryAction()}
-					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
-				{/snippet}
-			</XuvaEmptyState>
-		</section>
-	{:else if model.trueEmpty}
-		<section class="px-4 pt-6 sm:px-6 lg:px-8">
-			<XuvaEmptyState
-				eyebrow="First run"
-				title="Build your Xuva library"
-				description="Add your media folders, scan your library, and Xuva will fill this home screen with what you're watching and what's new."
-			>
-				<nav class="next-step-list" aria-label="Library setup steps">
-					<a class="next-step-row" href="/settings#libraries">
-						<em class="next-step-row__step">01</em>
-						<div>
-							<strong>Add a library</strong>
-							<span>Choose your Movies or TV folder so Xuva knows where to look.</span>
-						</div>
-					</a>
-					<a class="next-step-row" href="/movies">
-						<em class="next-step-row__step">02</em>
-						<div>
-							<strong>Review Movies</strong>
-							<span>Use Scan Movies once a movie folder has been added.</span>
-						</div>
-					</a>
-					<a class="next-step-row" href="/tv">
-						<em class="next-step-row__step">03</em>
-						<div>
-							<strong>Review TV</strong>
-							<span>Use Scan TV once a TV folder has been added.</span>
-						</div>
-					</a>
-					<a class="next-step-row" href="/settings">
-						<em class="next-step-row__step">04</em>
-						<div>
-							<strong>Check settings</strong>
-							<span>Review your library setup and scan status.</span>
-						</div>
-					</a>
-				</nav>
-				{#snippet primaryAction()}
-					<XuvaButton variant="primary" href="/settings#libraries">Add a library</XuvaButton>
-				{/snippet}
-				{#snippet secondaryAction()}
-					<XuvaButton variant="secondary" href="/settings">Settings</XuvaButton>
-				{/snippet}
-			</XuvaEmptyState>
-		</section>
-	{:else}
-		<Hero
-			heroPoster={hero.posterUrl}
-			heroBackdrop={hero.backdropUrl || hero.posterUrl}
-			title={hero.title}
-			meta={hero.meta}
-			description={hero.description}
-			progress={hero.progressPercent}
-			progressLabel={hero.progressPercent > 0 ? `${hero.progressPercent}% watched` : ''}
-			playHref={heroPlayHref}
-			detailHref={heroDetailHref}
-		/>
-		{#if continueWatching.length > 0}
-			<Row title="Continue Watching">
-				{#each continueWatching as m (m.title)}
-					<LandscapeCard item={m} />
-				{/each}
-			</Row>
-		{/if}
-		<Row title="Recently Added Movies">
-			{#if recentMovies.length > 0}
-				{#each recentMovies as m (m.title)}
-					<PosterCard img={m.img} title={m.title} />
-				{/each}
-			{:else}
-				<div class="min-w-[280px] flex-1">
-					<XuvaEmptyState compact title="No movies have been added yet." description="Add a movie library or run Scan Movies." />
-				</div>
-			{/if}
-		</Row>
-		<Row title="Recently Added TV">
-			{#if recentTV.length > 0}
-				{#each recentTV as m (m.title)}
-					<PosterCard img={m.img} title={m.title} ep={m.ep} />
-				{/each}
-			{:else}
-				<div class="min-w-[280px] flex-1">
-					<XuvaEmptyState compact title="No TV shows have been added yet." description="Add a TV library or run Scan TV." />
-				</div>
-			{/if}
-		</Row>
-		<div class="h-16"></div>
-	{/if}
-</XuvaShell>
+<div class="min-h-screen bg-background">
+  <Header />
+  <main class="pb-24">
+    <Hero slides={spotlightSlides} />
 
-<style>
-	.next-step-list {
-		display: grid;
-		gap: 0.55rem;
-	}
+    <div class="relative z-10 -mt-12 space-y-16 md:-mt-16 md:space-y-20">
+      <ContentRow
+        eyebrow="Pick up where you left off"
+        title="Continue watching"
+        items={continueWatching}
+        variant="wide"
+      />
 
-	.next-step-row {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		column-gap: 0.9rem;
-		row-gap: 0.25rem;
-		align-items: start;
-		padding: 0.72rem 0;
-		text-decoration: none;
-		transition:
-			background 0.2s ease;
-	}
+      <MoodSelector />
 
-	.next-step-list > :first-child {
-		padding-top: 0.72rem;
-	}
+      <Top10Row items={topTen} />
 
-	.next-step-row:hover {
-		background: rgb(124 92 255 / 4%);
-	}
+      <CollectionsBento items={collections} />
 
-	.next-step-row__step {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2rem;
-		height: 2rem;
-		margin-top: 0.1rem;
-		border: 1px solid rgb(255 255 255 / 12%);
-		border-radius: 0.35rem;
-		background: rgb(255 255 255 / 2%);
-		color: rgb(255 255 255 / 48%);
-		font-size: 0.72rem;
-		font-style: normal;
-		font-weight: 800;
-		letter-spacing: 0.08em;
-	}
+      <ContentRow
+        eyebrow="Fresh in your library"
+        title="New movies"
+        items={recentMovies}
+      />
 
-	.next-step-row strong {
-		display: block;
-		color: white;
-		font-size: 0.98rem;
-		line-height: 1.2;
-	}
+      <ContentRow
+        eyebrow="New episodes dropped"
+        title="New series"
+        items={recentSeries}
+      />
+    </div>
 
-	.next-step-row span {
-		display: block;
-		margin-top: 0.25rem;
-		color: rgb(255 255 255 / 58%);
-		font-size: 0.88rem;
-		line-height: 1.45;
-	}
-</style>
+    <section class="relative mx-6 mt-28 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-surface/60 via-surface/30 to-background p-10 backdrop-blur md:mx-12 md:p-16 lg:mx-20">
+      <div class="absolute -right-32 -top-32 h-[400px] w-[400px] rounded-full bg-primary/20 blur-[120px]"></div>
+      <div class="absolute -bottom-32 -left-32 h-[400px] w-[400px] rounded-full bg-accent/20 blur-[120px]"></div>
+      <div class="grain absolute inset-0"></div>
+      <div class="relative grid items-center gap-12 md:grid-cols-[1.3fr_1fr]">
+        <div>
+          <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">
+            One library · Every screen
+          </div>
+          <h2 class="font-serif-display text-4xl leading-[1.05] tracking-tight md:text-6xl">
+            Made for the couch, the commute, and everything between.
+          </h2>
+          <p class="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">
+            Xuva adapts to every screen — a remote-friendly grid on tvOS and Android TV, a thumb-shaped feed on mobile, a sidebar-rich layout on tablet, and this cinematic surface on the web.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 gap-3 md:gap-4">
+          {#each [
+            { label: "Web", sub: "Cinematic" },
+            { label: "Mobile", sub: "iOS · Android" },
+            { label: "Tablet", sub: "iPadOS" },
+            { label: "TV", sub: "tvOS · Android TV" }
+          ] as device (device.label)}
+            <div
+              class="hairline rounded-2xl bg-background/40 p-5 backdrop-blur-md transition-all hover:-translate-y-1 hover:bg-background/60"
+            >
+              <div class="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+                {device.sub}
+              </div>
+              <div class="font-serif-display mt-2 text-2xl">
+                {device.label}
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    </section>
+
+    <footer class="mt-24 border-t border-border px-6 pt-12 md:px-12 lg:px-20">
+      <div class="flex flex-col items-start justify-between gap-6 pb-10 md:flex-row md:items-center">
+        <div>
+          <Logo />
+          <p class="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">
+            Your personal cinema. Stream your collection on every screen you own.
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-x-10 gap-y-3 text-sm text-muted-foreground">
+          <a class="transition-colors hover:text-foreground" href="/about">About</a>
+          <a class="transition-colors hover:text-foreground" href="/apps">Apps</a>
+          <a class="transition-colors hover:text-foreground" href="/support">Support</a>
+          <a class="transition-colors hover:text-foreground" href="/privacy">Privacy</a>
+          <a class="transition-colors hover:text-foreground" href="/terms">Terms</a>
+        </div>
+      </div>
+      <div class="border-t border-border py-6 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+        © {currentYear} Xuva · Crafted for cinema lovers
+      </div>
+    </footer>
+  </main>
+</div>

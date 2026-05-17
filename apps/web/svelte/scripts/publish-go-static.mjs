@@ -24,14 +24,12 @@ const staticNextReadme = `# Svelte Root Build Output
 
 const requiredSmokeRoutes = [
 	'/',
+	'/signin',
+	'/setup',
 	'/movies',
 	'/tv',
 	'/settings',
 	'/admin',
-	'/collections',
-	'/watchlist',
-	'/continue-watching',
-	'/recently-added',
 	'/movies/[id]',
 	'/tv/[id]'
 ];

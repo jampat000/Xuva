@@ -315,6 +315,308 @@ func TestBestMetadataHonorsLibrarySourceOrder(t *testing.T) {
 	}
 }
 
+func TestBestMetadataUsesSeparateArtworkSourceOrder(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{
+		ID:              "movies",
+		Name:            "Movies",
+		Path:            `X:\Movies`,
+		Kind:            libraries.KindMovies,
+		MetadataSources: []string{"tmdb", "wikipedia", "filename"},
+		ArtworkSources:  []string{"artwork", "fanart", "tmdb"},
+	}
+	file := fileCandidate(`X:\Movies\Arrival (2016)\Arrival.2016.1080p.mkv`, "Arrival (2016)/Arrival.2016.1080p.mkv")
+	result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+	candidates := []movies.Candidate{{
+		Title:        "Arrival",
+		Year:         2016,
+		QualityLabel: "1080p",
+		Media:        file,
+	}}
+	if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+		t.Fatalf("save movie scan: %v", err)
+	}
+	movieList, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	if len(movieList) != 1 {
+		t.Fatalf("expected one movie, got %#v", movieList)
+	}
+	movieID := movieList[0].ID
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:       "movie",
+		ItemID:     movieID,
+		Provider:   "tmdb",
+		Title:      "Arrival",
+		Year:       2016,
+		Overview:   "TMDB overview",
+		Genres:     []string{"Science Fiction", "Drama"},
+		PosterURL:  "https://images.example/tmdb-poster.jpg",
+		Confidence: 0.95,
+	}); err != nil {
+		t.Fatalf("upsert tmdb metadata: %v", err)
+	}
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:        "movie",
+		ItemID:      movieID,
+		Provider:    "artwork",
+		Title:       "Arrival",
+		PosterURL:   `X:\Movies\Arrival (2016)\poster.jpg`,
+		BackdropURL: `X:\Movies\Arrival (2016)\fanart.jpg`,
+		Confidence:  1,
+	}); err != nil {
+		t.Fatalf("upsert local artwork: %v", err)
+	}
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:       "movie",
+		ItemID:     movieID,
+		Provider:   "fanart",
+		Title:      "Arrival",
+		LogoURL:    "https://images.example/fanart-logo.png",
+		BannerURL:  "https://images.example/fanart-banner.jpg",
+		Confidence: 0.7,
+	}); err != nil {
+		t.Fatalf("upsert fanart artwork: %v", err)
+	}
+
+	best, ok, err := service.GetBestMetadata(ctx, "movie", movieID)
+	if err != nil {
+		t.Fatalf("get best metadata: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected merged metadata")
+	}
+	if best.Provider != "tmdb" || best.Overview != "TMDB overview" {
+		t.Fatalf("expected tmdb to drive metadata fields, got %#v", best)
+	}
+	if best.PosterURL != `X:\Movies\Arrival (2016)\poster.jpg` || best.BackdropURL != `X:\Movies\Arrival (2016)\fanart.jpg` {
+		t.Fatalf("expected local artwork to win for poster/backdrop, got %#v", best)
+	}
+	if best.LogoURL != "https://images.example/fanart-logo.png" || best.BannerURL != "https://images.example/fanart-banner.jpg" {
+		t.Fatalf("expected fanart artwork enhancement to fill logo/banner, got %#v", best)
+	}
+}
+
+func TestGetSeriesAttachesSeasonAndEpisodeMetadata(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "tv", Name: "TV", Path: `X:\TV`, Kind: libraries.KindTV}
+	file := fileCandidate(`X:\TV\The Bear\Season 01\The.Bear.S01E01.System.mkv`, "The Bear/Season 01/The.Bear.S01E01.System.mkv")
+	result := scanResult(scanner.KindTV, library.Path, []scanner.FileCandidate{file})
+	candidates := []tv.EpisodeCandidate{{
+		SeriesTitle:   "The Bear",
+		SeasonNumber:  1,
+		EpisodeNumber: 1,
+		EpisodeTitle:  "System",
+		QualityLabel:  "1080p",
+		Media:         file,
+	}}
+
+	if _, err := service.SaveTVScan(ctx, library, result, candidates); err != nil {
+		t.Fatalf("save tv scan: %v", err)
+	}
+	seriesList, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list series: %v", err)
+	}
+	if len(seriesList) != 1 {
+		t.Fatalf("expected one series, got %#v", seriesList)
+	}
+	seeded, ok, err := service.GetSeries(ctx, seriesList[0].ID)
+	if err != nil {
+		t.Fatalf("get seeded series: %v", err)
+	}
+	if !ok || len(seeded.Seasons) != 1 || len(seeded.Seasons[0].Episodes) != 1 {
+		t.Fatalf("expected one season and one episode, got %#v", seeded)
+	}
+
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:       "series",
+		ItemID:     seeded.ID,
+		Provider:   "tmdb",
+		Title:      "The Bear",
+		Overview:   "A chef returns home to run the family restaurant.",
+		Genres:     []string{"Drama"},
+		PosterURL:  "https://images.example/bear-poster.jpg",
+		Confidence: 0.95,
+	}); err != nil {
+		t.Fatalf("upsert series metadata: %v", err)
+	}
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:         "season",
+		ItemID:       seeded.Seasons[0].ID,
+		Provider:     "tmdb",
+		Title:        "Season 1",
+		Overview:     "Season overview",
+		PosterURL:    "https://images.example/bear-season-1.jpg",
+		SeasonNumber: 1,
+		EpisodeCount: 1,
+		Confidence:   0.9,
+	}); err != nil {
+		t.Fatalf("upsert season metadata: %v", err)
+	}
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind:          "episode",
+		ItemID:        seeded.Seasons[0].Episodes[0].ID,
+		Provider:      "tmdb",
+		Title:         "System",
+		Overview:      "Episode overview",
+		ThumbnailURL:  "https://images.example/bear-s01e01.jpg",
+		SeasonNumber:  1,
+		EpisodeNumber: 1,
+		RuntimeMinutes: 42,
+		Confidence:    0.9,
+	}); err != nil {
+		t.Fatalf("upsert episode metadata: %v", err)
+	}
+
+	detail, ok, err := service.GetSeries(ctx, seeded.ID)
+	if err != nil {
+		t.Fatalf("get enriched series: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected enriched series detail")
+	}
+	if detail.Metadata == nil || detail.Metadata.Provider != "tmdb" || detail.Metadata.Overview == "" {
+		t.Fatalf("expected show metadata on detail, got %#v", detail.Metadata)
+	}
+	season := detail.Seasons[0]
+	if season.Metadata == nil || season.Metadata.PosterURL != "https://images.example/bear-season-1.jpg" || season.Metadata.EpisodeCount != 1 {
+		t.Fatalf("expected season metadata on detail, got %#v", season.Metadata)
+	}
+	episode := season.Episodes[0]
+	if episode.Metadata == nil || episode.Metadata.ThumbnailURL != "https://images.example/bear-s01e01.jpg" || episode.Metadata.RuntimeMinutes != 42 {
+		t.Fatalf("expected episode metadata on detail, got %#v", episode.Metadata)
+	}
+}
+
+func TestListSeriesCollapsesDuplicatesBySharedExternalIdentity(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "tv", Name: "TV", Path: `X:\TV`, Kind: libraries.KindTV}
+	files := []scanner.FileCandidate{
+		fileCandidate(`X:\TV\Dangerously Obese\Season 01\Dangerously.Obese.S01E01.mkv`, "Dangerously Obese/Season 01/Dangerously.Obese.S01E01.mkv"),
+		fileCandidate(`X:\TV\Dangerously Obese UK\Season 02\Dangerously.Obese.UK.S02E01.mkv`, "Dangerously Obese UK/Season 02/Dangerously.Obese.UK.S02E01.mkv"),
+	}
+	result := scanResult(scanner.KindTV, library.Path, files)
+	candidates := []tv.EpisodeCandidate{
+		{SeriesTitle: "Dangerously Obese", SeasonNumber: 1, EpisodeNumber: 1, EpisodeTitle: "Episode 1", Media: files[0]},
+		{SeriesTitle: "Dangerously Obese UK", SeasonNumber: 2, EpisodeNumber: 1, EpisodeTitle: "Episode 1", Media: files[1]},
+	}
+	if _, err := service.SaveTVScan(ctx, library, result, candidates); err != nil {
+		t.Fatalf("save tv scan: %v", err)
+	}
+
+	series, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list raw series: %v", err)
+	}
+	if len(series) != 2 {
+		t.Fatalf("expected two raw series before metadata grouping assumptions, got %#v", series)
+	}
+	for _, item := range series {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "series",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      "Dangerously Obese",
+			Overview:   "Merged by shared metadata identity.",
+			PosterURL:  "https://images.example/dangerously-obese.jpg",
+			Confidence: 0.9,
+		}); err != nil {
+			t.Fatalf("upsert series metadata: %v", err)
+		}
+		if err := service.UpsertExternalID(ctx, ExternalID{
+			Kind:       "series",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			ExternalID: "9991",
+		}); err != nil {
+			t.Fatalf("upsert shared tmdb id: %v", err)
+		}
+	}
+
+	grouped, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list grouped series: %v", err)
+	}
+	if len(grouped) != 1 {
+		t.Fatalf("expected duplicate series to collapse into one list item, got %#v", grouped)
+	}
+	if grouped[0].SeasonCount != 2 || grouped[0].EpisodeCount != 2 {
+		t.Fatalf("expected grouped counts across both records, got %#v", grouped[0])
+	}
+	if grouped[0].Metadata == nil || grouped[0].Metadata.Title != "Dangerously Obese" {
+		t.Fatalf("expected grouped metadata title, got %#v", grouped[0].Metadata)
+	}
+}
+
+func TestGetSeriesAggregatesDuplicateSeriesMembers(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "tv", Name: "TV", Path: `X:\TV`, Kind: libraries.KindTV}
+	files := []scanner.FileCandidate{
+		fileCandidate(`X:\TV\Dangerously Obese\Season 01\Dangerously.Obese.S01E01.mkv`, "Dangerously Obese/Season 01/Dangerously.Obese.S01E01.mkv"),
+		fileCandidate(`X:\TV\Dangerously Obese UK\Season 02\Dangerously.Obese.UK.S02E01.mkv`, "Dangerously Obese UK/Season 02/Dangerously.Obese.UK.S02E01.mkv"),
+	}
+	result := scanResult(scanner.KindTV, library.Path, files)
+	candidates := []tv.EpisodeCandidate{
+		{SeriesTitle: "Dangerously Obese", SeasonNumber: 1, EpisodeNumber: 1, EpisodeTitle: "Episode 1", Media: files[0]},
+		{SeriesTitle: "Dangerously Obese UK", SeasonNumber: 2, EpisodeNumber: 1, EpisodeTitle: "Episode 1", Media: files[1]},
+	}
+	if _, err := service.SaveTVScan(ctx, library, result, candidates); err != nil {
+		t.Fatalf("save tv scan: %v", err)
+	}
+
+	rawSeries, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list series: %v", err)
+	}
+	if len(rawSeries) != 2 {
+		t.Fatalf("expected two seeded series, got %#v", rawSeries)
+	}
+	for _, item := range rawSeries {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "series",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      "Dangerously Obese",
+			Overview:   "Merged by shared metadata identity.",
+			PosterURL:  "https://images.example/dangerously-obese.jpg",
+			Confidence: 0.9,
+		}); err != nil {
+			t.Fatalf("upsert series metadata: %v", err)
+		}
+		if err := service.UpsertExternalID(ctx, ExternalID{
+			Kind:       "series",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			ExternalID: "9991",
+		}); err != nil {
+			t.Fatalf("upsert shared tmdb id: %v", err)
+		}
+	}
+
+	detail, ok, err := service.GetSeries(ctx, rawSeries[0].ID)
+	if err != nil {
+		t.Fatalf("get aggregated series: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected series detail")
+	}
+	if detail.SeasonCount != 2 || detail.EpisodeCount != 2 {
+		t.Fatalf("expected aggregated season and episode counts, got %#v", detail)
+	}
+	if len(detail.Seasons) != 2 {
+		t.Fatalf("expected both seasons to appear in one detail view, got %#v", detail.Seasons)
+	}
+	if detail.Metadata == nil || detail.Metadata.Title != "Dangerously Obese" {
+		t.Fatalf("expected aggregate metadata on detail, got %#v", detail.Metadata)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 

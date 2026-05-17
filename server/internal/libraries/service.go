@@ -30,6 +30,7 @@ type Library struct {
 	Kind            Kind        `json:"kind"`
 	StorageType     StorageType `json:"storageType"`
 	MetadataSources []string    `json:"metadataSources,omitempty"`
+	ArtworkSources  []string    `json:"artworkSources,omitempty"`
 }
 
 type WorkerDefaults struct {

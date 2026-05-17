@@ -120,6 +120,7 @@ type SeasonDetail struct {
 	ID           string         `json:"id"`
 	SeasonNumber int            `json:"seasonNumber"`
 	Episodes     []EpisodeBrief `json:"episodes"`
+	Metadata     *MetadataRecord `json:"metadata,omitempty"`
 }
 
 type EpisodeBrief struct {
@@ -131,6 +132,7 @@ type EpisodeBrief struct {
 	NeedsReview   bool           `json:"needsReview"`
 	VersionCount  int            `json:"versionCount"`
 	Versions      []MovieVersion `json:"versions,omitempty"`
+	Metadata      *MetadataRecord `json:"metadata,omitempty"`
 }
 
 type ReviewItem struct {
@@ -138,6 +140,34 @@ type ReviewItem struct {
 	ID           string `json:"id"`
 	Title        string `json:"title"`
 	ReviewReason string `json:"reviewReason"`
+}
+
+type MetadataCredit struct {
+	Name        string `json:"name,omitempty"`
+	Role        string `json:"role,omitempty"`
+	Character   string `json:"character,omitempty"`
+	Department  string `json:"department,omitempty"`
+	ProfileURL  string `json:"profileUrl,omitempty"`
+	SortOrder   int    `json:"sortOrder,omitempty"`
+}
+
+type MetadataCollection struct {
+	ID              string `json:"id,omitempty"`
+	Name            string `json:"name,omitempty"`
+	PosterURL       string `json:"posterUrl,omitempty"`
+	BackdropURL     string `json:"backdropUrl,omitempty"`
+	LogoURL         string `json:"logoUrl,omitempty"`
+	BannerURL       string `json:"bannerUrl,omitempty"`
+	LandscapeURL    string `json:"landscapeUrl,omitempty"`
+}
+
+type MetadataStatus struct {
+	Primary             string   `json:"primary,omitempty"`
+	States              []string `json:"states,omitempty"`
+	MissingFields       []string `json:"missingFields,omitempty"`
+	MissingArtwork      []string `json:"missingArtwork,omitempty"`
+	Matched             bool     `json:"matched,omitempty"`
+	UserOverrideApplied bool     `json:"userOverrideApplied,omitempty"`
 }
 
 type MetadataRecord struct {
@@ -150,6 +180,31 @@ type MetadataRecord struct {
 	Overview    string             `json:"overview,omitempty"`
 	PosterURL   string             `json:"posterUrl,omitempty"`
 	BackdropURL string             `json:"backdropUrl,omitempty"`
+	ThumbnailURL string            `json:"thumbnailUrl,omitempty"`
+	LogoURL     string             `json:"logoUrl,omitempty"`
+	BannerURL   string             `json:"bannerUrl,omitempty"`
+	OriginalTitle string           `json:"originalTitle,omitempty"`
+	ReleaseDate string             `json:"releaseDate,omitempty"`
+	FirstAirDate string            `json:"firstAirDate,omitempty"`
+	AirDate     string             `json:"airDate,omitempty"`
+	RuntimeMinutes int             `json:"runtimeMinutes,omitempty"`
+	Genres      []string           `json:"genres,omitempty"`
+	ContentRating string           `json:"contentRating,omitempty"`
+	Cast        []MetadataCredit   `json:"cast,omitempty"`
+	Crew        []MetadataCredit   `json:"crew,omitempty"`
+	GuestCast   []MetadataCredit   `json:"guestCast,omitempty"`
+	Directors   []string           `json:"directors,omitempty"`
+	Writers     []string           `json:"writers,omitempty"`
+	Studios     []string           `json:"studios,omitempty"`
+	ProductionCompanies []string   `json:"productionCompanies,omitempty"`
+	Networks    []string           `json:"networks,omitempty"`
+	Country     []string           `json:"country,omitempty"`
+	Language    []string           `json:"language,omitempty"`
+	StatusText  string             `json:"statusText,omitempty"`
+	Collection  *MetadataCollection `json:"collection,omitempty"`
+	SeasonNumber int               `json:"seasonNumber,omitempty"`
+	EpisodeNumber int              `json:"episodeNumber,omitempty"`
+	EpisodeCount int               `json:"episodeCount,omitempty"`
 	Confidence  float64            `json:"confidence"`
 	RawJSON     string             `json:"rawJson,omitempty"`
 	FetchedAt   string             `json:"fetchedAt"`
@@ -157,6 +212,10 @@ type MetadataRecord struct {
 	Ratings     Ratings            `json:"ratings,omitempty"`
 	ExternalIDs map[string]string  `json:"externalIds,omitempty"`
 	Provenance  MetadataProvenance `json:"provenance,omitempty"`
+	MetadataStatus MetadataStatus  `json:"metadataStatus,omitempty"`
+
+	ArtworkJSON string `json:"-"`
+	DetailsJSON string `json:"-"`
 }
 
 type MetadataProvenance struct {
@@ -206,6 +265,9 @@ type MetadataUpdate struct {
 	ExternalID  string `json:"externalId,omitempty"`
 	PosterURL   string `json:"posterUrl,omitempty"`
 	BackdropURL string `json:"backdropUrl,omitempty"`
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+	LogoURL     string `json:"logoUrl,omitempty"`
+	BannerURL   string `json:"bannerUrl,omitempty"`
 	Review      bool   `json:"review"`
 }
 
@@ -285,7 +347,7 @@ func (s *Service) ScanState(ctx context.Context, libraryID string) (map[string]s
 
 func (s *Service) ListLibraries(ctx context.Context) ([]libraries.Library, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, kind, name, path, storage_type, metadata_sources_json
+		SELECT id, kind, name, path, storage_type, metadata_sources_json, artwork_sources_json
 		FROM libraries
 		ORDER BY kind, name, path
 	`)
@@ -297,10 +359,12 @@ func (s *Service) ListLibraries(ctx context.Context) ([]libraries.Library, error
 	for rows.Next() {
 		var item libraries.Library
 		var rawSources string
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType, &rawSources); err != nil {
+		var rawArtworkSources string
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType, &rawSources, &rawArtworkSources); err != nil {
 			return nil, err
 		}
 		item.MetadataSources = decodeLibraryMetadataSources(item.Kind, rawSources)
+		item.ArtworkSources = decodeLibraryArtworkSources(item.Kind, rawArtworkSources)
 		output = append(output, item)
 	}
 	return output, rows.Err()
@@ -327,6 +391,7 @@ func (s *Service) SaveLibrary(ctx context.Context, library libraries.Library) (l
 		library.StorageType = libraries.DetectStorageType(library.Path)
 	}
 	library.MetadataSources = metasources.NormalizeRequestedSourceOrder(string(library.Kind), library.MetadataSources)
+	library.ArtworkSources = metasources.NormalizeRequestedArtworkOrder(string(library.Kind), library.ArtworkSources)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return libraries.Library{}, err
@@ -343,7 +408,7 @@ func (s *Service) GetLibraryForItem(ctx context.Context, kind string, itemID str
 	switch kind {
 	case "movie":
 		query = `
-			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json
+			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json, l.artwork_sources_json
 			FROM libraries l
 			JOIN media_sources ms ON ms.library_id = l.id
 			JOIN movie_versions mv ON mv.media_source_id = ms.id
@@ -352,7 +417,7 @@ func (s *Service) GetLibraryForItem(ctx context.Context, kind string, itemID str
 		`
 	case "series":
 		query = `
-			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json
+			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json, l.artwork_sources_json
 			FROM libraries l
 			JOIN media_sources ms ON ms.library_id = l.id
 			JOIN episode_versions ev ON ev.media_source_id = ms.id
@@ -360,12 +425,32 @@ func (s *Service) GetLibraryForItem(ctx context.Context, kind string, itemID str
 			WHERE e.series_id = ?
 			LIMIT 1
 		`
+	case "season":
+		query = `
+			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json, l.artwork_sources_json
+			FROM libraries l
+			JOIN media_sources ms ON ms.library_id = l.id
+			JOIN episode_versions ev ON ev.media_source_id = ms.id
+			JOIN tv_episodes e ON e.id = ev.episode_id
+			WHERE e.season_id = ?
+			LIMIT 1
+		`
+	case "episode":
+		query = `
+			SELECT l.id, l.kind, l.name, l.path, l.storage_type, l.metadata_sources_json, l.artwork_sources_json
+			FROM libraries l
+			JOIN media_sources ms ON ms.library_id = l.id
+			JOIN episode_versions ev ON ev.media_source_id = ms.id
+			WHERE ev.episode_id = ?
+			LIMIT 1
+		`
 	default:
 		return libraries.Library{}, false, nil
 	}
 	var item libraries.Library
 	var rawSources string
-	err := s.db.QueryRowContext(ctx, query, itemID).Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType, &rawSources)
+	var rawArtworkSources string
+	err := s.db.QueryRowContext(ctx, query, itemID).Scan(&item.ID, &item.Kind, &item.Name, &item.Path, &item.StorageType, &rawSources, &rawArtworkSources)
 	if errors.Is(err, sql.ErrNoRows) {
 		return libraries.Library{}, false, nil
 	}
@@ -373,6 +458,7 @@ func (s *Service) GetLibraryForItem(ctx context.Context, kind string, itemID str
 		return libraries.Library{}, false, err
 	}
 	item.MetadataSources = decodeLibraryMetadataSources(item.Kind, rawSources)
+	item.ArtworkSources = decodeLibraryArtworkSources(item.Kind, rawArtworkSources)
 	return item, true, nil
 }
 
@@ -559,7 +645,7 @@ func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, 
 		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
 		LEFT JOIN tv_episodes e ON e.series_id = s.id
 		GROUP BY s.id
-		ORDER BY s.sort_title
+		ORDER BY s.sort_title, s.id
 		LIMIT ?
 	`, limit)
 	if err != nil {
@@ -581,7 +667,10 @@ func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, 
 		}
 		output = append(output, item)
 	}
-	return output, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return collapseSeriesListItems(output), nil
 }
 
 func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool, error) {
@@ -606,16 +695,36 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 		detail.Metadata = &record
 		applyTitleMetadata(&detail.Title, &detail.SortTitle, record)
 	}
+	memberIDs, err := s.seriesAggregateMemberIDs(ctx, id, detail.Metadata)
+	if err != nil {
+		return SeriesDetail{}, false, err
+	}
+	if len(memberIDs) > 1 {
+		if aggregate, err := s.seriesAggregateSummary(ctx, memberIDs); err != nil {
+			return SeriesDetail{}, false, err
+		} else {
+			detail.SeasonCount = aggregate.SeasonCount
+			detail.EpisodeCount = aggregate.EpisodeCount
+			if aggregate.Metadata != nil {
+				detail.Metadata = aggregate.Metadata
+				applyTitleMetadata(&detail.Title, &detail.SortTitle, *aggregate.Metadata)
+			} else {
+				detail.Title = aggregate.Title
+				detail.SortTitle = aggregate.SortTitle
+			}
+			detail.ID = aggregate.ID
+		}
+	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT seasons.id, seasons.season_number, e.id, e.season_number, e.episode_number, e.episode_end, e.title, e.needs_review, count(ev.media_source_id) AS version_count
 		FROM tv_seasons seasons
 		LEFT JOIN tv_episodes e ON e.season_id = seasons.id
 		LEFT JOIN episode_versions ev ON ev.episode_id = e.id
-		WHERE seasons.series_id = ?
+		WHERE seasons.series_id IN (`+sqlInPlaceholders(len(memberIDs))+`)
 		GROUP BY seasons.id, e.id
-		ORDER BY seasons.season_number, e.episode_number
-	`, id)
+		ORDER BY seasons.season_number, e.episode_number, e.id
+	`, stringArgs(memberIDs)...)
 	if err != nil {
 		return SeriesDetail{}, false, err
 	}
@@ -652,9 +761,9 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 		FROM episode_versions ev
 		JOIN media_sources ms ON ms.id = ev.media_source_id
 		JOIN tv_episodes e ON e.id = ev.episode_id
-		WHERE e.series_id = ?
+		WHERE e.series_id IN (`+sqlInPlaceholders(len(memberIDs))+`)
 		ORDER BY e.season_number, e.episode_number, ev.quality_label DESC
-	`, id)
+	`, stringArgs(memberIDs)...)
 	if err != nil {
 		return SeriesDetail{}, false, err
 	}
@@ -671,7 +780,29 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 			episode.Versions = append(episode.Versions, version)
 		}
 	}
-	return detail, true, versionRows.Err()
+	if err := versionRows.Err(); err != nil {
+		return SeriesDetail{}, false, err
+	}
+	for seasonIndex := range detail.Seasons {
+		season := &detail.Seasons[seasonIndex]
+		if record, ok, err := s.GetBestMetadata(ctx, "season", season.ID); err != nil {
+			return SeriesDetail{}, false, err
+		} else if ok {
+			season.Metadata = &record
+		}
+		for episodeIndex := range season.Episodes {
+			episode := &season.Episodes[episodeIndex]
+			if record, ok, err := s.GetBestMetadata(ctx, "episode", episode.ID); err != nil {
+				return SeriesDetail{}, false, err
+			} else if ok {
+				episode.Metadata = &record
+				if strings.TrimSpace(episode.Title) == "" {
+					episode.Title = record.Title
+				}
+			}
+		}
+	}
+	return detail, true, nil
 }
 
 func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, error) {
@@ -702,6 +833,171 @@ func (s *Service) ReviewItems(ctx context.Context, limit int) ([]ReviewItem, err
 		output = append(output, item)
 	}
 	return output, rows.Err()
+}
+
+func collapseSeriesListItems(items []SeriesListItem) []SeriesListItem {
+	if len(items) <= 1 {
+		return items
+	}
+	output := make([]SeriesListItem, 0, len(items))
+	indexByKey := map[string]int{}
+	for _, item := range items {
+		key := seriesIdentityKey(item.Metadata, item.ID)
+		index, ok := indexByKey[key]
+		if !ok {
+			indexByKey[key] = len(output)
+			output = append(output, item)
+			continue
+		}
+		existing := &output[index]
+		existing.SeasonCount += item.SeasonCount
+		existing.EpisodeCount += item.EpisodeCount
+		if shouldPreferSeriesItem(item, *existing) {
+			existing.ID = item.ID
+			existing.Title = item.Title
+			existing.SortTitle = item.SortTitle
+			existing.Metadata = item.Metadata
+		}
+	}
+	sort.SliceStable(output, func(i, j int) bool {
+		if output[i].SortTitle != output[j].SortTitle {
+			return output[i].SortTitle < output[j].SortTitle
+		}
+		return output[i].ID < output[j].ID
+	})
+	return output
+}
+
+func shouldPreferSeriesItem(candidate SeriesListItem, current SeriesListItem) bool {
+	switch {
+	case current.Metadata == nil && candidate.Metadata != nil:
+		return true
+	case current.Metadata != nil && candidate.Metadata == nil:
+		return false
+	case candidate.EpisodeCount != current.EpisodeCount:
+		return candidate.EpisodeCount > current.EpisodeCount
+	case candidate.SeasonCount != current.SeasonCount:
+		return candidate.SeasonCount > current.SeasonCount
+	case strings.TrimSpace(candidate.Title) != strings.TrimSpace(current.Title):
+		return strings.Compare(candidate.Title, current.Title) < 0
+	default:
+		return candidate.ID < current.ID
+	}
+}
+
+func seriesIdentityKey(record *MetadataRecord, fallbackID string) string {
+	if record != nil {
+		for _, provider := range []string{"tmdb", "tvdb", "imdb"} {
+			if value := strings.TrimSpace(record.ExternalIDs[provider]); value != "" {
+				return provider + ":" + value
+			}
+		}
+	}
+	return "series:" + strings.TrimSpace(fallbackID)
+}
+
+func (s *Service) seriesAggregateMemberIDs(ctx context.Context, id string, record *MetadataRecord) ([]string, error) {
+	key := seriesIdentityKey(record, id)
+	if !strings.Contains(key, ":") || strings.HasPrefix(key, "series:") {
+		return []string{id}, nil
+	}
+	parts := strings.SplitN(key, ":", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return []string{id}, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT item_id
+		FROM metadata_external_ids
+		WHERE kind = 'series' AND provider = ? AND external_id = ?
+		ORDER BY item_id
+	`, parts[0], parts[1])
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	memberIDs := []string{}
+	seen := map[string]struct{}{}
+	for rows.Next() {
+		var itemID string
+		if err := rows.Scan(&itemID); err != nil {
+			return nil, err
+		}
+		itemID = strings.TrimSpace(itemID)
+		if itemID == "" {
+			continue
+		}
+		if _, ok := seen[itemID]; ok {
+			continue
+		}
+		seen[itemID] = struct{}{}
+		memberIDs = append(memberIDs, itemID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, ok := seen[id]; !ok {
+		memberIDs = append([]string{id}, memberIDs...)
+	}
+	if len(memberIDs) == 0 {
+		return []string{id}, nil
+	}
+	return memberIDs, nil
+}
+
+func (s *Service) seriesAggregateSummary(ctx context.Context, memberIDs []string) (SeriesListItem, error) {
+	if len(memberIDs) == 0 {
+		return SeriesListItem{}, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
+		FROM tv_series s
+		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
+		LEFT JOIN tv_episodes e ON e.series_id = s.id
+		WHERE s.id IN (`+sqlInPlaceholders(len(memberIDs))+`)
+		GROUP BY s.id
+		ORDER BY s.sort_title, s.id
+	`, stringArgs(memberIDs)...)
+	if err != nil {
+		return SeriesListItem{}, err
+	}
+	defer rows.Close()
+	items := []SeriesListItem{}
+	for rows.Next() {
+		var item SeriesListItem
+		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
+			return SeriesListItem{}, err
+		}
+		if record, ok, err := s.GetBestMetadata(ctx, "series", item.ID); err != nil {
+			return SeriesListItem{}, err
+		} else if ok {
+			item.Metadata = &record
+			applyTitleMetadata(&item.Title, &item.SortTitle, record)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return SeriesListItem{}, err
+	}
+	grouped := collapseSeriesListItems(items)
+	if len(grouped) == 0 {
+		return SeriesListItem{}, nil
+	}
+	return grouped[0], nil
+}
+
+func sqlInPlaceholders(count int) string {
+	if count <= 0 {
+		return "?"
+	}
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
+}
+
+func stringArgs(values []string) []any {
+	args := make([]any, 0, len(values))
+	for _, value := range values {
+		args = append(args, value)
+	}
+	return args
 }
 
 func (s *Service) VersionGroups(ctx context.Context, limit int) ([]VersionGroup, error) {
@@ -762,6 +1058,12 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 			SET title = ?, sort_title = ?, updated_at = ?
 			WHERE id = ?
 		`, update.Title, sortTitle(update.Title), now, update.ID)
+	case "season":
+		_, err = tx.ExecContext(ctx, `
+			UPDATE tv_seasons
+			SET updated_at = ?
+			WHERE id = ?
+		`, now, update.ID)
 	case "episode":
 		_, err = tx.ExecContext(ctx, `
 			UPDATE tv_episodes
@@ -769,7 +1071,7 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 			WHERE id = ?
 		`, update.Title, boolInt(update.Review), now, update.ID)
 	default:
-		return errors.New("metadata kind must be movie, series, or episode")
+		return errors.New("metadata kind must be movie, series, season, or episode")
 	}
 	if err != nil {
 		return err
@@ -799,6 +1101,9 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 		Overview:    update.Overview,
 		PosterURL:   update.PosterURL,
 		BackdropURL: update.BackdropURL,
+		ThumbnailURL: update.ThumbnailURL,
+		LogoURL:     update.LogoURL,
+		BannerURL:   update.BannerURL,
 		Confidence:  1,
 		FetchedAt:   now,
 		UpdatedAt:   now,
@@ -810,9 +1115,9 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 
 func (s *Service) UpsertMetadataRecord(ctx context.Context, record MetadataRecord) error {
 	switch record.Kind {
-	case "movie", "series", "episode":
+	case "movie", "series", "season", "episode":
 	default:
-		return errors.New("metadata kind must be movie, series, or episode")
+		return errors.New("metadata kind must be movie, series, season, or episode")
 	}
 	if strings.TrimSpace(record.ItemID) == "" || strings.TrimSpace(record.Title) == "" {
 		return errors.New("metadata item id and title are required")
@@ -830,7 +1135,7 @@ func (s *Service) UpsertMetadataRecord(ctx context.Context, record MetadataRecor
 
 func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID string) (MetadataRecord, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id = ?
 		ORDER BY updated_at DESC
@@ -846,17 +1151,260 @@ func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID strin
 	if len(records) == 0 {
 		return MetadataRecord{}, false, nil
 	}
-	order := s.metadataOrderForItem(ctx, kind, itemID)
-	sortMetadataRecords(records, order)
-	if err := s.AttachMetadataSignals(ctx, &records[0]); err != nil {
+	merged := s.mergeMetadataRecords(ctx, kind, itemID, records)
+	if err := s.AttachMetadataSignals(ctx, &merged); err != nil {
 		return MetadataRecord{}, false, err
 	}
-	return records[0], true, nil
+	merged.MetadataStatus = s.metadataStatusForRecord(ctx, merged, records)
+	return merged, true, nil
+}
+
+func (s *Service) mergeMetadataRecords(ctx context.Context, kind string, itemID string, records []MetadataRecord) MetadataRecord {
+	if len(records) == 0 {
+		return MetadataRecord{}
+	}
+	metadataOrdered := append([]MetadataRecord(nil), records...)
+	sortMetadataRecords(metadataOrdered, s.metadataOrderForItem(ctx, kind, itemID))
+	artworkOrdered := append([]MetadataRecord(nil), records...)
+	sortMetadataRecords(artworkOrdered, s.artworkOrderForItem(ctx, kind, itemID))
+	merged := MetadataRecord{
+		Kind:       kind,
+		ItemID:     itemID,
+		Provider:   metadataOrdered[0].Provider,
+		Confidence: metadataOrdered[0].Confidence,
+		FetchedAt:  metadataOrdered[0].FetchedAt,
+		UpdatedAt:  metadataOrdered[0].UpdatedAt,
+		Provenance: MetadataProvenance{
+			Fields:      map[string]string{},
+			Ratings:     map[string]string{},
+			ExternalIDs: map[string]string{},
+		},
+	}
+	for _, record := range metadataOrdered {
+		mergeMetadataFields(&merged, record)
+	}
+	for _, record := range artworkOrdered {
+		mergeArtworkFields(&merged, record)
+	}
+	if merged.ExternalID == "" {
+		for _, record := range metadataOrdered {
+			if strings.TrimSpace(record.ExternalID) != "" {
+				merged.ExternalID = strings.TrimSpace(record.ExternalID)
+				break
+			}
+		}
+	}
+	if merged.Provider == "" {
+		for _, record := range metadataOrdered {
+			if strings.TrimSpace(record.Provider) != "" {
+				merged.Provider = strings.TrimSpace(record.Provider)
+				break
+			}
+		}
+	}
+	return merged
+}
+
+func mergeMetadataFields(target *MetadataRecord, source MetadataRecord) {
+	if target == nil {
+		return
+	}
+	assignStringField(&target.Title, source.Title, "title", source.Provider, &target.Provenance)
+	assignIntField(&target.Year, source.Year, "year", source.Provider, &target.Provenance)
+	assignStringField(&target.Overview, source.Overview, "overview", source.Provider, &target.Provenance)
+	assignStringField(&target.OriginalTitle, source.OriginalTitle, "originalTitle", source.Provider, &target.Provenance)
+	assignStringField(&target.ReleaseDate, source.ReleaseDate, "releaseDate", source.Provider, &target.Provenance)
+	assignStringField(&target.FirstAirDate, source.FirstAirDate, "firstAirDate", source.Provider, &target.Provenance)
+	assignStringField(&target.AirDate, source.AirDate, "airDate", source.Provider, &target.Provenance)
+	assignIntField(&target.RuntimeMinutes, source.RuntimeMinutes, "runtimeMinutes", source.Provider, &target.Provenance)
+	assignStringsField(&target.Genres, source.Genres, "genres", source.Provider, &target.Provenance)
+	assignStringField(&target.ContentRating, source.ContentRating, "contentRating", source.Provider, &target.Provenance)
+	assignCreditsField(&target.Cast, source.Cast, "cast", source.Provider, &target.Provenance)
+	assignCreditsField(&target.Crew, source.Crew, "crew", source.Provider, &target.Provenance)
+	assignCreditsField(&target.GuestCast, source.GuestCast, "guestCast", source.Provider, &target.Provenance)
+	assignStringsField(&target.Directors, source.Directors, "directors", source.Provider, &target.Provenance)
+	assignStringsField(&target.Writers, source.Writers, "writers", source.Provider, &target.Provenance)
+	assignStringsField(&target.Studios, source.Studios, "studios", source.Provider, &target.Provenance)
+	assignStringsField(&target.ProductionCompanies, source.ProductionCompanies, "productionCompanies", source.Provider, &target.Provenance)
+	assignStringsField(&target.Networks, source.Networks, "networks", source.Provider, &target.Provenance)
+	assignStringsField(&target.Country, source.Country, "country", source.Provider, &target.Provenance)
+	assignStringsField(&target.Language, source.Language, "language", source.Provider, &target.Provenance)
+	assignStringField(&target.StatusText, source.StatusText, "statusText", source.Provider, &target.Provenance)
+	assignCollectionField(&target.Collection, source.Collection, "collection", source.Provider, &target.Provenance)
+	assignIntField(&target.SeasonNumber, source.SeasonNumber, "seasonNumber", source.Provider, &target.Provenance)
+	assignIntField(&target.EpisodeNumber, source.EpisodeNumber, "episodeNumber", source.Provider, &target.Provenance)
+	assignIntField(&target.EpisodeCount, source.EpisodeCount, "episodeCount", source.Provider, &target.Provenance)
+}
+
+func mergeArtworkFields(target *MetadataRecord, source MetadataRecord) {
+	if target == nil {
+		return
+	}
+	assignStringField(&target.PosterURL, source.PosterURL, "poster", source.Provider, &target.Provenance)
+	assignStringField(&target.BackdropURL, source.BackdropURL, "backdrop", source.Provider, &target.Provenance)
+	assignStringField(&target.ThumbnailURL, source.ThumbnailURL, "thumbnail", source.Provider, &target.Provenance)
+	assignStringField(&target.LogoURL, source.LogoURL, "logo", source.Provider, &target.Provenance)
+	assignStringField(&target.BannerURL, source.BannerURL, "banner", source.Provider, &target.Provenance)
+}
+
+func assignStringField(target *string, source string, field string, provider string, provenance *MetadataProvenance) {
+	if target == nil || strings.TrimSpace(*target) != "" || strings.TrimSpace(source) == "" {
+		return
+	}
+	*target = strings.TrimSpace(source)
+	if provenance != nil {
+		if provenance.Fields == nil {
+			provenance.Fields = map[string]string{}
+		}
+		provenance.Fields[field] = provider
+	}
+}
+
+func assignIntField(target *int, source int, field string, provider string, provenance *MetadataProvenance) {
+	if target == nil || *target > 0 || source <= 0 {
+		return
+	}
+	*target = source
+	if provenance != nil {
+		if provenance.Fields == nil {
+			provenance.Fields = map[string]string{}
+		}
+		provenance.Fields[field] = provider
+	}
+}
+
+func assignStringsField(target *[]string, source []string, field string, provider string, provenance *MetadataProvenance) {
+	if target == nil || len(*target) > 0 {
+		return
+	}
+	next := compactStrings(source)
+	if len(next) == 0 {
+		return
+	}
+	*target = next
+	if provenance != nil {
+		if provenance.Fields == nil {
+			provenance.Fields = map[string]string{}
+		}
+		provenance.Fields[field] = provider
+	}
+}
+
+func assignCreditsField(target *[]MetadataCredit, source []MetadataCredit, field string, provider string, provenance *MetadataProvenance) {
+	if target == nil || len(*target) > 0 || len(source) == 0 {
+		return
+	}
+	*target = append([]MetadataCredit(nil), source...)
+	if provenance != nil {
+		if provenance.Fields == nil {
+			provenance.Fields = map[string]string{}
+		}
+		provenance.Fields[field] = provider
+	}
+}
+
+func assignCollectionField(target **MetadataCollection, source *MetadataCollection, field string, provider string, provenance *MetadataProvenance) {
+	if target == nil || *target != nil || source == nil {
+		return
+	}
+	copy := *source
+	*target = &copy
+	if provenance != nil {
+		if provenance.Fields == nil {
+			provenance.Fields = map[string]string{}
+		}
+		provenance.Fields[field] = provider
+	}
+}
+
+func (s *Service) metadataStatusForRecord(ctx context.Context, best MetadataRecord, records []MetadataRecord) MetadataStatus {
+	states := []string{}
+	missingFields := []string{}
+	missingArtwork := []string{}
+	hasMatch := false
+	userOverrideApplied := false
+	for _, record := range records {
+		provider := strings.ToLower(strings.TrimSpace(record.Provider))
+		if provider == "manual" {
+			userOverrideApplied = true
+		}
+		if provider != "" && provider != "filename" && provider != "artwork" {
+			hasMatch = true
+		}
+	}
+	if strings.TrimSpace(best.Title) == "" {
+		missingFields = append(missingFields, "title")
+	}
+	if strings.TrimSpace(best.Overview) == "" {
+		missingFields = append(missingFields, "overview")
+	}
+	if len(best.Genres) == 0 {
+		missingFields = append(missingFields, "genres")
+	}
+	if strings.TrimSpace(best.PosterURL) == "" {
+		missingArtwork = append(missingArtwork, "poster")
+	}
+	if strings.TrimSpace(best.BackdropURL) == "" {
+		missingArtwork = append(missingArtwork, "backdrop")
+	}
+	primary := "metadata_ready"
+	switch {
+	case !hasMatch:
+		primary = "match_failed"
+	case len(missingFields) > 0 || len(missingArtwork) > 0:
+		primary = "partial_metadata"
+	}
+	states = append(states, primary)
+	if len(missingArtwork) > 0 {
+		for _, item := range missingArtwork {
+			states = append(states, "missing_"+item)
+		}
+	}
+	if userOverrideApplied {
+		states = append(states, "user_override_applied")
+	}
+	return MetadataStatus{
+		Primary:             primary,
+		States:              compactStrings(states),
+		MissingFields:       compactStrings(missingFields),
+		MissingArtwork:      compactStrings(missingArtwork),
+		Matched:             hasMatch,
+		UserOverrideApplied: userOverrideApplied,
+	}
+}
+
+func (s *Service) artworkOrderForItem(ctx context.Context, kind string, itemID string) []string {
+	libraryKind := metadataLibraryKind(kind)
+	if library, ok, err := s.GetLibraryForItem(ctx, kind, itemID); err == nil && ok {
+		if order := metasources.NormalizeRequestedArtworkOrder(string(libraryKind), library.ArtworkSources); len(order) > 0 {
+			return order
+		}
+	}
+	return metasources.DefaultArtworkOrder(string(libraryKind))
+}
+
+func metadataLibraryKind(kind string) libraries.Kind {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "series", "season", "episode", "tv":
+		return libraries.KindTV
+	default:
+		return libraries.KindMovies
+	}
+}
+
+func (s *Service) metadataOrderForItem(ctx context.Context, kind string, itemID string) []string {
+	libraryKind := metadataLibraryKind(kind)
+	if library, ok, err := s.GetLibraryForItem(ctx, kind, itemID); err == nil && ok {
+		if order := metasources.NormalizeRequestedSourceOrder(string(libraryKind), library.MetadataSources); len(order) > 0 {
+			return order
+		}
+	}
+	return metasources.DefaultSourceOrder(string(libraryKind))
 }
 
 func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID string) ([]MetadataRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id = ?
 		ORDER BY updated_at DESC
@@ -877,15 +1425,6 @@ func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID s
 		}
 	}
 	return records, nil
-}
-
-func (s *Service) metadataOrderForItem(ctx context.Context, kind string, itemID string) []string {
-	if library, ok, err := s.GetLibraryForItem(ctx, kind, itemID); err == nil && ok {
-		if order := metasources.NormalizeRequestedSourceOrder(kind, library.MetadataSources); len(order) > 0 {
-			return order
-		}
-	}
-	return metasources.DefaultSourceOrder(kind)
 }
 
 func sortMetadataRecords(records []MetadataRecord, order []string) {
@@ -952,20 +1491,22 @@ func metadataLocalPreference(provider string) int {
 		return 2
 	case "filename":
 		return 3
-	case "tvmaze":
+	case "fanart":
 		return 4
-	case "tvdb":
+	case "tvmaze":
 		return 5
-	case "tmdb":
+	case "tvdb":
 		return 6
-	case "wikipedia":
+	case "tmdb":
 		return 7
-	case "wikidata":
+	case "wikipedia":
 		return 8
-	case "omdb":
+	case "wikidata":
 		return 9
-	default:
+	case "omdb":
 		return 10
+	default:
+		return 11
 	}
 }
 
@@ -1042,6 +1583,152 @@ func RatingMap(ratings []Rating) Ratings {
 	return output
 }
 
+type metadataDetailsPayload struct {
+	OriginalTitle       string              `json:"originalTitle,omitempty"`
+	ReleaseDate         string              `json:"releaseDate,omitempty"`
+	FirstAirDate        string              `json:"firstAirDate,omitempty"`
+	AirDate             string              `json:"airDate,omitempty"`
+	RuntimeMinutes      int                 `json:"runtimeMinutes,omitempty"`
+	Genres              []string            `json:"genres,omitempty"`
+	ContentRating       string              `json:"contentRating,omitempty"`
+	Cast                []MetadataCredit    `json:"cast,omitempty"`
+	Crew                []MetadataCredit    `json:"crew,omitempty"`
+	GuestCast           []MetadataCredit    `json:"guestCast,omitempty"`
+	Directors           []string            `json:"directors,omitempty"`
+	Writers             []string            `json:"writers,omitempty"`
+	Studios             []string            `json:"studios,omitempty"`
+	ProductionCompanies []string            `json:"productionCompanies,omitempty"`
+	Networks            []string            `json:"networks,omitempty"`
+	Country             []string            `json:"country,omitempty"`
+	Language            []string            `json:"language,omitempty"`
+	StatusText          string              `json:"statusText,omitempty"`
+	Collection          *MetadataCollection `json:"collection,omitempty"`
+	SeasonNumber        int                 `json:"seasonNumber,omitempty"`
+	EpisodeNumber       int                 `json:"episodeNumber,omitempty"`
+	EpisodeCount        int                 `json:"episodeCount,omitempty"`
+}
+
+type metadataArtworkPayload struct {
+	ThumbnailURL     string `json:"thumbnailUrl,omitempty"`
+	LogoURL          string `json:"logoUrl,omitempty"`
+	BannerURL        string `json:"bannerUrl,omitempty"`
+	LandscapeURL     string `json:"landscapeUrl,omitempty"`
+	ClearLogoURL     string `json:"clearLogoUrl,omitempty"`
+	CollectionPosterURL   string `json:"collectionPosterUrl,omitempty"`
+	CollectionBackdropURL string `json:"collectionBackdropUrl,omitempty"`
+}
+
+func metadataDetailsJSON(record MetadataRecord) string {
+	payload := metadataDetailsPayload{
+		OriginalTitle:       record.OriginalTitle,
+		ReleaseDate:         record.ReleaseDate,
+		FirstAirDate:        record.FirstAirDate,
+		AirDate:             record.AirDate,
+		RuntimeMinutes:      record.RuntimeMinutes,
+		Genres:              compactStrings(record.Genres),
+		ContentRating:       strings.TrimSpace(record.ContentRating),
+		Cast:                record.Cast,
+		Crew:                record.Crew,
+		GuestCast:           record.GuestCast,
+		Directors:           compactStrings(record.Directors),
+		Writers:             compactStrings(record.Writers),
+		Studios:             compactStrings(record.Studios),
+		ProductionCompanies: compactStrings(record.ProductionCompanies),
+		Networks:            compactStrings(record.Networks),
+		Country:             compactStrings(record.Country),
+		Language:            compactStrings(record.Language),
+		StatusText:          strings.TrimSpace(record.StatusText),
+		Collection:          record.Collection,
+		SeasonNumber:        record.SeasonNumber,
+		EpisodeNumber:       record.EpisodeNumber,
+		EpisodeCount:        record.EpisodeCount,
+	}
+	raw, _ := json.Marshal(payload)
+	return string(raw)
+}
+
+func metadataArtworkJSON(record MetadataRecord) string {
+	payload := metadataArtworkPayload{
+		ThumbnailURL:         strings.TrimSpace(record.ThumbnailURL),
+		LogoURL:              strings.TrimSpace(record.LogoURL),
+		BannerURL:            strings.TrimSpace(record.BannerURL),
+	}
+	raw, _ := json.Marshal(payload)
+	return string(raw)
+}
+
+func applyMetadataDetails(record *MetadataRecord) {
+	if record == nil || strings.TrimSpace(record.DetailsJSON) == "" {
+		return
+	}
+	var payload metadataDetailsPayload
+	if err := json.Unmarshal([]byte(record.DetailsJSON), &payload); err != nil {
+		return
+	}
+	record.OriginalTitle = strings.TrimSpace(payload.OriginalTitle)
+	record.ReleaseDate = strings.TrimSpace(payload.ReleaseDate)
+	record.FirstAirDate = strings.TrimSpace(payload.FirstAirDate)
+	record.AirDate = strings.TrimSpace(payload.AirDate)
+	record.RuntimeMinutes = payload.RuntimeMinutes
+	record.Genres = compactStrings(payload.Genres)
+	record.ContentRating = strings.TrimSpace(payload.ContentRating)
+	record.Cast = payload.Cast
+	record.Crew = payload.Crew
+	record.GuestCast = payload.GuestCast
+	record.Directors = compactStrings(payload.Directors)
+	record.Writers = compactStrings(payload.Writers)
+	record.Studios = compactStrings(payload.Studios)
+	record.ProductionCompanies = compactStrings(payload.ProductionCompanies)
+	record.Networks = compactStrings(payload.Networks)
+	record.Country = compactStrings(payload.Country)
+	record.Language = compactStrings(payload.Language)
+	record.StatusText = strings.TrimSpace(payload.StatusText)
+	record.Collection = payload.Collection
+	record.SeasonNumber = payload.SeasonNumber
+	record.EpisodeNumber = payload.EpisodeNumber
+	record.EpisodeCount = payload.EpisodeCount
+}
+
+func applyMetadataArtwork(record *MetadataRecord) {
+	if record == nil || strings.TrimSpace(record.ArtworkJSON) == "" {
+		return
+	}
+	var payload metadataArtworkPayload
+	if err := json.Unmarshal([]byte(record.ArtworkJSON), &payload); err != nil {
+		return
+	}
+	record.ThumbnailURL = firstNonEmptyTrimmed(record.ThumbnailURL, payload.ThumbnailURL)
+	record.LogoURL = firstNonEmptyTrimmed(record.LogoURL, payload.LogoURL)
+	record.BannerURL = firstNonEmptyTrimmed(record.BannerURL, payload.BannerURL)
+}
+
+func compactStrings(values []string) []string {
+	output := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		output = append(output, trimmed)
+	}
+	return output
+}
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
 func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
 	output := []MetadataRecord{}
 	for rows.Next() {
@@ -1056,6 +1743,11 @@ func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
 			&item.Overview,
 			&item.PosterURL,
 			&item.BackdropURL,
+			&item.ThumbnailURL,
+			&item.LogoURL,
+			&item.BannerURL,
+			&item.ArtworkJSON,
+			&item.DetailsJSON,
 			&item.Confidence,
 			&item.RawJSON,
 			&item.FetchedAt,
@@ -1063,6 +1755,8 @@ func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
 		); err != nil {
 			return nil, err
 		}
+		applyMetadataArtwork(&item)
+		applyMetadataDetails(&item)
 		output = append(output, item)
 	}
 	return output, rows.Err()
@@ -1571,17 +2265,22 @@ func upsertLibrary(ctx context.Context, tx *sql.Tx, library libraries.Library) e
 	if err != nil {
 		return err
 	}
+	rawArtworkSources, err := json.Marshal(library.ArtworkSources)
+	if err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO libraries(id, kind, name, path, storage_type, metadata_sources_json, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO libraries(id, kind, name, path, storage_type, metadata_sources_json, artwork_sources_json, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			kind = excluded.kind,
 			name = excluded.name,
 			path = excluded.path,
 			storage_type = excluded.storage_type,
 			metadata_sources_json = excluded.metadata_sources_json,
+			artwork_sources_json = excluded.artwork_sources_json,
 			updated_at = excluded.updated_at
-	`, library.ID, library.Kind, library.Name, library.Path, library.StorageType, string(rawSources), now)
+	`, library.ID, library.Kind, library.Name, library.Path, library.StorageType, string(rawSources), string(rawArtworkSources), now)
 	return err
 }
 
@@ -1591,6 +2290,14 @@ func decodeLibraryMetadataSources(kind libraries.Kind, raw string) []string {
 		_ = json.Unmarshal([]byte(raw), &values)
 	}
 	return metasources.NormalizeRequestedSourceOrder(string(kind), values)
+}
+
+func decodeLibraryArtworkSources(kind libraries.Kind, raw string) []string {
+	var values []string
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &values)
+	}
+	return metasources.NormalizeRequestedArtworkOrder(string(kind), values)
 }
 
 func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord) error {
@@ -1608,9 +2315,14 @@ func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord
 	if record.UpdatedAt == "" {
 		record.UpdatedAt = now
 	}
+	record.ThumbnailURL = strings.TrimSpace(record.ThumbnailURL)
+	record.LogoURL = strings.TrimSpace(record.LogoURL)
+	record.BannerURL = strings.TrimSpace(record.BannerURL)
+	record.DetailsJSON = metadataDetailsJSON(record)
+	record.ArtworkJSON = metadataArtworkJSON(record)
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO metadata_records(kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, confidence, raw_json, fetched_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO metadata_records(kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(kind, item_id, provider) DO UPDATE SET
 			external_id = excluded.external_id,
 			title = excluded.title,
@@ -1618,11 +2330,16 @@ func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord
 			overview = excluded.overview,
 			poster_url = excluded.poster_url,
 			backdrop_url = excluded.backdrop_url,
+			thumbnail_url = excluded.thumbnail_url,
+			logo_url = excluded.logo_url,
+			banner_url = excluded.banner_url,
+			artwork_json = excluded.artwork_json,
+			details_json = excluded.details_json,
 			confidence = excluded.confidence,
 			raw_json = excluded.raw_json,
 			fetched_at = excluded.fetched_at,
 			updated_at = excluded.updated_at
-	`, record.Kind, record.ItemID, record.Provider, record.ExternalID, record.Title, record.Year, record.Overview, record.PosterURL, record.BackdropURL, record.Confidence, record.RawJSON, record.FetchedAt, record.UpdatedAt)
+	`, record.Kind, record.ItemID, record.Provider, record.ExternalID, record.Title, record.Year, record.Overview, record.PosterURL, record.BackdropURL, record.ThumbnailURL, record.LogoURL, record.BannerURL, record.ArtworkJSON, record.DetailsJSON, record.Confidence, record.RawJSON, record.FetchedAt, record.UpdatedAt)
 	return err
 }
 

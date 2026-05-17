@@ -1295,7 +1295,11 @@ func librarySaveHandler(deps Deps) http.HandlerFunc {
 		if len(request.MetadataSources) == 0 {
 			request.MetadataSources = defaultMetadataSourcePreferenceForLibrary(currentConfig(deps), request.Kind)
 		}
+		if len(request.ArtworkSources) == 0 {
+			request.ArtworkSources = defaultArtworkSourcePreferenceForLibrary(currentConfig(deps), request.Kind)
+		}
 		request.MetadataSources = metasources.NormalizeRequestedSourceOrder(string(request.Kind), request.MetadataSources)
+		request.ArtworkSources = metasources.NormalizeRequestedArtworkOrder(string(request.Kind), request.ArtworkSources)
 		library, err := deps.Catalog.SaveLibrary(r.Context(), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -2023,6 +2027,27 @@ func metadataBackdrop(record *catalog.MetadataRecord) string {
 	return normalizeArtworkSourceURL(record.BackdropURL, "backdrop")
 }
 
+func metadataThumbnail(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return normalizeArtworkSourceURL(record.ThumbnailURL, "thumbnail")
+}
+
+func metadataLogo(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return normalizeArtworkSourceURL(record.LogoURL, "logo")
+}
+
+func metadataBanner(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return normalizeArtworkSourceURL(record.BannerURL, "banner")
+}
+
 func normalizeArtworkSourceURL(raw string, artType string) string {
 	_ = artType
 	source := strings.TrimSpace(raw)
@@ -2267,6 +2292,7 @@ func metadataProviders(ctx context.Context, deps Deps) []map[string]any {
 		{"id": "wikidata", "name": "Wikidata", "status": "automatic", "local": false},
 		{"id": "tmdb", "name": "TMDB", "status": "managed-ready", "local": false},
 		{"id": "tvdb", "name": "TheTVDB", "status": "managed-ready", "local": false},
+		{"id": "fanart", "name": "Fanart.tv", "status": "managed-ready", "local": false},
 		{"id": "omdb", "name": "OMDb", "status": "managed-ready", "local": false},
 	}
 	for _, provider := range providers {
@@ -2274,7 +2300,7 @@ func metadataProviders(ctx context.Context, deps Deps) []map[string]any {
 		if id == "" {
 			continue
 		}
-		if id != "tmdb" && id != "tvdb" && id != "omdb" {
+		if id != "tmdb" && id != "tvdb" && id != "fanart" && id != "omdb" {
 			continue
 		}
 		state, ok := health[id]
@@ -2314,7 +2340,9 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid artwork path")
 			return
 		}
-		if artType != "poster" && artType != "backdrop" {
+		switch artType {
+		case "poster", "backdrop", "thumbnail", "thumb", "logo", "banner":
+		default:
 			writeError(w, http.StatusBadRequest, "invalid artwork type")
 			return
 		}
@@ -2373,12 +2401,37 @@ func metadataArtworkCandidates(records []catalog.MetadataRecord, artType string)
 		seen[key] = struct{}{}
 		output = append(output, value)
 	}
-	if strings.EqualFold(artType, "backdrop") {
+	switch strings.ToLower(strings.TrimSpace(artType)) {
+	case "backdrop":
 		for _, record := range records {
 			push(metadataBackdrop(&record))
 		}
 		for _, record := range records {
 			push(metadataPoster(&record))
+		}
+		return output
+	case "thumbnail", "thumb":
+		for _, record := range records {
+			push(metadataThumbnail(&record))
+		}
+		for _, record := range records {
+			push(metadataBackdrop(&record))
+		}
+		for _, record := range records {
+			push(metadataPoster(&record))
+		}
+		return output
+	case "logo":
+		for _, record := range records {
+			push(metadataLogo(&record))
+		}
+		return output
+	case "banner":
+		for _, record := range records {
+			push(metadataBanner(&record))
+		}
+		for _, record := range records {
+			push(metadataBackdrop(&record))
 		}
 		return output
 	}
@@ -2622,6 +2675,23 @@ func artworkPassesQualityGateBytes(payload []byte, artType string, sourceHint st
 }
 
 func artworkQualityThresholds(artType string, strict bool) (minWidth int, minHeight int) {
+	switch strings.ToLower(strings.TrimSpace(artType)) {
+	case "logo":
+		if strict {
+			return 400, 120
+		}
+		return 160, 48
+	case "banner":
+		if strict {
+			return 1000, 180
+		}
+		return 360, 64
+	case "thumbnail", "thumb":
+		if strict {
+			return 640, 360
+		}
+		return 240, 135
+	}
 	if !strict {
 		if strings.EqualFold(artType, "backdrop") {
 			return 480, 270
@@ -2641,6 +2711,20 @@ func artworkDimensionHints(source string, artType string) (int, int) {
 	}
 	if strings.Contains(value, "image.tmdb.org/t/p/") {
 		return tmdbArtworkHint(value, artType)
+	}
+	if strings.Contains(value, "fanart.tv/fanart") {
+		switch strings.ToLower(strings.TrimSpace(artType)) {
+		case "logo":
+			return 800, 310
+		case "banner":
+			return 1000, 185
+		case "thumbnail", "thumb":
+			return 1000, 562
+		case "backdrop":
+			return 1920, 1080
+		default:
+			return 1000, 1500
+		}
 	}
 	if strings.Contains(value, "tvmaze.com") {
 		if strings.Contains(value, "/original") || strings.Contains(value, "original_") {
@@ -2789,6 +2873,8 @@ func metadataSourceCatalogPayload(ctx context.Context, cfg config.Config, servic
 				"managed":        definition.Managed,
 				"requiresConfig": definition.RequiresConfig,
 				"available":      definition.Available,
+				"supportsMetadata": definition.SupportsMetadata,
+				"supportsArtwork":  definition.SupportsArtwork,
 			}
 			if definition.Managed {
 				state, ok := health[definition.ID]
@@ -2819,8 +2905,10 @@ func metadataSourceCatalogPayload(ctx context.Context, cfg config.Config, servic
 
 func metadataSourcePreferencesPayload(cfg config.Config) map[string][]string {
 	return map[string][]string{
-		"movie":  configuredMetadataSourceOrder(cfg, "movie"),
-		"series": configuredMetadataSourceOrder(cfg, "series"),
+		"movie":         configuredMetadataSourceOrder(cfg, "movie"),
+		"series":        configuredMetadataSourceOrder(cfg, "series"),
+		"movieArtwork":  configuredArtworkSourceOrder(cfg, "movie"),
+		"seriesArtwork": configuredArtworkSourceOrder(cfg, "series"),
 	}
 }
 
@@ -2833,12 +2921,30 @@ func configuredMetadataSourceOrder(cfg config.Config, kind string) []string {
 	}
 }
 
+func configuredArtworkSourceOrder(cfg config.Config, kind string) []string {
+	switch metasources.NormalizeKind(kind) {
+	case "series":
+		return metasources.NormalizeRequestedArtworkOrder("series", cfg.SeriesArtworkSources)
+	default:
+		return metasources.NormalizeRequestedArtworkOrder("movie", cfg.MovieArtworkSources)
+	}
+}
+
 func defaultMetadataSourcePreferenceForLibrary(cfg config.Config, kind libraries.Kind) []string {
 	switch kind {
 	case libraries.KindTV:
 		return configuredMetadataSourceOrder(cfg, "series")
 	default:
 		return configuredMetadataSourceOrder(cfg, "movie")
+	}
+}
+
+func defaultArtworkSourcePreferenceForLibrary(cfg config.Config, kind libraries.Kind) []string {
+	switch kind {
+	case libraries.KindTV:
+		return configuredArtworkSourceOrder(cfg, "series")
+	default:
+		return configuredArtworkSourceOrder(cfg, "movie")
 	}
 }
 
@@ -2982,8 +3088,10 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
-			Movie  []string `json:"movie"`
-			Series []string `json:"series"`
+			Movie         []string `json:"movie"`
+			Series        []string `json:"series"`
+			MovieArtwork  []string `json:"movieArtwork"`
+			SeriesArtwork []string `json:"seriesArtwork"`
 		}
 		if !decodeJSON(w, r, &request) {
 			return
@@ -2991,6 +3099,8 @@ func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
 
 		movie := metasources.NormalizeRequestedSourceOrder("movie", request.Movie)
 		series := metasources.NormalizeRequestedSourceOrder("series", request.Series)
+		movieArtwork := metasources.NormalizeRequestedArtworkOrder("movie", request.MovieArtwork)
+		seriesArtwork := metasources.NormalizeRequestedArtworkOrder("series", request.SeriesArtwork)
 		if len(movie) == 0 {
 			writeError(w, http.StatusBadRequest, "choose at least one movie metadata source")
 			return
@@ -2999,10 +3109,20 @@ func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "choose at least one TV metadata source")
 			return
 		}
+		if len(movieArtwork) == 0 {
+			writeError(w, http.StatusBadRequest, "choose at least one movie artwork source")
+			return
+		}
+		if len(seriesArtwork) == 0 {
+			writeError(w, http.StatusBadRequest, "choose at least one TV artwork source")
+			return
+		}
 
 		updated := currentConfig(deps)
 		updated.MovieMetadataSources = append([]string(nil), movie...)
 		updated.SeriesMetadataSources = append([]string(nil), series...)
+		updated.MovieArtworkSources = append([]string(nil), movieArtwork...)
+		updated.SeriesArtworkSources = append([]string(nil), seriesArtwork...)
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "metadata source settings save failed")
 			return
@@ -3017,8 +3137,10 @@ func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
 			switch library.Kind {
 			case libraries.KindMovies:
 				library.MetadataSources = append([]string(nil), movie...)
+				library.ArtworkSources = append([]string(nil), movieArtwork...)
 			case libraries.KindTV:
 				library.MetadataSources = append([]string(nil), series...)
+				library.ArtworkSources = append([]string(nil), seriesArtwork...)
 			default:
 				continue
 			}
@@ -3034,8 +3156,10 @@ func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
 		payload := metadataSourcePreferencesPayload(updated)
 		deps.Events.Publish("settings.updated", map[string]any{"metadataSourcePreferences": payload})
 		publishDomainAudit(deps, r, "audit.settings", "settings.metadata_sources.update", "allowed", map[string]any{
-			"movieSources":  payload["movie"],
-			"seriesSources": payload["series"],
+			"movieSources":        payload["movie"],
+			"seriesSources":       payload["series"],
+			"movieArtworkSources": payload["movieArtwork"],
+			"seriesArtworkSources": payload["seriesArtwork"],
 		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"metadataSourcePreferences": payload,
@@ -3425,21 +3549,6 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"watchDebounceSecs": cfg.WatchDebounceSecs,
 		"probeBatchLimit":   cfg.ProbeBatchLimit,
 		"allowedOrigins":    cfg.AllowedOrigins,
-		"metadataProviders": map[string]any{
-			"automatic": []map[string]any{
-				{"id": "filename", "name": "Filename and folders", "coverage": "All libraries", "note": "Always on"},
-				{"id": "nfo", "name": "Local NFO", "coverage": "Movies and TV with sidecars", "note": "Always on"},
-				{"id": "artwork", "name": "Poster and fanart sidecars", "coverage": "Movies and TV with local images", "note": "Always on"},
-				{"id": "tvmaze", "name": "TVMaze", "coverage": "Series metadata and TV ratings", "note": "No user account required"},
-				{"id": "wikipedia", "name": "Wikipedia", "coverage": "Movie and series summaries and art where available", "note": "No user account required"},
-				{"id": "wikidata", "name": "Wikidata", "coverage": "Movie and series labels, external IDs, and Wikimedia artwork", "note": "No user account required"},
-			},
-			"managedOverrides": []map[string]any{
-				{"id": "omdb", "name": "OMDb", "configured": managedProviderConfiguredForConfig("omdb", cfg), "coverage": "IMDb, Rotten Tomatoes, Metacritic"},
-				{"id": "tmdb", "name": "TMDB", "configured": managedProviderConfiguredForConfig("tmdb", cfg), "coverage": "TMDB community ratings and IDs"},
-				{"id": "tvdb", "name": "TheTVDB", "configured": managedProviderConfiguredForConfig("tvdb", cfg), "coverage": "TV and movie metadata, IDs, and ratings"},
-			},
-		},
 	}
 }
 
