@@ -301,6 +301,16 @@ export interface SettingsResponse {
 			available?: boolean;
 			runtimeReady?: boolean;
 			status?: string;
+			supportsMetadata?: boolean;
+			supportsArtwork?: boolean;
+			providerHealth?: {
+				id?: string;
+				managed?: boolean;
+				configured?: boolean;
+				healthy?: boolean;
+				status?: string;
+				error?: string;
+			};
 		}>;
 		series?: Array<{
 			id?: string;
@@ -314,11 +324,23 @@ export interface SettingsResponse {
 			available?: boolean;
 			runtimeReady?: boolean;
 			status?: string;
+			supportsMetadata?: boolean;
+			supportsArtwork?: boolean;
+			providerHealth?: {
+				id?: string;
+				managed?: boolean;
+				configured?: boolean;
+				healthy?: boolean;
+				status?: string;
+				error?: string;
+			};
 		}>;
 	};
 	metadataSourcePreferences?: {
 		movie?: string[];
 		series?: string[];
+		movieArtwork?: string[];
+		seriesArtwork?: string[];
 	};
 	config?: {
 		serverName?: string;
@@ -338,10 +360,6 @@ export interface SettingsResponse {
 		transcodeWorkers?: number;
 		gpuWorkers?: number;
 		hardwareUnlocked?: boolean;
-		metadataProviders?: {
-			automatic?: Array<{ id?: string; name?: string; note?: string }>;
-			managedOverrides?: Array<{ id?: string; name?: string; configured?: boolean }>;
-		};
 	};
 	libraries?: Array<{
 		id?: string;
@@ -371,6 +389,8 @@ export interface UpdateSettingsRequest {
 export interface UpdateMetadataSourcePreferencesRequest {
 	movie: string[];
 	series: string[];
+	movieArtwork: string[];
+	seriesArtwork: string[];
 }
 
 export function getCatalogSummary(client: ApiClient = apiClient): Promise<CatalogSummaryResponse> {

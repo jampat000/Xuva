@@ -2456,50 +2456,29 @@ func TestSettingsServerNameMigratesLegacyDefault(t *testing.T) {
 	}
 }
 
-func TestSettingsManagedProviderOverridesIgnoreClientKeyInjection(t *testing.T) {
-	t.Setenv("XUVA_MANAGED_TMDB_API_KEY", "managed-tmdb-key")
+func TestSettingsIgnoreManagedProviderKeysInUserSettings(t *testing.T) {
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 
-	update := requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
+	requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
 		"tmdbApiKey": "tmdb-test-key",
+		"tvdbApiKey": "tvdb-test-key",
+		"fanartTvApiKey": "fanart-test-key",
 		"omdbApiKey": "omdb-test-key",
 	})
-	configPayload, _ := update["config"].(map[string]any)
-	metadataProviders, _ := configPayload["metadataProviders"].(map[string]any)
-	managedOverrides, _ := metadataProviders["managedOverrides"].([]any)
-	configured := map[string]bool{}
-	for _, raw := range managedOverrides {
-		item, _ := raw.(map[string]any)
-		id, _ := item["id"].(string)
-		value, _ := item["configured"].(bool)
-		configured[id] = value
-	}
-	if configured["tmdb"] != true || configured["omdb"] != false || configured["tvdb"] != false {
-		t.Fatalf("expected configured managed overrides after key save, got %#v", managedOverrides)
-	}
 
 	reloaded := getJSON(t, router, "/api/settings")
 	reloadedConfig, _ := reloaded["config"].(map[string]any)
-	reloadedProviders, _ := reloadedConfig["metadataProviders"].(map[string]any)
-	reloadedOverrides, _ := reloadedProviders["managedOverrides"].([]any)
-	reloadedConfigured := map[string]bool{}
-	for _, raw := range reloadedOverrides {
-		item, _ := raw.(map[string]any)
-		id, _ := item["id"].(string)
-		value, _ := item["configured"].(bool)
-		reloadedConfigured[id] = value
-	}
-	if reloadedConfigured["tmdb"] != true || reloadedConfigured["omdb"] != false || reloadedConfigured["tvdb"] != false {
-		t.Fatalf("expected managed override state to persist after reload, got %#v", reloadedOverrides)
+	if _, ok := reloadedConfig["metadataProviders"]; ok {
+		t.Fatalf("expected settings payload to keep managed providers out of user settings, got %#v", reloadedConfig["metadataProviders"])
 	}
 
 	saved, err := config.LoadFile(deps.Config.DataDir)
 	if err != nil {
 		t.Fatalf("load saved settings file: %v", err)
 	}
-	if saved.TMDBAPIKey != "" || saved.OMDbAPIKey != "" || saved.TVDBAPIKey != "" {
-		t.Fatalf("expected settings API to avoid persisting managed provider keys, got %#v", saved)
+	if saved.TMDBAPIKey != "" || saved.TVDBAPIKey != "" || saved.FanartTVAPIKey != "" || saved.OMDbAPIKey != "" {
+		t.Fatalf("expected settings API to ignore managed provider keys, got %#v", saved)
 	}
 }
 
@@ -2511,13 +2490,17 @@ func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T)
 	preferences, _ := initial["metadataSourcePreferences"].(map[string]any)
 	movie, _ := preferences["movie"].([]any)
 	series, _ := preferences["series"].([]any)
-	if len(movie) == 0 || len(series) == 0 {
+	movieArtwork, _ := preferences["movieArtwork"].([]any)
+	seriesArtwork, _ := preferences["seriesArtwork"].([]any)
+	if len(movie) == 0 || len(series) == 0 || len(movieArtwork) == 0 || len(seriesArtwork) == 0 {
 		t.Fatalf("expected default metadata source preferences, got %#v", initial)
 	}
 
 	update := requestJSON(t, router, http.MethodPut, "/api/settings/metadata-sources", map[string]any{
-		"movie":  []string{"wikipedia", "tmdb", "filename"},
-		"series": []string{"tvmaze", "wikidata", "filename"},
+		"movie":         []string{"wikipedia", "tmdb", "filename"},
+		"series":        []string{"tvmaze", "wikidata", "filename"},
+		"movieArtwork":  []string{"artwork", "fanart", "tmdb"},
+		"seriesArtwork": []string{"artwork", "fanart", "tvdb"},
 	})
 	if update["restartRequired"] != false {
 		t.Fatalf("expected metadata source updates to avoid restart, got %#v", update)
@@ -2526,11 +2509,19 @@ func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T)
 	updatedPreferences, _ := update["metadataSourcePreferences"].(map[string]any)
 	updatedMovie, _ := updatedPreferences["movie"].([]any)
 	updatedSeries, _ := updatedPreferences["series"].([]any)
+	updatedMovieArtwork, _ := updatedPreferences["movieArtwork"].([]any)
+	updatedSeriesArtwork, _ := updatedPreferences["seriesArtwork"].([]any)
 	if len(updatedMovie) != 3 || updatedMovie[0] != "wikipedia" || updatedMovie[1] != "tmdb" || updatedMovie[2] != "filename" {
 		t.Fatalf("expected movie metadata source order to persist, got %#v", updatedPreferences)
 	}
 	if len(updatedSeries) != 3 || updatedSeries[0] != "tvmaze" || updatedSeries[1] != "wikidata" || updatedSeries[2] != "filename" {
 		t.Fatalf("expected series metadata source order to persist, got %#v", updatedPreferences)
+	}
+	if len(updatedMovieArtwork) != 3 || updatedMovieArtwork[0] != "artwork" || updatedMovieArtwork[1] != "fanart" || updatedMovieArtwork[2] != "tmdb" {
+		t.Fatalf("expected movie artwork source order to persist, got %#v", updatedPreferences)
+	}
+	if len(updatedSeriesArtwork) != 3 || updatedSeriesArtwork[0] != "artwork" || updatedSeriesArtwork[1] != "fanart" || updatedSeriesArtwork[2] != "tvdb" {
+		t.Fatalf("expected series artwork source order to persist, got %#v", updatedPreferences)
 	}
 
 	saved, err := config.LoadFile(deps.Config.DataDir)
@@ -2543,6 +2534,12 @@ func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T)
 	if len(saved.SeriesMetadataSources) != 3 || saved.SeriesMetadataSources[0] != "tvmaze" || saved.SeriesMetadataSources[1] != "wikidata" || saved.SeriesMetadataSources[2] != "filename" {
 		t.Fatalf("expected saved series metadata source order, got %#v", saved.SeriesMetadataSources)
 	}
+	if len(saved.MovieArtworkSources) != 3 || saved.MovieArtworkSources[0] != "artwork" || saved.MovieArtworkSources[1] != "fanart" || saved.MovieArtworkSources[2] != "tmdb" {
+		t.Fatalf("expected saved movie artwork source order, got %#v", saved.MovieArtworkSources)
+	}
+	if len(saved.SeriesArtworkSources) != 3 || saved.SeriesArtworkSources[0] != "artwork" || saved.SeriesArtworkSources[1] != "fanart" || saved.SeriesArtworkSources[2] != "tvdb" {
+		t.Fatalf("expected saved series artwork source order, got %#v", saved.SeriesArtworkSources)
+	}
 }
 
 func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
@@ -2551,8 +2548,10 @@ func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
 	router := NewRouter(deps)
 
 	requestJSON(t, router, http.MethodPut, "/api/settings/metadata-sources", map[string]any{
-		"movie":  []string{"wikipedia", "tmdb", "filename"},
-		"series": []string{"tvmaze", "wikidata", "filename"},
+		"movie":         []string{"wikipedia", "tmdb", "filename"},
+		"series":        []string{"tvmaze", "wikidata", "filename"},
+		"movieArtwork":  []string{"artwork", "fanart", "tmdb"},
+		"seriesArtwork": []string{"artwork", "fanart", "tvdb"},
 	})
 
 	moviesLibrary := postJSON(t, router, "/api/libraries", map[string]any{
@@ -2563,6 +2562,9 @@ func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
 	if got := moviesLibrary["metadataSources"].([]any); len(got) != 3 || got[0] != "wikipedia" || got[1] != "tmdb" || got[2] != "filename" {
 		t.Fatalf("expected movies library to inherit metadata source order, got %#v", moviesLibrary)
 	}
+	if got := moviesLibrary["artworkSources"].([]any); len(got) != 3 || got[0] != "artwork" || got[1] != "fanart" || got[2] != "tmdb" {
+		t.Fatalf("expected movies library to inherit artwork source order, got %#v", moviesLibrary)
+	}
 
 	tvLibrary := postJSON(t, router, "/api/libraries", map[string]any{
 		"kind": "tv",
@@ -2571,6 +2573,9 @@ func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
 	})
 	if got := tvLibrary["metadataSources"].([]any); len(got) != 3 || got[0] != "tvmaze" || got[1] != "wikidata" || got[2] != "filename" {
 		t.Fatalf("expected TV library to inherit metadata source order, got %#v", tvLibrary)
+	}
+	if got := tvLibrary["artworkSources"].([]any); len(got) != 3 || got[0] != "artwork" || got[1] != "fanart" || got[2] != "tvdb" {
+		t.Fatalf("expected TV library to inherit artwork source order, got %#v", tvLibrary)
 	}
 }
 

@@ -120,11 +120,7 @@ const routesToCheck = [
 	'/tv',
 	...dynamicRoutes,
 	'/settings',
-	'/admin',
-	'/collections',
-	'/watchlist',
-	'/continue-watching',
-	'/recently-added'
+	'/admin'
 ];
 const notSupportedRoutes = ['/legacy', '/legacy/settings', '/next', '/next/movies', '/next/settings'];
 

@@ -48,7 +48,7 @@ type providerRuntimeState struct {
 func (s *Service) ProviderHealth(ctx context.Context) map[string]ProviderHealth {
 	cfg := s.activeConfig()
 	output := map[string]ProviderHealth{}
-	for _, provider := range []string{"tvmaze", "wikipedia", "wikidata", "tmdb", "tvdb", "omdb"} {
+	for _, provider := range []string{"tvmaze", "wikipedia", "wikidata", "tmdb", "tvdb", "fanart", "omdb"} {
 		output[provider] = s.providerHealth(provider, cfg)
 	}
 	return output
@@ -279,6 +279,12 @@ func managedProviderCredential(provider string, cfg config.Config) string {
 			os.Getenv("XUVA_TVDB_API_KEY"),
 			cfg.TVDBAPIKey,
 		)
+	case "fanart":
+		return firstNonEmptyTrimmed(
+			os.Getenv("XUVA_MANAGED_FANARTTV_API_KEY"),
+			os.Getenv("XUVA_FANARTTV_API_KEY"),
+			cfg.FanartTVAPIKey,
+		)
 	case "omdb":
 		return firstNonEmptyTrimmed(
 			os.Getenv("XUVA_MANAGED_OMDB_API_KEY"),
@@ -305,7 +311,7 @@ func firstNonEmptyTrimmed(values ...string) string {
 
 func isManagedProvider(provider string) bool {
 	switch normalizeProviderID(provider) {
-	case "tmdb", "tvdb", "omdb":
+	case "tmdb", "tvdb", "fanart", "omdb":
 		return true
 	default:
 		return false

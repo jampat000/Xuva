@@ -13,9 +13,9 @@ import (
 	"github.com/jampat000/Xuva/server/internal/config"
 )
 
-func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {
+func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshRequest, metadataOrder []string, artworkOrder []string, cfg config.Config, result *RefreshResult) error {
 	warnings := []string{}
-	for _, source := range order {
+	for _, source := range combinedSourceOrder(metadataOrder, artworkOrder) {
 		source = normalizeProviderID(source)
 		switch source {
 		case "filename", "manual", "nfo", "artwork":
@@ -25,7 +25,7 @@ func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshReq
 				continue
 			}
 			if err := s.runProvider(source, false, cfg, func() error {
-				return s.refreshTVMaze(ctx, request, order, result)
+				return s.refreshTVMaze(ctx, request, metadataOrder, result)
 			}); err != nil {
 				warnings = appendProviderWarning(warnings, "TVMaze refresh failed: ", err)
 			}
@@ -34,7 +34,7 @@ func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshReq
 				continue
 			}
 			if err := s.runProvider(source, false, cfg, func() error {
-				return s.refreshWikipedia(ctx, request, order, result)
+				return s.refreshWikipedia(ctx, request, metadataOrder, result)
 			}); err != nil {
 				warnings = appendProviderWarning(warnings, "Wikipedia refresh failed: ", err)
 			}
@@ -43,7 +43,7 @@ func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshReq
 				continue
 			}
 			if err := s.runProvider(source, false, cfg, func() error {
-				return s.refreshWikidata(ctx, request, order, result)
+				return s.refreshWikidata(ctx, request, metadataOrder, result)
 			}); err != nil {
 				warnings = appendProviderWarning(warnings, "Wikidata refresh failed: ", err)
 			}
@@ -52,7 +52,7 @@ func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshReq
 				continue
 			}
 			if err := s.runProvider(source, true, cfg, func() error {
-				return s.refreshTVDB(ctx, request, order, cfg, result)
+				return s.refreshTVDB(ctx, request, metadataOrder, cfg, result)
 			}); err != nil {
 				warnings = appendProviderWarning(warnings, "TheTVDB refresh failed: ", err)
 			}
@@ -61,16 +61,25 @@ func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshReq
 				continue
 			}
 			if err := s.runProvider(source, true, cfg, func() error {
-				return s.refreshTMDB(ctx, request, order, cfg, result)
+				return s.refreshTMDB(ctx, request, metadataOrder, cfg, result)
 			}); err != nil {
 				warnings = appendProviderWarning(warnings, "TMDB refresh failed: ", err)
+			}
+		case "fanart":
+			if request.Kind != "movie" && request.Kind != "series" {
+				continue
+			}
+			if err := s.runProvider(source, true, cfg, func() error {
+				return s.refreshFanart(ctx, request, artworkOrder, cfg, result)
+			}); err != nil {
+				warnings = appendProviderWarning(warnings, "Fanart.tv refresh failed: ", err)
 			}
 		case "omdb":
 			if request.Kind != "movie" && request.Kind != "series" {
 				continue
 			}
 			if err := s.runProvider(source, true, cfg, func() error {
-				return s.refreshOMDb(ctx, request, order, cfg, result)
+				return s.refreshOMDb(ctx, request, metadataOrder, cfg, result)
 			}); err != nil {
 				warnings = appendProviderWarning(warnings, "OMDb refresh failed: ", err)
 			}
@@ -80,6 +89,25 @@ func (s *Service) refreshAutomaticOnline(ctx context.Context, request RefreshReq
 		return nil
 	}
 	return errors.New(strings.Join(warnings, "; "))
+}
+
+func combinedSourceOrder(metadataOrder []string, artworkOrder []string) []string {
+	output := []string{}
+	seen := map[string]struct{}{}
+	for _, group := range [][]string{metadataOrder, artworkOrder} {
+		for _, source := range group {
+			normalized := normalizeProviderID(source)
+			if normalized == "" {
+				continue
+			}
+			if _, exists := seen[normalized]; exists {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			output = append(output, normalized)
+		}
+	}
+	return output
 }
 
 func appendProviderWarning(warnings []string, prefix string, err error) []string {

@@ -1372,9 +1372,17 @@ async function assertMetadataSection(page, state) {
 		return;
 	}
 
-	assert.equal(await page.getByTestId('metadata-source-form').count(), 1);
+	assert.equal(await page.getByTestId('metadata-mode-list').count(), 1);
+	assert.equal(await page.getByTestId('metadata-source-form').count(), 0);
 	assert.equal(await page.getByTestId('metadata-review-list').count(), 1);
 	assert.equal(await page.getByTestId('metadata-version-groups').count(), 1);
+	await selectedSection.getByLabel('Advanced provider settings', { exact: true }).check();
+	await page.waitForFunction(
+		() => document.body.innerText.includes('Advanced Provider Settings'),
+		null,
+		{ timeout: 5000 }
+	);
+	assert.equal(await page.getByTestId('metadata-source-form').count(), 1);
 	assert.equal(await page.getByTestId('metadata-source-list-movie').count(), 1);
 	assert.equal(await page.getByTestId('metadata-source-list-series').count(), 1);
 	assert.match(await selectedSection.innerText(), /Unavailable in this build/);
@@ -1387,13 +1395,13 @@ async function assertMetadataSection(page, state) {
 		.locator('[data-testid="metadata-source-list-movie"] input[type="checkbox"]')
 		.nth(4)
 		.uncheck();
-	await selectedSection.getByRole('button', { name: 'Save Metadata Sources', exact: true }).click();
+	await selectedSection.getByRole('button', { name: 'Save Metadata Preferences', exact: true }).click();
 	await page.waitForFunction(
-		() => document.body.innerText.includes('Metadata source settings saved.'),
+		() => document.body.innerText.includes('Metadata preferences saved.'),
 		null,
 		{ timeout: 5000 }
 	);
-	assert.match(await page.locator('body').innerText(), /Metadata source settings saved\./);
+	assert.match(await page.locator('body').innerText(), /Metadata preferences saved\./);
 	assert.ok(state.metadataSourcePreferences.movie.length >= 1);
 	assert.ok(state.metadataSourcePreferences.series.length >= 1);
 

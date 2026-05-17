@@ -18,12 +18,31 @@ func (s *Service) sourceOrder(ctx context.Context, request RefreshRequest) []str
 	return metasources.NormalizeSourceOrder(request.Kind, metadataSourcePreferenceForKind(cfg, request.Kind), cfg)
 }
 
+func (s *Service) artworkOrder(ctx context.Context, request RefreshRequest) []string {
+	cfg := s.activeConfig()
+	if s.catalog != nil {
+		if library, ok, err := s.catalog.GetLibraryForItem(ctx, request.Kind, request.ID); err == nil && ok {
+			return metasources.NormalizeRequestedArtworkOrder(request.Kind, library.ArtworkSources)
+		}
+	}
+	return metasources.NormalizeRequestedArtworkOrder(request.Kind, artworkSourcePreferenceForKind(cfg, request.Kind))
+}
+
 func metadataSourcePreferenceForKind(cfg config.Config, kind string) []string {
 	switch metasources.NormalizeKind(kind) {
 	case "series":
 		return append([]string(nil), cfg.SeriesMetadataSources...)
 	default:
 		return append([]string(nil), cfg.MovieMetadataSources...)
+	}
+}
+
+func artworkSourcePreferenceForKind(cfg config.Config, kind string) []string {
+	switch metasources.NormalizeKind(kind) {
+	case "series":
+		return append([]string(nil), cfg.SeriesArtworkSources...)
+	default:
+		return append([]string(nil), cfg.MovieArtworkSources...)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -113,7 +112,8 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 	}
 
 	cfg := s.activeConfig()
-	order := s.sourceOrder(ctx, request)
+	metadataOrder := s.sourceOrder(ctx, request)
+	artworkOrder := s.artworkOrder(ctx, request)
 	result := RefreshResult{
 		Kind: request.Kind,
 		ID:   request.ID,
@@ -126,15 +126,16 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			"tvdb":      cfg.TVDBAPIKey != "",
 			"wikidata":  true,
 			"wikipedia": true,
+			"fanart":    cfg.FanartTVAPIKey != "",
 			"omdb":      cfg.OMDbAPIKey != "",
 			"tmdb":      cfg.TMDBAPIKey != "",
 		},
 	}
 
-	if err := s.refreshLocal(ctx, request, order, &result); err != nil {
+	if err := s.refreshLocal(ctx, request, metadataOrder, artworkOrder, &result); err != nil {
 		result.Warnings = append(result.Warnings, "Local metadata refresh failed: "+err.Error())
 	}
-	if err := s.refreshAutomaticOnline(ctx, request, order, cfg, &result); err != nil {
+	if err := s.refreshAutomaticOnline(ctx, request, metadataOrder, artworkOrder, cfg, &result); err != nil {
 		result.Warnings = append(result.Warnings, err.Error())
 	}
 
@@ -331,70 +332,6 @@ func (s *Service) refreshOMDb(ctx context.Context, request RefreshRequest, order
 		return err
 	}
 	result.Ratings = append(result.Ratings, ratings...)
-	return nil
-}
-
-func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {
-	if request.Kind != "movie" && request.Kind != "series" {
-		return nil
-	}
-	apiKey := managedProviderCredential("tmdb", cfg)
-	path := "movie"
-	if request.Kind == "series" {
-		path = "tv"
-	}
-	searchURL := fmt.Sprintf("%s/search/%s?", strings.TrimRight(s.tmdbBaseURL, "/"), path) + url.Values{
-		"api_key": {apiKey},
-		"query":   {request.Title},
-	}.Encode()
-	if request.Year > 0 && request.Kind == "movie" {
-		searchURL += "&year=" + strconv.Itoa(request.Year)
-	}
-	var search tmdbSearch
-	if err := s.getJSON(ctx, searchURL, &search); err != nil {
-		return err
-	}
-	if len(search.Results) == 0 {
-		return errors.New("no TMDB match")
-	}
-	match := search.Results[0]
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	title := firstNonEmpty(match.Title, match.Name, request.Title)
-	if err := s.catalog.UpsertMetadataRecord(ctx, catalog.MetadataRecord{
-		Kind:        request.Kind,
-		ItemID:      request.ID,
-		Provider:    "tmdb",
-		ExternalID:  strconv.Itoa(match.ID),
-		Title:       title,
-		Year:        parseYear(firstNonEmpty(match.ReleaseDate, match.FirstAirDate), request.Year),
-		Overview:    match.Overview,
-		PosterURL:   tmdbImageURL(match.PosterPath, "original"),
-		BackdropURL: tmdbImageURL(match.BackdropPath, "original"),
-		Confidence:  sourceConfidence(order, "tmdb", 0.84),
-		RawJSON:     mustJSON(match),
-		FetchedAt:   now,
-		UpdatedAt:   now,
-	}); err != nil {
-		return err
-	}
-	_ = s.catalog.UpsertExternalID(ctx, catalog.ExternalID{Kind: request.Kind, ItemID: request.ID, Provider: "tmdb", ExternalID: strconv.Itoa(match.ID)})
-	rating := catalog.Rating{
-		Kind:         request.Kind,
-		ItemID:       request.ID,
-		Provider:     "tmdb",
-		RatingType:   "tmdb",
-		Value:        match.VoteAverage,
-		DisplayValue: fmt.Sprintf("%.1f/10", match.VoteAverage),
-		Scale:        10,
-		Votes:        match.VoteCount,
-		SourceURL:    fmt.Sprintf("https://www.themoviedb.org/%s/%d", path, match.ID),
-		FetchedAt:    now,
-		UpdatedAt:    now,
-	}
-	if err := s.catalog.UpsertRatings(ctx, []catalog.Rating{rating}); err != nil {
-		return err
-	}
-	result.Ratings = append(result.Ratings, rating)
 	return nil
 }
 

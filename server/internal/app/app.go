@@ -118,6 +118,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 			Path:            cfg.MovieLibraryPath,
 			Kind:            libraries.KindMovies,
 			MetadataSources: metasources.NormalizeRequestedSourceOrder("movie", cfg.MovieMetadataSources),
+			ArtworkSources:  metasources.NormalizeRequestedArtworkOrder("movie", cfg.MovieArtworkSources),
 		})
 		if err == nil {
 			libraryService.Set(library)
@@ -130,6 +131,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 			Path:            cfg.TVLibraryPath,
 			Kind:            libraries.KindTV,
 			MetadataSources: metasources.NormalizeRequestedSourceOrder("series", cfg.SeriesMetadataSources),
+			ArtworkSources:  metasources.NormalizeRequestedArtworkOrder("series", cfg.SeriesArtworkSources),
 		})
 		if err == nil {
 			libraryService.Set(library)

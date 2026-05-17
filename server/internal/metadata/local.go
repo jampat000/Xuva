@@ -34,14 +34,14 @@ type nfoEnvelope struct {
 	TVDBID        string   `xml:"tvdbid"`
 }
 
-func (s *Service) refreshLocal(ctx context.Context, request RefreshRequest, order []string, result *RefreshResult) error {
+func (s *Service) refreshLocal(ctx context.Context, request RefreshRequest, metadataOrder []string, artworkOrder []string, result *RefreshResult) error {
 	mediaCtx, err := s.localMediaContext(ctx, request)
 	if err != nil || mediaCtx == nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
-	if sourceEnabled(order, "nfo") {
+	if sourceEnabled(metadataOrder, "nfo") || sourceEnabled(artworkOrder, "nfo") {
 		if nfoPath, nfo, ok := loadNFO(mediaCtx, request.Kind); ok {
 			record := catalog.MetadataRecord{
 				Kind:        request.Kind,
@@ -53,7 +53,8 @@ func (s *Service) refreshLocal(ctx context.Context, request RefreshRequest, orde
 				Overview:    strings.TrimSpace(nfo.Plot),
 				PosterURL:   localArtworkURL(firstNonEmpty(resolveRelativeMediaPath(mediaCtx.rootPath, firstNonEmpty(nfo.Thumbs...)), detectArtwork(mediaCtx.rootPath, "poster"))),
 				BackdropURL: localArtworkURL(firstNonEmpty(resolveRelativeMediaPath(mediaCtx.rootPath, firstNonEmpty(nfo.FanartThumbs...)), detectArtwork(mediaCtx.rootPath, "backdrop"))),
-				Confidence:  sourceConfidence(order, "nfo", 0.98),
+				OriginalTitle: strings.TrimSpace(nfo.OriginalTitle),
+				Confidence:  sourceConfidence(metadataOrder, "nfo", 0.98),
 				RawJSON:     mustJSON(map[string]any{"path": nfoPath}),
 				FetchedAt:   now,
 				UpdatedAt:   now,
@@ -69,7 +70,7 @@ func (s *Service) refreshLocal(ctx context.Context, request RefreshRequest, orde
 		}
 	}
 
-	if !sourceEnabled(order, "artwork") {
+	if !sourceEnabled(artworkOrder, "artwork") {
 		return nil
 	}
 	poster := detectArtwork(mediaCtx.rootPath, "poster")
@@ -85,7 +86,7 @@ func (s *Service) refreshLocal(ctx context.Context, request RefreshRequest, orde
 		Year:        request.Year,
 		PosterURL:   localArtworkURL(poster),
 		BackdropURL: localArtworkURL(backdrop),
-		Confidence:  sourceConfidence(order, "artwork", 0.82),
+		Confidence:  sourceConfidence(artworkOrder, "artwork", 0.82),
 		RawJSON:     mustJSON(map[string]any{"rootPath": mediaCtx.rootPath}),
 		FetchedAt:   now,
 		UpdatedAt:   now,
