@@ -2,12 +2,13 @@
   import { Play, Plus, Search, SlidersHorizontal } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
 
-  let { eyebrow, title, tagline, items, kind } = $props<{
+  let { eyebrow, title, tagline, items, kind, loading = false } = $props<{
     eyebrow: string;
     title: string;
     tagline: string;
     items: Media[];
     kind: "Movies" | "TV";
+    loading?: boolean;
   }>();
 
   type Density = "S" | "M" | "L";
@@ -197,7 +198,19 @@
   </div>
 
   <section class="px-6 pt-10 md:px-12 lg:px-20">
-    {#if filtered.length === 0}
+    {#if loading}
+      <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
+        {#each { length: 18 } as _, i (i)}
+          <div class="animate-pulse">
+            <div class="aspect-[2/3] rounded-xl bg-foreground/[0.07]"></div>
+            {#if density !== "S"}
+              <div class="mt-3 h-4 w-3/4 rounded bg-foreground/[0.07]"></div>
+              <div class="mt-1.5 h-3 w-1/2 rounded bg-foreground/[0.05]"></div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {:else if filtered.length === 0}
       <div class="hairline flex flex-col items-center justify-center rounded-3xl bg-surface/30 py-24 text-center">
         <div class="font-serif-display text-3xl">Nothing matches that</div>
         <p class="mt-2 max-w-sm text-sm text-muted-foreground">
