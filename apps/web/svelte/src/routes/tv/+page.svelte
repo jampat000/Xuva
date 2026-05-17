@@ -1,12 +1,25 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
-  import { recentSeries, topTen } from "$lib/mock-data";
+  import { getSeries } from '$lib/api/browse';
+  import { seriesToMedia } from '$lib/api/adapters';
+  import type { Media } from '$lib/mock-data';
 
-  const items = [
-    ...recentSeries,
-    ...topTen.filter((item) => item.type === "Series")
-  ].filter((item, index, all) => all.findIndex((current) => current.id === item.id) === index);
+  let items = $state<Media[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+
+  onMount(async () => {
+    try {
+      const resp = await getSeries();
+      items = (resp.series ?? []).map(seriesToMedia);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load TV shows';
+    } finally {
+      loading = false;
+    }
+  });
 </script>
 
 <svelte:head>
@@ -24,11 +37,24 @@
 
 <div class="min-h-screen bg-background">
   <Header />
-  <LibraryGrid
-    eyebrow="Your library · TV"
-    title="Stories told in seasons."
-    tagline="Pick up mid-episode, queue the next season, or fall down a rabbit hole — your full series shelf, beautifully laid out."
-    items={items}
-    kind="TV"
-  />
+  {#if error}
+    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+      <p class="text-sm text-destructive">{error}</p>
+      <button
+        onclick={() => { error = null; loading = true; getSeries().then(r => { items = (r.series ?? []).map(seriesToMedia); }).catch(e => { error = e instanceof Error ? e.message : 'Failed'; }).finally(() => { loading = false; }); }}
+        class="hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Try again
+      </button>
+    </div>
+  {:else}
+    <LibraryGrid
+      eyebrow="Your library · TV"
+      title="Stories told in seasons."
+      tagline="Pick up mid-episode, queue the next season, or fall down a rabbit hole — your full series shelf, beautifully laid out."
+      {items}
+      {loading}
+      kind="TV"
+    />
+  {/if}
 </div>

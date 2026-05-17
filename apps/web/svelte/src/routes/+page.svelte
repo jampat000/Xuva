@@ -1,4 +1,5 @@
-﻿<script lang="ts">
+<script lang="ts">
+  import { onMount } from 'svelte';
   import heroFeatured from "$lib/assets/hero-featured.jpg";
   import CollectionsBento from "$lib/components/CollectionsBento.svelte";
   import ContentRow from "$lib/components/ContentRow.svelte";
@@ -7,16 +8,45 @@
   import Logo from "$lib/components/Logo.svelte";
   import MoodSelector from "$lib/components/MoodSelector.svelte";
   import Top10Row from "$lib/components/Top10Row.svelte";
-  import {
-    collections,
-    continueWatching,
-    recentMovies,
-    recentSeries,
-    spotlightSlides,
-    topTen
-  } from "$lib/mock-data";
+  import { getClientHome } from '$lib/api/home';
+  import { clientHomeItemToMedia } from '$lib/api/adapters';
+  import type { Media, Collection } from '$lib/mock-data';
 
   const currentYear = new Date().getFullYear();
+
+  let slides = $state<Media[]>([]);
+  let continueWatching = $state<Media[]>([]);
+  let recentMovies = $state<Media[]>([]);
+  let recentSeries = $state<Media[]>([]);
+  let topTen = $state<Media[]>([]);
+  let collections = $state<Collection[]>([]);
+  let loading = $state(true);
+
+  onMount(async () => {
+    try {
+      const resp = await getClientHome();
+      if (resp.hero) {
+        slides = [clientHomeItemToMedia(resp.hero)];
+      }
+      for (const row of resp.rows ?? []) {
+        const items = (row.items ?? []).map(clientHomeItemToMedia);
+        const t = (row.title ?? '').toLowerCase();
+        if (t.includes('continue') || t.includes('watching')) {
+          continueWatching = items;
+        } else if (t.includes('movie')) {
+          recentMovies = items;
+        } else if (t.includes('series') || t.includes('show') || t.includes('episode')) {
+          recentSeries = items;
+        } else if (t.includes('top')) {
+          topTen = items;
+        }
+      }
+    } catch {
+      // Components render gracefully with empty arrays
+    } finally {
+      loading = false;
+    }
+  });
 </script>
 
 <svelte:head>
@@ -37,33 +67,58 @@
 <div class="min-h-screen bg-background">
   <Header />
   <main class="pb-24">
-    <Hero slides={spotlightSlides} />
+    <Hero slides={slides.length ? slides : []} />
 
     <div class="relative z-10 -mt-12 space-y-16 md:-mt-16 md:space-y-20">
-      <ContentRow
-        eyebrow="Pick up where you left off"
-        title="Continue watching"
-        items={continueWatching}
-        variant="wide"
-      />
+      {#if continueWatching.length > 0}
+        <ContentRow
+          eyebrow="Pick up where you left off"
+          title="Continue watching"
+          items={continueWatching}
+          variant="wide"
+        />
+      {/if}
 
       <MoodSelector />
 
-      <Top10Row items={topTen} />
+      {#if topTen.length > 0}
+        <Top10Row items={topTen} />
+      {/if}
 
-      <CollectionsBento items={collections} />
+      {#if collections.length > 0}
+        <CollectionsBento items={collections} />
+      {/if}
 
-      <ContentRow
-        eyebrow="Fresh in your library"
-        title="New movies"
-        items={recentMovies}
-      />
+      {#if recentMovies.length > 0}
+        <ContentRow
+          eyebrow="Fresh in your library"
+          title="New movies"
+          items={recentMovies}
+        />
+      {/if}
 
-      <ContentRow
-        eyebrow="New episodes dropped"
-        title="New series"
-        items={recentSeries}
-      />
+      {#if recentSeries.length > 0}
+        <ContentRow
+          eyebrow="New episodes dropped"
+          title="New series"
+          items={recentSeries}
+        />
+      {/if}
+
+      {#if !loading && continueWatching.length === 0 && recentMovies.length === 0 && recentSeries.length === 0}
+        <div class="flex flex-col items-center justify-center px-6 py-24 text-center">
+          <p class="font-serif-display text-3xl">Your library is ready.</p>
+          <p class="mt-3 max-w-sm text-sm text-muted-foreground">
+            Add a library in settings to start streaming your collection.
+          </p>
+          <a
+            href="/settings"
+            class="hairline mt-6 rounded-full bg-foreground/[0.06] px-6 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Go to settings
+          </a>
+        </div>
+      {/if}
     </div>
 
     <section class="relative mx-6 mt-28 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-surface/60 via-surface/30 to-background p-10 backdrop-blur md:mx-12 md:p-16 lg:mx-20">

@@ -1,14 +1,25 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
-  import { featured, spotlightSlides, recentMovies, topTen } from "$lib/mock-data";
+  import { getMovies } from '$lib/api/browse';
+  import { movieToMedia } from '$lib/api/adapters';
+  import type { Media } from '$lib/mock-data';
 
-  const items = [
-    featured,
-    ...spotlightSlides.filter((slide) => slide.type === "Movie"),
-    ...recentMovies,
-    ...topTen.filter((item) => item.type === "Movie")
-  ].filter((item, index, all) => all.findIndex((current) => current.id === item.id) === index);
+  let items = $state<Media[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+
+  onMount(async () => {
+    try {
+      const resp = await getMovies();
+      items = (resp.movies ?? []).map(movieToMedia);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load movies';
+    } finally {
+      loading = false;
+    }
+  });
 </script>
 
 <svelte:head>
@@ -26,11 +37,24 @@
 
 <div class="min-h-screen bg-background">
   <Header />
-  <LibraryGrid
-    eyebrow="Your library · Movies"
-    title="Films worth a night."
-    tagline="Every movie in your collection, organized the way you actually browse — by mood, by genre, by what you almost watched last weekend."
-    items={items}
-    kind="Movies"
-  />
+  {#if error}
+    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+      <p class="text-sm text-destructive">{error}</p>
+      <button
+        onclick={() => { error = null; loading = true; getMovies().then(r => { items = (r.movies ?? []).map(movieToMedia); }).catch(e => { error = e instanceof Error ? e.message : 'Failed'; }).finally(() => { loading = false; }); }}
+        class="hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Try again
+      </button>
+    </div>
+  {:else}
+    <LibraryGrid
+      eyebrow="Your library · Movies"
+      title="Films worth a night."
+      tagline="Every movie in your collection, organized the way you actually browse — by mood, by genre, by what you almost watched last weekend."
+      {items}
+      {loading}
+      kind="Movies"
+    />
+  {/if}
 </div>
