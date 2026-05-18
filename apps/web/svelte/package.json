@@ -14,9 +14,12 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "node --test ./tests/**/*.test.cjs"
 	},
+	"overrides": {
+		"cookie": "^0.7.0"
+	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.10",
-		"@sveltejs/kit": "^2.57.0",
+		"@sveltejs/kit": "^2.60.1",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@tailwindcss/vite": "^4.3.0",
 		"@types/node": "^24.10.1",
