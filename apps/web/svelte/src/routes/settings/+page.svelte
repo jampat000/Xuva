@@ -721,7 +721,7 @@
     if (active === 'pending-approvals' && pairingRequests.length === 0 && !pairingLoading) loadPairingRequests();
     if (active === 'approved-devices' && approvedDevices.length === 0 && !devicesLoading) loadApprovedDevices();
     if (active === 'playback' && deviceProfiles.length === 0) loadDeviceProfiles();
-    if ((active === 'transcoding' || active === 'playback') && !perfSettings && !perfLoading) loadPerf();
+    if ((active === 'transcoding' || active === 'playback' || active === 'scanning') && !perfSettings && !perfLoading) loadPerf();
     if (active !== current.id) sectionError = null;
   });
 
@@ -1691,6 +1691,42 @@
                     <RefreshCw class="h-4 w-4" /> Scan all libraries
                   {/if}
                 </button>
+              </div>
+            </section>
+
+            <!-- Background task scheduler (#58) -->
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Background tasks</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  How Xuva handles library scans, metadata fetches, and media probes while you watch.
+                </p>
+              </div>
+              <div class="space-y-3">
+                <div class="hairline flex items-center justify-between rounded-xl bg-surface/40 px-4 py-3">
+                  <div>
+                    <div class="text-sm font-medium">Pause when streaming</div>
+                    <div class="mt-0.5 text-[11px] text-muted-foreground">
+                      Library scans and media probes pause automatically whenever a playback session is active, so streaming always takes priority.
+                    </div>
+                  </div>
+                  <span class="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-300">On</span>
+                </div>
+                {#if perfSettings?.queues}
+                  {#each perfSettings.queues.filter(q => q.name !== 'transcode') as q (q.name)}
+                    <div class="hairline flex items-center gap-4 rounded-xl bg-surface/40 px-4 py-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="text-sm font-medium capitalize">{q.name} queue</div>
+                        <div class="text-[11px] text-muted-foreground">
+                          {q.workers ?? 1} worker{(q.workers ?? 1) !== 1 ? 's' : ''} &middot; {q.active ?? 0} active &middot; {q.queued ?? 0} queued
+                        </div>
+                      </div>
+                      {#if (q.active ?? 0) > 0}
+                        <div class="h-3 w-3 animate-pulse rounded-full bg-primary-glow" title="Processing"></div>
+                      {/if}
+                    </div>
+                  {/each}
+                {/if}
               </div>
             </section>
 
