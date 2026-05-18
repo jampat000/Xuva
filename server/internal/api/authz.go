@@ -90,6 +90,47 @@ var routePolicies = map[string]routePolicy{
 	"DELETE /api/sessions/{id}":                              route("DELETE /api/sessions/{id}", "sessions", "session.stop", roleAdmin, roleStandard),
 	"PUT /api/playback/state/{id}":                           route("PUT /api/playback/state/{id}", "playback", "playback.state.update", roleAdmin, roleStandard),
 	"GET /play/{id}":                                         route("GET /play/{id}", "playback", "player.open", roleAdmin, roleStandard),
+
+	// --- read-only endpoints (issue #55: auth lockdown) ---
+	// Admin-only operational / config reads:
+	"GET /api/metrics":              route("GET /api/metrics", "system", "system.metrics", roleAdmin),
+	"GET /api/events":               route("GET /api/events", "system", "system.events", roleAdmin),
+	"GET /api/architecture":         route("GET /api/architecture", "system", "system.architecture", roleAdmin),
+	"GET /api/system/status":        route("GET /api/system/status", "system", "system.status", roleAdmin),
+	"GET /api/remote/access":        route("GET /api/remote/access", "remote", "remote.access.read", roleAdmin),
+	"GET /api/libraries":            route("GET /api/libraries", "libraries", "library.list", roleAdmin),
+	"GET /api/catalog/summary":      route("GET /api/catalog/summary", "catalog", "catalog.summary", roleAdmin),
+	"GET /api/catalog/health":       route("GET /api/catalog/health", "catalog", "catalog.health", roleAdmin),
+	"GET /api/review":               route("GET /api/review", "metadata", "metadata.review", roleAdmin),
+	"GET /api/metadata/providers":   route("GET /api/metadata/providers", "metadata", "metadata.providers", roleAdmin),
+	"GET /api/metadata/suggestions": route("GET /api/metadata/suggestions", "metadata", "metadata.suggestions", roleAdmin),
+	"GET /api/settings":             route("GET /api/settings", "settings", "settings.read", roleAdmin),
+	"GET /api/settings/performance": route("GET /api/settings/performance", "settings", "settings.performance.read", roleAdmin),
+	"GET /api/probes":               route("GET /api/probes", "media", "probe.list", roleAdmin),
+	"GET /api/probes/{id}":          route("GET /api/probes/{id}", "media", "probe.read", roleAdmin),
+	"GET /api/work":                 route("GET /api/work", "work", "work.list", roleAdmin),
+	"GET /api/downloads":            route("GET /api/downloads", "downloads", "downloads.list", roleAdmin),
+	"GET /api/downloads/{id}":       route("GET /api/downloads/{id}", "downloads", "downloads.read", roleAdmin),
+	"GET /api/scans":                route("GET /api/scans", "libraries", "scans.list", roleAdmin),
+	"GET /api/scans/{id}":           route("GET /api/scans/{id}", "libraries", "scans.read", roleAdmin),
+
+	// Both roles can read media-browsing surfaces:
+	"GET /api/movies":                            route("GET /api/movies", "catalog", "movies.list", roleAdmin, roleStandard),
+	"GET /api/movies/{id}":                       route("GET /api/movies/{id}", "catalog", "movies.read", roleAdmin, roleStandard),
+	"GET /api/series":                            route("GET /api/series", "catalog", "series.list", roleAdmin, roleStandard),
+	"GET /api/series/{id}":                       route("GET /api/series/{id}", "catalog", "series.read", roleAdmin, roleStandard),
+	"GET /api/metadata/{kind}/{id}":              route("GET /api/metadata/{kind}/{id}", "metadata", "metadata.read", roleAdmin, roleStandard),
+	"GET /api/artwork/{kind}/{id}":               route("GET /api/artwork/{kind}/{id}", "metadata", "artwork.read", roleAdmin, roleStandard),
+	"GET /api/versions":                          route("GET /api/versions", "catalog", "versions.read", roleAdmin, roleStandard),
+	"GET /api/media-sources":                     route("GET /api/media-sources", "media", "media.list", roleAdmin, roleStandard),
+	"GET /api/media-sources/{id}":                route("GET /api/media-sources/{id}", "media", "media.read", roleAdmin, roleStandard),
+	"GET /api/media-sources/{id}/tracks":         route("GET /api/media-sources/{id}/tracks", "media", "media.tracks", roleAdmin, roleStandard),
+	"GET /api/media-sources/{id}/subtitles":      route("GET /api/media-sources/{id}/subtitles", "media", "media.subtitles", roleAdmin, roleStandard),
+	"GET /api/devices/profiles":                  route("GET /api/devices/profiles", "devices", "devices.profiles", roleAdmin, roleStandard),
+	"GET /api/playback/recent":                   route("GET /api/playback/recent", "playback", "playback.recent", roleAdmin, roleStandard),
+	"GET /api/playback/state/{id}":               route("GET /api/playback/state/{id}", "playback", "playback.state.read", roleAdmin, roleStandard),
+	"GET /api/playback/decision":                 route("GET /api/playback/decision", "playback", "playback.decision", roleAdmin, roleStandard),
+	"GET /api/playback/route":                    route("GET /api/playback/route", "playback", "playback.route", roleAdmin, roleStandard),
 }
 
 func handleProtected(mux *http.ServeMux, deps Deps, pattern string, next http.HandlerFunc) {

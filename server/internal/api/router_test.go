@@ -1010,7 +1010,7 @@ func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing
 	if scan.status != http.StatusAccepted {
 		t.Fatalf("expected authenticated scan start, got %d: %s", scan.status, scan.body)
 	}
-	waitForScan(t, router, scan.payload["id"].(string))
+	waitForScanAs(t, router, scan.payload["id"].(string), client)
 	sources := client.requestJSON(t, router, http.MethodGet, "/api/media-sources", nil)
 	sourceID := sources.payload["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
 	if err := deps.Catalog.SaveProbe(context.Background(), sourceID, catalog.ProbeResult{
@@ -1058,14 +1058,14 @@ func TestMigrationDryRunImportAndRollback(t *testing.T) {
 	if movieScan.status != http.StatusAccepted {
 		t.Fatalf("movie scan start: %d %s", movieScan.status, movieScan.body)
 	}
-	waitForScan(t, router, movieScan.payload["id"].(string))
+	waitForScanAs(t, router, movieScan.payload["id"].(string), client)
 	tvScan := client.requestJSON(t, router, http.MethodPost, "/api/libraries/tv/scan", map[string]any{
 		"path": filepath.Join(root, "TV"),
 	})
 	if tvScan.status != http.StatusAccepted {
 		t.Fatalf("tv scan start: %d %s", tvScan.status, tvScan.body)
 	}
-	waitForScan(t, router, tvScan.payload["id"].(string))
+	waitForScanAs(t, router, tvScan.payload["id"].(string), client)
 
 	movies := client.requestJSON(t, router, http.MethodGet, "/api/movies", nil)
 	series := client.requestJSON(t, router, http.MethodGet, "/api/series", nil)
@@ -1125,7 +1125,7 @@ func TestMigrationDryRunImportAndRollback(t *testing.T) {
 	if rollback.status != http.StatusOK || rollback.payload["status"] != "rolled_back" {
 		t.Fatalf("expected rollback report, got %d %#v", rollback.status, rollback.payload)
 	}
-	recent := getJSON(t, router, "/api/playback/recent")
+	recent := client.requestJSON(t, router, http.MethodGet, "/api/playback/recent", nil).payload
 	if len(recent["recent"].([]any)) != 0 {
 		t.Fatalf("expected rollback to clear imported playback state, got %#v", recent)
 	}
@@ -3097,11 +3097,23 @@ func decodeBody(t *testing.T, body []byte) map[string]any {
 }
 
 func waitForScan(t *testing.T, router http.Handler, id string) map[string]any {
+	return waitForScanAs(t, router, id, nil)
+}
+
+// waitForScanAs is the auth-aware variant. Pass a logged-in client when the
+// router was built with auth enabled (testDepsWithAuth); the polling GETs on
+// /api/scans/{id} now require a resolved session (issue #55).
+func waitForScanAs(t *testing.T, router http.Handler, id string, client *authTestClient) map[string]any {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		job := getJSON(t, router, "/api/scans/"+id)
+		var job map[string]any
+		if client != nil {
+			job = client.requestJSON(t, router, http.MethodGet, "/api/scans/"+id, nil).payload
+		} else {
+			job = getJSON(t, router, "/api/scans/"+id)
+		}
 		switch job["status"] {
 		case string(scans.StatusCompleted):
 			return job

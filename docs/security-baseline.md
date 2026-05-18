@@ -13,6 +13,25 @@ Every router response passes through the security middleware and receives:
 - `Cross-Origin-Resource-Policy: same-origin`
 - `Permissions-Policy`: disables camera, microphone, and geolocation by default.
 
+## Authentication Required on All API Endpoints
+
+As of issue #55, every `/api/*` endpoint requires an authenticated session except for a tightly-scoped public whitelist. Anonymous callers receive HTTP 401.
+
+**Public endpoints (no auth required):**
+
+- `GET /api/health` — liveness probe.
+- `GET /api/ready` — readiness probe.
+- `GET /api/client/bootstrap` — pre-login server identity so a fresh client can present the right sign-in / pairing flow.
+- `GET /api/discovery/status` — local discovery (mDNS) info.
+- `GET /api/pairing/requests/{id}` — an unpaired client polls the status of its own pairing request.
+- `POST /api/pairing/requests` — an unpaired client submits a pairing request.
+- `POST /api/auth/bootstrap` — first-run admin creation.
+- `POST /api/auth/login` — sign in.
+
+Everything else requires either the `xuva_session` cookie (browser) or `Authorization: Bearer <token>` / `X-Auth-Token` (native clients). Role authorization is applied on top of authentication per `routePolicies` in `internal/api/authz.go`: admin routes are restricted to `admin`, media-browsing routes allow both `admin` and `standard`.
+
+New endpoints must be added through `handleProtected` (auth-only) or `handleProtectedCSRF` (auth + CSRF for mutations). Expanding the public whitelist requires a security review.
+
 ## CORS Policy
 
 Browser requests with no `Origin` header are treated as direct local/server requests.
