@@ -50,12 +50,12 @@
 </script>
 
 <svelte:head>
-  <title>Xuva — Your cinema, everywhere</title>
+  <title>Xuva — Your home cinema, on every screen</title>
   <meta
     name="description"
-    content="Xuva is your personal streaming home for movies and series across every screen you own."
+    content="Xuva is your personal media server for movies and series — stream your collection on every screen in your home."
   />
-  <meta property="og:title" content="Xuva — Your cinema, everywhere" />
+  <meta property="og:title" content="Xuva — Your home cinema, on every screen" />
   <meta
     property="og:description"
     content="A cinematic home for your personal library — continue watching, discover what is new, and jump between movies and series."
