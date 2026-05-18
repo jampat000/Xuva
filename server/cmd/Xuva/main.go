@@ -16,6 +16,11 @@ import (
 
 func main() {
 	cfg := config.FromEnv()
+	slog.Info("xuva server starting",
+		"dataDir", cfg.DataDir,
+		"httpAddr", cfg.HTTPAddr,
+		"serverName", cfg.ServerName,
+	)
 	application, err := app.New(context.Background(), cfg)
 	if err != nil {
 		slog.Error("server startup failed", "error", err)

@@ -19,7 +19,9 @@ type Config struct {
 	HTTPAddr              string   `json:"httpAddr"`
 	DiscoveryEnabled      bool     `json:"-"`
 	DiscoveryServiceType  string   `json:"-"`
-	DataDir               string   `json:"dataDir"`
+	// DataDir is resolved at startup and never persisted in settings.json
+	// (since the file itself lives inside DataDir). Override via XUVA_DATA_DIR.
+	DataDir               string   `json:"-"`
 	TranscodeDir          string   `json:"transcodeDir,omitempty"`
 	DownloadsDir          string   `json:"downloadsDir,omitempty"`
 	MetadataDir           string   `json:"metadataDir,omitempty"`
@@ -54,8 +56,43 @@ type Config struct {
 	AdminPassword         string   `json:"-"`
 }
 
+// defaultDataDir resolves the data directory to a stable absolute path that
+// does not depend on the process working directory.
+//
+//   - In development (`go run …`), walk up from cwd until a `go.mod` is found
+//     and anchor `data/` to that module root. This keeps `server/data/` no
+//     matter whether you launched from `server/` or `server/cmd/Xuva/`.
+//   - For a built binary, fall back to `<exe-dir>/data`.
+//   - As a last resort, return the literal "data" so the legacy behaviour
+//     (cwd-relative) still works.
+//
+// Always overridable via the XUVA_DATA_DIR environment variable.
+func defaultDataDir() string {
+	if cwd, err := os.Getwd(); err == nil {
+		dir := cwd
+		for i := 0; i < 12; i++ {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				return filepath.Join(dir, "data")
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		// Skip `go run` temp executables; their dir is unstable.
+		exeDir := filepath.Dir(exe)
+		if !strings.Contains(strings.ToLower(exeDir), string(filepath.Separator)+"go-build") {
+			return filepath.Join(exeDir, "data")
+		}
+	}
+	return "data"
+}
+
 func FromEnv() Config {
-	dataDir := envString("XUVA_DATA_DIR", "data")
+	dataDir := envString("XUVA_DATA_DIR", defaultDataDir())
 	cfg := Config{
 		ServerName:           envString("XUVA_SERVER_NAME", "Xuva"),
 		HTTPAddr:             envString("XUVA_HTTP_ADDR", "127.0.0.1:8097"),
@@ -160,9 +197,8 @@ func merge(base Config, saved Config) Config {
 	if saved.HTTPAddr != "" {
 		base.HTTPAddr = saved.HTTPAddr
 	}
-	if saved.DataDir != "" {
-		base.DataDir = saved.DataDir
-	}
+	// DataDir is intentionally never merged from saved settings — it's
+	// resolved at startup and json:"-" guarantees saved.DataDir is "".
 	if saved.TranscodeDir != "" {
 		base.TranscodeDir = saved.TranscodeDir
 	}
@@ -316,11 +352,21 @@ func defaultInt(value int, fallback int) int {
 	return fallback
 }
 
+// defaultDir resolves a configured storage directory:
+//   - empty value          -> <dataDir>/<name>
+//   - absolute value       -> used as-is
+//   - relative value       -> re-anchored to dataDir using just the leaf
+//     component. This protects against historical settings.json files that
+//     stored cwd-relative paths like "data\\transcode" which would otherwise
+//     create stray empty directories under whichever cwd the server started in.
 func defaultDir(value string, dataDir string, name string) string {
-	if value != "" {
+	if value == "" {
+		return filepath.Join(dataDir, name)
+	}
+	if filepath.IsAbs(value) {
 		return value
 	}
-	return filepath.Join(dataDir, name)
+	return filepath.Join(dataDir, filepath.Base(value))
 }
 
 func envString(key string, fallback string) string {
