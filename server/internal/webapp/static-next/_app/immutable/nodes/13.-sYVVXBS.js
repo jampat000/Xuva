@@ -1,1 +1,0 @@
-import"../chunks/Bz7_I-Gx.js";import"../chunks/S-KyrcF8.js";import{t as e}from"../chunks/D3ZVdwnY.js";function t(t){e(t,{preferredMode:`bootstrap`})}export{t as component};
