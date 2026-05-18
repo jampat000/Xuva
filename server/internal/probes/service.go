@@ -151,7 +151,26 @@ func (s *Service) run(ctx context.Context, id string, request Request) {
 		if err != nil {
 			job.Failed++
 		} else {
-			_ = s.catalog.SaveProbe(ctx, source.ID, catalog.ProbeResult{Container: result.Container, DurationSeconds: result.DurationSeconds, Bitrate: result.Bitrate, VideoCodec: result.VideoCodec, Width: result.Width, Height: result.Height, AudioStreams: result.AudioStreams, SubtitleStreams: result.SubtitleStreams, RawJSON: result.RawJSON})
+			_ = s.catalog.SaveProbe(ctx, source.ID, catalog.ProbeResult{
+				Container:       result.Container,
+				DurationSeconds: result.DurationSeconds,
+				Bitrate:         result.Bitrate,
+				VideoCodec:      result.VideoCodec,
+				VideoProfile:    result.VideoProfile,
+				VideoLevel:      result.VideoLevel,
+				VideoBitDepth:   result.VideoBitDepth,
+				VideoFrameRate:  result.VideoFrameRate,
+				PixelFormat:     result.PixelFormat,
+				ColorPrimaries:  result.ColorPrimaries,
+				ColorTransfer:   result.ColorTransfer,
+				ColorSpace:      result.ColorSpace,
+				HDRFormat:       result.HDRFormat,
+				Width:           result.Width,
+				Height:          result.Height,
+				AudioStreams:    result.AudioStreams,
+				SubtitleStreams: result.SubtitleStreams,
+				RawJSON:         result.RawJSON,
+			})
 			job.Completed++
 		}
 		s.store(job)

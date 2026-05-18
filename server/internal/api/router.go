@@ -3709,6 +3709,15 @@ func mediaSourceProbeHandler(deps Deps) http.HandlerFunc {
 			DurationSeconds: result.DurationSeconds,
 			Bitrate:         result.Bitrate,
 			VideoCodec:      result.VideoCodec,
+			VideoProfile:    result.VideoProfile,
+			VideoLevel:      result.VideoLevel,
+			VideoBitDepth:   result.VideoBitDepth,
+			VideoFrameRate:  result.VideoFrameRate,
+			PixelFormat:     result.PixelFormat,
+			ColorPrimaries:  result.ColorPrimaries,
+			ColorTransfer:   result.ColorTransfer,
+			ColorSpace:      result.ColorSpace,
+			HDRFormat:       result.HDRFormat,
 			Width:           result.Width,
 			Height:          result.Height,
 			AudioStreams:    result.AudioStreams,
@@ -6388,6 +6397,9 @@ func applyClientProfile(deps Deps, request playback.Request) playback.Request {
 	request.VideoCodecs = profile.VideoCodecs
 	request.AudioCodecs = profile.AudioCodecs
 	request.SubtitleCodecs = profile.SubtitleCodecs
+	request.MaxVideoBitDepth = profile.MaxVideoBitDepth
+	request.MaxFrameRate = profile.MaxVideoFrameRate
+	request.SupportsHDR = profile.SupportsHDR
 	request.SupportsAdaptive = request.SupportsAdaptive || profile.SupportsHLS
 	return request
 }
@@ -6409,6 +6421,11 @@ func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Reques
 		MediaSourceID:    source.ID,
 		Container:        source.Container,
 		VideoCodec:       source.VideoCodec,
+		VideoProfile:     source.VideoProfile,
+		VideoLevel:       source.VideoLevel,
+		VideoBitDepth:    source.VideoBitDepth,
+		HDR:              source.HDRFormat,
+		FrameRate:        source.VideoFrameRate,
 		Width:            source.Width,
 		Height:           source.Height,
 		AudioStreams:     source.AudioStreams,
