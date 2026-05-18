@@ -10,10 +10,12 @@
   const isWide = $derived(variant === "wide");
   const gradient = $derived(`linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`);
   const art = $derived(isWide ? (media.backdrop ?? media.poster) : (media.poster ?? media.backdrop));
+  const href = $derived(media.type === 'Series' ? `/tv/${media.id}` : `/movies/${media.id}`);
 </script>
 
-<article
-  class={`group relative shrink-0 cursor-pointer ${
+<a
+  {href}
+  class={`group relative shrink-0 ${
     isWide ? "w-[260px] md:w-[320px] lg:w-[360px]" : "w-[140px] md:w-[170px] lg:w-[180px]"
   }`}
 >
@@ -29,6 +31,7 @@
         alt={media.title}
         loading="lazy"
         class="absolute inset-0 h-full w-full object-cover"
+        onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
       />
     {/if}
 
@@ -107,12 +110,12 @@
   {:else}
     <div class="mt-2 px-1">
       <p class="truncate text-xs text-muted-foreground">
-        {#if media.type === "Series"}
-          {media.seasons} season{(media.seasons ?? 0) > 1 ? "s" : ""} • {media.episodes} ep
-        {:else}
+        {#if media.type === "Series" && media.seasons}
+          {media.seasons} season{media.seasons !== 1 ? "s" : ""}{media.episodes ? ` • ${media.episodes} ep` : ""}
+        {:else if media.type === "Movie" && media.runtime}
           {media.runtime}
         {/if}
       </p>
     </div>
   {/if}
-</article>
+</a>

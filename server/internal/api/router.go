@@ -258,9 +258,7 @@ func isHistoryRoutePath(requestPath string) bool {
 	if strings.HasPrefix(requestPath, "/api/") ||
 		strings.HasPrefix(requestPath, "/_app/") ||
 		strings.HasPrefix(requestPath, "/legacy/") ||
-		strings.HasPrefix(requestPath, "/next/") ||
-		requestPath == "/admin" ||
-		strings.HasPrefix(requestPath, "/admin/") {
+		strings.HasPrefix(requestPath, "/next/") {
 		return false
 	}
 	lastSegment := requestPath
