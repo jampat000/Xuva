@@ -171,8 +171,6 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService)
-
 	playStateService := playstate.NewService(databaseService, bus)
 	transcodeService, err := transcode.NewPersistentService(ctx, bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.TranscodeDir, runtimeStore)
 	if err != nil {
@@ -187,6 +185,9 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		return nil, err
 	}
 	startRuntimeMaintenance(appCtx, sessionService, transcodeService, probesService, downloadService)
+	// Start background library automation after sessionService is ready so the
+	// playback-priority coordinator can check for active sessions before each run.
+	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService, sessionService)
 	discoveryService := discovery.NewService(cfg)
 	discoveryService.Start(appCtx)
 
@@ -249,7 +250,7 @@ func runRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service
 	_, _ = downloadService.Cleanup(ctx, terminalRetention)
 }
 
-func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.Bus, scanService *scans.Service, probesService *probes.Service) {
+func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, sessionService *sessions.Service) {
 	if cfg.LibrarySyncMode == "manual" {
 		return
 	}
@@ -277,14 +278,26 @@ func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.
 			case <-ctx.Done():
 				return
 			case <-timer.C:
-				runAutomatedLibrarySync(ctx, bus, scanService, probesService, probeLimit)
+				runAutomatedLibrarySync(ctx, bus, scanService, probesService, sessionService, probeLimit)
 				timer.Reset(interval)
 			}
 		}
 	}()
 }
 
-func runAutomatedLibrarySync(ctx context.Context, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, probeLimit int) {
+func runAutomatedLibrarySync(ctx context.Context, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, sessionService *sessions.Service, probeLimit int) {
+	// Playback-priority: skip this automated sync cycle when any session is
+	// actively playing. The next timer tick will re-check and resume.
+	if sessionService != nil {
+		if active := sessionService.List(); len(active) > 0 {
+			bus.Publish("automation.sync.skipped", map[string]any{
+				"reason":         "active_playback",
+				"activeSessions": len(active),
+			})
+			slog.Debug("automated library sync skipped: active playback sessions", "activeSessions", len(active))
+			return
+		}
+	}
 	bus.Publish("automation.sync.started", map[string]any{"probeLimit": probeLimit})
 	job, err := scanService.Start(ctx, scans.Request{Kind: scans.KindAll})
 	if err != nil {

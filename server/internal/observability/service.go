@@ -265,7 +265,7 @@ func (s *Service) Recent(limit int) []TimelineEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.timeline) == 0 {
-		return nil
+		return []TimelineEntry{}
 	}
 	if limit > len(s.timeline) {
 		limit = len(s.timeline)

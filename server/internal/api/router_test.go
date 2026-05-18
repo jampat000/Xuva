@@ -837,10 +837,20 @@ func TestMetricsIncludesTimeline(t *testing.T) {
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 	deps.Events.Publish("session.route.changed", map[string]any{"toRoute": "adaptive"})
-	metrics := getJSON(t, router, "/api/metrics")
-	timeline := metrics["timeline"].([]any)
+	// The event bus is asynchronous — poll until the timeline is populated
+	// (up to 2 seconds) to avoid a race between publish and the subscriber goroutine.
+	var timeline []any
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		metrics := getJSON(t, router, "/api/metrics")
+		if entries, ok := metrics["timeline"].([]any); ok && len(entries) > 0 {
+			timeline = entries
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if len(timeline) == 0 {
-		t.Fatalf("expected timeline entries, got %#v", metrics)
+		t.Fatal("expected timeline entries after 2s, got none")
 	}
 }
 
