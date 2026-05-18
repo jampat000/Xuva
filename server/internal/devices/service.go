@@ -30,6 +30,13 @@ type Profile struct {
 	VideoCodecs         []string `json:"videoCodecs"`
 	AudioCodecs         []string `json:"audioCodecs"`
 	SubtitleCodecs      []string `json:"subtitleCodecs"`
+	// MaxVideoBitDepth is the highest luma bit depth this profile can decode
+	// in hardware. 0 means "unspecified" (treated as 8 in the decision tree).
+	// Values: 8 (SDR-only / older clients), 10 (Main10 / HDR-capable), 12 (rare).
+	MaxVideoBitDepth    int      `json:"maxVideoBitDepth,omitempty"`
+	// MaxVideoFrameRate caps direct-play frame rate. 0 means "unspecified"
+	// (no cap applied). Sources above this are routed to transcode.
+	MaxVideoFrameRate   float64  `json:"maxVideoFrameRate,omitempty"`
 	SupportsHDR         bool     `json:"supportsHdr"`
 	SupportsToneMapping bool     `json:"supportsToneMapping"`
 	SupportsHLS         bool     `json:"supportsHls"`
@@ -70,13 +77,15 @@ func NewPersistentService(databaseService *database.Service) *Service {
 func (s *Service) Profiles() []Profile {
 	return []Profile{
 		{
-			ID:             "web",
-			Name:           "Web Player",
-			Containers:     []string{"mp4", "mov", "webm"},
-			VideoCodecs:    []string{"h264", "av1", "vp9"},
-			AudioCodecs:    []string{"aac", "opus", "mp3"},
-			SubtitleCodecs: []string{"webvtt", "srt"},
-			SupportsHLS:    true,
+			ID:                "web",
+			Name:              "Web Player",
+			Containers:        []string{"mp4", "mov", "webm"},
+			VideoCodecs:       []string{"h264", "av1", "vp9"},
+			AudioCodecs:       []string{"aac", "opus", "mp3"},
+			SubtitleCodecs:    []string{"webvtt", "srt"},
+			MaxVideoBitDepth:  8,
+			MaxVideoFrameRate: 60,
+			SupportsHLS:       true,
 		},
 		{
 			ID:                  "android-tv",
@@ -85,6 +94,8 @@ func (s *Service) Profiles() []Profile {
 			VideoCodecs:         []string{"h264", "hevc", "av1", "vp9"},
 			AudioCodecs:         []string{"aac", "ac3", "eac3", "opus", "mp3"},
 			SubtitleCodecs:      []string{"srt", "ass", "webvtt", "pgs"},
+			MaxVideoBitDepth:    10,
+			MaxVideoFrameRate:   60,
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
 			SupportsHLS:         true,
@@ -96,6 +107,8 @@ func (s *Service) Profiles() []Profile {
 			VideoCodecs:         []string{"h264", "hevc"},
 			AudioCodecs:         []string{"aac", "ac3", "eac3", "alac"},
 			SubtitleCodecs:      []string{"webvtt", "srt"},
+			MaxVideoBitDepth:    10,
+			MaxVideoFrameRate:   60,
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
 			SupportsHLS:         true,
@@ -107,19 +120,23 @@ func (s *Service) Profiles() []Profile {
 			VideoCodecs:         []string{"h264", "hevc"},
 			AudioCodecs:         []string{"aac", "ac3", "eac3", "alac"},
 			SubtitleCodecs:      []string{"webvtt", "srt"},
+			MaxVideoBitDepth:    10,
+			MaxVideoFrameRate:   60,
 			SupportsHDR:         true,
 			SupportsToneMapping: true,
 			SupportsHLS:         true,
 		},
 		{
-			ID:             "chromecast",
-			Name:           "Chromecast",
-			Containers:     []string{"mp4", "webm"},
-			VideoCodecs:    []string{"h264", "vp9", "av1"},
-			AudioCodecs:    []string{"aac", "ac3", "eac3", "opus"},
-			SubtitleCodecs: []string{"webvtt", "srt"},
-			SupportsHDR:    true,
-			SupportsHLS:    true,
+			ID:                "chromecast",
+			Name:              "Chromecast",
+			Containers:        []string{"mp4", "webm"},
+			VideoCodecs:       []string{"h264", "vp9", "av1"},
+			AudioCodecs:       []string{"aac", "ac3", "eac3", "opus"},
+			SubtitleCodecs:    []string{"webvtt", "srt"},
+			MaxVideoBitDepth:  10,
+			MaxVideoFrameRate: 60,
+			SupportsHDR:       true,
+			SupportsHLS:       true,
 		},
 	}
 }

@@ -381,4 +381,15 @@ var migrations = []string{
 	`INSERT OR IGNORE INTO metadata_records(kind, item_id, provider, title, confidence, fetched_at, updated_at)
 		SELECT 'episode', id, 'filename', title, CASE needs_review WHEN 1 THEN 0.35 ELSE 0.7 END, updated_at, updated_at
 		FROM tv_episodes`,
+	// issue #56: enrich probe data with profile/level/bit-depth/HDR/frame-rate
+	// so the playback decision tree can do more than coarse codec-name matching.
+	`ALTER TABLE media_probes ADD COLUMN video_profile TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE media_probes ADD COLUMN video_level TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE media_probes ADD COLUMN video_bit_depth INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE media_probes ADD COLUMN video_frame_rate REAL NOT NULL DEFAULT 0`,
+	`ALTER TABLE media_probes ADD COLUMN pixel_format TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE media_probes ADD COLUMN color_primaries TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE media_probes ADD COLUMN color_transfer TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE media_probes ADD COLUMN color_space TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE media_probes ADD COLUMN hdr_format TEXT NOT NULL DEFAULT ''`,
 }

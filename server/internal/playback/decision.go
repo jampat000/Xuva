@@ -22,23 +22,28 @@ const (
 )
 
 type Request struct {
-	MediaSourceID       string `json:"mediaSourceId"`
-	ClientProfile       string `json:"clientProfile"`
-	Policy              string `json:"policy,omitempty"`
-	RouteType           string `json:"routeType,omitempty"`
-	MaxNetworkBitrate   int64  `json:"maxNetworkBitrate,omitempty"`
-	AudioTrackIndex     int    `json:"audioTrackIndex,omitempty"`
-	AudioCodec          string `json:"audioCodec,omitempty"`
-	AudioChannels       int    `json:"audioChannels,omitempty"`
-	SubtitleTrackIndex  int    `json:"subtitleTrackIndex,omitempty"`
-	SubtitleCodec       string `json:"subtitleCodec,omitempty"`
-	SubtitleMode        string `json:"subtitleMode,omitempty"`
-	SubtitleTrackActive bool   `json:"subtitleTrackActive,omitempty"`
-	SupportsAdaptive    bool   `json:"supportsAdaptive,omitempty"`
-	Containers          []string
-	VideoCodecs         []string
-	AudioCodecs         []string
-	SubtitleCodecs      []string
+	MediaSourceID       string  `json:"mediaSourceId"`
+	ClientProfile       string  `json:"clientProfile"`
+	Policy              string  `json:"policy,omitempty"`
+	RouteType           string  `json:"routeType,omitempty"`
+	MaxNetworkBitrate   int64   `json:"maxNetworkBitrate,omitempty"`
+	AudioTrackIndex     int     `json:"audioTrackIndex,omitempty"`
+	AudioCodec          string  `json:"audioCodec,omitempty"`
+	AudioChannels       int     `json:"audioChannels,omitempty"`
+	SubtitleTrackIndex  int     `json:"subtitleTrackIndex,omitempty"`
+	SubtitleCodec       string  `json:"subtitleCodec,omitempty"`
+	SubtitleMode        string  `json:"subtitleMode,omitempty"`
+	SubtitleTrackActive bool    `json:"subtitleTrackActive,omitempty"`
+	SupportsAdaptive    bool    `json:"supportsAdaptive,omitempty"`
+	// Client capability whitelists (populated from the device profile or
+	// from a client-reported capability payload):
+	Containers       []string
+	VideoCodecs      []string
+	AudioCodecs      []string
+	SubtitleCodecs   []string
+	MaxVideoBitDepth int     // 0 = unspecified; treated as 8 in decisions.
+	MaxFrameRate     float64 // 0 = unspecified; no cap applied.
+	SupportsHDR      bool
 }
 
 type SourceFacts struct {
@@ -208,6 +213,33 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.SuggestedFixes = []string{"Use original quality on LAN", "Raise the network bitrate limit", "Use hardware acceleration for lower server impact"}
 		return finalizeDecision(request, source, decision)
 	}
+	// Source-level capability checks: even when codec + container match the
+	// client whitelist, this client may not handle higher bit depths, HDR,
+	// or framerates above its declared cap. These cases route to a transcode
+	// with an explicit reason code so the player can show "why" diagnostics.
+	if reason := unsupportedSourceCapability(request, source); reason != "" {
+		decision.Mode = VideoTranscode
+		decision.ReasonCode = reason
+		switch reason {
+		case "hdr_tone_map_required":
+			decision.ReasonText = "This file uses HDR, but the selected player profile is SDR. Xuva needs to tone-map the picture for it to look right."
+			decision.SuggestedFixes = []string{"Use an HDR-capable client (Apple TV, Android TV, modern Chromecast)", "Allow temporary HDR-to-SDR conversion", "Pick the SDR version of this title if one exists"}
+		case "bit_depth_unsupported_transcode":
+			decision.ReasonText = "The file uses a higher color bit depth than this player supports, so Xuva needs to convert the picture."
+			decision.SuggestedFixes = []string{"Use a player that supports 10-bit video", "Allow temporary 8-bit conversion", "Pick the 8-bit version of this title if one exists"}
+		case "framerate_above_client_max":
+			decision.ReasonText = "The file's frame rate exceeds what this player can render directly, so Xuva needs to convert."
+			decision.SuggestedFixes = []string{"Use a player that supports the original frame rate", "Allow temporary frame-rate conversion"}
+		}
+		decision.ContainerAction = "transcode_or_remux"
+		decision.VideoAction = "transcode"
+		decision.AudioAction = audioAction
+		decision.SubtitleAction = subtitles
+		decision.EstimatedCPUCost = "high"
+		decision.EstimatedGPUCost = "optional"
+		return finalizeDecision(request, source, decision)
+	}
+
 	if isDirectPlayable(request, source.Container, source.VideoCodec) {
 		decision.Mode = DirectPlay
 		decision.ReasonCode = "direct_play_supported"
@@ -218,6 +250,13 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.SubtitleAction = subtitles
 		decision.EstimatedCPUCost = "none"
 		decision.EstimatedGPUCost = "none"
+		// When the source is HDR and the client claimed HDR support, surface
+		// that with an explicit reason so the player can show an HDR badge
+		// and the user understands why the picture looks the way it does.
+		if strings.ToUpper(strings.TrimSpace(source.HDR)) != "" && request.SupportsHDR {
+			decision.ReasonCode = "hdr_pass_through"
+			decision.ReasonText = "This HDR file plays directly on the selected player without conversion."
+		}
 		if audioAction == "transcode" {
 			decision.Mode = AudioTranscode
 			decision.ReasonCode = "audio_conversion_required"
@@ -330,6 +369,32 @@ func networkConstrained(request Request, source SourceFacts) bool {
 
 func needsVideoSubtitleBurn(subtitles string) bool {
 	return subtitles == "burn_in"
+}
+
+// unsupportedSourceCapability returns a non-empty reason code when the source
+// has a property (HDR, bit depth, frame rate) that the requesting client
+// cannot handle. Empty string means "no capability-level objection".
+func unsupportedSourceCapability(request Request, source SourceFacts) string {
+	// HDR sources need an HDR-capable client (or tone-mapping support, which
+	// we model as "transcode anyway with tone-map filter" — same code path).
+	if strings.ToUpper(strings.TrimSpace(source.HDR)) != "" && !request.SupportsHDR {
+		return "hdr_tone_map_required"
+	}
+	// Bit-depth: if the client declares a max and the source exceeds it, the
+	// hardware decoder won't accept the stream. 0 means "unspecified" and is
+	// treated as 8 to be safe.
+	clientMaxDepth := request.MaxVideoBitDepth
+	if clientMaxDepth == 0 {
+		clientMaxDepth = 8
+	}
+	if source.VideoBitDepth > 0 && source.VideoBitDepth > clientMaxDepth {
+		return "bit_depth_unsupported_transcode"
+	}
+	// Frame rate: only enforce when the client declared a cap.
+	if request.MaxFrameRate > 0 && source.FrameRate > 0 && source.FrameRate > request.MaxFrameRate+0.5 {
+		return "framerate_above_client_max"
+	}
+	return ""
 }
 
 func isDirectPlayable(request Request, container string, videoCodec string) bool {
