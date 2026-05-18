@@ -76,10 +76,17 @@ export function normalizeErrorMessage(status: number, message = ''): string {
 	if (status === 0) {
 		return 'Xuva could not reach the local server. Check that the server is running and retry.';
 	}
-	if (status === 401) return 'Your session is no longer active. Sign in again to continue.';
-	if (status === 403) return 'This action requires permission or a valid CSRF token.';
-	if (status === 404) return 'Xuva could not find that item.';
-	if (status === 409) return 'This action conflicts with current server state. Refresh and retry.';
+	if (status === 401) {
+		// Prefer the server's actual message when present (e.g. "invalid username or
+		// password" from the login endpoint). The "session no longer active" copy
+		// only makes sense for spontaneous 401s on background requests, not for
+		// failed login attempts where the user expects to see *why* it failed.
+		if (message) return message;
+		return 'Your session is no longer active. Sign in again to continue.';
+	}
+	if (status === 403) return message || 'This action requires permission or a valid CSRF token.';
+	if (status === 404) return message || 'Xuva could not find that item.';
+	if (status === 409) return message || 'This action conflicts with current server state. Refresh and retry.';
 	if (status >= 500) return 'The server failed while handling this action. Retry once and inspect Activity if needed.';
 	return message || 'Something went wrong. Retry the action.';
 }
