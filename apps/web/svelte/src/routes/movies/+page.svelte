@@ -38,11 +38,12 @@
 <div class="min-h-screen bg-background">
   <Header />
   {#if error}
-    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
-      <p class="text-sm text-destructive">{error}</p>
+    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+      <p class="text-base font-medium text-foreground/80">Can't reach your library</p>
+      <p class="max-w-xs text-sm text-muted-foreground">Make sure your Xuva server is running, then try again.</p>
       <button
         onclick={() => { error = null; loading = true; getMovies().then(r => { items = (r.movies ?? []).map(movieToMedia); }).catch(e => { error = e instanceof Error ? e.message : 'Failed'; }).finally(() => { loading = false; }); }}
-        class="hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="mt-2 hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         Try again
       </button>
@@ -55,6 +56,7 @@
       {items}
       {loading}
       kind="Movies"
+      baseHref="/movies"
     />
   {/if}
 </div>

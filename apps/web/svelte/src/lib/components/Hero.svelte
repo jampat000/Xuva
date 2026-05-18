@@ -1,9 +1,14 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { Info, Play, Plus, Volume2, VolumeX } from "lucide-svelte";
   import heroImg from "$lib/assets/hero-featured.jpg";
   import type { Media } from "$lib/mock-data";
 
   let { slides } = $props<{ slides: Media[] }>();
+
+  function detailHref(m: Media): string {
+    return m.type === 'Series' ? `/tv/${m.id}` : `/movies/${m.id}`;
+  }
 
   let idx = $state(0);
   let muted = $state(true);
@@ -30,6 +35,7 @@
         class="animate-kenburns h-full w-full object-cover"
         width="1920"
         height="1080"
+        onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
       />
     {/key}
     <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,oklch(0.06_0.01_280/0.8)_100%)]"></div>
@@ -66,7 +72,11 @@
           <span class="opacity-30">·</span>
           <span>{media.director ?? media.type}</span>
           <span class="opacity-30">·</span>
-          <span>{media.runtime ?? `${media.seasons} Seasons`}</span>
+          {#if media.type === 'Series' && media.seasons}
+            <span>{media.seasons} Season{media.seasons !== 1 ? 's' : ''}</span>
+          {:else if media.runtime}
+            <span>{media.runtime}</span>
+          {/if}
           <span class="opacity-30">·</span>
           <span class="flex items-center gap-1.5 normal-case tracking-normal text-foreground/90">
             <span class="text-amber-300">★</span>
@@ -96,20 +106,20 @@
         </div>
 
         <div class="mt-9 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
+          <a
+            href={detailHref(media)}
             class="group inline-flex items-center gap-2.5 rounded-full bg-foreground px-7 py-3.5 text-sm font-semibold text-background transition-all hover:bg-foreground/90"
           >
             <Play class="h-4 w-4 fill-background" />
             Play
-          </button>
-          <button
-            type="button"
+          </a>
+          <a
+            href={detailHref(media)}
             class="inline-flex items-center gap-2.5 rounded-full border border-foreground/15 bg-foreground/5 px-6 py-3.5 text-sm font-medium text-foreground backdrop-blur-md transition-colors hover:bg-foreground/10"
           >
             <Info class="h-4 w-4" />
             More info
-          </button>
+          </a>
           <button
             type="button"
             aria-label="Add to list"

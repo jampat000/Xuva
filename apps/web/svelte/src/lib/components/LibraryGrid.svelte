@@ -2,13 +2,14 @@
   import { Play, Plus, Search, SlidersHorizontal } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
 
-  let { eyebrow, title, tagline, items, kind, loading = false } = $props<{
+  let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "" } = $props<{
     eyebrow: string;
     title: string;
     tagline: string;
     items: Media[];
     kind: "Movies" | "TV";
     loading?: boolean;
+    baseHref?: string;
   }>();
 
   type Density = "S" | "M" | "L";
@@ -96,6 +97,7 @@
               src={featured.poster}
               alt={featured.title}
               class="absolute inset-0 h-full w-full object-cover"
+              onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
             />
           {:else}
             <div
@@ -114,7 +116,12 @@
             </div>
             <div>
               <div class="text-[10px] uppercase tracking-[0.28em] text-white/65">
-                {featured.year} · {featured.runtime ?? `${featured.seasons} Seasons`}
+                {featured.year || ""}
+                {#if featured.type === "Series" && featured.seasons}
+                  {featured.year ? " · " : ""}{featured.seasons} Season{featured.seasons !== 1 ? "s" : ""}
+                {:else if featured.runtime}
+                  {featured.year ? " · " : ""}{featured.runtime}
+                {/if}
               </div>
               <h2
                 class="font-serif-display mt-1.5 text-2xl leading-[0.95] text-white md:text-3xl"
@@ -220,7 +227,7 @@
     {:else}
       <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
         {#each filtered as media (media.id)}
-          <article class="group cursor-pointer">
+          <a href={baseHref ? `${baseHref}/${media.id}` : (media.type === "Series" ? `/tv/${media.id}` : `/movies/${media.id}`)} class="group block">
             <div
               class="shadow-poster relative aspect-[2/3] overflow-hidden rounded-xl transition-all duration-500 group-hover:-translate-y-1.5 group-hover:shadow-glow"
               style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
@@ -231,6 +238,7 @@
                   alt={media.title}
                   loading="lazy"
                   class="absolute inset-0 h-full w-full object-cover"
+                  onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                 />
               {:else}
                 <div
@@ -272,7 +280,7 @@
                 {/if}
               </p>
             {/if}
-          </article>
+          </a>
         {/each}
       </div>
     {/if}

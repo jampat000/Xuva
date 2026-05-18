@@ -2,6 +2,42 @@ import type { Media } from '$lib/mock-data';
 import type { MovieListItem, SeriesListItem } from './browse';
 import type { ClientHomeItem } from './home';
 
+// ---------------------------------------------------------------------------
+// Title / year helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip quality/codec tags and file extensions from raw filenames so we
+ * show "22 Jump Street" instead of "22 Jump Street (2014) (Remux-2160p).mkv".
+ */
+function cleanTitle(raw: string): string {
+	// Remove trailing file extension (.mkv, .mp4, .avi, .m4v, …)
+	let t = raw.replace(/\.[a-z0-9]{2,4}$/i, '');
+	// Remove parenthesised quality / codec / source tags (keep only year-style tokens)
+	t = t.replace(
+		/\s*\([^)]*(?:remux|bluray|blu-ray|webrip|web-dl|webdl|hdtv|dvdrip|dvdscr|4k|2160p|1080p|720p|480p|hdr|dv|atmos|dts|aac|ac3|x264|x265|hevc|avc|h\.264|h\.265)[^)]*\)/gi,
+		''
+	);
+	return t.trim();
+}
+
+/**
+ * Try to extract a 4-digit year (1900–2099) from a string like "Title (2014)".
+ * Returns 0 if nothing found.
+ */
+function extractYear(s: string): number {
+	const match = s.match(/\((\d{4})\)/);
+	if (match) {
+		const yr = parseInt(match[1], 10);
+		if (yr >= 1900 && yr <= 2099) return yr;
+	}
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Palette table
+// ---------------------------------------------------------------------------
+
 // Curated dark palettes for items without poster-derived colours.
 // Selected deterministically by hashing the item id so the same item
 // always gets the same palette across renders.
@@ -28,13 +64,15 @@ function hashPalette(id: string): { palette: [string, string]; accent: string } 
 
 export function movieToMedia(item: MovieListItem): Media {
 	const id = item.id ?? crypto.randomUUID();
+	const meta = item.metadata as Record<string, unknown> | undefined;
+	const rawTitle = item.title ?? (meta?.title as string | undefined) ?? 'Unknown';
 	return {
 		id,
-		title: item.title ?? item.metadata?.title ?? 'Unknown',
-		year: item.year ?? item.metadata?.year ?? 0,
+		title: cleanTitle(rawTitle),
+		year: item.year ?? (item.metadata?.year as number | undefined) ?? 0,
 		type: 'Movie',
-		genres: [],
-		rating: 0,
+		genres: (meta?.genres as string[] | undefined) ?? [],
+		rating: (meta?.voteAverage as number | undefined) ?? 0,
 		synopsis: item.metadata?.overview ?? '',
 		poster: item.metadata?.posterUrl,
 		backdrop: item.metadata?.backdropUrl,
@@ -44,13 +82,15 @@ export function movieToMedia(item: MovieListItem): Media {
 
 export function seriesToMedia(item: SeriesListItem): Media {
 	const id = item.id ?? crypto.randomUUID();
+	const meta = item.metadata as Record<string, unknown> | undefined;
+	const rawTitle = item.title ?? (meta?.title as string | undefined) ?? 'Unknown';
 	return {
 		id,
-		title: item.title ?? item.metadata?.title ?? 'Unknown',
-		year: item.metadata?.year ?? 0,
+		title: cleanTitle(rawTitle),
+		year: (item.metadata?.year as number | undefined) ?? 0,
 		type: 'Series',
-		genres: [],
-		rating: 0,
+		genres: (meta?.genres as string[] | undefined) ?? [],
+		rating: (meta?.voteAverage as number | undefined) ?? 0,
 		seasons: item.seasonCount,
 		episodes: item.episodeCount,
 		synopsis: item.metadata?.overview ?? '',
@@ -63,17 +103,25 @@ export function seriesToMedia(item: SeriesListItem): Media {
 export function clientHomeItemToMedia(item: ClientHomeItem): Media {
 	const id = item.id ?? crypto.randomUUID();
 	const type = item.kind === 'series' ? 'Series' : 'Movie';
+	const raw = item.title as Record<string, unknown> | undefined;
+	const rawTitle = (typeof item.title === 'string' ? item.title : null) ?? 'Unknown';
+	const unknownFields = item as Record<string, unknown>;
 	return {
 		id,
-		title: item.title ?? 'Unknown',
-		year: 0,
+		title: cleanTitle(rawTitle),
+		// year / rating may be in the loose [key: string] bag the server returns
+		year: (unknownFields.year as number | undefined) ?? extractYear(rawTitle) ?? 0,
 		type,
-		genres: [],
-		rating: 0,
+		genres: (unknownFields.genres as string[] | undefined) ?? [],
+		rating: (unknownFields.rating as number | undefined) ?? (unknownFields.voteAverage as number | undefined) ?? 0,
+		seasons: (unknownFields.seasonCount as number | undefined) ?? (unknownFields.seasons as number | undefined),
+		episodes: (unknownFields.episodeCount as number | undefined) ?? (unknownFields.episodes as number | undefined),
 		synopsis: item.overview ?? item.description ?? '',
 		poster: item.posterUrl,
 		backdrop: item.backdropUrl,
-		progress: typeof item.percent === 'number' ? item.percent / 100 : undefined,
+		progress: typeof item.percent === 'number' ? item.percent / 100
+			: typeof item.progressPercent === 'number' ? item.progressPercent / 100
+			: undefined,
 		...hashPalette(id),
 	};
 }

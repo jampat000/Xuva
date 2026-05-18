@@ -87,8 +87,9 @@
 				window.location.href = '/';
 				return;
 			}
-		} catch (error) {
-			errorMessage = formatAuthError(error, 'Sign-in status could not be loaded.');
+		} catch {
+			// Server may be temporarily unreachable — fall through to the sign-in form.
+			// Meaningful errors will surface when the user actually submits.
 		} finally {
 			isLoading = false;
 		}
@@ -264,7 +265,7 @@
 	<div
 		aria-hidden="true"
 		class="pointer-events-none absolute inset-0 -z-10"
-		style="background: radial-gradient(ellipse at 30% 20%, oklch(0.62 0.22 285 / 0.18), transparent 55%), radial-gradient(ellipse at 80% 80%, oklch(0.72 0.16 255 / 0.12), transparent 55%);"
+		style="background: radial-gradient(ellipse at 25% 15%, oklch(0.62 0.22 285 / 0.35), transparent 50%), radial-gradient(ellipse at 80% 85%, oklch(0.72 0.16 255 / 0.28), transparent 50%), radial-gradient(ellipse at 65% 5%, oklch(0.68 0.20 300 / 0.22), transparent 40%);"
 	></div>
 	<div class="grain pointer-events-none absolute inset-0 -z-10"></div>
 

@@ -259,6 +259,85 @@ export function startMediaProbe(
 	);
 }
 
+// ─── Client playback session lifecycle ──────────────────────────────────────
+
+export interface ClientPlaybackSession {
+	id?: string;
+	mediaSourceId?: string;
+	status?: string;
+	startedAt?: string;
+}
+
+export interface ClientPlaybackStartRequest {
+	mediaSourceId: string;
+	positionSeconds?: number;
+	clientProfile?: string;
+	deviceId?: string;
+}
+
+export function startClientPlayback(
+	req: ClientPlaybackStartRequest,
+	client: ApiClient = apiClient
+): Promise<ClientPlaybackSession> {
+	return client.send<ClientPlaybackSession, ClientPlaybackStartRequest>(
+		'/api/client/playback/start',
+		req,
+		'POST'
+	);
+}
+
+export interface ClientPlaybackHeartbeatRequest {
+	positionSeconds: number;
+	isPaused?: boolean;
+}
+
+export function heartbeatClientPlayback(
+	sessionId: string,
+	req: ClientPlaybackHeartbeatRequest,
+	client: ApiClient = apiClient
+): Promise<void> {
+	return client.send<void, ClientPlaybackHeartbeatRequest>(
+		`/api/client/playback/${encodeURIComponent(sessionId)}`,
+		req,
+		'PATCH'
+	);
+}
+
+export interface ClientPlaybackStopRequest {
+	positionSeconds: number;
+	completed?: boolean;
+}
+
+export function stopClientPlayback(
+	sessionId: string,
+	req: ClientPlaybackStopRequest,
+	client: ApiClient = apiClient
+): Promise<void> {
+	return client.send<void, ClientPlaybackStopRequest>(
+		`/api/client/playback/${encodeURIComponent(sessionId)}/stop`,
+		req,
+		'POST'
+	);
+}
+
+export interface SetPlaybackStateRequest {
+	progressSeconds: number;
+	durationSeconds?: number;
+	watched?: boolean;
+}
+
+export function setPlaybackState(
+	mediaSourceId: string,
+	req: SetPlaybackStateRequest,
+	client: ApiClient = apiClient
+): Promise<void> {
+	return client.send<void, SetPlaybackStateRequest>(
+		`/api/playback/state/${encodeURIComponent(mediaSourceId)}`,
+		req,
+		'PUT'
+	);
+}
+
 function playbackQueryString(mediaSourceId: string, options: PlaybackQueryOptions): string {
 	const params = new URLSearchParams();
 	params.set('mediaSourceId', mediaSourceId);

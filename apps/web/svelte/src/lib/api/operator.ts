@@ -559,3 +559,78 @@ export function runHardwareTest(
 		'POST'
 	);
 }
+
+// ─── Library management ────────────────────────────────────────────────────
+
+export interface LibraryItem {
+	id?: string;
+	name?: string;
+	kind?: string;
+	path?: string;
+	storageType?: string;
+}
+
+export interface LibrariesResponse {
+	libraries?: LibraryItem[];
+}
+
+export interface LibrarySaveRequest {
+	name: string;
+	kind: string;
+	path: string;
+	storageType: string;
+}
+
+export interface FolderEntry {
+	name?: string;
+	path?: string;
+	isDir?: boolean;
+}
+
+export interface FolderBrowseResponse {
+	currentPath?: string;
+	parentPath?: string;
+	entries?: FolderEntry[];
+}
+
+export function getLibraries(client: ApiClient = apiClient): Promise<LibrariesResponse> {
+	return client.request<LibrariesResponse>('/api/libraries');
+}
+
+export function saveLibrary(
+	payload: LibrarySaveRequest,
+	client: ApiClient = apiClient
+): Promise<LibraryItem> {
+	return client.send<LibraryItem, LibrarySaveRequest>('/api/libraries', payload, 'POST');
+}
+
+export function deleteLibrary(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.request<Record<string, unknown>>(
+		`/api/libraries/${encodeURIComponent(id)}`,
+		{ method: 'DELETE' }
+	);
+}
+
+export function scanLibrary(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.send<Record<string, unknown>, Record<string, never>>(
+		`/api/libraries/${encodeURIComponent(id)}/scan`,
+		{},
+		'POST'
+	);
+}
+
+export function browseFolders(
+	path?: string,
+	client: ApiClient = apiClient
+): Promise<FolderBrowseResponse> {
+	const url = path
+		? `/api/settings/folders/browse?path=${encodeURIComponent(path)}`
+		: '/api/settings/folders/browse';
+	return client.request<FolderBrowseResponse>(url);
+}
