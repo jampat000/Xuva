@@ -634,3 +634,116 @@ export function browseFolders(
 		: '/api/settings/folders/browse';
 	return client.request<FolderBrowseResponse>(url);
 }
+
+// ─── Users ────────────────────────────────────────────────────────────────
+
+export interface UserItem {
+	id?: string;
+	username?: string;
+	displayName?: string;
+	role?: string;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+export interface UsersResponse {
+	users?: UserItem[];
+}
+
+export interface CreateUserRequest {
+	username: string;
+	displayName?: string;
+	password: string;
+	role?: string;
+}
+
+export interface UpdateUserRequest {
+	displayName?: string;
+	role?: string;
+}
+
+export interface UpdateUserPasswordRequest {
+	password: string;
+	currentPassword?: string;
+}
+
+export function getUsers(client: ApiClient = apiClient): Promise<UsersResponse> {
+	return client.request<UsersResponse>('/api/users');
+}
+
+export function createUser(
+	payload: CreateUserRequest,
+	client: ApiClient = apiClient
+): Promise<UserItem> {
+	return client.send<UserItem, CreateUserRequest>('/api/users', payload, 'POST');
+}
+
+export function updateUser(
+	id: string,
+	payload: UpdateUserRequest,
+	client: ApiClient = apiClient
+): Promise<UserItem> {
+	return client.send<UserItem, UpdateUserRequest>(
+		`/api/users/${encodeURIComponent(id)}`,
+		payload,
+		'PATCH'
+	);
+}
+
+export function deleteUser(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.request<Record<string, unknown>>(
+		`/api/users/${encodeURIComponent(id)}`,
+		{ method: 'DELETE' }
+	);
+}
+
+export function updateUserPassword(
+	id: string,
+	payload: UpdateUserPasswordRequest,
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.send<Record<string, unknown>, UpdateUserPasswordRequest>(
+		`/api/users/${encodeURIComponent(id)}/password`,
+		payload,
+		'POST'
+	);
+}
+
+// ─── Device profiles ──────────────────────────────────────────────────────
+
+export interface DeviceProfile {
+	id?: string;
+	name?: string;
+	description?: string;
+	maxBitrate?: number;
+	supportsHevc?: boolean;
+	supportsAv1?: boolean;
+	supportsDolbyVision?: boolean;
+	supportsHdr?: boolean;
+	preferDirectPlay?: boolean;
+}
+
+export interface DeviceProfilesResponse {
+	profiles?: DeviceProfile[];
+}
+
+export function getDeviceProfiles(
+	client: ApiClient = apiClient
+): Promise<DeviceProfilesResponse> {
+	return client.request<DeviceProfilesResponse>('/api/devices/profiles');
+}
+
+// ─── Scan all libraries ───────────────────────────────────────────────────
+
+export function scanAllLibraries(
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.send<Record<string, unknown>, Record<string, never>>(
+		'/api/libraries/scan',
+		{},
+		'POST'
+	);
+}

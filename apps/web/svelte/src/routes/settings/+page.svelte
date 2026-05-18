@@ -11,7 +11,6 @@
     FolderOpen,
     HardDrive,
     Info,
-    KeyRound,
     LayoutDashboard,
     Library,
     Link,
@@ -40,22 +39,44 @@
     getScans,
     getSessions,
     getSettings,
+    updateSettings,
+    updateMetadataSourcePreferences,
     getLibraries,
     saveLibrary,
     deleteLibrary,
     scanLibrary,
     browseFolders,
+    getPerformanceSettings,
+    getDiscoveryStatus,
+    getPairingRequests,
+    approvePairingRequest,
+    denyPairingRequest,
+    getApprovedDevices,
+    revokeApprovedDevice,
+    getUsers,
+    createUser,
+    deleteUser,
+    updateUserPassword,
+    getDeviceProfiles,
+    scanAllLibraries,
+    runHardwareTest,
     type SystemStatusResponse,
     type CatalogSummaryResponse,
     type ScanJobItem,
     type SessionItem,
     type SettingsResponse,
     type LibraryItem,
-    type FolderEntry
+    type FolderEntry,
+    type PerformanceSettingsResponse,
+    type DiscoveryStatusResponse,
+    type PairingRequestItem,
+    type ApprovedDeviceItem,
+    type UserItem,
+    type HardwareTestResponse,
+    type DeviceProfile,
   } from '$lib/api/operator';
 
   type Group = "Account" | "Server" | "Devices" | "Advanced";
-  type Mode = "balanced" | "automatic" | "advanced";
 
   type Section = {
     id: string;
@@ -84,41 +105,12 @@
     { id: "about", label: "About", icon: Info, group: "Advanced", hint: "Build info & open-source licenses" }
   ];
 
-  const modes: { id: Mode; title: string; desc: string }[] = [
-    {
-      id: "balanced",
-      title: "Balanced",
-      desc: "Xuva uses its recommended metadata and artwork fallbacks for the best overall coverage."
-    },
-    {
-      id: "automatic",
-      title: "Prefer local artwork",
-      desc: "Keep metadata automatic but prefer artwork stored alongside your media before downloaded artwork."
-    },
-    {
-      id: "advanced",
-      title: "Advanced provider settings",
-      desc: "Choose exact providers, order, and keys when you need full control."
-    }
-  ];
-
-  const providers = [
-    { id: "tmdb", name: "TMDB", blurb: "Movie, show, season, episode metadata and artwork" },
-    { id: "tvdb", name: "TheTVDB", blurb: "TV and movie metadata, IDs, and ratings" },
-    { id: "fanart", name: "Fanart.tv", blurb: "Logos, banners, thumbs, and extra artwork" }
-  ];
-
   const groups: Group[] = ["Account", "Server", "Devices", "Advanced"];
 
   let active = $state("dashboard");
-  let mode = $state<Mode>("advanced");
-  let savedMode = $state<Mode>("advanced");
-  let keys = $state<Record<string, string>>({});
-  let savedKeys = $state<Record<string, string>>({});
   let q = $state("");
   let headerScrolled = $state(false);
   let mainRef = $state<HTMLDivElement | null>(null);
-  let dirty = $derived(mode !== savedMode || JSON.stringify(keys) !== JSON.stringify(savedKeys));
 
   // Watchlist Services state (#11)
   interface WatchlistService {
@@ -233,14 +225,309 @@
       : null
   );
 
-  function discard(): void {
-    mode = savedMode;
-    keys = { ...savedKeys };
+  // ─── Editable config snapshot ─────────────────────────────────────────────
+  let editConfig = $state({
+    serverName: '',
+    librarySyncMode: 'auto',
+    syncIntervalMins: 60,
+    watchDebounceSecs: 5,
+    probeBatchLimit: 10,
+    transcodeDir: '',
+    downloadsDir: '',
+    metadataDir: '',
+    cacheDir: '',
+    tempDir: '',
+    hardwareUnlocked: false,
+    playbackPolicy: 'auto',
+  });
+
+  function seedEditConfig(s: SettingsResponse) {
+    const c = s.config ?? {};
+    editConfig = {
+      serverName: c.serverName ?? '',
+      librarySyncMode: c.librarySyncMode ?? 'auto',
+      syncIntervalMins: c.syncIntervalMins ?? 60,
+      watchDebounceSecs: c.watchDebounceSecs ?? 5,
+      probeBatchLimit: c.probeBatchLimit ?? 10,
+      transcodeDir: c.transcodeDir ?? '',
+      downloadsDir: c.downloadsDir ?? '',
+      metadataDir: c.metadataDir ?? '',
+      cacheDir: c.cacheDir ?? '',
+      tempDir: c.tempDir ?? '',
+      hardwareUnlocked: c.hardwareUnlocked ?? false,
+      playbackPolicy: c.playbackPolicy ?? 'auto',
+    };
   }
 
-  function saveChanges(): void {
-    savedMode = mode;
-    savedKeys = { ...keys };
+  // ─── Per-section dirty checks ──────────────────────────────────────────────
+  const generalDirty = $derived(
+    editConfig.serverName !== (settingsData?.config?.serverName ?? '')
+  );
+  const scanningDirty = $derived(
+    editConfig.librarySyncMode !== (settingsData?.config?.librarySyncMode ?? 'auto') ||
+    editConfig.syncIntervalMins !== (settingsData?.config?.syncIntervalMins ?? 60) ||
+    editConfig.watchDebounceSecs !== (settingsData?.config?.watchDebounceSecs ?? 5) ||
+    editConfig.probeBatchLimit !== (settingsData?.config?.probeBatchLimit ?? 10)
+  );
+  const transcodingDirty = $derived(
+    editConfig.hardwareUnlocked !== (settingsData?.config?.hardwareUnlocked ?? false)
+  );
+  const storageDirty = $derived(
+    editConfig.transcodeDir !== (settingsData?.config?.transcodeDir ?? '') ||
+    editConfig.downloadsDir !== (settingsData?.config?.downloadsDir ?? '') ||
+    editConfig.metadataDir !== (settingsData?.config?.metadataDir ?? '') ||
+    editConfig.cacheDir !== (settingsData?.config?.cacheDir ?? '') ||
+    editConfig.tempDir !== (settingsData?.config?.tempDir ?? '')
+  );
+  const playbackDirty = $derived(
+    editConfig.playbackPolicy !== (settingsData?.config?.playbackPolicy ?? 'auto')
+  );
+
+  // ─── Metadata preferences state ───────────────────────────────────────────
+  let editMetaPrefs = $state({ movie: [] as string[], series: [] as string[], movieArtwork: [] as string[], seriesArtwork: [] as string[] });
+  let savedMetaPrefs = $state({ movie: [] as string[], series: [] as string[], movieArtwork: [] as string[], seriesArtwork: [] as string[] });
+  const metaDirty = $derived(JSON.stringify(editMetaPrefs) !== JSON.stringify(savedMetaPrefs));
+
+  function moveMetaPref(list: keyof typeof editMetaPrefs, idx: number, dir: -1 | 1) {
+    const arr = [...editMetaPrefs[list]];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= arr.length) return;
+    [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
+    editMetaPrefs = { ...editMetaPrefs, [list]: arr };
+  }
+
+  // ─── Per-section saving state ─────────────────────────────────────────────
+  let generalSaving = $state(false);
+  let scanningSaving = $state(false);
+  let transcodingSaving = $state(false);
+  let storageSaving = $state(false);
+  let playbackSaving = $state(false);
+  let metaSaving = $state(false);
+  let sectionError = $state<string | null>(null);
+
+  const sectionHasSaveDiscard = $derived(
+    ['general','scanning','transcoding','storage','metadata','playback'].includes(active)
+  );
+  const currentDirty = $derived.by(() => {
+    if (active === 'general') return generalDirty;
+    if (active === 'scanning') return scanningDirty;
+    if (active === 'transcoding') return transcodingDirty;
+    if (active === 'storage') return storageDirty;
+    if (active === 'playback') return playbackDirty;
+    if (active === 'metadata') return metaDirty;
+    return false;
+  });
+  const currentSaving = $derived.by(() => {
+    if (active === 'general') return generalSaving;
+    if (active === 'scanning') return scanningSaving;
+    if (active === 'transcoding') return transcodingSaving;
+    if (active === 'storage') return storageSaving;
+    if (active === 'playback') return playbackSaving;
+    if (active === 'metadata') return metaSaving;
+    return false;
+  });
+
+  function discardSection() {
+    if (!settingsData) return;
+    const c = settingsData.config ?? {};
+    sectionError = null;
+    switch (active) {
+      case 'general': editConfig.serverName = c.serverName ?? ''; break;
+      case 'scanning':
+        editConfig.librarySyncMode = c.librarySyncMode ?? 'auto';
+        editConfig.syncIntervalMins = c.syncIntervalMins ?? 60;
+        editConfig.watchDebounceSecs = c.watchDebounceSecs ?? 5;
+        editConfig.probeBatchLimit = c.probeBatchLimit ?? 10;
+        break;
+      case 'transcoding': editConfig.hardwareUnlocked = c.hardwareUnlocked ?? false; break;
+      case 'storage':
+        editConfig.transcodeDir = c.transcodeDir ?? '';
+        editConfig.downloadsDir = c.downloadsDir ?? '';
+        editConfig.metadataDir = c.metadataDir ?? '';
+        editConfig.cacheDir = c.cacheDir ?? '';
+        editConfig.tempDir = c.tempDir ?? '';
+        break;
+      case 'playback': editConfig.playbackPolicy = c.playbackPolicy ?? 'auto'; break;
+      case 'metadata': editMetaPrefs = { ...savedMetaPrefs }; break;
+    }
+  }
+
+  async function saveSection() {
+    sectionError = null;
+    try {
+      if (active === 'general') {
+        generalSaving = true;
+        const r = await updateSettings({ serverName: editConfig.serverName });
+        settingsData = r; seedEditConfig(r);
+      } else if (active === 'scanning') {
+        scanningSaving = true;
+        const r = await updateSettings({
+          librarySyncMode: editConfig.librarySyncMode,
+          syncIntervalMins: editConfig.syncIntervalMins,
+          watchDebounceSecs: editConfig.watchDebounceSecs,
+          probeBatchLimit: editConfig.probeBatchLimit,
+        });
+        settingsData = r; seedEditConfig(r);
+      } else if (active === 'transcoding') {
+        transcodingSaving = true;
+        const r = await updateSettings({ hardwareUnlocked: editConfig.hardwareUnlocked });
+        settingsData = r; seedEditConfig(r);
+      } else if (active === 'storage') {
+        storageSaving = true;
+        const r = await updateSettings({
+          transcodeDir: editConfig.transcodeDir,
+          downloadsDir: editConfig.downloadsDir,
+          metadataDir: editConfig.metadataDir,
+          cacheDir: editConfig.cacheDir,
+          tempDir: editConfig.tempDir,
+        });
+        settingsData = r; seedEditConfig(r);
+      } else if (active === 'playback') {
+        playbackSaving = true;
+        const r = await updateSettings({ playbackPolicy: editConfig.playbackPolicy });
+        settingsData = r; seedEditConfig(r);
+      } else if (active === 'metadata') {
+        metaSaving = true;
+        const r = await updateMetadataSourcePreferences(editMetaPrefs);
+        settingsData = r;
+        savedMetaPrefs = { ...editMetaPrefs };
+      }
+    } catch (e) {
+      sectionError = e instanceof Error ? e.message : 'Failed to save';
+    } finally {
+      generalSaving = false; scanningSaving = false; transcodingSaving = false;
+      storageSaving = false; playbackSaving = false; metaSaving = false;
+    }
+  }
+
+  // ─── Performance / transcoding state ──────────────────────────────────────
+  let perfSettings = $state<PerformanceSettingsResponse | null>(null);
+  let perfLoading = $state(false);
+  let hwTestResult = $state<HardwareTestResponse | null>(null);
+  let hwTestRunning = $state(false);
+
+  async function loadPerf() {
+    perfLoading = true;
+    try { perfSettings = await getPerformanceSettings(); } catch { /* ignore */ } finally { perfLoading = false; }
+  }
+
+  async function runHwTest() {
+    hwTestRunning = true;
+    hwTestResult = null;
+    try { hwTestResult = await runHardwareTest(); } catch (e) {
+      hwTestResult = { status: 'error', error: e instanceof Error ? e.message : 'Test failed' };
+    } finally { hwTestRunning = false; }
+  }
+
+  // ─── Discovery / network state ────────────────────────────────────────────
+  let discoveryStatus = $state<DiscoveryStatusResponse | null>(null);
+  let discoveryLoading = $state(false);
+  async function loadDiscovery() {
+    discoveryLoading = true;
+    try { discoveryStatus = await getDiscoveryStatus(); } catch { /* ignore */ } finally { discoveryLoading = false; }
+  }
+
+  // ─── Users state ──────────────────────────────────────────────────────────
+  let usersList = $state<UserItem[]>([]);
+  let usersLoading = $state(false);
+  let usersError = $state<string | null>(null);
+  let showAddUser = $state(false);
+  let newUserName = $state('');
+  let newUserDisplay = $state('');
+  let newUserPass = $state('');
+  let newUserRole = $state<'admin' | 'viewer'>('viewer');
+  let userSaving = $state(false);
+  let userDeletingId = $state<string | null>(null);
+
+  async function loadUsers() {
+    usersLoading = true; usersError = null;
+    try { usersList = (await getUsers()).users ?? []; } catch (e) {
+      usersError = e instanceof Error ? e.message : 'Failed to load users';
+    } finally { usersLoading = false; }
+  }
+
+  async function handleCreateUser() {
+    if (!newUserName.trim() || !newUserPass.trim()) return;
+    userSaving = true; usersError = null;
+    try {
+      const u = await createUser({ username: newUserName.trim(), displayName: newUserDisplay.trim() || undefined, password: newUserPass, role: newUserRole });
+      usersList = [...usersList, u];
+      showAddUser = false; newUserName = ''; newUserDisplay = ''; newUserPass = ''; newUserRole = 'viewer';
+    } catch (e) { usersError = e instanceof Error ? e.message : 'Failed to create user'; }
+    finally { userSaving = false; }
+  }
+
+  async function handleDeleteUser(id: string) {
+    if (userDeletingId !== id) { userDeletingId = id; return; }
+    try { await deleteUser(id); usersList = usersList.filter(u => u.id !== id); }
+    catch (e) { usersError = e instanceof Error ? e.message : 'Failed to delete user'; }
+    finally { userDeletingId = null; }
+  }
+
+  // ─── Pairing requests state ───────────────────────────────────────────────
+  let pairingRequests = $state<PairingRequestItem[]>([]);
+  let pairingLoading = $state(false);
+  let pairingActionId = $state<string | null>(null);
+
+  async function loadPairingRequests() {
+    pairingLoading = true;
+    try { pairingRequests = (await getPairingRequests()).requests ?? []; } catch { /* ignore */ }
+    finally { pairingLoading = false; }
+  }
+
+  async function handleApprove(id: string) {
+    pairingActionId = id;
+    try { await approvePairingRequest(id); pairingRequests = pairingRequests.filter(r => r.id !== id); }
+    catch { /* ignore */ } finally { pairingActionId = null; }
+  }
+
+  async function handleDeny(id: string) {
+    pairingActionId = id;
+    try { await denyPairingRequest(id); pairingRequests = pairingRequests.filter(r => r.id !== id); }
+    catch { /* ignore */ } finally { pairingActionId = null; }
+  }
+
+  // ─── Approved devices state ───────────────────────────────────────────────
+  let approvedDevices = $state<ApprovedDeviceItem[]>([]);
+  let devicesLoading = $state(false);
+  let deviceRevokingId = $state<string | null>(null);
+
+  async function loadApprovedDevices() {
+    devicesLoading = true;
+    try { approvedDevices = (await getApprovedDevices()).devices ?? []; } catch { /* ignore */ }
+    finally { devicesLoading = false; }
+  }
+
+  async function handleRevoke(id: string) {
+    if (deviceRevokingId !== id) { deviceRevokingId = id; return; }
+    try { await revokeApprovedDevice(id); approvedDevices = approvedDevices.filter(d => d.id !== id); }
+    catch { /* ignore */ } finally { deviceRevokingId = null; }
+  }
+
+  // ─── Device profiles state ────────────────────────────────────────────────
+  let deviceProfiles = $state<DeviceProfile[]>([]);
+
+  async function loadDeviceProfiles() {
+    try { deviceProfiles = (await getDeviceProfiles()).profiles ?? []; } catch { /* ignore */ }
+  }
+
+  // ─── Scan-all ─────────────────────────────────────────────────────────────
+  let scanAllRunning = $state(false);
+  async function handleScanAll() {
+    scanAllRunning = true;
+    try { await scanAllLibraries(); } catch { /* ignore */ } finally { scanAllRunning = false; }
+  }
+
+  // ─── Storage folder browser context ───────────────────────────────────────
+  let browserContext = $state<'library' | 'storage'>('library');
+  let storageBrowserField = $state('');
+
+  async function openStorageBrowser(field: string) {
+    browserContext = 'storage';
+    storageBrowserField = field;
+    showFolderBrowser = true;
+    const currentVal = editConfig[field as keyof typeof editConfig] as string;
+    await navigateFolder(currentVal || '');
   }
 
   function filtered(group: Group): Section[] {
@@ -390,6 +677,8 @@
 
   // ─── Folder browser ────────────────────────────────────────────────────────
   async function openFolderBrowser() {
+    browserContext = 'library';
+    storageBrowserField = '';
     showFolderBrowser = true;
     await navigateFolder('');
   }
@@ -407,6 +696,34 @@
       browserLoading = false;
     }
   }
+
+  // Seed edit config whenever settingsData changes
+  $effect(() => {
+    if (settingsData) {
+      seedEditConfig(settingsData);
+      const prefs = settingsData.metadataSourcePreferences ?? {};
+      const prefObj = {
+        movie: [...(prefs.movie ?? [])],
+        series: [...(prefs.series ?? [])],
+        movieArtwork: [...(prefs.movieArtwork ?? [])],
+        seriesArtwork: [...(prefs.seriesArtwork ?? [])],
+      };
+      editMetaPrefs = prefObj;
+      savedMetaPrefs = prefObj;
+    }
+  });
+
+  // Lazy-load section data on first visit
+  $effect(() => {
+    if (active === 'transcoding' && !perfSettings && !perfLoading) loadPerf();
+    if (active === 'network' && !discoveryStatus && !discoveryLoading) loadDiscovery();
+    if (active === 'users' && usersList.length === 0 && !usersLoading) loadUsers();
+    if (active === 'pending-approvals' && pairingRequests.length === 0 && !pairingLoading) loadPairingRequests();
+    if (active === 'approved-devices' && approvedDevices.length === 0 && !devicesLoading) loadApprovedDevices();
+    if (active === 'playback' && deviceProfiles.length === 0) loadDeviceProfiles();
+    if ((active === 'transcoding' || active === 'playback') && !perfSettings && !perfLoading) loadPerf();
+    if (active !== current.id) sectionError = null;
+  });
 
   onMount(() => {
     loadDashboard();
@@ -535,133 +852,138 @@
               </p>
             {/if}
           </div>
-          {#if active === "metadata"}
+          {#if sectionHasSaveDiscard}
             <div class="flex items-center gap-2">
+              {#if sectionError}
+                <span class="max-w-[180px] truncate text-[11px] text-red-300">{sectionError}</span>
+              {/if}
               <button
                 type="button"
-                onclick={discard}
-                disabled={!dirty}
+                onclick={discardSection}
+                disabled={!currentDirty || currentSaving}
                 class="hairline rounded-full bg-foreground/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Discard
               </button>
               <button
                 type="button"
-                onclick={saveChanges}
-                disabled={!dirty}
-                class="rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                onclick={saveSection}
+                disabled={!currentDirty || currentSaving}
+                class="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Save changes
+                {#if currentSaving}
+                  <span class="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white"></span>
+                {/if}
+                Save
               </button>
             </div>
           {/if}
         </div>
 
         {#if active === "metadata"}
+          {@const movieSources = settingsData?.metadataSources?.movie ?? []}
+          {@const seriesSources = settingsData?.metadataSources?.series ?? []}
+          {@const allSources = [...movieSources, ...seriesSources].filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i)}
           <div class="space-y-12">
+
+            <!-- Provider health -->
             <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
               <div>
-                <h3 class="font-serif-display text-lg tracking-tight">Pick the level of control</h3>
+                <h3 class="font-serif-display text-lg tracking-tight">Provider status</h3>
                 <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                  Most libraries should stay on Automatic. Switch to Advanced only when you need exact providers, ordering, and keys.
+                  Metadata sources configured on this server and their current health.
                 </p>
               </div>
-              <div class="grid gap-3 md:grid-cols-3">
-                {#each modes as item (item.id)}
-                  <button
-                    type="button"
-                    onclick={() => (mode = item.id)}
-                    class={`hairline group relative overflow-hidden rounded-2xl p-5 text-left transition-all duration-300 ${
-                      mode === item.id
-                        ? "bg-surface-elevated/80 shadow-elev"
-                        : "bg-surface/40 hover:bg-surface/70"
-                    }`}
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <span
-                        class={`flex h-4 w-4 items-center justify-center rounded-full border ${
-                          mode === item.id
-                            ? "border-primary-glow bg-primary-glow shadow-glow"
-                            : "border-border"
-                        }`}
-                      >
-                        {#if mode === item.id}
-                          <Check class="h-2.5 w-2.5 text-black" />
+              <div class="space-y-3">
+                {#if allSources.length === 0}
+                  <p class="text-sm text-muted-foreground">No providers found. Reload settings to check.</p>
+                {/if}
+                {#each allSources as src (src.id)}
+                  {@const h = src.providerHealth}
+                  {@const healthy = h?.healthy === true}
+                  {@const configured = h?.configured === true}
+                  <div class="hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-5">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-semibold">{src.name ?? src.id}</span>
+                        {#if src.coverage}
+                          <span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{src.coverage}</span>
                         {/if}
-                      </span>
-                      {#if mode === item.id}
-                        <span class="text-[10px] font-semibold uppercase tracking-[0.25em] text-primary-glow">
-                          Selected
-                        </span>
+                        {#if healthy}
+                          <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-300"><Check class="h-3 w-3"/>Healthy</span>
+                        {:else if configured}
+                          <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-amber-300">Degraded</span>
+                        {:else}
+                          <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Not configured</span>
+                        {/if}
+                      </div>
+                      {#if src.description}
+                        <p class="mt-0.5 text-xs text-muted-foreground">{src.description}</p>
+                      {/if}
+                      {#if h?.error}
+                        <p class="mt-1 text-xs text-red-300">{h.error}</p>
                       {/if}
                     </div>
-                    <div class="mt-4 text-base font-semibold">{item.title}</div>
-                    <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                      {item.desc}
-                    </p>
-                  </button>
+                    <div class="shrink-0 text-right text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">
+                      {#if src.supportsMetadata && src.supportsArtwork}Metadata + Artwork
+                      {:else if src.supportsMetadata}Metadata only
+                      {:else if src.supportsArtwork}Artwork only{/if}
+                    </div>
+                  </div>
                 {/each}
               </div>
             </section>
 
+            <!-- Provider order — Movies -->
             <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
               <div>
-                <h3 class="font-serif-display text-lg tracking-tight">Provider keys</h3>
+                <h3 class="font-serif-display text-lg tracking-tight">Movie provider order</h3>
                 <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                  Missing keys stay visible and safe. Providers without a working key remain disabled until you add one.
+                  Xuva tries providers from top to bottom when fetching metadata for movies.
                 </p>
               </div>
-              <div class="grid gap-3">
-                {#each providers as provider (provider.id)}
-                  {@const value = keys[provider.id] ?? ""}
-                  {@const hasKey = value.trim().length > 0}
-                  <article class="hairline rounded-2xl bg-surface/40 p-6 transition-colors hover:bg-surface/60">
-                    <div class="flex flex-wrap items-start justify-between gap-5">
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-3">
-                          <h3 class="font-serif-display text-xl tracking-tight">
-                            {provider.name}
-                          </h3>
-                          {#if hasKey}
-                            <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                              <Check class="h-3 w-3" /> Active
-                            </span>
-                          {:else}
-                            <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300">
-                              <KeyRound class="h-3 w-3" /> Key required
-                            </span>
-                          {/if}
-                        </div>
-                        <p class="mt-1 text-sm text-muted-foreground">{provider.blurb}</p>
-
-                        <div class="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-                          <div>
-                            <label for={`${provider.id}-key`} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-                              {provider.name} API key
-                            </label>
-                            <input
-                              id={`${provider.id}-key`}
-                              type="password"
-                              bind:value={keys[provider.id]}
-                              placeholder="Paste key"
-                              class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onclick={() => (keys = { ...keys, [provider.id]: "" })}
-                            disabled={!hasKey}
-                            class="hairline mt-2 self-end rounded-xl bg-foreground/[0.04] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 sm:mt-7"
-                          >
-                            Clear key
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </article>
+              <div class="space-y-2">
+                {#each editMetaPrefs.movie as pid, i (pid)}
+                  {@const src = movieSources.find(s => s.id === pid)}
+                  <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-4 py-3">
+                    <span class="w-5 text-center font-mono text-xs text-muted-foreground/60">{i + 1}</span>
+                    <span class="flex-1 text-sm font-medium">{src?.name ?? pid}</span>
+                    <button type="button" disabled={i === 0} onclick={() => moveMetaPref('movie', i, -1)}
+                      class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30">▲</button>
+                    <button type="button" disabled={i === editMetaPrefs.movie.length - 1} onclick={() => moveMetaPref('movie', i, 1)}
+                      class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30">▼</button>
+                  </div>
+                {:else}
+                  <p class="text-sm text-muted-foreground">No movie providers configured.</p>
                 {/each}
               </div>
             </section>
+
+            <!-- Provider order — TV -->
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">TV show provider order</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Provider preference order for TV series, seasons, and episodes.
+                </p>
+              </div>
+              <div class="space-y-2">
+                {#each editMetaPrefs.series as pid, i (pid)}
+                  {@const src = seriesSources.find(s => s.id === pid)}
+                  <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-4 py-3">
+                    <span class="w-5 text-center font-mono text-xs text-muted-foreground/60">{i + 1}</span>
+                    <span class="flex-1 text-sm font-medium">{src?.name ?? pid}</span>
+                    <button type="button" disabled={i === 0} onclick={() => moveMetaPref('series', i, -1)}
+                      class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30">▲</button>
+                    <button type="button" disabled={i === editMetaPrefs.series.length - 1} onclick={() => moveMetaPref('series', i, 1)}
+                      class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30">▼</button>
+                  </div>
+                {:else}
+                  <p class="text-sm text-muted-foreground">No TV providers configured.</p>
+                {/each}
+              </div>
+            </section>
+
           </div>
         {:else if active === "watchlist-services"}
           <div class="space-y-8">
@@ -1309,6 +1631,677 @@
             {/if}
           </div>
 
+        {:else if active === "scanning"}
+          <div class="space-y-12">
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Sync schedule</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Control how and when Xuva watches for new and changed files in your libraries.
+                </p>
+              </div>
+              <div class="space-y-5">
+                <div>
+                  <label for="sync-mode" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Sync mode</label>
+                  <select id="sync-mode" bind:value={editConfig.librarySyncMode}
+                    class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60">
+                    <option value="auto">Auto — watch + interval fallback</option>
+                    <option value="watch">Watch only — filesystem events</option>
+                    <option value="interval">Interval only — timed scans</option>
+                    <option value="manual">Manual — scan on demand</option>
+                  </select>
+                </div>
+                {#if editConfig.librarySyncMode !== 'manual' && editConfig.librarySyncMode !== 'watch'}
+                  <div>
+                    <label for="sync-interval" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Sync interval (minutes)</label>
+                    <input id="sync-interval" type="number" min="5" max="10080" bind:value={editConfig.syncIntervalMins}
+                      class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60" />
+                  </div>
+                {/if}
+                {#if editConfig.librarySyncMode === 'watch' || editConfig.librarySyncMode === 'auto'}
+                  <div>
+                    <label for="watch-debounce" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Watch debounce (seconds)</label>
+                    <p class="mt-1 text-[11px] text-muted-foreground/70">Delay before processing a filesystem event to let file copies finish.</p>
+                    <input id="watch-debounce" type="number" min="1" max="300" bind:value={editConfig.watchDebounceSecs}
+                      class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60" />
+                  </div>
+                {/if}
+                <div>
+                  <label for="probe-batch" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Probe batch limit</label>
+                  <p class="mt-1 text-[11px] text-muted-foreground/70">Max files probed per scan run. Lower values reduce memory spikes.</p>
+                  <input id="probe-batch" type="number" min="1" max="500" bind:value={editConfig.probeBatchLimit}
+                    class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60" />
+                </div>
+              </div>
+            </section>
+
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Manual scan</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Trigger an immediate scan across all libraries.
+                </p>
+              </div>
+              <div class="flex items-start gap-3">
+                <button type="button" onclick={handleScanAll} disabled={scanAllRunning}
+                  class="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60">
+                  {#if scanAllRunning}
+                    <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></span> Scanning…
+                  {:else}
+                    <RefreshCw class="h-4 w-4" /> Scan all libraries
+                  {/if}
+                </button>
+              </div>
+            </section>
+
+            {#if recentScans.length > 0}
+              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                <div>
+                  <h3 class="font-serif-display text-lg tracking-tight">Recent scans</h3>
+                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">Last scan jobs across all libraries.</p>
+                </div>
+                <div class="space-y-2">
+                  {#each recentScans as scan (scan.id)}
+                    <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-4 py-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 text-sm">
+                          <span class="font-medium capitalize">{scan.kind ?? 'Scan'}</span>
+                          {#if scan.libraryId}<span class="font-mono text-[11px] text-muted-foreground">{scan.libraryId.slice(0,8)}</span>{/if}
+                        </div>
+                        <div class="mt-0.5 text-[11px] text-muted-foreground">{scan.status ?? ''}
+                          {#if scan.updatedAt} · {new Date(scan.updatedAt).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}{/if}
+                        </div>
+                      </div>
+                      {#if scan.status === 'running'}
+                        <div class="h-4 w-4 animate-spin rounded-full border border-primary-glow border-t-transparent"></div>
+                      {:else if scan.status === 'completed'}
+                        <Check class="h-4 w-4 text-emerald-300" />
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+          </div>
+
+        {:else if active === "transcoding"}
+          <div class="space-y-12">
+
+            {#if perfLoading && !perfSettings}
+              <div class="flex items-center justify-center py-12"><div class="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div></div>
+            {:else}
+              <!-- Hardware acceleration -->
+              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                <div>
+                  <h3 class="font-serif-display text-lg tracking-tight">Hardware acceleration</h3>
+                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                    GPU-accelerated transcoding reduces CPU load and allows more simultaneous streams.
+                  </p>
+                </div>
+                <div class="space-y-5">
+                  <div class="hairline rounded-2xl bg-surface/40 p-5">
+                    <div class="flex items-center justify-between gap-4">
+                      <div>
+                        <div class="text-sm font-semibold">GPU Transcoding</div>
+                        <p class="mt-0.5 text-xs text-muted-foreground">
+                          {#if perfSettings?.hardwareAcceleration?.available}Available — {perfSettings.hardwareAcceleration.status ?? 'ready'}{:else}Not available on this hardware{/if}
+                        </p>
+                      </div>
+                      <label class="relative inline-flex cursor-pointer items-center gap-2">
+                        <input type="checkbox" bind:checked={editConfig.hardwareUnlocked} class="sr-only peer" />
+                        <div class="h-5 w-9 rounded-full border border-border bg-surface-elevated/60 peer-checked:bg-primary-glow/70 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4"></div>
+                        <span class="text-xs text-muted-foreground">{editConfig.hardwareUnlocked ? 'Enabled' : 'Disabled'}</span>
+                      </label>
+                    </div>
+                    {#if perfSettings?.hardwareAcceleration?.unlockState && perfSettings.hardwareAcceleration.unlockState !== 'unlocked'}
+                      <p class="mt-3 text-xs text-amber-300">{perfSettings.hardwareAcceleration.unlockState}</p>
+                    {/if}
+                  </div>
+
+                  <button type="button" onclick={runHwTest} disabled={hwTestRunning}
+                    class="hairline inline-flex items-center gap-2 rounded-full bg-foreground/[0.04] px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40">
+                    {#if hwTestRunning}
+                      <span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span> Testing…
+                    {:else}
+                      Run hardware test
+                    {/if}
+                  </button>
+
+                  {#if hwTestResult}
+                    <div class="hairline rounded-xl bg-surface/40 p-4 space-y-2">
+                      <div class="flex items-center gap-2 text-sm font-semibold">
+                        {#if hwTestResult.status === 'ok' || (hwTestResult.working ?? 0) > 0}
+                          <Check class="h-4 w-4 text-emerald-300" />
+                          <span class="text-emerald-300">{hwTestResult.working}/{hwTestResult.tested} codecs working</span>
+                        {:else}
+                          <span class="text-red-300">{hwTestResult.error ?? 'No hardware codecs available'}</span>
+                        {/if}
+                      </div>
+                      {#each hwTestResult.tests ?? [] as t (t.id)}
+                        <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                          {#if t.ok}<Check class="h-3 w-3 shrink-0 text-emerald-300" />{:else}<span class="h-3 w-3 shrink-0 rounded-full bg-red-400/40"></span>{/if}
+                          <span class="font-medium">{t.label ?? t.id}</span>
+                          <span class="text-muted-foreground/60">{t.codec ?? ''}</span>
+                          {#if t.durationMs}<span class="ml-auto">{t.durationMs}ms</span>{/if}
+                          {#if t.error}<span class="text-red-300">{t.error}</span>{/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </section>
+
+              <!-- Worker limits -->
+              {#if perfSettings?.limits}
+                <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                  <div>
+                    <h3 class="font-serif-display text-lg tracking-tight">Worker limits</h3>
+                    <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                      Current concurrency limits set by the server based on your hardware profile.
+                    </p>
+                  </div>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    {#each ([
+                      { label: 'Scan workers', val: perfSettings.limits.scanWorkers },
+                      { label: 'Probe workers', val: perfSettings.limits.probeWorkers },
+                      { label: 'Transcode workers', val: perfSettings.limits.transcodeWorkers },
+                      { label: 'GPU workers', val: perfSettings.limits.gpuWorkers },
+                    ] as const) as row (row.label)}
+                      <div class="hairline rounded-xl bg-surface/40 px-4 py-3">
+                        <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{row.label}</div>
+                        <div class="mt-1 font-serif-display text-2xl text-foreground/80">{row.val ?? '—'}</div>
+                      </div>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
+
+              <!-- Queue status -->
+              {#if perfSettings?.queues && perfSettings.queues.length > 0}
+                <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                  <div>
+                    <h3 class="font-serif-display text-lg tracking-tight">Queue status</h3>
+                    <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">Live queue activity.</p>
+                  </div>
+                  <div class="space-y-2">
+                    {#each perfSettings.queues as q (q.name)}
+                      <div class="hairline flex items-center gap-4 rounded-xl bg-surface/40 px-4 py-3">
+                        <div class="min-w-0 flex-1">
+                          <div class="text-sm font-medium capitalize">{q.name}</div>
+                          <div class="text-[11px] text-muted-foreground">{q.class ?? ''}</div>
+                        </div>
+                        <div class="flex gap-4 text-xs text-muted-foreground">
+                          <span>{q.active ?? 0} active</span>
+                          <span>{q.queued ?? 0} queued</span>
+                          {#if q.workerUtilization != null}
+                            <span>{(q.workerUtilization * 100).toFixed(0)}% util</span>
+                          {/if}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
+            {/if}
+          </div>
+
+        {:else if active === "storage"}
+          <div class="space-y-12">
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Directories</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Paths where Xuva stores transcoded files, downloads, metadata, and caches. Leave blank to use defaults.
+                </p>
+              </div>
+              <div class="space-y-4">
+                {#if settingsData?.config?.dataDir}
+                  <div class="hairline rounded-xl bg-surface/30 px-4 py-3">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Data directory (read-only)</div>
+                    <div class="mt-1 truncate font-mono text-sm text-foreground/70">{settingsData.config.dataDir}</div>
+                    <p class="mt-0.5 text-[11px] text-muted-foreground/60">Set via environment variable at startup.</p>
+                  </div>
+                {/if}
+                {#each ([
+                  { field: 'transcodeDir', label: 'Transcode directory', hint: 'Where in-progress transcode segments are written.' },
+                  { field: 'downloadsDir', label: 'Downloads directory', hint: 'Where downloaded files are saved.' },
+                  { field: 'metadataDir', label: 'Metadata directory', hint: 'Artwork, NFO files, and metadata cache.' },
+                  { field: 'cacheDir', label: 'Cache directory', hint: 'Thumbnails and temporary cache files.' },
+                  { field: 'tempDir', label: 'Temp directory', hint: 'Short-lived working files.' },
+                ] as const) as row (row.field)}
+                  <div>
+                    <label for={`dir-${row.field}`} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">{row.label}</label>
+                    {#if row.hint}<p class="mt-0.5 text-[11px] text-muted-foreground/70">{row.hint}</p>{/if}
+                    <div class="mt-2 flex gap-2">
+                      <input id={`dir-${row.field}`} type="text" bind:value={editConfig[row.field]}
+                        placeholder="Default"
+                        class="h-11 flex-1 rounded-xl border border-border bg-background/40 px-4 font-mono text-sm outline-none placeholder:font-sans placeholder:text-muted-foreground/50 focus:border-primary/60 focus:bg-background/70" />
+                      <button type="button" onclick={() => openStorageBrowser(row.field)}
+                        class="hairline flex h-11 items-center gap-1.5 rounded-xl bg-foreground/[0.06] px-4 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.10] hover:text-foreground">
+                        <Folder class="h-3.5 w-3.5" /> Browse
+                      </button>
+                    </div>
+                    <!-- Inline folder browser when this field is active -->
+                    {#if showFolderBrowser && browserContext === 'storage' && storageBrowserField === row.field}
+                      <div class="mt-2 hairline overflow-hidden rounded-xl bg-background/40">
+                        <div class="flex items-center gap-2 border-b border-border px-3 py-2">
+                          <FolderOpen class="h-3.5 w-3.5 shrink-0 text-primary-glow" />
+                          <span class="min-w-0 flex-1 truncate font-mono text-xs text-foreground/80">{browserCurrentPath || '/'}</span>
+                          <button type="button"
+                            onclick={() => { editConfig[row.field as keyof typeof editConfig] = browserCurrentPath as never; showFolderBrowser = false; }}
+                            class="shrink-0 rounded-full bg-primary-glow/10 px-3 py-1 text-[11px] font-semibold text-primary-glow transition-colors hover:bg-primary-glow/20">Select</button>
+                          <button type="button" onclick={() => (showFolderBrowser = false)}
+                            class="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground">✕</button>
+                        </div>
+                        {#if browserLoading}
+                          <div class="flex items-center justify-center py-5"><div class="h-5 w-5 animate-spin rounded-full border border-border border-t-primary-glow"></div></div>
+                        {:else}
+                          <ul class="max-h-48 overflow-y-auto py-1">
+                            {#if browserParentPath !== undefined}
+                              <li><button type="button" onclick={() => navigateFolder(browserParentPath!)}
+                                class="flex w-full items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
+                                <ChevronLeft class="h-3.5 w-3.5 shrink-0"/><span class="font-mono text-xs">..</span></button></li>
+                            {/if}
+                            {#each browserEntries as entry (entry.path ?? entry.name)}
+                              <li><button type="button" onclick={() => navigateFolder(entry.path ?? '')}
+                                class="flex w-full items-center gap-3 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground">
+                                <Folder class="h-3.5 w-3.5 shrink-0 text-muted-foreground/60"/>
+                                <span class="flex-1 truncate font-mono text-xs">{entry.name ?? entry.path}</span>
+                                <ChevronRight class="h-3 w-3 shrink-0 text-muted-foreground/40"/></button></li>
+                            {:else}
+                              <li class="px-4 py-3 text-xs text-muted-foreground/60">No sub-folders found.</li>
+                            {/each}
+                          </ul>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            </section>
+
+            <!-- Disk usage from system status -->
+            {#if sysStatus?.disks && sysStatus.disks.length > 0}
+              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                <div>
+                  <h3 class="font-serif-display text-lg tracking-tight">Disk usage</h3>
+                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">Current usage across mounted volumes visible to the server.</p>
+                </div>
+                <div class="space-y-4">
+                  {#each sysStatus.disks as disk (disk.path ?? disk.name)}
+                    {@const pct = disk.usedPercent ?? 0}
+                    <div>
+                      <div class="flex items-center justify-between">
+                        <span class="max-w-[60%] truncate font-mono text-xs text-muted-foreground">{disk.path ?? disk.name ?? 'Disk'}</span>
+                        <span class="text-xs {pct > 90 ? 'text-amber-300' : 'text-foreground/60'}">{formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)}</span>
+                      </div>
+                      <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-surface-elevated/60">
+                        <div class="h-full rounded-full {pct > 90 ? 'bg-amber-400' : 'bg-foreground/25'}" style="width: {Math.min(pct, 100)}%"></div>
+                      </div>
+                      {#if disk.error}<p class="mt-0.5 text-[11px] text-red-300">{disk.error}</p>{/if}
+                    </div>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+          </div>
+
+        {:else if active === "network"}
+          <div class="space-y-12">
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">mDNS discovery</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Xuva advertises itself on your local network so nearby clients can find it automatically.
+                </p>
+              </div>
+              <div class="space-y-4">
+                {#if discoveryLoading && !discoveryStatus}
+                  <div class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div></div>
+                {:else if discoveryStatus}
+                  <div class="hairline rounded-2xl bg-surface/40 p-5 space-y-3">
+                    <div class="flex items-center justify-between">
+                      <span class="text-sm font-semibold">Status</span>
+                      {#if discoveryStatus.running}
+                        <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-300"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>Running</span>
+                      {:else if discoveryStatus.enabled}
+                        <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-amber-300">Enabled, not running</span>
+                      {:else}
+                        <span class="hairline rounded-full bg-foreground/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Disabled</span>
+                      {/if}
+                    </div>
+                    {#if discoveryStatus.serviceName}
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Service name</span>
+                        <span class="font-mono text-foreground/80">{discoveryStatus.serviceName}</span>
+                      </div>
+                    {/if}
+                    {#if discoveryStatus.serviceType}
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Service type</span>
+                        <span class="font-mono text-foreground/80">{discoveryStatus.serviceType}</span>
+                      </div>
+                    {/if}
+                    {#if discoveryStatus.port}
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Port</span>
+                        <span class="font-mono text-foreground/80">{discoveryStatus.port}</span>
+                      </div>
+                    {/if}
+                    {#if discoveryStatus.lastError}
+                      <p class="text-xs text-red-300">{discoveryStatus.lastError}</p>
+                    {/if}
+                    {#if discoveryStatus.note}
+                      <p class="text-xs text-muted-foreground/70">{discoveryStatus.note}</p>
+                    {/if}
+                  </div>
+                  <button type="button" onclick={loadDiscovery} class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">
+                    <RefreshCw class="h-3 w-3" /> Refresh
+                  </button>
+                {:else}
+                  <p class="text-sm text-muted-foreground">Unable to load discovery status.</p>
+                  <button type="button" onclick={loadDiscovery} class="hairline mt-2 inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground"><RefreshCw class="h-3 w-3" /> Retry</button>
+                {/if}
+              </div>
+            </section>
+
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">HTTP port</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  The port Xuva listens on is configured at startup via the <code class="font-mono text-xs">XUVA_HTTP_ADDR</code> environment variable and cannot be changed here.
+                </p>
+              </div>
+              <div class="hairline rounded-2xl bg-surface/30 p-5">
+                <p class="text-sm text-muted-foreground">To change the HTTP port, restart the server with a different <code class="font-mono text-xs">XUVA_HTTP_ADDR</code> value (e.g. <code class="font-mono text-xs">0.0.0.0:8097</code>).</p>
+              </div>
+            </section>
+          </div>
+
+        {:else if active === "playback"}
+          <div class="space-y-12">
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Playback policy</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Controls how the server decides between direct streaming and transcoding for each session.
+                </p>
+              </div>
+              <div class="space-y-3">
+                {#each ([
+                  { id: 'auto', label: 'Auto', desc: 'Server decides per-client based on capabilities and bitrate.' },
+                  { id: 'prefer-direct-play', label: 'Prefer direct play', desc: 'Stream original files when the client supports the format.' },
+                  { id: 'prefer-transcode', label: 'Prefer transcode', desc: 'Always transcode to a compatible format for maximum compatibility.' },
+                  { id: 'force-transcode', label: 'Always transcode', desc: 'Force transcoding for every stream regardless of client capabilities.' },
+                ] as const) as opt (opt.id)}
+                  <button type="button" onclick={() => (editConfig.playbackPolicy = opt.id)}
+                    class="hairline w-full rounded-2xl p-4 text-left transition-all {editConfig.playbackPolicy === opt.id ? 'bg-surface-elevated/80 shadow-elev' : 'bg-surface/40 hover:bg-surface/70'}">
+                    <div class="flex items-center gap-3">
+                      <span class="flex h-4 w-4 items-center justify-center rounded-full border {editConfig.playbackPolicy === opt.id ? 'border-primary-glow bg-primary-glow' : 'border-border'}">
+                        {#if editConfig.playbackPolicy === opt.id}<Check class="h-2.5 w-2.5 text-black" />{/if}
+                      </span>
+                      <span class="text-sm font-semibold">{opt.label}</span>
+                    </div>
+                    <p class="mt-2 pl-7 text-xs text-muted-foreground">{opt.desc}</p>
+                  </button>
+                {/each}
+              </div>
+            </section>
+
+            {#if deviceProfiles.length > 0}
+              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                <div>
+                  <h3 class="font-serif-display text-lg tracking-tight">Client profiles</h3>
+                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                    Known device capability profiles. The server uses these to pick the best playback route.
+                  </p>
+                </div>
+                <div class="space-y-2">
+                  {#each deviceProfiles as p (p.id)}
+                    <div class="hairline rounded-xl bg-surface/40 px-4 py-3">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-sm font-medium">{p.name ?? p.id}</span>
+                        {#if p.supportsHevc}<span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">HEVC</span>{/if}
+                        {#if p.supportsAv1}<span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">AV1</span>{/if}
+                        {#if p.supportsHdr}<span class="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-300">HDR</span>{/if}
+                        {#if p.supportsDolbyVision}<span class="rounded-full bg-blue-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-300">DV</span>{/if}
+                        {#if p.preferDirectPlay}<span class="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-300">Direct play</span>{/if}
+                        {#if p.maxBitrate}<span class="ml-auto font-mono text-[11px] text-muted-foreground/60">{(p.maxBitrate / 1000).toFixed(0)} Mbps</span>{/if}
+                      </div>
+                      {#if p.description}<p class="mt-0.5 text-xs text-muted-foreground">{p.description}</p>{/if}
+                    </div>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+          </div>
+
+        {:else if active === "users"}
+          <div class="space-y-8">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">
+                {usersList.length === 0 && !usersLoading ? 'No users yet.' : `${usersList.length} user${usersList.length !== 1 ? 's' : ''}`}
+              </p>
+              <button type="button" onclick={() => { showAddUser = !showAddUser; usersError = null; }}
+                class="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110">
+                <Plus class="h-3.5 w-3.5" /> {showAddUser ? 'Cancel' : 'Add user'}
+              </button>
+            </div>
+
+            {#if usersError}
+              <div class="rounded-xl bg-red-400/10 px-4 py-3 text-sm text-red-300">{usersError}</div>
+            {/if}
+
+            {#if showAddUser}
+              <div class="hairline rounded-2xl bg-surface/50 p-6 space-y-5">
+                <h3 class="font-semibold">New user</h3>
+                <div class="grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <label for="new-username" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Username</label>
+                    <input id="new-username" type="text" bind:value={newUserName} placeholder="username"
+                      class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60" />
+                  </div>
+                  <div>
+                    <label for="new-displayname" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Display name</label>
+                    <input id="new-displayname" type="text" bind:value={newUserDisplay} placeholder="Full name"
+                      class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60" />
+                  </div>
+                  <div>
+                    <label for="new-pass" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Password</label>
+                    <input id="new-pass" type="password" bind:value={newUserPass} placeholder="••••••••"
+                      class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60" />
+                  </div>
+                  <div>
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Role</div>
+                    <div class="mt-2 flex gap-2">
+                      {#each (['viewer', 'admin'] as const) as role (role)}
+                        <button type="button" onclick={() => (newUserRole = role)}
+                          class="flex-1 rounded-xl border py-2.5 text-sm font-medium capitalize transition-colors {newUserRole === role ? 'border-primary/60 bg-primary-glow/10 text-foreground' : 'border-border bg-surface/40 text-muted-foreground hover:text-foreground'}">
+                          {role}
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3 border-t border-border pt-4">
+                  <button type="button" onclick={handleCreateUser} disabled={userSaving || !newUserName.trim() || !newUserPass.trim()}
+                    class="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60">
+                    {#if userSaving}<span class="h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-white"></span> Creating…{:else}Create user{/if}
+                  </button>
+                  <button type="button" onclick={() => { showAddUser = false; usersError = null; }}
+                    class="hairline rounded-full bg-foreground/[0.04] px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            {#if usersLoading}
+              <div class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div></div>
+            {:else if usersList.length > 0}
+              <div class="space-y-2">
+                {#each usersList as user (user.id ?? user.username)}
+                  <div class="hairline flex flex-wrap items-center gap-4 rounded-2xl bg-surface/40 p-4">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-elevated/60 text-xs font-semibold uppercase text-muted-foreground">
+                      {(user.displayName ?? user.username ?? '?').slice(0, 2)}
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium">{user.displayName ?? user.username}</span>
+                        {#if user.displayName && user.username}
+                          <span class="font-mono text-xs text-muted-foreground/60">@{user.username}</span>
+                        {/if}
+                        {#if user.role}
+                          <span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{user.role}</span>
+                        {/if}
+                      </div>
+                    </div>
+                    <div class="flex shrink-0 gap-2">
+                      {#if userDeletingId === user.id}
+                        <button type="button" onclick={() => user.id && handleDeleteUser(user.id)}
+                          class="inline-flex items-center gap-1.5 rounded-full bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-400/20">Confirm delete?</button>
+                        <button type="button" onclick={() => (userDeletingId = null)}
+                          class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08]">Cancel</button>
+                      {:else}
+                        <button type="button" onclick={() => user.id && handleDeleteUser(user.id)} disabled={!user.id}
+                          class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40">
+                          <Trash2 class="h-3 w-3" /> Delete
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else if !showAddUser}
+              <div class="hairline flex flex-col items-center justify-center rounded-3xl bg-surface/30 px-8 py-20 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-elevated/70 text-primary-glow shadow-elev"><Users class="h-6 w-6" /></div>
+                <div class="font-serif-display mt-5 text-xl tracking-tight">No users yet</div>
+                <p class="mt-2 max-w-sm text-sm text-muted-foreground">Add the first user to enable authentication.</p>
+                <button type="button" onclick={() => (showAddUser = true)}
+                  class="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110">
+                  <Plus class="h-4 w-4" /> Add first user
+                </button>
+              </div>
+            {/if}
+          </div>
+
+        {:else if active === "pending-approvals"}
+          <div class="space-y-6">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">
+                {pairingRequests.length === 0 && !pairingLoading ? 'No pending requests.' : `${pairingRequests.length} pending`}
+              </p>
+              <button type="button" onclick={loadPairingRequests} disabled={pairingLoading}
+                class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40">
+                <RefreshCw class="h-3 w-3 {pairingLoading ? 'animate-spin' : ''}" /> Refresh
+              </button>
+            </div>
+
+            {#if pairingLoading && pairingRequests.length === 0}
+              <div class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div></div>
+            {:else if pairingRequests.length > 0}
+              <div class="space-y-3">
+                {#each pairingRequests as req (req.id)}
+                  <div class="hairline rounded-2xl bg-surface/40 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="font-semibold">{req.deviceName ?? 'Unknown device'}</span>
+                          {#if req.clientProfile}
+                            <span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{req.clientProfile}</span>
+                          {/if}
+                        </div>
+                        {#if req.code}
+                          <div class="mt-1 font-mono text-sm text-primary-glow tracking-widest">{req.code}</div>
+                        {/if}
+                        <div class="mt-1 text-xs text-muted-foreground">
+                          {#if req.expiresAt}Expires {new Date(req.expiresAt).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}{/if}
+                        </div>
+                      </div>
+                      <div class="flex shrink-0 gap-2">
+                        <button type="button" onclick={() => req.id && handleApprove(req.id)} disabled={pairingActionId === req.id}
+                          class="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-4 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/20 disabled:opacity-40">
+                          {#if pairingActionId === req.id}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}<Check class="h-3.5 w-3.5" />{/if}
+                          Approve
+                        </button>
+                        <button type="button" onclick={() => req.id && handleDeny(req.id)} disabled={pairingActionId === req.id}
+                          class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40">
+                          Deny
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="hairline flex flex-col items-center justify-center rounded-3xl bg-surface/30 px-8 py-20 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-elevated/70 text-primary-glow shadow-elev"><Link2 class="h-6 w-6" /></div>
+                <div class="font-serif-display mt-5 text-xl tracking-tight">No pending requests</div>
+                <p class="mt-2 max-w-sm text-sm text-muted-foreground">Pairing requests from new devices appear here for you to approve or deny.</p>
+              </div>
+            {/if}
+          </div>
+
+        {:else if active === "approved-devices"}
+          <div class="space-y-6">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">
+                {approvedDevices.length === 0 && !devicesLoading ? 'No approved devices.' : `${approvedDevices.length} device${approvedDevices.length !== 1 ? 's' : ''}`}
+              </p>
+              <button type="button" onclick={loadApprovedDevices} disabled={devicesLoading}
+                class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40">
+                <RefreshCw class="h-3 w-3 {devicesLoading ? 'animate-spin' : ''}" /> Refresh
+              </button>
+            </div>
+
+            {#if devicesLoading && approvedDevices.length === 0}
+              <div class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div></div>
+            {:else if approvedDevices.length > 0}
+              <div class="space-y-2">
+                {#each approvedDevices as dev (dev.id)}
+                  <div class="hairline flex flex-wrap items-center gap-4 rounded-2xl bg-surface/40 p-4">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-elevated/60 text-primary-glow">
+                      <ShieldCheck class="h-4 w-4" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium">{dev.displayName ?? dev.deviceName ?? 'Unknown'}</span>
+                        {#if dev.clientProfile}<span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{dev.clientProfile}</span>{/if}
+                        {#if dev.status === 'active'}
+                          <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-300">Active</span>
+                        {:else if dev.status}
+                          <span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{dev.status}</span>
+                        {/if}
+                      </div>
+                      {#if dev.approvedAt}
+                        <div class="mt-0.5 text-[11px] text-muted-foreground/60">Approved {new Date(dev.approvedAt).toLocaleDateString()}{dev.approvedBy ? ` by ${dev.approvedBy}` : ''}</div>
+                      {/if}
+                    </div>
+                    <div class="flex shrink-0 gap-2">
+                      {#if deviceRevokingId === dev.id}
+                        <button type="button" onclick={() => dev.id && handleRevoke(dev.id)}
+                          class="inline-flex items-center gap-1.5 rounded-full bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-400/20">Confirm revoke?</button>
+                        <button type="button" onclick={() => (deviceRevokingId = null)}
+                          class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08]">Cancel</button>
+                      {:else}
+                        <button type="button" onclick={() => dev.id && handleRevoke(dev.id)} disabled={!dev.id}
+                          class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40">
+                          <Unlink class="h-3 w-3" /> Revoke
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="hairline flex flex-col items-center justify-center rounded-3xl bg-surface/30 px-8 py-20 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-elevated/70 text-primary-glow shadow-elev"><ShieldCheck class="h-6 w-6" /></div>
+                <div class="font-serif-display mt-5 text-xl tracking-tight">No approved devices</div>
+                <p class="mt-2 max-w-sm text-sm text-muted-foreground">Devices you approve appear here. You can revoke access at any time.</p>
+              </div>
+            {/if}
+          </div>
+
         {:else if active === "general"}
           <div class="space-y-12">
             <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
@@ -1326,10 +2319,10 @@
                   <input
                     id="server-name"
                     type="text"
+                    bind:value={editConfig.serverName}
                     placeholder="Xuva"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
-                </div>
                 <div>
                   <label for="interface-lang" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
                     Interface language
