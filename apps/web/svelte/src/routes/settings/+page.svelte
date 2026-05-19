@@ -1979,7 +1979,7 @@
                   </div>
 
                   <!-- Detected accelerators panel (from ffmpeg -encoders scan) -->
-                  {#if perfSettings?.hardwareAcceleration?.encoders?.length > 0}
+                  {#if perfSettings?.hardwareAcceleration?.encoders && perfSettings.hardwareAcceleration.encoders.length > 0}
                     <div class="space-y-1">
                       <p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Detected accelerators</p>
                       {#each perfSettings.hardwareAcceleration.encoders as enc (enc.id)}

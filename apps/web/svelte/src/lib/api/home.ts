@@ -77,11 +77,30 @@ export interface MovieDetailResponse {
 }
 
 export interface SeriesDetailEpisode {
+	id?: string;
+	title?: string;
+	seasonNumber?: number;
+	episodeNumber?: number;
+	versionCount?: number;
 	versions?: MovieDetailVersion[];
+	thumbnailUrl?: string;
+	overview?: string;
+	airDate?: string;
+	runtimeMinutes?: number;
+	voteAverage?: number;
+	[key: string]: unknown;
 }
 
 export interface SeriesDetailSeason {
+	id?: string;
+	seasonNumber?: number;
 	episodes?: SeriesDetailEpisode[];
+	posterUrl?: string;
+	backdropUrl?: string;
+	name?: string;
+	overview?: string;
+	airDate?: string;
+	[key: string]: unknown;
 }
 
 export interface SeriesDetailResponse {
