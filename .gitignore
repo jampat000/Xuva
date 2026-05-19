@@ -32,6 +32,13 @@ bin/
 *.test
 *.out
 server/.air/
+# Stray xuva binaries from local smoke runs (tools/built-bundle-smoke.cjs
+# writes its binary into the OS temp dir, but a developer running `go build`
+# in server/ directly will produce one of these.)
+server/xuva
+server/xuva.exe
+xuva-smoke
+xuva-smoke.exe
 
 # Rust
 target/
