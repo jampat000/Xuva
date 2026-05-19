@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { Bell, Clock, Menu, Search, Settings, Film, Tv, LogOut, User, Layers, X, AlertTriangle, CheckCircle } from "lucide-svelte";
+  import { Bell, Clock, Menu, Search, Settings, Film, Tv, LogOut, User, Layers, X, AlertTriangle, CheckCircle, Users } from "lucide-svelte";
   import Logo from "./Logo.svelte";
   import { primeSearchCatalogue, runSearch, getSearchResults, isSearchLoading } from "$lib/stores/searchStore.svelte";
   import { getPlaybackRecent } from "$lib/api/home";
@@ -9,6 +9,7 @@
   import type { SearchHit } from "$lib/api/browse";
   import { getNotifications, dismissNotification, dismissAllNotifications } from "$lib/api/operator";
   import type { NotificationItem } from "$lib/api/operator";
+  import { profileStore } from "$lib/stores/profileStore.svelte";
 
   const nav = [
     { label: "Home", href: "/" },
@@ -168,6 +169,7 @@
 
   // ── Profile ────────────────────────────────────────────────────────────────
   let showProfile = $state(false);
+  const activeProfile = $derived(profileStore.activeProfile);
 
   // ── Mobile menu ────────────────────────────────────────────────────────────
   let showMobileMenu = $state(false);
@@ -175,6 +177,22 @@
   function toggleProfile() {
     showProfile = !showProfile;
     showNotifications = false;
+  }
+
+  function openProfileSwitcher() {
+    showProfile = false;
+    profileStore.openPicker();
+  }
+
+  function profileInitials(name: string): string {
+    return name.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
+  }
+
+  function profileAvatarSrc(p: typeof activeProfile): string | null {
+    if (!p) return null;
+    if (p.avatarUrl) return p.avatarUrl;
+    if (p.avatarPreset) return `/avatars/${p.avatarPreset}.svg`;
+    return null;
   }
 
   // ── Scroll ─────────────────────────────────────────────────────────────────
@@ -503,19 +521,46 @@
         <button
           type="button"
           onclick={toggleProfile}
-          class={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-primary text-sm font-semibold text-white ring-1 ring-white/20 transition-shadow ${showProfile ? 'shadow-glow' : ''}`}
+          class={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-1 ring-white/20 transition-shadow ${showProfile ? 'shadow-glow' : ''}`}
           aria-label="Profile"
         >
-          A
+          {#if activeProfile}
+            {@const src = profileAvatarSrc(activeProfile)}
+            {#if src}
+              <img src={src} alt={activeProfile.displayName} class="h-full w-full object-cover" />
+            {:else}
+              <div class="flex h-full w-full items-center justify-center bg-gradient-primary text-sm font-semibold text-white">
+                {profileInitials(activeProfile.displayName)}
+              </div>
+            {/if}
+          {:else}
+            <div class="flex h-full w-full items-center justify-center bg-gradient-primary text-sm font-semibold text-white">
+              <User class="h-4 w-4" />
+            </div>
+          {/if}
         </button>
 
         {#if showProfile}
           <div class="absolute right-0 top-[calc(100%+8px)] z-50 w-56 overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl backdrop-blur-xl">
             <div class="border-b border-border px-4 py-3">
-              <p class="text-sm font-semibold">Admin</p>
-              <p class="text-xs text-muted-foreground">Local account</p>
+              {#if activeProfile}
+                <p class="text-sm font-semibold">{activeProfile.displayName}</p>
+                <p class="text-xs text-muted-foreground">{activeProfile.isRestricted ? 'Kids profile' : 'Profile'}</p>
+              {:else}
+                <p class="text-sm font-semibold">Account</p>
+                <p class="text-xs text-muted-foreground">Local account</p>
+              {/if}
             </div>
             <ul class="py-1">
+              <li>
+                <button
+                  type="button"
+                  onclick={openProfileSwitcher}
+                  class="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-surface/60 hover:text-foreground"
+                >
+                  <Users class="h-4 w-4" /> Switch Profile
+                </button>
+              </li>
               <li>
                 <a
                   href="/settings"

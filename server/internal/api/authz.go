@@ -34,6 +34,7 @@ var routePolicies = map[string]routePolicy{
 	"PATCH /api/users/{id}":         route("PATCH /api/users/{id}", "auth", "user.update", roleAdmin),
 	"DELETE /api/users/{id}":        route("DELETE /api/users/{id}", "auth", "user.delete", roleAdmin),
 	"POST /api/users/{id}/password": route("POST /api/users/{id}/password", "auth", "user.password.update", roleAdmin),
+	"POST /api/users/{id}/pin":      route("POST /api/users/{id}/pin", "auth", "user.pin.update", roleAdmin),
 
 	"POST /api/libraries":             route("POST /api/libraries", "libraries", "library.save", roleAdmin),
 	"DELETE /api/libraries/{id}":      route("DELETE /api/libraries/{id}", "libraries", "library.delete", roleAdmin),
