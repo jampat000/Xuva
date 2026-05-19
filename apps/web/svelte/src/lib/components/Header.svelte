@@ -384,6 +384,7 @@
         <button
           type="button"
           aria-label="Notifications"
+          title="Notifications"
           onclick={openNotifications}
           class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showNotifications ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
         >
@@ -397,6 +398,7 @@
         <button
           type="button"
           aria-label="Recently Played"
+          title="Recently Played"
           onclick={openRecentPlayed}
           class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showRecentPlayed ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
         >
@@ -507,6 +509,7 @@
       <a
         href="/settings"
         aria-label="Settings"
+        title="Settings"
         class={`hidden h-9 w-9 items-center justify-center rounded-full transition-colors sm:flex ${
           currentPath === "/settings"
             ? "text-foreground bg-surface"
@@ -523,6 +526,7 @@
           onclick={toggleProfile}
           class={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-1 ring-white/20 transition-shadow ${showProfile ? 'shadow-glow' : ''}`}
           aria-label="Profile"
+          title={activeProfile ? activeProfile.displayName : 'Profile'}
         >
           {#if activeProfile}
             {@const src = profileAvatarSrc(activeProfile)}
