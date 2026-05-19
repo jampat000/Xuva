@@ -51,3 +51,33 @@ jobs:
       - name: Type-check (svelte-check)
         working-directory: apps/web/svelte
         run: npm run check
+
+  built-bundle-smoke:
+    name: Built-bundle CSP smoke check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/web/svelte/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web/svelte
+        run: npm ci
+
+      - name: Run built-bundle smoke check
+        # Builds the Svelte SPA, publishes it into server/internal/webapp/static-next,
+        # compiles xuva, boots it against a temp data dir on port 18097, polls
+        # /api/health, and asserts Content-Security-Policy img-src permits the
+        # known artwork hosts. Catches the class of regression behind #67.
+        run: node tools/built-bundle-smoke.cjs
