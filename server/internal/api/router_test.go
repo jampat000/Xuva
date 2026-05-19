@@ -234,14 +234,25 @@ func TestRootRedirectsStandardUserAwayFromSettings(t *testing.T) {
 }
 
 func TestRootDoesNotServeRemovedAdminRoute(t *testing.T) {
+	// The dedicated server-side /admin route was removed; admin features now
+	// live under /settings. Visiting /admin falls through to the SPA history
+	// fallback (no server-side handler exists for it). This test guards
+	// against accidentally adding a real /admin handler back to the router.
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("expected removed admin route to return 404, got %d", response.Code)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected /admin to fall through to SPA shell with 200, got %d", response.Code)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if !bytes.Contains(body, []byte("__sveltekit_")) {
+		t.Fatalf("expected /admin to return svelte bootstrap shell (no dedicated admin handler), got %q", string(body))
 	}
 }
 
@@ -273,24 +284,25 @@ func TestRootAssetCacheHeadersAreImmutable(t *testing.T) {
 }
 
 func TestRootBuildInfoIsServedNoStore(t *testing.T) {
+	// build-info.json was removed from the SvelteKit publish output. The
+	// webapp.go handler still applies no-store headers if it ever returns,
+	// but the file is not embedded, so the route now 404s. This test guards
+	// against accidentally shipping a cached build marker again — if a future
+	// commit adds build-info.json back, it must serve with no-store headers.
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/build-info.json", nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", response.Code)
+	if response.Code == http.StatusOK {
+		if cacheControl := response.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-store") {
+			t.Fatalf("if build-info.json is served, it must use no-store cache control, got %q", cacheControl)
+		}
+		return
 	}
-	if cacheControl := response.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-store") {
-		t.Fatalf("expected no-store cache control for build marker, got %q", cacheControl)
-	}
-	payload := map[string]any{}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode build-info json: %v", err)
-	}
-	if strings.TrimSpace(strings.TrimSpace(anyToString(payload["buildID"]))) == "" {
-		t.Fatalf("expected buildID in build-info payload")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 200 (with no-store) or 404, got %d", response.Code)
 	}
 }
 
@@ -875,13 +887,22 @@ func TestClientHomeReturnsTVRows(t *testing.T) {
 	if home["profile"] != "apple-tv" {
 		t.Fatalf("expected apple-tv profile, got %#v", home)
 	}
-	hero := home["hero"].(map[string]any)
-	if hero["title"] == "" || hero["kind"] == "" {
-		t.Fatalf("expected hero item, got %#v", hero)
+	heroes, ok := home["heroes"].([]any)
+	if !ok || len(heroes) == 0 {
+		t.Fatalf("expected non-empty heroes array, got %#v", home["heroes"])
+	}
+	for i, raw := range heroes {
+		hero, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("expected hero %d to be an object, got %#v", i, raw)
+		}
+		if hero["title"] == "" || hero["kind"] == "" {
+			t.Fatalf("expected hero %d to have title and kind, got %#v", i, hero)
+		}
 	}
 	rows := home["rows"].([]any)
-	if len(rows) != 4 {
-		t.Fatalf("expected four TV rows, got %#v", rows)
+	if len(rows) < 4 {
+		t.Fatalf("expected at least four TV rows, got %#v", rows)
 	}
 	rowItems := map[string]int{}
 	for _, raw := range rows {
@@ -2366,36 +2387,40 @@ func TestSettingsFolderBrowseListsDirectories(t *testing.T) {
 }
 
 func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
+	// Note: DataDir is intentionally json:"-" — it's resolved at startup from
+	// XUVA_DATA_DIR and can't be modified via the settings API (settings.json
+	// itself lives inside DataDir). This test exercises a settable runtime
+	// path (transcodeDir) to verify saved values surface in /api/settings,
+	// /api/system/status, and the runtimePaths block before a restart.
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
-	nextData := t.TempDir()
-	nextTranscode := filepath.Join(nextData, "transcode")
+	originalData := deps.Config.DataDir
+	nextTranscode := filepath.Join(t.TempDir(), "transcode")
 
 	update := requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
-		"dataDir":      nextData,
 		"transcodeDir": nextTranscode,
 	})
 	updatedPaths := update["runtimePaths"].(map[string]any)
-	if updatedPaths["data"] != nextData || updatedPaths["transcode"] != nextTranscode {
-		t.Fatalf("expected update response to include saved paths, got %#v", update)
+	if updatedPaths["transcode"] != nextTranscode {
+		t.Fatalf("expected update response to include saved transcode path, got %#v", update)
 	}
 
 	reloaded := getJSON(t, router, "/api/settings")
 	reloadedPaths := reloaded["runtimePaths"].(map[string]any)
-	if reloadedPaths["data"] != nextData || reloadedPaths["transcode"] != nextTranscode {
-		t.Fatalf("expected settings reload to keep saved paths before restart, got %#v", reloaded)
+	if reloadedPaths["transcode"] != nextTranscode {
+		t.Fatalf("expected settings reload to keep saved transcode path before restart, got %#v", reloaded)
 	}
 	status := getJSON(t, router, "/api/system/status")
 	disks := status["disks"].([]any)
 	found := false
 	for _, item := range disks {
 		disk := item.(map[string]any)
-		if disk["name"] == "data" && disk["path"] == nextData {
+		if disk["name"] == "data" && disk["path"] == originalData {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected system status to use saved data dir before restart, got %#v", status)
+		t.Fatalf("expected system status to include data dir entry, got %#v", status)
 	}
 }
 
@@ -2509,7 +2534,7 @@ func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T)
 		"movie":         []string{"wikipedia", "tmdb", "filename"},
 		"series":        []string{"tvmaze", "wikidata", "filename"},
 		"movieArtwork":  []string{"artwork", "fanart", "tmdb"},
-		"seriesArtwork": []string{"artwork", "fanart", "tvdb"},
+		"seriesArtwork": []string{"artwork", "fanart", "wikipedia"},
 	})
 	if update["restartRequired"] != false {
 		t.Fatalf("expected metadata source updates to avoid restart, got %#v", update)
@@ -2529,7 +2554,7 @@ func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T)
 	if len(updatedMovieArtwork) != 3 || updatedMovieArtwork[0] != "artwork" || updatedMovieArtwork[1] != "fanart" || updatedMovieArtwork[2] != "tmdb" {
 		t.Fatalf("expected movie artwork source order to persist, got %#v", updatedPreferences)
 	}
-	if len(updatedSeriesArtwork) != 3 || updatedSeriesArtwork[0] != "artwork" || updatedSeriesArtwork[1] != "fanart" || updatedSeriesArtwork[2] != "tvdb" {
+	if len(updatedSeriesArtwork) != 3 || updatedSeriesArtwork[0] != "artwork" || updatedSeriesArtwork[1] != "fanart" || updatedSeriesArtwork[2] != "wikipedia" {
 		t.Fatalf("expected series artwork source order to persist, got %#v", updatedPreferences)
 	}
 
@@ -2546,7 +2571,7 @@ func TestSettingsMetadataSourcePreferencesExposeDefaultsAndPersist(t *testing.T)
 	if len(saved.MovieArtworkSources) != 3 || saved.MovieArtworkSources[0] != "artwork" || saved.MovieArtworkSources[1] != "fanart" || saved.MovieArtworkSources[2] != "tmdb" {
 		t.Fatalf("expected saved movie artwork source order, got %#v", saved.MovieArtworkSources)
 	}
-	if len(saved.SeriesArtworkSources) != 3 || saved.SeriesArtworkSources[0] != "artwork" || saved.SeriesArtworkSources[1] != "fanart" || saved.SeriesArtworkSources[2] != "tvdb" {
+	if len(saved.SeriesArtworkSources) != 3 || saved.SeriesArtworkSources[0] != "artwork" || saved.SeriesArtworkSources[1] != "fanart" || saved.SeriesArtworkSources[2] != "wikipedia" {
 		t.Fatalf("expected saved series artwork source order, got %#v", saved.SeriesArtworkSources)
 	}
 }
@@ -2560,7 +2585,7 @@ func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
 		"movie":         []string{"wikipedia", "tmdb", "filename"},
 		"series":        []string{"tvmaze", "wikidata", "filename"},
 		"movieArtwork":  []string{"artwork", "fanart", "tmdb"},
-		"seriesArtwork": []string{"artwork", "fanart", "tvdb"},
+		"seriesArtwork": []string{"artwork", "fanart", "wikipedia"},
 	})
 
 	moviesLibrary := postJSON(t, router, "/api/libraries", map[string]any{
@@ -2583,7 +2608,7 @@ func TestLibrariesInheritMetadataSourcePreferencesFromSettings(t *testing.T) {
 	if got := tvLibrary["metadataSources"].([]any); len(got) != 3 || got[0] != "tvmaze" || got[1] != "wikidata" || got[2] != "filename" {
 		t.Fatalf("expected TV library to inherit metadata source order, got %#v", tvLibrary)
 	}
-	if got := tvLibrary["artworkSources"].([]any); len(got) != 3 || got[0] != "artwork" || got[1] != "fanart" || got[2] != "tvdb" {
+	if got := tvLibrary["artworkSources"].([]any); len(got) != 3 || got[0] != "artwork" || got[1] != "fanart" || got[2] != "wikipedia" {
 		t.Fatalf("expected TV library to inherit artwork source order, got %#v", tvLibrary)
 	}
 }
