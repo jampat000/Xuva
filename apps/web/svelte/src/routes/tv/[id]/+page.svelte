@@ -394,7 +394,7 @@
                         <ul class="space-y-2">
                           {#each season.episodes ?? [] as ep, epIdx (ep.id ?? epIdx)}
                             {@const epRecord = ep as Record<string, unknown>}
-                            {@const epThumb = epRecord.thumbnailUrl as string | undefined}
+                            {@const epThumb = (epRecord.thumbnailUrl as string | undefined) || seasonPoster}
                             {@const epOverview = epRecord.overview as string | undefined}
                             {@const epRuntime = epRecord.runtimeMinutes as number | undefined}
                             {@const epAirDate = epRecord.airDate as string | undefined}
