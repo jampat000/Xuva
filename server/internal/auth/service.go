@@ -36,20 +36,47 @@ var (
 )
 
 type Principal struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	AvatarURL   string `json:"avatarUrl,omitempty"`
-	Role        string `json:"role"`
+	ID           string `json:"id"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"displayName"`
+	AvatarURL    string `json:"avatarUrl,omitempty"`
+	AvatarPreset string `json:"avatarPreset,omitempty"`
+	AvatarColor  string `json:"avatarColor,omitempty"`
+	Role         string `json:"role"`
+	IsRestricted bool   `json:"isRestricted,omitempty"`
+	MaxRating    string `json:"maxRating,omitempty"`
 }
 
+// UserAccount is the full admin-visible user record (no password fields).
 type UserAccount struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	AvatarURL   string `json:"avatarUrl,omitempty"`
-	Role        string `json:"role"`
-	CreatedAt   string `json:"createdAt,omitempty"`
+	ID           string `json:"id"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"displayName"`
+	AvatarURL    string `json:"avatarUrl,omitempty"`
+	AvatarPreset string `json:"avatarPreset,omitempty"`
+	AvatarColor  string `json:"avatarColor,omitempty"`
+	Role         string `json:"role"`
+	IsRestricted bool   `json:"isRestricted"`
+	MaxRating    string `json:"maxRating,omitempty"`
+	HasPin       bool   `json:"hasPin"`
+	CreatedAt    string `json:"createdAt,omitempty"`
+}
+
+// ProfileCard is the public-facing profile info shown on the "Who's Watching?" screen.
+// It deliberately omits username, role, and all credential/PIN data.
+type ProfileCard struct {
+	ID           string `json:"id"`
+	DisplayName  string `json:"displayName"`
+	AvatarURL    string `json:"avatarUrl,omitempty"`
+	AvatarPreset string `json:"avatarPreset,omitempty"`
+	AvatarColor  string `json:"avatarColor,omitempty"`
+	// IsRestricted = true means this is a kids/restricted profile.
+	// PIN (if any) guards the EXIT — no PIN needed to enter.
+	IsRestricted bool `json:"isRestricted"`
+	// HasEntryPin = true on a non-restricted profile that requires a PIN to enter.
+	HasEntryPin bool `json:"hasEntryPin"`
+	// HasExitPin = true on a restricted profile that requires a PIN to switch away from.
+	HasExitPin bool `json:"hasExitPin"`
 }
 
 type Session struct {
@@ -70,7 +97,10 @@ type ResolvedSession struct {
 
 type contextKey string
 
-const resolvedSessionKey contextKey = "auth.resolvedSession"
+const (
+	resolvedSessionKey contextKey = "auth.resolvedSession"
+	activeProfileKey   contextKey = "auth.activeProfileUserID"
+)
 
 type Service struct {
 	db               *sql.DB
@@ -96,7 +126,12 @@ type userRecord struct {
 	Username         string
 	DisplayName      string
 	AvatarURL        string
+	AvatarPreset     string
+	AvatarColor      string
 	Role             string
+	PinHash          string
+	IsRestricted     int
+	MaxRating        string
 	PasswordHash     string
 	LockedUntil      string
 	FailedLoginCount int
@@ -268,7 +303,8 @@ func (s *Service) ListUsers(ctx context.Context) ([]UserAccount, error) {
 		return nil, ErrUnauthorized
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, username, display_name, avatar_url, role, created_at
+		SELECT id, username, display_name, avatar_url, avatar_preset, avatar_color,
+		       role, is_restricted, max_rating, pin_hash, created_at
 		FROM users
 		WHERE username <> ''
 		ORDER BY LOWER(username) ASC
@@ -280,11 +316,62 @@ func (s *Service) ListUsers(ctx context.Context) ([]UserAccount, error) {
 
 	out := []UserAccount{}
 	for rows.Next() {
-		var account UserAccount
-		if err := rows.Scan(&account.ID, &account.Username, &account.DisplayName, &account.AvatarURL, &account.Role, &account.CreatedAt); err != nil {
+		var a UserAccount
+		var pinHash string
+		var isRestricted int
+		if err := rows.Scan(
+			&a.ID, &a.Username, &a.DisplayName, &a.AvatarURL, &a.AvatarPreset, &a.AvatarColor,
+			&a.Role, &isRestricted, &a.MaxRating, &pinHash, &a.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
-		out = append(out, account)
+		a.IsRestricted = isRestricted != 0
+		a.HasPin = pinHash != ""
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListProfiles returns public-facing profile cards for all real users.
+// It omits credentials, role, and PIN values — only metadata needed for
+// the "Who's Watching?" picker screen is included.
+func (s *Service) ListProfiles(ctx context.Context) ([]ProfileCard, error) {
+	if s.Disabled() {
+		return nil, ErrUnauthorized
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, display_name, avatar_url, avatar_preset, avatar_color,
+		       is_restricted, pin_hash
+		FROM users
+		WHERE username <> ''
+		ORDER BY LOWER(display_name) ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []ProfileCard{}
+	for rows.Next() {
+		var c ProfileCard
+		var isRestricted int
+		var pinHash string
+		if err := rows.Scan(
+			&c.ID, &c.DisplayName, &c.AvatarURL, &c.AvatarPreset, &c.AvatarColor,
+			&isRestricted, &pinHash,
+		); err != nil {
+			return nil, err
+		}
+		c.IsRestricted = isRestricted != 0
+		if c.IsRestricted {
+			c.HasExitPin = pinHash != ""
+		} else {
+			c.HasEntryPin = pinHash != ""
+		}
+		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -825,4 +912,232 @@ func ResolvedSessionFromContext(ctx context.Context) (ResolvedSession, bool) {
 	value := ctx.Value(resolvedSessionKey)
 	resolved, ok := value.(ResolvedSession)
 	return resolved, ok
+}
+
+// ContextWithActiveProfile injects the active profile user ID into the context.
+func ContextWithActiveProfile(ctx context.Context, profileUserID string) context.Context {
+	return context.WithValue(ctx, activeProfileKey, profileUserID)
+}
+
+// ActiveProfileFromContext retrieves the active profile user ID from the context.
+// Returns ("", false) when no profile token has been presented on this request.
+func ActiveProfileFromContext(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(activeProfileKey).(string)
+	return v, ok && v != ""
+}
+
+// ─── Profile sessions ─────────────────────────────────────────────────────────
+
+var (
+	ErrInvalidPin     = errors.New("incorrect pin")
+	ErrProfileLocked  = errors.New("current profile requires exit pin")
+)
+
+const profileSessionTTL = 24 * time.Hour
+
+// SwitchProfile validates the necessary PINs and issues a new profile session token.
+//
+// PIN rules:
+//   - If the current profile (identified by currentProfileToken) is restricted AND has a
+//     pin_hash, the caller must supply the exit PIN in currentProfilePin.
+//   - If the target profile is NOT restricted AND has a pin_hash, the caller must supply
+//     the entry PIN in targetProfilePin.
+//
+// Both checks may apply simultaneously (e.g. leaving a kids profile to enter a
+// PIN-protected adult profile).  Either field can be empty string when its check
+// is not needed.
+func (s *Service) SwitchProfile(
+	ctx context.Context,
+	sessionID string,
+	targetProfileUserID string,
+	currentProfileToken string,
+	currentProfilePin string,
+	targetProfilePin string,
+) (string, *ProfileCard, error) {
+	if s.Disabled() {
+		return "", nil, ErrUnauthorized
+	}
+
+	// ── 1. Validate exit PIN for current restricted profile (if any) ─────────
+	if currentProfileToken != "" {
+		var curPinHash string
+		var curRestricted int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT u.pin_hash, u.is_restricted
+			FROM profile_sessions ps
+			JOIN users u ON u.id = ps.profile_user_id
+			WHERE ps.token = ? AND ps.session_id = ? AND ps.expires_at > ?
+		`, currentProfileToken, sessionID, timestamp(time.Now().UTC())).Scan(&curPinHash, &curRestricted)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", nil, err
+		}
+		if err == nil && curRestricted != 0 && curPinHash != "" {
+			ok, verr := verifyPassword(curPinHash, currentProfilePin)
+			if verr != nil || !ok {
+				return "", nil, ErrInvalidPin
+			}
+		}
+	}
+
+	// ── 2. Load target profile ────────────────────────────────────────────────
+	var target struct {
+		DisplayName  string
+		AvatarURL    string
+		AvatarPreset string
+		AvatarColor  string
+		IsRestricted int
+		PinHash      string
+	}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT display_name, avatar_url, avatar_preset, avatar_color, is_restricted, pin_hash
+		FROM users
+		WHERE id = ? AND username <> ''
+	`, targetProfileUserID).Scan(
+		&target.DisplayName, &target.AvatarURL, &target.AvatarPreset, &target.AvatarColor,
+		&target.IsRestricted, &target.PinHash,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, ErrUserNotFound
+	}
+	if err != nil {
+		return "", nil, err
+	}
+
+	// ── 3. Validate entry PIN for non-restricted target profile (if any) ──────
+	if target.IsRestricted == 0 && target.PinHash != "" {
+		ok, verr := verifyPassword(target.PinHash, targetProfilePin)
+		if verr != nil || !ok {
+			return "", nil, ErrInvalidPin
+		}
+	}
+
+	// ── 4. Issue profile session token ────────────────────────────────────────
+	token := randomToken(32)
+	now := time.Now().UTC()
+	expiresAt := now.Add(profileSessionTTL)
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO profile_sessions(token, session_id, profile_user_id, created_at, expires_at)
+		VALUES(?, ?, ?, ?, ?)
+	`, token, sessionID, targetProfileUserID, timestamp(now), timestamp(expiresAt)); err != nil {
+		return "", nil, err
+	}
+
+	card := &ProfileCard{
+		ID:           targetProfileUserID,
+		DisplayName:  target.DisplayName,
+		AvatarURL:    target.AvatarURL,
+		AvatarPreset: target.AvatarPreset,
+		AvatarColor:  target.AvatarColor,
+		IsRestricted: target.IsRestricted != 0,
+	}
+	if card.IsRestricted {
+		card.HasExitPin = target.PinHash != ""
+	} else {
+		card.HasEntryPin = target.PinHash != ""
+	}
+	return token, card, nil
+}
+
+// ValidateProfileToken checks a profile session token and returns the profile
+// user ID.  Returns ("", ErrUnauthorized) when the token is missing, expired,
+// or does not belong to the given session.
+func (s *Service) ValidateProfileToken(ctx context.Context, token string, sessionID string) (string, error) {
+	if s.Disabled() || strings.TrimSpace(token) == "" {
+		return "", ErrUnauthorized
+	}
+	var profileUserID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT profile_user_id
+		FROM profile_sessions
+		WHERE token = ? AND session_id = ? AND expires_at > ?
+	`, token, sessionID, timestamp(time.Now().UTC())).Scan(&profileUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrUnauthorized
+	}
+	if err != nil {
+		return "", err
+	}
+	return profileUserID, nil
+}
+
+// RevokeProfileSessions deletes all profile session tokens tied to a main session.
+// Called on logout so switching to a profile on another device doesn't linger.
+func (s *Service) RevokeProfileSessions(ctx context.Context, sessionID string) error {
+	if s.Disabled() {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM profile_sessions WHERE session_id = ?`, sessionID)
+	return err
+}
+
+// SetProfilePin bcrypt-hashes and stores a PIN for the given user.
+// Pass an empty string to clear the PIN.
+func (s *Service) SetProfilePin(ctx context.Context, userID string, pin string) error {
+	if s.Disabled() {
+		return ErrUnauthorized
+	}
+	var hash string
+	if strings.TrimSpace(pin) != "" {
+		h, err := hashPassword(pin)
+		if err != nil {
+			return err
+		}
+		hash = h
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE users SET pin_hash = ?, updated_at = ? WHERE id = ? AND username <> ''
+	`, hash, timestamp(time.Now().UTC()), userID)
+	return err
+}
+
+// UpdateProfileSettings updates avatar, restriction flag, and rating ceiling for a user.
+func (s *Service) UpdateProfileSettings(
+	ctx context.Context,
+	userID string,
+	displayName string,
+	avatarURL string,
+	avatarPreset string,
+	avatarColor string,
+	isRestricted bool,
+	maxRating string,
+) (UserAccount, error) {
+	if s.Disabled() {
+		return UserAccount{}, ErrUnauthorized
+	}
+	restricted := 0
+	if isRestricted {
+		restricted = 1
+	}
+	now := timestamp(time.Now().UTC())
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET display_name = ?, avatar_url = ?, avatar_preset = ?, avatar_color = ?,
+		    is_restricted = ?, max_rating = ?, updated_at = ?
+		WHERE id = ? AND username <> ''
+	`, strings.TrimSpace(displayName), strings.TrimSpace(avatarURL),
+		strings.TrimSpace(avatarPreset), strings.TrimSpace(avatarColor),
+		restricted, strings.TrimSpace(maxRating), now, userID)
+	if err != nil {
+		return UserAccount{}, err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return UserAccount{}, ErrUserNotFound
+	}
+	var a UserAccount
+	var pinHash string
+	var isRes int
+	err = s.db.QueryRowContext(ctx, `
+		SELECT id, username, display_name, avatar_url, avatar_preset, avatar_color,
+		       role, is_restricted, max_rating, pin_hash, created_at
+		FROM users WHERE id = ?
+	`, userID).Scan(
+		&a.ID, &a.Username, &a.DisplayName, &a.AvatarURL, &a.AvatarPreset, &a.AvatarColor,
+		&a.Role, &isRes, &a.MaxRating, &pinHash, &a.CreatedAt,
+	)
+	if err != nil {
+		return UserAccount{}, err
+	}
+	a.IsRestricted = isRes != 0
+	a.HasPin = pinHash != ""
+	return a, nil
 }
