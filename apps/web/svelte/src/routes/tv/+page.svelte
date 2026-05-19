@@ -3,6 +3,7 @@
   import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
+  import ErrorState from '$lib/components/ErrorState.svelte';
   import { getSeries } from '$lib/api/browse';
   import { seriesToMedia } from '$lib/api/adapters';
   import type { Media } from '$lib/mock-data';
@@ -11,7 +12,9 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
 
-  onMount(async () => {
+  async function load() {
+    error = null;
+    loading = true;
     try {
       const resp = await getSeries();
       items = (resp.series ?? []).map(seriesToMedia);
@@ -20,7 +23,9 @@
     } finally {
       loading = false;
     }
-  });
+  }
+
+  onMount(load);
 </script>
 
 <svelte:head>
@@ -39,16 +44,12 @@
 <div class="min-h-screen bg-background">
   <Header />
   {#if error}
-    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
-      <p class="text-base font-medium text-foreground/80">Can't reach your library</p>
-      <p class="max-w-xs text-sm text-muted-foreground">Make sure your Xuva server is running, then try again.</p>
-      <button
-        onclick={() => { error = null; loading = true; getSeries().then(r => { items = (r.series ?? []).map(seriesToMedia); }).catch(e => { error = e instanceof Error ? e.message : 'Failed'; }).finally(() => { loading = false; }); }}
-        class="mt-2 hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        Try again
-      </button>
-    </div>
+    <ErrorState
+      title="Can't reach your library"
+      message="Make sure your Xuva server is running, then try again."
+      actions={[{ label: 'Try again', onClick: load }]}
+      diagnosticInfo={error}
+    />
   {:else}
     <LibraryGrid
       eyebrow="Your library · TV"

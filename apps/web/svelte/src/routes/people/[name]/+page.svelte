@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { ChevronLeft, Film, Tv, Star, User } from 'lucide-svelte';
   import Header from '$lib/components/Header.svelte';
+  import ErrorState from '$lib/components/ErrorState.svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import { getPersonDetail } from '$lib/api/home';
   import type { PersonDetailResponse, PersonCreditItem } from '$lib/api/home';
@@ -64,15 +65,12 @@
     </div>
 
   {:else if error || !data}
-    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
-      <p class="text-base font-medium text-foreground/80">No credits found</p>
-      <p class="max-w-xs text-sm text-muted-foreground">
-        {name} doesn't appear to have any titles in your library.
-      </p>
-      <a href="/movies" class="mt-2 hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-        Back to Movies
-      </a>
-    </div>
+    <ErrorState
+      title="No credits found"
+      message="{name} doesn't appear to have any titles in your library."
+      actions={[{ label: 'Browse movies', href: '/movies' }]}
+      diagnosticInfo={error ?? undefined}
+    />
 
   {:else}
     <div class="px-6 pb-32 pt-28 md:px-12 lg:px-20">
