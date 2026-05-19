@@ -5,6 +5,7 @@
   import { Play, Plus, Check, Star, Clock, ChevronLeft, User, Film } from 'lucide-svelte';
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import Header from '$lib/components/Header.svelte';
+  import ErrorState from '$lib/components/ErrorState.svelte';
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getMovieDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
@@ -181,13 +182,15 @@
     </div>
 
   {:else if error}
-    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
-      <p class="text-base font-medium text-foreground/80">Can't load this title</p>
-      <p class="max-w-xs text-sm text-muted-foreground">Make sure your Xuva server is running, then try again.</p>
-      <button onclick={load} class="mt-2 hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-        Try again
-      </button>
-    </div>
+    <ErrorState
+      title="Can't load this title"
+      message="Make sure your Xuva server is running, then try again."
+      actions={[
+        { label: 'Try again', onClick: load },
+        { label: 'Browse movies', href: '/movies' },
+      ]}
+      diagnosticInfo={`Movie ID: ${id}\nError: ${error}`}
+    />
 
   {:else}
     <!-- Backdrop -->

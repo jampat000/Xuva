@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { ChevronLeft, Play, Star, Clock, Film } from 'lucide-svelte';
   import Header from '$lib/components/Header.svelte';
+  import ErrorState from '$lib/components/ErrorState.svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import { getCollectionDetail } from '$lib/api/home';
   import type { CollectionDetailResponse, CollectionMovie } from '$lib/api/home';
@@ -66,13 +67,12 @@
     </div>
 
   {:else if error}
-    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
-      <p class="text-base font-medium text-foreground/80">Collection not found</p>
-      <p class="max-w-xs text-sm text-muted-foreground">{error}</p>
-      <a href="/movies" class="mt-2 hairline rounded-full bg-foreground/[0.06] px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-        Back to Movies
-      </a>
-    </div>
+    <ErrorState
+      title="Collection not found"
+      message={error}
+      actions={[{ label: 'Browse movies', href: '/movies' }]}
+      diagnosticInfo={`Collection ID: ${id}\nError: ${error}`}
+    />
 
   {:else}
     <!-- Cinematic header with collection backdrop -->
