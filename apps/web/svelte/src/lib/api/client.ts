@@ -1,4 +1,5 @@
 import { clearAuthToken, readAuthToken, writeAuthToken } from './token-store';
+import { readProfileToken } from './profile-token-store';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -142,6 +143,12 @@ function toHeaders(options: ApiRequestOptions<unknown>): Headers {
 	if (!headers.has('X-Auth-Token') && !headers.has('Authorization')) {
 		const token = options.authToken ? String(options.authToken).trim() : readAuthToken();
 		if (token) headers.set('X-Auth-Token', token);
+	}
+
+	// Inject active profile token so the server can enforce rating ceilings.
+	if (!headers.has('X-Profile-Token')) {
+		const profileToken = readProfileToken();
+		if (profileToken) headers.set('X-Profile-Token', profileToken);
 	}
 
 	const method = String(options.method || 'GET').toUpperCase();

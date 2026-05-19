@@ -135,6 +135,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "PATCH /api/users/{id}", usersUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "DELETE /api/users/{id}", usersDeleteHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/users/{id}/password", usersPasswordHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/users/{id}/pin", usersSetPinHandler(deps))
 	handleProtected(mux, deps, "GET /api/metrics", metricsHandler(deps))
 	handleProtected(mux, deps, "GET /api/events", eventsHandler(deps))
 	handleProtected(mux, deps, "GET /api/architecture", architectureHandler(deps))
@@ -765,8 +766,12 @@ func usersCreateHandler(deps Deps) http.HandlerFunc {
 
 func usersUpdateHandler(deps Deps) http.HandlerFunc {
 	type request struct {
-		DisplayName string `json:"displayName"`
-		AvatarURL   string `json:"avatarUrl"`
+		DisplayName  string `json:"displayName"`
+		AvatarURL    string `json:"avatarUrl"`
+		AvatarPreset string `json:"avatarPreset"`
+		AvatarColor  string `json:"avatarColor"`
+		IsRestricted *bool  `json:"isRestricted"` // pointer so omitted = unchanged
+		MaxRating    string `json:"maxRating"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth == nil || deps.Auth.Disabled() {
@@ -787,7 +792,16 @@ func usersUpdateHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		principal, err := deps.Auth.UpdateUserProfile(r.Context(), userID, payload.DisplayName, avatarURL)
+		// If any profile-specific field is present, use UpdateProfileSettings.
+		isRestricted := false
+		if payload.IsRestricted != nil {
+			isRestricted = *payload.IsRestricted
+		}
+		account, err := deps.Auth.UpdateProfileSettings(
+			r.Context(), userID,
+			payload.DisplayName, avatarURL, payload.AvatarPreset,
+			payload.AvatarColor, isRestricted, payload.MaxRating,
+		)
 		if err != nil {
 			switch {
 			case errors.Is(err, auth.ErrUnauthorized):
@@ -802,17 +816,43 @@ func usersUpdateHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		publishDomainAudit(deps, r, "audit.auth", "user.update", "allowed", map[string]any{
-			"targetUserId": principal.ID,
+			"targetUserId": account.ID,
 		})
-		writeJSON(w, http.StatusOK, map[string]any{
-			"user": map[string]any{
-				"id":          principal.ID,
-				"username":    principal.Username,
-				"displayName": principal.DisplayName,
-				"avatarUrl":   principal.AvatarURL,
-				"role":        principal.Role,
-			},
+		writeJSON(w, http.StatusOK, map[string]any{"user": account})
+	}
+}
+
+func usersSetPinHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		Pin string `json:"pin"` // empty string = clear pin
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Auth.Disabled() {
+			writeError(w, http.StatusServiceUnavailable, "user accounts are not available")
+			return
+		}
+		userID := strings.TrimSpace(r.PathValue("id"))
+		if userID == "" {
+			writeError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+		var payload request
+		if !decodeJSON(w, r, &payload) {
+			return
+		}
+		if err := deps.Auth.SetProfilePin(r.Context(), userID, payload.Pin); err != nil {
+			switch {
+			case errors.Is(err, auth.ErrUserNotFound):
+				writeError(w, http.StatusNotFound, "user not found")
+			default:
+				writeError(w, http.StatusInternalServerError, "pin update failed")
+			}
+			return
+		}
+		publishDomainAudit(deps, r, "audit.auth", "user.pin.update", "allowed", map[string]any{
+			"targetUserId": userID,
 		})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	}
 }
 

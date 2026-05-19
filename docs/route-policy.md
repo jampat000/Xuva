@@ -23,6 +23,7 @@ Public client bootstrap routes:
 | `PATCH /api/users/{id}` | auth | `user.update` | admin |
 | `DELETE /api/users/{id}` | auth | `user.delete` | admin |
 | `POST /api/users/{id}/password` | auth | `user.password.update` | admin |
+| `POST /api/users/{id}/pin` | auth | `user.pin.update` | admin |
 | `POST /api/libraries` | libraries | `library.save` | admin |
 | `DELETE /api/libraries/{id}` | libraries | `library.delete` | admin |
 | `POST /api/libraries/{id}/scan` | libraries | `library.scan` | admin |
