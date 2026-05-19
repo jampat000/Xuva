@@ -672,7 +672,13 @@ export interface UserItem {
 	id?: string;
 	username?: string;
 	displayName?: string;
+	avatarUrl?: string;
+	avatarPreset?: string;
+	avatarColor?: string;
 	role?: string;
+	isRestricted?: boolean;
+	maxRating?: string;
+	hasPin?: boolean;
 	createdAt?: string;
 	updatedAt?: string;
 }

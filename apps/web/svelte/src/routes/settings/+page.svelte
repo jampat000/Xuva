@@ -88,6 +88,7 @@
     type BackfillResponse,
   } from '$lib/api/browse';
   import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+  import { updateProfileSettings, setProfilePin, RATING_OPTIONS, AVATAR_PRESETS } from '$lib/api/profiles';
 
   type Group = "Account" | "Server" | "Devices" | "Advanced";
 
@@ -606,6 +607,89 @@
     try { await deleteUser(id); usersList = usersList.filter(u => u.id !== id); }
     catch (e) { usersError = e instanceof Error ? e.message : 'Failed to delete user'; }
     finally { userDeletingId = null; }
+  }
+
+  // ─── Profile settings editing ──────────────────────────────────────────────
+  let editingProfileUserId = $state<string | null>(null);
+  let profileEditName = $state('');
+  let profileEditPreset = $state('');
+  let profileEditColor = $state('');
+  let profileEditRestricted = $state(false);
+  let profileEditMaxRating = $state('');
+  let profileSaving = $state(false);
+  let profileSaveError = $state<string | null>(null);
+
+  // PIN editing
+  let pinEditUserId = $state<string | null>(null);
+  let pinEditValue = $state('');
+  let pinSaving = $state(false);
+  let pinSaveError = $state<string | null>(null);
+
+  function startEditProfile(user: typeof usersList[number]) {
+    editingProfileUserId = user.id ?? null;
+    profileEditName = user.displayName ?? '';
+    profileEditPreset = user.avatarPreset ?? '';
+    profileEditColor = user.avatarColor ?? '';
+    profileEditRestricted = user.isRestricted ?? false;
+    profileEditMaxRating = user.maxRating ?? '';
+    profileSaveError = null;
+    pinEditUserId = null;
+  }
+
+  function cancelEditProfile() {
+    editingProfileUserId = null;
+    profileSaveError = null;
+  }
+
+  async function handleSaveProfile(userId: string) {
+    profileSaving = true; profileSaveError = null;
+    try {
+      const resp = await updateProfileSettings(userId, {
+        displayName: profileEditName,
+        avatarPreset: profileEditPreset || undefined,
+        avatarColor: profileEditColor || undefined,
+        isRestricted: profileEditRestricted,
+        maxRating: profileEditMaxRating || undefined,
+      });
+      const updated = (resp as { user: typeof usersList[number] }).user;
+      usersList = usersList.map(u => u.id === userId ? { ...u, ...updated } : u);
+      editingProfileUserId = null;
+    } catch (e) {
+      profileSaveError = e instanceof Error ? e.message : 'Failed to save profile';
+    } finally {
+      profileSaving = false;
+    }
+  }
+
+  function startEditPin(userId: string) {
+    pinEditUserId = userId;
+    pinEditValue = '';
+    pinSaveError = null;
+    editingProfileUserId = null;
+  }
+
+  function cancelEditPin() {
+    pinEditUserId = null;
+    pinSaveError = null;
+  }
+
+  async function handleSavePin(userId: string) {
+    pinSaving = true; pinSaveError = null;
+    try {
+      // Only digits; strip accidental spaces.
+      const pin = pinEditValue.replace(/\D/g, '');
+      if (pin && (pin.length < 4 || pin.length > 8)) {
+        pinSaveError = 'PIN must be 4–8 digits (leave blank to remove).';
+        return;
+      }
+      await setProfilePin(userId, pin);
+      usersList = usersList.map(u => u.id === userId ? { ...u, hasPin: pin.length > 0 } : u);
+      pinEditUserId = null;
+    } catch (e) {
+      pinSaveError = e instanceof Error ? e.message : 'Failed to save PIN';
+    } finally {
+      pinSaving = false;
+    }
   }
 
   // ─── Pairing requests state ───────────────────────────────────────────────
@@ -2606,36 +2690,160 @@
             {#if usersLoading}
               <div class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div></div>
             {:else if usersList.length > 0}
-              <div class="space-y-2">
+              <div class="space-y-3">
                 {#each usersList as user (user.id ?? user.username)}
-                  <div class="hairline flex flex-wrap items-center gap-4 rounded-2xl bg-surface/40 p-4">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-elevated/60 text-xs font-semibold uppercase text-muted-foreground">
-                      {(user.displayName ?? user.username ?? '?').slice(0, 2)}
-                    </div>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span class="font-medium">{user.displayName ?? user.username}</span>
-                        {#if user.displayName && user.username}
-                          <span class="font-mono text-xs text-muted-foreground/60">@{user.username}</span>
+                  {@const uid = user.id ?? ''}
+                  {@const isEditing = editingProfileUserId === uid}
+                  {@const isPinEditing = pinEditUserId === uid}
+                  <div class="hairline rounded-2xl bg-surface/40 overflow-hidden">
+                    <!-- Header row -->
+                    <div class="flex flex-wrap items-center gap-4 p-4">
+                      <!-- Avatar preview -->
+                      <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-elevated/60">
+                        {#if user.avatarPreset}
+                          <img src="/avatars/{user.avatarPreset}.svg" alt="" class="h-full w-full object-cover" />
+                        {:else}
+                          <span class="text-xs font-semibold uppercase text-muted-foreground">
+                            {(user.displayName ?? user.username ?? '?').slice(0, 2)}
+                          </span>
                         {/if}
-                        {#if user.role}
-                          <span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{user.role}</span>
+                      </div>
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="font-medium">{user.displayName ?? user.username}</span>
+                          {#if user.displayName && user.username}
+                            <span class="font-mono text-xs text-muted-foreground/60">@{user.username}</span>
+                          {/if}
+                          {#if user.role}
+                            <span class="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{user.role}</span>
+                          {/if}
+                          {#if user.isRestricted}
+                            <span class="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-amber-400">Kids</span>
+                          {/if}
+                          {#if user.maxRating}
+                            <span class="rounded-full bg-blue-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-blue-400">{user.maxRating}</span>
+                          {/if}
+                          {#if user.hasPin}
+                            <span class="rounded-full bg-green-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-green-400">PIN set</span>
+                          {/if}
+                        </div>
+                      </div>
+                      <div class="flex shrink-0 flex-wrap gap-2">
+                        <button type="button" onclick={() => uid && (isEditing ? cancelEditProfile() : startEditProfile(user))}
+                          class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">
+                          {isEditing ? 'Cancel' : 'Edit profile'}
+                        </button>
+                        <button type="button" onclick={() => uid && (isPinEditing ? cancelEditPin() : startEditPin(uid))}
+                          class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">
+                          {isPinEditing ? 'Cancel' : (user.hasPin ? 'Change PIN' : 'Set PIN')}
+                        </button>
+                        {#if userDeletingId === uid}
+                          <button type="button" onclick={() => uid && handleDeleteUser(uid)}
+                            class="inline-flex items-center gap-1.5 rounded-full bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-400/20">Confirm?</button>
+                          <button type="button" onclick={() => (userDeletingId = null)}
+                            class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08]">Cancel</button>
+                        {:else}
+                          <button type="button" onclick={() => uid && handleDeleteUser(uid)} disabled={!uid}
+                            class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40">
+                            <Trash2 class="h-3 w-3" /> Delete
+                          </button>
                         {/if}
                       </div>
                     </div>
-                    <div class="flex shrink-0 gap-2">
-                      {#if userDeletingId === user.id}
-                        <button type="button" onclick={() => user.id && handleDeleteUser(user.id)}
-                          class="inline-flex items-center gap-1.5 rounded-full bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-400/20">Confirm delete?</button>
-                        <button type="button" onclick={() => (userDeletingId = null)}
-                          class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08]">Cancel</button>
-                      {:else}
-                        <button type="button" onclick={() => user.id && handleDeleteUser(user.id)} disabled={!user.id}
-                          class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40">
-                          <Trash2 class="h-3 w-3" /> Delete
-                        </button>
-                      {/if}
-                    </div>
+
+                    <!-- Profile edit panel -->
+                    {#if isEditing}
+                      <div class="border-t border-border bg-surface/30 px-5 py-5 space-y-5">
+                        {#if profileSaveError}<p class="text-sm text-red-400">{profileSaveError}</p>{/if}
+
+                        <div class="grid gap-4 sm:grid-cols-2">
+                          <!-- Display name -->
+                          <div>
+                            <label for={`profile-name-${uid}`} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Display name</label>
+                            <input id={`profile-name-${uid}`} type="text" bind:value={profileEditName} placeholder="Name shown on profile picker"
+                              class="mt-2 h-10 w-full rounded-xl border border-border bg-background/40 px-3 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60" />
+                          </div>
+
+                          <!-- Rating ceiling -->
+                          <div>
+                            <label for={`profile-rating-${uid}`} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Max content rating</label>
+                            <select id={`profile-rating-${uid}`} bind:value={profileEditMaxRating}
+                              class="mt-2 h-10 w-full rounded-xl border border-border bg-background/40 px-3 text-sm text-foreground outline-none focus:border-primary/60">
+                              {#each RATING_OPTIONS as opt (opt.value)}
+                                <option value={opt.value}>{opt.label}</option>
+                              {/each}
+                            </select>
+                          </div>
+                        </div>
+
+                        <!-- Kids toggle -->
+                        <div class="flex items-center gap-3">
+                          <button type="button" role="switch" aria-checked={profileEditRestricted}
+                            aria-label="Kids profile"
+                            onclick={() => (profileEditRestricted = !profileEditRestricted)}
+                            class={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${profileEditRestricted ? 'bg-primary' : 'bg-surface-elevated'}`}>
+                            <span class={`h-4 w-4 rounded-full bg-white shadow transition-transform ${profileEditRestricted ? 'translate-x-6' : 'translate-x-1'}`}></span>
+                          </button>
+                          <div>
+                            <p class="text-sm font-medium">Kids profile</p>
+                            <p class="text-xs text-muted-foreground">PIN guards exit; entry is open to all</p>
+                          </div>
+                        </div>
+
+                        <!-- Avatar preset -->
+                        <div>
+                          <p class="mb-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Avatar</p>
+                          <div class="flex flex-wrap gap-2">
+                            {#each AVATAR_PRESETS as preset (preset)}
+                              <button type="button" aria-label={preset} onclick={() => (profileEditPreset = preset === profileEditPreset ? '' : preset)}
+                                class={`h-12 w-12 overflow-hidden rounded-xl ring-2 transition-all ${profileEditPreset === preset ? 'ring-primary scale-110' : 'ring-transparent opacity-70 hover:opacity-100'}`}>
+                                <img src="/avatars/{preset}.svg" alt="" class="h-full w-full object-cover" />
+                              </button>
+                            {/each}
+                            <!-- Clear -->
+                            {#if profileEditPreset}
+                              <button type="button" onclick={() => (profileEditPreset = '')}
+                                class="flex h-12 w-12 items-center justify-center rounded-xl border border-border text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground">
+                                Clear
+                              </button>
+                            {/if}
+                          </div>
+                        </div>
+
+                        <div class="flex gap-3 border-t border-border pt-4">
+                          <button type="button" onclick={() => uid && handleSaveProfile(uid)} disabled={profileSaving || !profileEditName.trim()}
+                            class="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60">
+                            {#if profileSaving}<span class="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white"></span> Saving…{:else}Save{/if}
+                          </button>
+                          <button type="button" onclick={cancelEditProfile}
+                            class="hairline rounded-full bg-foreground/[0.04] px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">Cancel</button>
+                        </div>
+                      </div>
+                    {/if}
+
+                    <!-- PIN edit panel -->
+                    {#if isPinEditing}
+                      <div class="border-t border-border bg-surface/30 px-5 py-5 space-y-4">
+                        {#if pinSaveError}<p class="text-sm text-red-400">{pinSaveError}</p>{/if}
+                        <div>
+                          <label for={`pin-input-${uid}`} class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+                            {user.isRestricted ? 'Exit PIN (required to leave this profile)' : 'Entry PIN (required to enter this profile)'}
+                          </label>
+                          <input id={`pin-input-${uid}`} type="password" inputmode="numeric" bind:value={pinEditValue} placeholder="4-digit PIN (blank to remove)"
+                            maxlength={8}
+                            class="mt-2 h-10 w-full rounded-xl border border-border bg-background/40 px-3 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60" />
+                          <p class="mt-1 text-xs text-muted-foreground">Leave blank to remove the PIN from this profile.</p>
+                        </div>
+                        <div class="flex gap-3">
+                          <button type="button" onclick={() => uid && handleSavePin(uid)} disabled={pinSaving}
+                            class="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60">
+                            {#if pinSaving}<span class="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white"></span> Saving…{:else}Save PIN{/if}
+                          </button>
+                          <button type="button" onclick={cancelEditPin}
+                            class="hairline rounded-full bg-foreground/[0.04] px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">Cancel</button>
+                        </div>
+                      </div>
+                    {/if}
                   </div>
                 {/each}
               </div>
