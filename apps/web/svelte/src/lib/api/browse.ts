@@ -87,6 +87,25 @@ export interface MetadataRefreshRequest {
 	id: string;
 	title?: string;
 	year?: number;
+	tmdbOverrideId?: number;
+}
+
+export interface TMDBCandidate {
+	id: number;
+	title: string;
+	year?: number;
+	overview?: string;
+	posterUrl?: string;
+	backdropUrl?: string;
+	voteAverage?: number;
+	voteCount?: number;
+}
+
+export interface TMDBCandidatesResponse {
+	kind: string;
+	title: string;
+	year: number;
+	candidates: TMDBCandidate[];
 }
 
 export interface MetadataMatchRequest {
@@ -236,6 +255,18 @@ export function refreshMetadataItem(
 		payload,
 		'POST'
 	);
+}
+
+export function getMetadataCandidates(
+	kind: 'movie' | 'series',
+	title: string,
+	year?: number,
+	limit = 8,
+	client: ApiClient = apiClient
+): Promise<TMDBCandidatesResponse> {
+	const params = new URLSearchParams({ kind, title, limit: String(limit) });
+	if (year) params.set('year', String(year));
+	return client.request<TMDBCandidatesResponse>(`/api/metadata/candidates?${params}`);
 }
 
 export function applyMetadataMatch(

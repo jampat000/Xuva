@@ -57,6 +57,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
 	"github.com/jampat000/Xuva/server/internal/systemstats"
+	"github.com/jampat000/Xuva/server/internal/thumbnails"
 	"github.com/jampat000/Xuva/server/internal/trailers"
 	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/trending"
@@ -93,8 +94,9 @@ type Deps struct {
 	Subtitles *subtitles.Service
 	Pairing   *pairing.Service
 	Migration *migration.Service
-	Trending  *trending.Service
-	Trailers  *trailers.Service
+	Trending   *trending.Service
+	Trailers   *trailers.Service
+	Thumbnails *thumbnails.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -158,6 +160,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/metadata/suggestions", metadataSuggestionsHandler(deps))
 	handleProtected(mux, deps, "GET /api/metadata/{kind}/{id}", metadataRecordsHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/metadata/match", metadataMatchHandler(deps))
+	handleProtected(mux, deps, "GET /api/metadata/candidates", metadataCandidatesHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/metadata/refresh", metadataRefreshHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/metadata/refresh-batch", metadataRefreshBatchHandler(deps))
 	handleProtected(mux, deps, "GET /api/metadata/backfill", metadataBackfillStatusHandler(deps))
@@ -188,6 +191,11 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/subtitles/{index}", mediaSourceSubtitleStreamHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/subtitles/{index}/convert", mediaSourceSubtitleConvertHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/probe", mediaSourceProbeHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/status", thumbnailStatusHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/thumbnails/generate", thumbnailGenerateHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/sprite.jpg", thumbnailSpriteHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/thumbnails.vtt", thumbnailVTTHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/chapters.vtt", thumbnailChaptersHandler(deps))
 	handleProtected(mux, deps, "GET /api/probes", probesHandler(deps))
 	handleProtected(mux, deps, "GET /api/probes/{id}", probeJobHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/probes", probeStartHandler(deps))
@@ -1721,6 +1729,26 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "media source not found")
 			return
 		}
+		// ── Probe-on-demand fallback (issue #57) ─────────────────────────────
+		// If this file has not been probed yet, run a synchronous foreground
+		// probe before making the playback decision. This lets users click
+		// Play on newly-added files before the background probe queue catches up.
+		var probeWarning string
+		probedOnDemand := false
+		if !source.Probed && deps.Probe != nil {
+			updated, probeErr := foregroundProbe(r.Context(), deps, source)
+			if probeErr == nil {
+				source = updated
+				probedOnDemand = true
+			} else {
+				// Best-guess: infer container from file extension so the decision
+				// tree can at least attempt a conservative transcode.
+				probeWarning = "File has not been probed; using best-guess codec from file extension. Playback may fail."
+				if source.Container == "" && source.Extension != "" {
+					source.Container = strings.TrimPrefix(source.Extension, ".")
+				}
+			}
+		}
 		decision := clientPlaybackDecision(r.Context(), deps, source, clientPlaybackOptions{
 			ClientProfile:      payload.ClientProfile,
 			RouteType:          payload.RouteType,
@@ -1729,6 +1757,7 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			SubtitleTrackIndex: payload.SubtitleTrackIndex,
 			SubtitleMode:       payload.SubtitleMode,
 			SubtitleActive:     payload.SubtitleActive,
+			Capabilities:       payload.ClientCapabilities,
 		})
 		routePayload, status, err := clientPlaybackRoutePayload(deps, r, source, decision, payload)
 		if err != nil {
@@ -1756,7 +1785,7 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		resp := map[string]any{
 			"sessionId":           session.ID,
 			"deviceId":            session.DeviceID,
 			"mediaSourceId":       session.MediaSourceID,
@@ -1766,7 +1795,14 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			"heartbeatIntervalMs": 2000,
 			"decision":            decision,
 			"route":               routePayload,
-		})
+		}
+		if probedOnDemand {
+			resp["probedOnDemand"] = true
+		}
+		if probeWarning != "" {
+			resp["warning"] = probeWarning
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -1814,6 +1850,60 @@ func clientPlaybackStopHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+// clientCapabilities is the shape sent from clients that have performed
+// self-detection via canPlayType / matchMedia (issue #64). When present,
+// it overrides the corresponding fields from the static device profile so
+// the decision tree operates on real supported codec lists rather than
+// a curated-but-possibly-wrong profile.
+type clientCapabilities struct {
+	Containers          []string `json:"containers,omitempty"`
+	VideoCodecs         []string `json:"videoCodecs,omitempty"`
+	AudioCodecs         []string `json:"audioCodecs,omitempty"`
+	SubtitleCodecs      []string `json:"subtitleCodecs,omitempty"`
+	MaxVideoBitDepth    int      `json:"maxVideoBitDepth,omitempty"`
+	MaxVideoFrameRate   float64  `json:"maxVideoFrameRate,omitempty"`
+	SupportsHDR         bool     `json:"supportsHdr,omitempty"`
+	SupportsDolbyVision bool     `json:"supportsDolbyVision,omitempty"`
+	SupportsHLS         bool     `json:"supportsHls,omitempty"`
+}
+
+// applyClientCapabilities merges a client-reported capability set onto a
+// Request that has already been seeded from the static device profile.
+// Only non-zero / non-empty values override the profile-derived fields.
+func applyClientCapabilities(req playback.Request, caps *clientCapabilities) playback.Request {
+	if caps == nil {
+		return req
+	}
+	if len(caps.Containers) > 0 {
+		req.Containers = caps.Containers
+	}
+	if len(caps.VideoCodecs) > 0 {
+		req.VideoCodecs = caps.VideoCodecs
+	}
+	if len(caps.AudioCodecs) > 0 {
+		req.AudioCodecs = caps.AudioCodecs
+	}
+	if len(caps.SubtitleCodecs) > 0 {
+		req.SubtitleCodecs = caps.SubtitleCodecs
+	}
+	if caps.MaxVideoBitDepth > 0 {
+		req.MaxVideoBitDepth = caps.MaxVideoBitDepth
+	}
+	if caps.MaxVideoFrameRate > 0 {
+		req.MaxFrameRate = caps.MaxVideoFrameRate
+	}
+	if caps.SupportsHDR {
+		req.SupportsHDR = true
+	}
+	if caps.SupportsDolbyVision {
+		req.SupportsDolbyVision = true
+	}
+	if caps.SupportsHLS {
+		req.SupportsAdaptive = true
+	}
+	return req
+}
+
 type clientPlaybackOptions struct {
 	ClientProfile      string
 	RouteType          string
@@ -1822,18 +1912,23 @@ type clientPlaybackOptions struct {
 	SubtitleTrackIndex int
 	SubtitleMode       string
 	SubtitleActive     bool
+	Capabilities       *clientCapabilities
 }
 
 type clientPlaybackStartRequest struct {
-	MediaSourceID      string `json:"mediaSourceId"`
-	DeviceID           string `json:"deviceId"`
-	ClientProfile      string `json:"clientProfile"`
-	RouteType          string `json:"routeType"`
-	MaxNetworkBitrate  int64  `json:"maxNetworkBitrate"`
-	AudioTrackIndex    int    `json:"audioTrackIndex"`
-	SubtitleTrackIndex int    `json:"subtitleTrackIndex"`
-	SubtitleMode       string `json:"subtitleMode"`
-	SubtitleActive     bool   `json:"subtitleActive"`
+	MediaSourceID      string              `json:"mediaSourceId"`
+	DeviceID           string              `json:"deviceId"`
+	ClientProfile      string              `json:"clientProfile"`
+	RouteType          string              `json:"routeType"`
+	MaxNetworkBitrate  int64               `json:"maxNetworkBitrate"`
+	AudioTrackIndex    int                 `json:"audioTrackIndex"`
+	SubtitleTrackIndex int                 `json:"subtitleTrackIndex"`
+	SubtitleMode       string              `json:"subtitleMode"`
+	SubtitleActive     bool                `json:"subtitleActive"`
+	// ClientCapabilities, when provided, overrides the static device-profile
+	// codec / container / HDR whitelist with values measured by the client
+	// at runtime (e.g. via MediaSource.isTypeSupported / canPlayType).
+	ClientCapabilities *clientCapabilities `json:"clientCapabilities,omitempty"`
 }
 
 func clientMovieDetailPayload(ctx context.Context, deps Deps, r *http.Request, detail catalog.MovieDetail) map[string]any {
@@ -2006,6 +2101,8 @@ func clientPlaybackDecision(ctx context.Context, deps Deps, source catalog.Media
 		SubtitleTrackActive: options.SubtitleActive,
 	}
 	request = applyClientProfile(deps, request)
+	// Client-reported capabilities override profile fields when present (#64).
+	request = applyClientCapabilities(request, options.Capabilities)
 	return deps.Playback.DecideSource(ctx, request, playbackSourceFacts(ctx, deps, request, source))
 }
 
@@ -2684,6 +2781,44 @@ func metadataProvidersHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"managedMode": "strict",
 			"providers":   metadataProviders(r.Context(), deps),
+		})
+	}
+}
+
+// metadataCandidatesHandler returns the top TMDB search results for a given
+// item so the user can pick the correct match from the disambiguation UI.
+// Query params: kind (movie|series), title, year, limit (default 5).
+func metadataCandidatesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Metadata == nil {
+			writeError(w, http.StatusServiceUnavailable, "metadata providers are not available")
+			return
+		}
+		kind := r.URL.Query().Get("kind")
+		if kind != "movie" && kind != "series" {
+			writeError(w, http.StatusBadRequest, "kind must be 'movie' or 'series'")
+			return
+		}
+		title := strings.TrimSpace(r.URL.Query().Get("title"))
+		if title == "" {
+			writeError(w, http.StatusBadRequest, "title is required")
+			return
+		}
+		year := queryInt(r, "year", 0)
+		limit := queryInt(r, "limit", 5)
+		if limit < 1 || limit > 20 {
+			limit = 5
+		}
+		candidates, err := deps.Metadata.TMDBCandidates(r.Context(), kind, title, year, limit)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "TMDB search failed: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"kind":       kind,
+			"title":      title,
+			"year":       year,
+			"candidates": candidates,
 		})
 	}
 }
@@ -3665,6 +3800,34 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			}
 			updated.Timezone = strings.TrimSpace(timezone)
 		}
+		if value, ok := fields["metadataLanguage"]; ok {
+			var lang string
+			if err := json.Unmarshal(value, &lang); err != nil {
+				writeError(w, http.StatusBadRequest, "metadataLanguage must be text")
+				return
+			}
+			lang = strings.TrimSpace(lang)
+			if lang == "" {
+				lang = "en-US"
+			}
+			updated.MetadataLanguage = lang
+		}
+		if value, ok := fields["preferTextSubtitles"]; ok {
+			var v bool
+			if err := json.Unmarshal(value, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "preferTextSubtitles must be true or false")
+				return
+			}
+			updated.PreferTextSubtitles = v
+		}
+		if value, ok := fields["originalQualityOnly"]; ok {
+			var v bool
+			if err := json.Unmarshal(value, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "originalQualityOnly must be true or false")
+				return
+			}
+			updated.OriginalQualityOnly = v
+		}
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
 			return
@@ -3913,6 +4076,16 @@ func hardwareAccelerationStatus(cfg config.Config) map[string]any {
 	if err != nil {
 		result["error"] = err.Error()
 	}
+	// Include last-run test cache if available
+	if cache := loadHWTestCache(cfg.DataDir); cache != nil {
+		result["lastTest"] = map[string]any{
+			"status":   cache.Status,
+			"working":  cache.Working,
+			"tested":   cache.Tested,
+			"tests":    cache.Tests,
+			"testedAt": cache.TestedAt,
+		}
+	}
 	return result
 }
 
@@ -3990,15 +4163,53 @@ func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[st
 	return fallbacks
 }
 
+type hwTestCache struct {
+	Status    string           `json:"status"`
+	Working   int              `json:"working"`
+	Tested    int              `json:"tested"`
+	Tests     []map[string]any `json:"tests"`
+	TestedAt  string           `json:"testedAt"`
+}
+
+func hwTestCachePath(dataDir string) string {
+	return filepath.Join(dataDir, "hardware_test.json")
+}
+
+func loadHWTestCache(dataDir string) *hwTestCache {
+	raw, err := os.ReadFile(hwTestCachePath(dataDir))
+	if err != nil {
+		return nil
+	}
+	var cache hwTestCache
+	if err := json.Unmarshal(raw, &cache); err != nil {
+		return nil
+	}
+	return &cache
+}
+
+func saveHWTestCache(dataDir string, cache hwTestCache) {
+	raw, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(hwTestCachePath(dataDir), raw, 0o644)
+}
+
 func hardwareTestHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		encoders, err := detectHardwareEncoders(deps.Config.FFmpegPath)
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{
+			result := map[string]any{
 				"status": "failed",
 				"error":  err.Error(),
 				"tests":  []map[string]any{},
+			}
+			saveHWTestCache(deps.Config.DataDir, hwTestCache{
+				Status:   "failed",
+				Tests:    []map[string]any{},
+				TestedAt: time.Now().UTC().Format(time.RFC3339),
 			})
+			writeJSON(w, http.StatusOK, result)
 			return
 		}
 		tests := make([]map[string]any, 0, len(encoders))
@@ -4018,11 +4229,21 @@ func hardwareTestHandler(deps Deps) http.HandlerFunc {
 		if working > 0 {
 			status = "passed"
 		}
+		testedAt := time.Now().UTC().Format(time.RFC3339)
+		cache := hwTestCache{
+			Status:   status,
+			Working:  working,
+			Tested:   len(tests),
+			Tests:    tests,
+			TestedAt: testedAt,
+		}
+		saveHWTestCache(deps.Config.DataDir, cache)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"status":  status,
-			"working": working,
-			"tested":  len(tests),
-			"tests":   tests,
+			"status":   status,
+			"working":  working,
+			"tested":   len(tests),
+			"tests":    tests,
+			"testedAt": testedAt,
 		})
 	}
 }
@@ -4169,8 +4390,11 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"watchDebounceSecs": cfg.WatchDebounceSecs,
 		"probeBatchLimit":   cfg.ProbeBatchLimit,
 		"allowedOrigins":    cfg.AllowedOrigins,
-		"country":           cfg.Country,
-		"timezone":          cfg.Timezone,
+		"country":              cfg.Country,
+		"timezone":             cfg.Timezone,
+		"metadataLanguage":     cfg.MetadataLanguage,
+		"preferTextSubtitles":  cfg.PreferTextSubtitles,
+		"originalQualityOnly":  cfg.OriginalQualityOnly,
 	}
 }
 
@@ -4348,6 +4572,98 @@ func mediaSourceProbeHandler(deps Deps) http.HandlerFunc {
 func probesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"probes": deps.Probes.List()})
+	}
+}
+
+// ── Thumbnail sprite handlers (issue #65) ────────────────────────────────────
+
+func thumbnailStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if deps.Thumbnails == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"generated": false, "error": "thumbnail service unavailable"})
+			return
+		}
+		status := deps.Thumbnails.GetStatus(id)
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+func thumbnailGenerateHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if deps.Thumbnails == nil {
+			writeError(w, http.StatusServiceUnavailable, "thumbnail service unavailable")
+			return
+		}
+		source, ok, err := deps.Catalog.GetMediaSource(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		if err := deps.Thumbnails.Generate(r.Context(), source.ID, source.Path, source.DurationSeconds); err != nil {
+			writeError(w, http.StatusInternalServerError, "thumbnail generation failed: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": "generating", "mediaSourceId": id})
+	}
+}
+
+func thumbnailSpriteHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if deps.Thumbnails == nil {
+			writeError(w, http.StatusServiceUnavailable, "thumbnail service unavailable")
+			return
+		}
+		path, err := deps.Thumbnails.SpritePath(id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "sprite not available — generate thumbnails first")
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, path)
+	}
+}
+
+func thumbnailVTTHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if deps.Thumbnails == nil {
+			writeError(w, http.StatusServiceUnavailable, "thumbnail service unavailable")
+			return
+		}
+		path, err := deps.Thumbnails.VTTPath(id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "thumbnail VTT not available — generate thumbnails first")
+			return
+		}
+		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, path)
+	}
+}
+
+func thumbnailChaptersHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if deps.Thumbnails == nil {
+			writeError(w, http.StatusServiceUnavailable, "thumbnail service unavailable")
+			return
+		}
+		path, err := deps.Thumbnails.ChaptersPath(id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "chapter track not available")
+			return
+		}
+		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, path)
 	}
 }
 
@@ -6971,6 +7287,31 @@ func playbackDecisionForSource(ctx context.Context, deps Deps, r *http.Request, 
 		SupportsAdaptive:    r.URL.Query().Get("supportsAdaptive") == "true",
 	}
 	request = applyClientProfile(deps, request)
+	// Apply any client-reported capability flags passed as query params (#64).
+	// The route endpoint is GET so we use sparse flags rather than a JSON body.
+	var caps *clientCapabilities
+	if r.URL.Query().Has("supportsHdr") || r.URL.Query().Has("maxBitDepth") ||
+		r.URL.Query().Has("videoCodecs") || r.URL.Query().Has("audioCodecs") {
+		caps = &clientCapabilities{
+			SupportsHDR:      r.URL.Query().Get("supportsHdr") == "true",
+			MaxVideoBitDepth: queryInt(r, "maxBitDepth", 0),
+		}
+		if vc := r.URL.Query().Get("videoCodecs"); vc != "" {
+			for _, c := range strings.Split(vc, ",") {
+				if s := strings.TrimSpace(c); s != "" {
+					caps.VideoCodecs = append(caps.VideoCodecs, s)
+				}
+			}
+		}
+		if ac := r.URL.Query().Get("audioCodecs"); ac != "" {
+			for _, c := range strings.Split(ac, ",") {
+				if s := strings.TrimSpace(c); s != "" {
+					caps.AudioCodecs = append(caps.AudioCodecs, s)
+				}
+			}
+		}
+	}
+	request = applyClientCapabilities(request, caps)
 	return deps.Playback.DecideSource(ctx, request, playbackSourceFacts(ctx, deps, request, source))
 }
 
@@ -7018,6 +7359,64 @@ func applyClientProfile(deps Deps, request playback.Request) playback.Request {
 	return request
 }
 
+// foregroundProbe runs a synchronous, high-priority probe for a single media
+// source when it has not been probed yet. It saves the result to the catalog
+// and returns an updated source. On failure it returns the original source
+// with a non-nil error so callers can decide whether to continue with a
+// best-guess transcode plan.
+func foregroundProbe(ctx context.Context, deps Deps, source catalog.MediaSourceItem) (catalog.MediaSourceItem, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	result, err := deps.Probe.Probe(probeCtx, source.Path)
+	if err != nil {
+		return source, err
+	}
+	catalogResult := catalog.ProbeResult{
+		Container:       result.Container,
+		DurationSeconds: result.DurationSeconds,
+		Bitrate:         result.Bitrate,
+		VideoCodec:      result.VideoCodec,
+		VideoProfile:    result.VideoProfile,
+		VideoLevel:      result.VideoLevel,
+		VideoBitDepth:   result.VideoBitDepth,
+		VideoFrameRate:  result.VideoFrameRate,
+		PixelFormat:     result.PixelFormat,
+		ColorPrimaries:  result.ColorPrimaries,
+		ColorTransfer:   result.ColorTransfer,
+		ColorSpace:      result.ColorSpace,
+		HDRFormat:       result.HDRFormat,
+		DoviProfile:     result.DoviProfile,
+		MaxCLL:          result.MaxCLL,
+		MaxFALL:         result.MaxFALL,
+		Width:           result.Width,
+		Height:          result.Height,
+		AudioStreams:     result.AudioStreams,
+		SubtitleStreams:  result.SubtitleStreams,
+		RawJSON:         result.RawJSON,
+	}
+	_ = deps.Catalog.SaveProbe(ctx, source.ID, catalogResult)
+	// Patch the in-memory source so playback decision uses fresh probe data
+	source.Probed          = true
+	source.Container       = result.Container
+	source.DurationSeconds = result.DurationSeconds
+	source.Bitrate         = result.Bitrate
+	source.VideoCodec      = result.VideoCodec
+	source.VideoProfile    = result.VideoProfile
+	source.VideoLevel      = result.VideoLevel
+	source.VideoBitDepth   = result.VideoBitDepth
+	source.VideoFrameRate  = result.VideoFrameRate
+	source.PixelFormat     = result.PixelFormat
+	source.ColorPrimaries  = result.ColorPrimaries
+	source.ColorTransfer   = result.ColorTransfer
+	source.ColorSpace      = result.ColorSpace
+	source.HDRFormat       = result.HDRFormat
+	source.Width           = result.Width
+	source.Height          = result.Height
+	source.AudioStreams     = result.AudioStreams
+	source.SubtitleStreams  = result.SubtitleStreams
+	return source, nil
+}
+
 func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Request, source catalog.MediaSourceItem) playback.SourceFacts {
 	tracks, _, _ := deps.Catalog.GetMediaSourceTracks(ctx, request.MediaSourceID)
 	if request.AudioCodec == "" && len(tracks.AudioTracks) > 0 {
@@ -7039,6 +7438,7 @@ func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Reques
 		VideoLevel:       source.VideoLevel,
 		VideoBitDepth:    source.VideoBitDepth,
 		HDR:              source.HDRFormat,
+		DoviProfile:      source.DoviProfile,
 		FrameRate:        source.VideoFrameRate,
 		Width:            source.Width,
 		Height:           source.Height,

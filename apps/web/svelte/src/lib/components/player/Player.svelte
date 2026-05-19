@@ -395,6 +395,87 @@
     fullscreen = !!document.fullscreenElement;
   }
 
+  // ─── Thumbnails + chapters ────────────────────────────────────────────────
+  interface ThumbnailCue { start: number; end: number; x: number; y: number; w: number; h: number; }
+  interface ChapterCue   { start: number; end: number; title: string; }
+
+  let thumbCues = $state<ThumbnailCue[]>([]);
+  let chapterCues = $state<ChapterCue[]>([]);
+  let spriteUrl = $state('');
+
+  function parseTimestampVTT(ts: string): number {
+    const parts = ts.trim().split(':');
+    if (parts.length === 3) {
+      return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    }
+    if (parts.length === 2) {
+      return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+    }
+    return parseFloat(parts[0]);
+  }
+
+  async function loadThumbnailVTT() {
+    try {
+      const res = await fetch(`/api/media-sources/${mediaSourceId}/thumbnails/thumbnails.vtt`);
+      if (!res.ok) return;
+      const text = await res.text();
+      const cues: ThumbnailCue[] = [];
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line.includes('-->')) continue;
+        const [startStr, endStr] = line.split('-->').map(s => s.trim());
+        const next = (lines[i + 1] ?? '').trim();
+        const match = next.match(/#xywh=(\d+),(\d+),(\d+),(\d+)/);
+        if (match) {
+          cues.push({
+            start: parseTimestampVTT(startStr),
+            end: parseTimestampVTT(endStr),
+            x: parseInt(match[1]), y: parseInt(match[2]),
+            w: parseInt(match[3]), h: parseInt(match[4]),
+          });
+        }
+      }
+      if (cues.length > 0) {
+        thumbCues = cues;
+        spriteUrl = `/api/media-sources/${mediaSourceId}/thumbnails/sprite.jpg`;
+      }
+    } catch { /* thumbnail VTT unavailable — scrubber works without it */ }
+  }
+
+  async function loadChaptersVTT() {
+    try {
+      const res = await fetch(`/api/media-sources/${mediaSourceId}/thumbnails/chapters.vtt`);
+      if (!res.ok) return;
+      const text = await res.text();
+      const cues: ChapterCue[] = [];
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line.includes('-->')) continue;
+        const [startStr, endStr] = line.split('-->').map(s => s.trim());
+        const title = (lines[i + 1] ?? '').trim();
+        if (title && !title.includes('-->')) {
+          cues.push({
+            start: parseTimestampVTT(startStr),
+            end: parseTimestampVTT(endStr),
+            title,
+          });
+        }
+      }
+      chapterCues = cues;
+    } catch { /* chapters unavailable */ }
+  }
+
+  function thumbForTime(t: number): ThumbnailCue | null {
+    if (!thumbCues.length) return null;
+    return thumbCues.find(c => t >= c.start && t < c.end) ?? thumbCues[thumbCues.length - 1];
+  }
+
+  // ─── Scrubber hover preview ───────────────────────────────────────────────
+  let hoverPercent = $state<number | null>(null);
+  let hoverTime = $state(0);
+
   // ─── Seek bar ─────────────────────────────────────────────────────────────
   let seekBarEl = $state<HTMLDivElement | undefined>(undefined);
   let isScrubbing = $state(false);
@@ -413,13 +494,25 @@
   }
 
   function onSeekBarPointerMove(e: PointerEvent) {
+    // Always track hover position (for thumbnail preview)
+    if (seekBarEl && duration) {
+      const rect = seekBarEl.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      hoverPercent = ratio * 100;
+      hoverTime = ratio * duration;
+    }
     if (!isScrubbing) return;
     seekTo(e.clientX);
     showControls();
   }
 
+  function onSeekBarPointerLeave() {
+    if (!isScrubbing) hoverPercent = null;
+  }
+
   function onSeekBarPointerUp(e: PointerEvent) {
     isScrubbing = false;
+    hoverPercent = null;
     seekBarEl?.releasePointerCapture(e.pointerId);
   }
 
@@ -608,6 +701,10 @@
       // Non-fatal — tracks just won't show in menus
     }
 
+    // Load thumbnail VTT and chapters (best-effort, non-blocking)
+    loadThumbnailVTT();
+    loadChaptersVTT();
+
     // Load the video
     await loadSource(initialRoute, resumePos);
 
@@ -795,6 +892,11 @@
       {/if}
 
       <RouteBadge {decision} />
+      {#if decision?.reasonCode === 'dolby_vision_pass_through'}
+        <span class="hidden rounded-md bg-blue-900/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-300 ring-1 ring-blue-500/30 backdrop-blur-sm md:inline">DV</span>
+      {:else if decision?.reasonCode === 'hdr_pass_through'}
+        <span class="hidden rounded-md bg-amber-900/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-amber-300 ring-1 ring-amber-500/30 backdrop-blur-sm md:inline">HDR</span>
+      {/if}
     </div>
 
     <!-- Spacer -->
@@ -809,39 +911,87 @@
       <div class="flex items-center gap-3">
         <span class="min-w-[3rem] text-right font-mono text-xs text-white/70">{fmt(currentTime)}</span>
 
-        <div
-          bind:this={seekBarEl}
-          class="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-white/20 hover:h-2.5 transition-all duration-150"
-          onpointerdown={onSeekBarPointerDown}
-          onpointermove={onSeekBarPointerMove}
-          onpointerup={onSeekBarPointerUp}
-          role="slider"
-          aria-label="Seek"
-          aria-valuemin={0}
-          aria-valuemax={duration}
-          aria-valuenow={currentTime}
-          aria-valuetext={fmt(currentTime)}
-          tabindex="0"
-          onkeydown={(e) => {
-            if (e.key === 'ArrowLeft') skip(-5);
-            if (e.key === 'ArrowRight') skip(5);
-          }}
-        >
-          <!-- Buffer -->
+        <div class="relative flex-1">
+          <!-- Thumbnail preview tooltip (shown on hover) -->
+          {#if hoverPercent !== null && thumbCues.length > 0}
+            {@const cue = thumbForTime(hoverTime)}
+            {#if cue}
+              <div
+                class="pointer-events-none absolute bottom-[calc(100%+12px)] z-50 overflow-hidden rounded-lg shadow-2xl ring-1 ring-white/10"
+                style="left: clamp(80px, {hoverPercent}%, calc(100% - 80px)); transform: translateX(-50%); width: {cue.w}px; height: {cue.h}px;"
+              >
+                <img
+                  src={spriteUrl}
+                  alt=""
+                  style="position:absolute; top: -{cue.y}px; left: -{cue.x}px; width: auto; height: auto; image-rendering: pixelated;"
+                />
+                <div class="absolute bottom-0 inset-x-0 bg-black/50 py-0.5 text-center text-[10px] font-mono text-white/90">
+                  {fmt(hoverTime)}
+                </div>
+              </div>
+            {/if}
+          {:else if hoverPercent !== null}
+            <!-- Time-only tooltip when no thumbnails available -->
+            <div
+              class="pointer-events-none absolute bottom-[calc(100%+10px)] z-50 rounded-md bg-black/70 px-2 py-1 text-[11px] font-mono text-white backdrop-blur-sm"
+              style="left: clamp(20px, {hoverPercent}%, calc(100% - 20px)); transform: translateX(-50%);"
+            >
+              {fmt(hoverTime)}
+            </div>
+          {/if}
+
           <div
-            class="absolute inset-y-0 left-0 rounded-full bg-white/25"
-            style="width: {bufferedPercent}%"
-          ></div>
-          <!-- Progress -->
-          <div
-            class="absolute inset-y-0 left-0 rounded-full bg-white"
-            style="width: {progressPercent}%"
-          ></div>
-          <!-- Thumb -->
-          <div
-            class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-            style="left: {progressPercent}%"
-          ></div>
+            bind:this={seekBarEl}
+            class="group relative h-1.5 w-full cursor-pointer rounded-full bg-white/20 hover:h-2.5 transition-all duration-150"
+            onpointerdown={onSeekBarPointerDown}
+            onpointermove={onSeekBarPointerMove}
+            onpointerup={onSeekBarPointerUp}
+            onpointerleave={onSeekBarPointerLeave}
+            role="slider"
+            aria-label="Seek"
+            aria-valuemin={0}
+            aria-valuemax={duration}
+            aria-valuenow={currentTime}
+            aria-valuetext={fmt(currentTime)}
+            tabindex="0"
+            onkeydown={(e) => {
+              if (e.key === 'ArrowLeft') skip(-5);
+              if (e.key === 'ArrowRight') skip(5);
+            }}
+          >
+            <!-- Buffer -->
+            <div
+              class="absolute inset-y-0 left-0 rounded-full bg-white/25"
+              style="width: {bufferedPercent}%"
+            ></div>
+            <!-- Progress -->
+            <div
+              class="absolute inset-y-0 left-0 rounded-full bg-white"
+              style="width: {progressPercent}%"
+            ></div>
+            <!-- Chapter markers -->
+            {#each chapterCues as ch (ch.start)}
+              {#if ch.start > 0 && duration > 0}
+                <div
+                  class="absolute top-1/2 -translate-y-1/2 w-[3px] rounded-sm bg-white/50 h-[150%] opacity-60"
+                  style="left: {(ch.start / duration) * 100}%;"
+                  title={ch.title}
+                ></div>
+              {/if}
+            {/each}
+            <!-- Hover indicator -->
+            {#if hoverPercent !== null}
+              <div
+                class="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-white/40"
+                style="width: {hoverPercent}%"
+              ></div>
+            {/if}
+            <!-- Thumb -->
+            <div
+              class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+              style="left: {progressPercent}%"
+            ></div>
+          </div>
         </div>
 
         <span class="min-w-[3rem] font-mono text-xs text-white/70">{fmt(duration)}</span>

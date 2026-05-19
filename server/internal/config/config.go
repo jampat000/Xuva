@@ -59,9 +59,13 @@ type Config struct {
 	WatchDebounceSecs     int      `json:"watchDebounceSecs,omitempty"`
 	ProbeBatchLimit       int      `json:"probeBatchLimit,omitempty"`
 	AllowedOrigins        []string `json:"allowedOrigins,omitempty"`
-	// Region settings — captured during the setup wizard.
-	Country               string   `json:"country,omitempty"`  // ISO 3166-1 alpha-2, e.g. "AU"
-	Timezone              string   `json:"timezone,omitempty"` // IANA tz, e.g. "Australia/Sydney"
+	// Region / language settings — captured during the setup wizard.
+	Country               string   `json:"country,omitempty"`          // ISO 3166-1 alpha-2, e.g. "AU"
+	Timezone              string   `json:"timezone,omitempty"`         // IANA tz, e.g. "Australia/Sydney"
+	MetadataLanguage      string   `json:"metadataLanguage,omitempty"` // BCP-47 e.g. "en-US", "fr-FR", "de-DE"
+	// Playback preferences
+	PreferTextSubtitles   bool     `json:"preferTextSubtitles,omitempty"` // prefer SRT/ASS over bitmap subs
+	OriginalQualityOnly   bool     `json:"originalQualityOnly,omitempty"` // refuse to transcode video
 	SetupComplete         bool     `json:"setupComplete,omitempty"`
 	// Trailer downloader settings — self-hosted preview videos.
 	TrailersEnabled       bool     `json:"trailersEnabled,omitempty"`
@@ -143,6 +147,9 @@ func FromEnv() Config {
 		ProbeBatchLimit:      envInt("XUVA_PROBE_BATCH_LIMIT", 50),
 		Country:              envString("XUVA_COUNTRY", ""),
 		Timezone:             envString("XUVA_TIMEZONE", ""),
+		MetadataLanguage:     envString("XUVA_METADATA_LANGUAGE", "en-US"),
+		PreferTextSubtitles:  envBool("XUVA_PREFER_TEXT_SUBTITLES", false),
+		OriginalQualityOnly:  envBool("XUVA_ORIGINAL_QUALITY_ONLY", false),
 		TrailersEnabled:      envBool("XUVA_TRAILERS_ENABLED", true),
 		TrailersDir:          envString("XUVA_TRAILERS_DIR", filepath.Join(dataDir, "trailers")),
 		YTDLPPath:            envString("XUVA_YTDLP_PATH", "yt-dlp"),
@@ -206,6 +213,9 @@ func FromEnv() Config {
 	cfg.ProbeBatchLimit = envInt("XUVA_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
 	cfg.Country = envString("XUVA_COUNTRY", cfg.Country)
 	cfg.Timezone = envString("XUVA_TIMEZONE", cfg.Timezone)
+	cfg.MetadataLanguage = envString("XUVA_METADATA_LANGUAGE", defaultString(cfg.MetadataLanguage, "en-US"))
+	cfg.PreferTextSubtitles = envBool("XUVA_PREFER_TEXT_SUBTITLES", cfg.PreferTextSubtitles)
+	cfg.OriginalQualityOnly = envBool("XUVA_ORIGINAL_QUALITY_ONLY", cfg.OriginalQualityOnly)
 	cfg.TrailersEnabled = envBool("XUVA_TRAILERS_ENABLED", cfg.TrailersEnabled)
 	cfg.TrailersDir = envString("XUVA_TRAILERS_DIR", defaultDir(cfg.TrailersDir, cfg.DataDir, "trailers"))
 	cfg.YTDLPPath = envString("XUVA_YTDLP_PATH", defaultString(cfg.YTDLPPath, "yt-dlp"))
@@ -338,6 +348,15 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.Timezone != "" {
 		base.Timezone = saved.Timezone
+	}
+	if saved.MetadataLanguage != "" {
+		base.MetadataLanguage = saved.MetadataLanguage
+	}
+	if saved.PreferTextSubtitles {
+		base.PreferTextSubtitles = true
+	}
+	if saved.OriginalQualityOnly {
+		base.OriginalQualityOnly = true
 	}
 	if saved.SetupComplete {
 		base.SetupComplete = true

@@ -21,7 +21,10 @@ type Result struct {
 	ColorPrimaries  string  `json:"colorPrimaries,omitempty"`
 	ColorTransfer   string  `json:"colorTransfer,omitempty"`
 	ColorSpace      string  `json:"colorSpace,omitempty"`
-	HDRFormat       string  `json:"hdrFormat,omitempty"` // derived: "" | "HDR10" | "HLG" | "BT2020"
+	HDRFormat       string  `json:"hdrFormat,omitempty"` // derived: "" | "HDR10" | "HLG" | "BT2020" | "DolbyVision" | "DolbyVision+HDR10"
+	DoviProfile     int     `json:"doviProfile,omitempty"` // Dolby Vision profile number (5, 7, 8, 9...), 0 = not DV
+	MaxCLL          int     `json:"maxCll,omitempty"`      // Maximum Content Light Level in nits
+	MaxFALL         int     `json:"maxFall,omitempty"`     // Maximum Average Frame Average Light Level in nits
 	Width           int     `json:"width"`
 	Height          int     `json:"height"`
 	AudioStreams    int     `json:"audioStreams"`
@@ -93,7 +96,27 @@ func Parse(raw []byte) (Result, error) {
 				result.ColorTransfer = stream.ColorTransfer
 				result.ColorSpace = stream.ColorSpace
 				result.VideoFrameRate = parseFrameRate(stream.AvgFrameRate, stream.RFrameRate)
-				result.HDRFormat = deriveHDRFormat(stream.ColorPrimaries, stream.ColorTransfer, result.VideoBitDepth)
+				// Scan side data for Dolby Vision config and HDR metadata
+				for _, sd := range stream.SideDataList {
+					sdType := strings.ToLower(sd.SideDataType)
+					if strings.Contains(sdType, "dovi") || strings.Contains(sdType, "dolby vision") {
+						if sd.DVProfile > 0 {
+							result.DoviProfile = sd.DVProfile
+						} else if sd.DVVersionMajor > 0 {
+							// DV detected but profile not parseable; record generic DV
+							result.DoviProfile = -1
+						}
+					}
+					if strings.Contains(sdType, "content light level") {
+						if sd.MaxContent > 0 {
+							result.MaxCLL = sd.MaxContent
+						}
+						if sd.MaxAverage > 0 {
+							result.MaxFALL = sd.MaxAverage
+						}
+					}
+				}
+				result.HDRFormat = deriveHDRFormat(stream.ColorPrimaries, stream.ColorTransfer, result.VideoBitDepth, result.DoviProfile)
 			}
 		case "audio":
 			result.AudioStreams++
@@ -130,6 +153,15 @@ type ffprobePayload struct {
 			Default int `json:"default"`
 			Forced  int `json:"forced"`
 		} `json:"disposition"`
+		SideDataList []struct {
+			SideDataType string `json:"side_data_type"`
+			// Dolby Vision configuration record
+			DVVersionMajor int `json:"dv_version_major,omitempty"`
+			DVProfile      int `json:"dv_profile,omitempty"`
+			// MaxCLL / MaxFALL (HDR10+, HDR10 metadata blocks)
+			MaxContent    int `json:"max_content,omitempty"`
+			MaxAverage    int `json:"max_average,omitempty"`
+		} `json:"side_data_list,omitempty"`
 	} `json:"streams"`
 	Format struct {
 		FormatName string `json:"format_name"`
@@ -157,25 +189,38 @@ func bitDepthFromPixFmt(pixFmt string) int {
 	}
 }
 
-// deriveHDRFormat infers a coarse HDR classification from the standard color
-// metadata fields. Dolby Vision is intentionally not detected here — it lives
-// in stream side data and is the subject of a separate issue (#61).
-func deriveHDRFormat(primaries string, transfer string, bitDepth int) string {
+// deriveHDRFormat infers an HDR classification from color metadata and Dolby
+// Vision profile number. doviProfile 0 = no DV, -1 = DV detected without
+// a parseable profile number.
+func deriveHDRFormat(primaries string, transfer string, bitDepth int, doviProfile int) string {
 	primaries = strings.ToLower(strings.TrimSpace(primaries))
 	transfer = strings.ToLower(strings.TrimSpace(transfer))
-	if bitDepth > 0 && bitDepth < 10 {
-		return ""
+
+	baseHDR := ""
+	if bitDepth == 0 || bitDepth >= 10 {
+		switch transfer {
+		case "smpte2084":
+			baseHDR = "HDR10"
+		case "arib-std-b67":
+			baseHDR = "HLG"
+		default:
+			if primaries == "bt2020" {
+				baseHDR = "BT2020"
+			}
+		}
 	}
-	switch transfer {
-	case "smpte2084":
-		return "HDR10"
-	case "arib-std-b67":
-		return "HLG"
+
+	if doviProfile != 0 {
+		// Profile 5: DV only (no HDR10 compat layer)
+		// Profile 7: DV + HDR10 metadata layer
+		// Profile 8: DV + HDR10 compat layer (most common for disc/streaming)
+		// Profile 9: DV SDR compat
+		if baseHDR == "HDR10" || doviProfile == 7 || doviProfile == 8 {
+			return "DolbyVision+HDR10"
+		}
+		return "DolbyVision"
 	}
-	if primaries == "bt2020" {
-		return "BT2020"
-	}
-	return ""
+	return baseHDR
 }
 
 // parseFrameRate parses ffprobe rational-number frame-rate fields. It prefers

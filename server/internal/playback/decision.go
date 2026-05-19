@@ -41,9 +41,10 @@ type Request struct {
 	VideoCodecs      []string
 	AudioCodecs      []string
 	SubtitleCodecs   []string
-	MaxVideoBitDepth int     // 0 = unspecified; treated as 8 in decisions.
-	MaxFrameRate     float64 // 0 = unspecified; no cap applied.
-	SupportsHDR      bool
+	MaxVideoBitDepth    int     // 0 = unspecified; treated as 8 in decisions.
+	MaxFrameRate        float64 // 0 = unspecified; no cap applied.
+	SupportsHDR         bool
+	SupportsDolbyVision bool // client can decode Dolby Vision (any profile)
 }
 
 type SourceFacts struct {
@@ -54,6 +55,7 @@ type SourceFacts struct {
 	VideoLevel       string
 	VideoBitDepth    int
 	HDR              string
+	DoviProfile      int    // 0 = no DV; -1 = DV detected, profile unknown; >0 = profile number
 	Width            int
 	Height           int
 	FrameRate        float64
@@ -250,12 +252,16 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.SubtitleAction = subtitles
 		decision.EstimatedCPUCost = "none"
 		decision.EstimatedGPUCost = "none"
-		// When the source is HDR and the client claimed HDR support, surface
-		// that with an explicit reason so the player can show an HDR badge
-		// and the user understands why the picture looks the way it does.
+		// When the source is HDR or Dolby Vision and the client supports it,
+		// surface that with an explicit reason so the player can show a badge.
 		if strings.ToUpper(strings.TrimSpace(source.HDR)) != "" && request.SupportsHDR {
-			decision.ReasonCode = "hdr_pass_through"
-			decision.ReasonText = "This HDR file plays directly on the selected player without conversion."
+			if source.DoviProfile != 0 && request.SupportsDolbyVision {
+				decision.ReasonCode = "dolby_vision_pass_through"
+				decision.ReasonText = "This Dolby Vision file plays directly on the selected player without conversion."
+			} else {
+				decision.ReasonCode = "hdr_pass_through"
+				decision.ReasonText = "This HDR file plays directly on the selected player without conversion."
+			}
 		}
 		if audioAction == "transcode" {
 			decision.Mode = AudioTranscode
@@ -375,9 +381,27 @@ func needsVideoSubtitleBurn(subtitles string) bool {
 // has a property (HDR, bit depth, frame rate) that the requesting client
 // cannot handle. Empty string means "no capability-level objection".
 func unsupportedSourceCapability(request Request, source SourceFacts) string {
+	// Dolby Vision: if the source is DV-only (profile 5) and the client doesn't
+	// support DV, we need to transcode/tone-map. DV+HDR10 (profiles 7/8) can
+	// fall back to the HDR10 compatibility layer, so we only block on the DV
+	// flag when there's no HDR10 layer and the client doesn't support DV.
+	hdr := strings.ToUpper(strings.TrimSpace(source.HDR))
+	isDV := source.DoviProfile != 0
+	isDVOnly := isDV && hdr == "DOLBYVISION" // no HDR10 compat layer
+	if isDVOnly && !request.SupportsDolbyVision {
+		if !request.SupportsHDR {
+			return "hdr_tone_map_required"
+		}
+		// Client supports HDR10 but not DV: treat as HDR10 pass-through (close enough)
+		// No capability error — playback will work via HDR10 signalling.
+	}
 	// HDR sources need an HDR-capable client (or tone-mapping support, which
 	// we model as "transcode anyway with tone-map filter" — same code path).
-	if strings.ToUpper(strings.TrimSpace(source.HDR)) != "" && !request.SupportsHDR {
+	if hdr != "" && !request.SupportsHDR && !isDV {
+		return "hdr_tone_map_required"
+	}
+	// HDR without DV — just require HDR capable client
+	if hdr != "" && !request.SupportsHDR {
 		return "hdr_tone_map_required"
 	}
 	// Bit-depth: if the client declares a max and the source exceeds it, the

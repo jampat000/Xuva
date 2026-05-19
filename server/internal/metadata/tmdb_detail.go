@@ -14,6 +14,18 @@ import (
 	"github.com/jampat000/Xuva/server/internal/trailers"
 )
 
+// metadataLangCode extracts the primary language sub-tag from a BCP-47 tag.
+// e.g. "en-US" → "en", "fr-FR" → "fr", "de" → "de".
+func metadataLangCode(bcp47 string) string {
+	if bcp47 == "" {
+		return "en"
+	}
+	if idx := strings.IndexByte(bcp47, '-'); idx > 0 {
+		return bcp47[:idx]
+	}
+	return bcp47
+}
+
 // videosToCandidates flattens TMDB's videos.results into the trailer
 // picker's input shape. Kept here so refreshTMDBMovie/Series share it.
 func videosToCandidates(in []tmdbVideoAsset) []trailers.VideoCandidate {
@@ -34,6 +46,21 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order
 		return nil
 	}
 	apiKey := managedProviderCredential("tmdb", cfg)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	// 1. Direct-ID path: use override ID from request, or extract from filename.
+	tmdbID := request.TMDBOverrideID
+	if tmdbID == 0 && request.Filename != "" {
+		tmdbID = extractTMDBIDFromFilename(request.Filename)
+	}
+	if tmdbID > 0 {
+		if request.Kind == "movie" {
+			return s.refreshTMDBMovie(ctx, request, order, apiKey, tmdbID, now, cfg, result)
+		}
+		return s.refreshTMDBSeries(ctx, request, order, apiKey, tmdbID, now, cfg, result)
+	}
+
+	// 2. Search-based path (fallback).
 	path := "movie"
 	if request.Kind == "series" {
 		path = "tv"
@@ -41,7 +68,7 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order
 	searchURL := fmt.Sprintf("%s/search/%s?", strings.TrimRight(s.tmdbBaseURL, "/"), path) + url.Values{
 		"api_key":  {apiKey},
 		"query":    {request.Title},
-		"language": {"en-US"},
+		"language": {cfg.MetadataLanguage},
 	}.Encode()
 	if request.Year > 0 && request.Kind == "movie" {
 		searchURL += "&year=" + strconv.Itoa(request.Year)
@@ -57,20 +84,20 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order
 	if match.ID == 0 {
 		return errors.New("no TMDB match")
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if request.Kind == "movie" {
-		return s.refreshTMDBMovie(ctx, request, order, apiKey, match.ID, now, result)
+		return s.refreshTMDBMovie(ctx, request, order, apiKey, match.ID, now, cfg, result)
 	}
-	return s.refreshTMDBSeries(ctx, request, order, apiKey, match.ID, now, result)
+	return s.refreshTMDBSeries(ctx, request, order, apiKey, match.ID, now, cfg, result)
 }
 
-func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, order []string, apiKey string, tmdbID int, now string, result *RefreshResult) error {
+func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, order []string, apiKey string, tmdbID int, now string, cfg config.Config, result *RefreshResult) error {
+	imgLang := metadataLangCode(cfg.MetadataLanguage) + ",en,null"
 	detailURL := fmt.Sprintf("%s/movie/%d?", strings.TrimRight(s.tmdbBaseURL, "/"), tmdbID) + url.Values{
 		"api_key":                 {apiKey},
-		"language":                {"en-US"},
+		"language":                {cfg.MetadataLanguage},
 		"append_to_response":      {"credits,release_dates,images,external_ids,videos"},
-		"include_image_language":  {"en,null"},
-		"include_video_language":  {"en,null"},
+		"include_image_language":  {imgLang},
+		"include_video_language":  {metadataLangCode(cfg.MetadataLanguage) + ",en,null"},
 	}.Encode()
 	var detail tmdbMovieDetail
 	if err := s.getJSON(ctx, detailURL, &detail); err != nil {
@@ -125,13 +152,14 @@ func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, 
 	return s.upsertTMDBRating(ctx, request.Kind, request.ID, "movie", detail.ID, detail.VoteAverage, detail.VoteCount, now, result)
 }
 
-func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest, order []string, apiKey string, tmdbID int, now string, result *RefreshResult) error {
+func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest, order []string, apiKey string, tmdbID int, now string, cfg config.Config, result *RefreshResult) error {
+	imgLang := metadataLangCode(cfg.MetadataLanguage) + ",en,null"
 	detailURL := fmt.Sprintf("%s/tv/%d?", strings.TrimRight(s.tmdbBaseURL, "/"), tmdbID) + url.Values{
 		"api_key":                 {apiKey},
-		"language":                {"en-US"},
+		"language":                {cfg.MetadataLanguage},
 		"append_to_response":      {"aggregate_credits,content_ratings,images,external_ids,videos"},
-		"include_image_language":  {"en,null"},
-		"include_video_language":  {"en,null"},
+		"include_image_language":  {imgLang},
+		"include_video_language":  {metadataLangCode(cfg.MetadataLanguage) + ",en,null"},
 	}.Encode()
 	var detail tmdbTVDetail
 	if err := s.getJSON(ctx, detailURL, &detail); err != nil {
@@ -207,18 +235,19 @@ func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest,
 		if seasonID == "" {
 			continue
 		}
-		if err := s.refreshTMDBSeason(ctx, request.ID, seasonID, season.SeasonNumber, apiKey, tmdbID, order, now, result, episodeIDs[season.SeasonNumber]); err != nil {
+		if err := s.refreshTMDBSeason(ctx, request.ID, seasonID, season.SeasonNumber, apiKey, tmdbID, order, now, cfg, result, episodeIDs[season.SeasonNumber]); err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("TMDB season %d refresh failed: %v", season.SeasonNumber, err))
 		}
 	}
 	return nil
 }
 
-func (s *Service) refreshTMDBSeason(ctx context.Context, seriesID string, seasonID string, seasonNumber int, apiKey string, tmdbSeriesID int, order []string, now string, result *RefreshResult, episodeIDs map[int]string) error {
+func (s *Service) refreshTMDBSeason(ctx context.Context, seriesID string, seasonID string, seasonNumber int, apiKey string, tmdbSeriesID int, order []string, now string, cfg config.Config, result *RefreshResult, episodeIDs map[int]string) error {
 	seasonURL := fmt.Sprintf("%s/tv/%d/season/%d?", strings.TrimRight(s.tmdbBaseURL, "/"), tmdbSeriesID, seasonNumber) + url.Values{
 		"api_key":                {apiKey},
+		"language":               {cfg.MetadataLanguage},
 		"append_to_response":     {"credits"},
-		"include_image_language": {"en,null"},
+		"include_image_language": {metadataLangCode(cfg.MetadataLanguage) + ",en,null"},
 	}.Encode()
 	var detail tmdbSeasonDetail
 	if err := s.getJSON(ctx, seasonURL, &detail); err != nil {

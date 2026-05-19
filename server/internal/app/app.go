@@ -38,6 +38,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
 	"github.com/jampat000/Xuva/server/internal/transcode"
+	"github.com/jampat000/Xuva/server/internal/thumbnails"
 	"github.com/jampat000/Xuva/server/internal/trailers"
 	"github.com/jampat000/Xuva/server/internal/trending"
 	"github.com/jampat000/Xuva/server/internal/tv"
@@ -74,9 +75,10 @@ type Application struct {
 	Sessions  *sessions.Service
 	Downloads *downloads.Service
 	Pairing   *pairing.Service
-	Migration *migration.Service
-	Trending  *trending.Service
-	Trailers  *trailers.Service
+	Migration  *migration.Service
+	Trending   *trending.Service
+	Trailers   *trailers.Service
+	Thumbnails *thumbnails.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -269,9 +271,10 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Sessions:  sessionService,
 		Downloads: downloadService,
 		Pairing:   pairing.NewService(),
-		Migration: migration.NewService(databaseService, bus),
-		Trending:  trendingService,
-		Trailers:  trailersService,
+		Migration:  migration.NewService(databaseService, bus),
+		Trending:   trendingService,
+		Trailers:   trailersService,
+		Thumbnails: thumbnails.New(cfg.CacheDir, cfg.FFmpegPath, cfg.FFprobePath),
 	}, nil
 }
 
@@ -422,8 +425,10 @@ func (a *Application) Router() http.Handler {
 		Sessions:  a.Sessions,
 		Subtitles: a.Subtitles,
 		Pairing:   a.Pairing,
-		Trending:  a.Trending,
-		Trailers:  a.Trailers,
+		Trending:   a.Trending,
+		Trailers:   a.Trailers,
+		Thumbnails: a.Thumbnails,
+		Migration:  a.Migration,
 	})
 }
 

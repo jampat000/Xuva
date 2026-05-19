@@ -246,6 +246,7 @@ export interface HardwareTestResponse {
 	error?: string;
 	working?: number;
 	tested?: number;
+	testedAt?: string;
 	tests?: Array<{
 		id?: string;
 		label?: string;
@@ -283,6 +284,22 @@ export interface PerformanceSettingsResponse {
 		unlockState?: string;
 		gpuWorkers?: number;
 		available?: boolean;
+		encoders?: Array<{ id?: string; label?: string; vendor?: string; codec?: string }>;
+		lastTest?: {
+			status?: string;
+			working?: number;
+			tested?: number;
+			testedAt?: string;
+			tests?: Array<{
+				id?: string;
+				label?: string;
+				vendor?: string;
+				codec?: string;
+				ok?: boolean;
+				error?: string;
+				durationMs?: number;
+			}>;
+		};
 	};
 }
 
@@ -362,6 +379,9 @@ export interface SettingsResponse {
 		hardwareUnlocked?: boolean;
 		country?: string;
 		timezone?: string;
+		metadataLanguage?: string;
+		preferTextSubtitles?: boolean;
+		originalQualityOnly?: boolean;
 	};
 	libraries?: Array<{
 		id?: string;
@@ -386,6 +406,9 @@ export interface UpdateSettingsRequest {
 	watchDebounceSecs?: number;
 	country?: string;
 	timezone?: string;
+	metadataLanguage?: string;
+	preferTextSubtitles?: boolean;
+	originalQualityOnly?: boolean;
 	probeBatchLimit?: number;
 	playbackPolicy?: string;
 }

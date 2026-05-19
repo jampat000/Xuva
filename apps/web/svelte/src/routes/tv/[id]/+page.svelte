@@ -7,9 +7,9 @@
   import Header from '$lib/components/Header.svelte';
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getSeriesDetail } from '$lib/api/home';
-  import { getMetadataRecords, refreshMetadataItem, applyMetadataMatch } from '$lib/api/browse';
+  import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import type { SeriesDetailResponse } from '$lib/api/home';
-  import type { MetadataRecord } from '$lib/api/browse';
+  import type { MetadataRecord, TMDBCandidate } from '$lib/api/browse';
 
   const id = $derived(page.params.id ?? '');
 
@@ -21,6 +21,11 @@
   let fixingMeta = $state(false);
   let showMetaPanel = $state(false);
   let refreshing = $state(false);
+  let tmdbCandidates = $state<TMDBCandidate[]>([]);
+  let tmdbCandidatesLoading = $state(false);
+  let tmdbCandidatesError = $state<string | null>(null);
+  let manualTmdbId = $state('');
+  let manualTmdbError = $state<string | null>(null);
 
   const title = $derived(
     (detail?.metadata as Record<string, unknown> | undefined)?.title as string
@@ -133,6 +138,57 @@
       await load();
     } finally {
       refreshing = false;
+    }
+  }
+
+  async function openMetaPanel() {
+    showMetaPanel = !showMetaPanel;
+    if (showMetaPanel && tmdbCandidates.length === 0) {
+      await fetchTMDBCandidates();
+    }
+  }
+
+  async function fetchTMDBCandidates() {
+    tmdbCandidatesLoading = true;
+    tmdbCandidatesError = null;
+    try {
+      const res = await getMetadataCandidates('series', title, year);
+      tmdbCandidates = res.candidates ?? [];
+    } catch (e) {
+      tmdbCandidatesError = e instanceof Error ? e.message : 'Search failed';
+    } finally {
+      tmdbCandidatesLoading = false;
+    }
+  }
+
+  async function pickTMDBCandidate(candidate: TMDBCandidate) {
+    fixingMeta = true;
+    try {
+      await refreshMetadataItem({ kind: 'series', id, tmdbOverrideId: candidate.id });
+      showMetaPanel = false;
+      tmdbCandidates = [];
+      await load();
+    } finally {
+      fixingMeta = false;
+    }
+  }
+
+  async function applyManualTmdbId() {
+    const numId = parseInt(manualTmdbId.trim(), 10);
+    if (!numId || numId <= 0) {
+      manualTmdbError = 'Enter a valid TMDB ID (numbers only)';
+      return;
+    }
+    fixingMeta = true;
+    manualTmdbError = null;
+    try {
+      await refreshMetadataItem({ kind: 'series', id, tmdbOverrideId: numId });
+      showMetaPanel = false;
+      manualTmdbId = '';
+      tmdbCandidates = [];
+      await load();
+    } finally {
+      fixingMeta = false;
     }
   }
 
@@ -451,7 +507,7 @@
                 </button>
                 <button
                   type="button"
-                  onclick={() => (showMetaPanel = !showMetaPanel)}
+                  onclick={openMetaPanel}
                   class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
                 >
                   Fix match
@@ -460,50 +516,90 @@
             </div>
 
             {#if showMetaPanel}
-              <div class="mt-4 space-y-3">
-                {#if altRecords.length === 0}
-                  <p class="text-sm text-muted-foreground">No alternative metadata records found. Try refreshing.</p>
-                {:else}
-                  <p class="text-xs text-muted-foreground">Select the correct match for this title:</p>
-                  {#each altRecords as rec ((rec.provider ?? '') + (rec.title ?? ''))}
+              <div class="mt-4 space-y-5">
+                <!-- TMDB Candidates -->
+                <div>
+                  <div class="mb-2 flex items-center justify-between">
+                    <p class="text-xs font-medium text-muted-foreground">TMDB matches for "{title}"</p>
                     <button
                       type="button"
-                      onclick={async () => {
-                        fixingMeta = true;
-                        try {
-                          await applyMetadataMatch({
-                            kind: 'series', id,
-                            title: rec.title ?? title,
-                            year: rec.year,
-                            overview: rec.overview,
-                            provider: rec.provider ?? '',
-                            posterUrl: rec.posterUrl,
-                            backdropUrl: rec.backdropUrl,
-                            review: false
-                          });
-                          showMetaPanel = false;
-                          await load();
-                        } finally {
-                          fixingMeta = false;
-                        }
-                      }}
-                      class="hairline flex w-full items-start gap-4 rounded-xl bg-surface/40 p-4 text-left transition-colors hover:bg-surface/70"
+                      onclick={fetchTMDBCandidates}
+                      disabled={tmdbCandidatesLoading}
+                      class="text-[11px] text-primary-glow hover:underline disabled:opacity-40"
                     >
-                      {#if rec.posterUrl}
-                        <img src={rec.posterUrl} alt={rec.title} class="h-16 w-11 shrink-0 rounded-lg object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
-                      {:else}
-                        <div class="h-16 w-11 shrink-0 rounded-lg bg-surface-elevated/60"></div>
-                      {/if}
-                      <div class="min-w-0">
-                        <div class="font-semibold">{rec.title ?? 'Unknown'}</div>
-                        <div class="mt-0.5 text-xs text-muted-foreground">{rec.year ?? ''} · {rec.provider ?? ''}</div>
-                        {#if rec.overview}
-                          <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{rec.overview}</p>
-                        {/if}
-                      </div>
+                      {tmdbCandidatesLoading ? 'Searching…' : 'Search again'}
                     </button>
-                  {/each}
-                {/if}
+                  </div>
+                  {#if tmdbCandidatesLoading}
+                    <div class="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+                      <div class="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div>
+                      Searching TMDB…
+                    </div>
+                  {:else if tmdbCandidatesError}
+                    <p class="text-xs text-red-400">{tmdbCandidatesError}</p>
+                  {:else if tmdbCandidates.length === 0}
+                    <p class="text-xs text-muted-foreground">No TMDB results found. Try the manual ID below.</p>
+                  {:else}
+                    <div class="space-y-2">
+                      {#each tmdbCandidates as c (c.id)}
+                        <button
+                          type="button"
+                          disabled={fixingMeta}
+                          onclick={() => pickTMDBCandidate(c)}
+                          class="hairline flex w-full items-start gap-4 rounded-xl bg-surface/40 p-4 text-left transition-colors hover:bg-surface/70 disabled:opacity-50"
+                        >
+                          {#if c.posterUrl}
+                            <img src={c.posterUrl} alt={c.title} class="h-16 w-11 shrink-0 rounded-lg object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+                          {:else}
+                            <div class="flex h-16 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-elevated/60 text-muted-foreground">
+                              <Tv class="h-5 w-5" />
+                            </div>
+                          {/if}
+                          <div class="min-w-0 flex-1">
+                            <div class="flex items-baseline gap-2">
+                              <span class="font-semibold">{c.title}</span>
+                              {#if c.year}<span class="text-xs text-muted-foreground">{c.year}</span>{/if}
+                            </div>
+                            {#if c.voteAverage && c.voteAverage > 0}
+                              <div class="mt-0.5 flex items-center gap-1 text-[11px] text-amber-300">
+                                <Star class="h-3 w-3 fill-current" />{c.voteAverage.toFixed(1)}
+                                {#if c.voteCount}<span class="text-muted-foreground">({c.voteCount.toLocaleString()} votes)</span>{/if}
+                              </div>
+                            {/if}
+                            {#if c.overview}
+                              <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{c.overview}</p>
+                            {/if}
+                            <div class="mt-1 text-[10px] text-muted-foreground/50">TMDB #{c.id}</div>
+                          </div>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- Manual TMDB ID -->
+                <div class="border-t border-border/40 pt-4">
+                  <p class="mb-2 text-xs font-medium text-muted-foreground">Or enter a TMDB ID manually</p>
+                  <div class="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="e.g. 12345"
+                      bind:value={manualTmdbId}
+                      class="hairline min-w-0 flex-1 rounded-xl bg-surface/40 px-3 py-2 text-sm placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary-glow/50"
+                    />
+                    <button
+                      type="button"
+                      disabled={fixingMeta || !manualTmdbId}
+                      onclick={applyManualTmdbId}
+                      class="hairline shrink-0 rounded-xl bg-foreground/[0.08] px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-foreground/[0.14] disabled:opacity-40"
+                    >
+                      {fixingMeta ? 'Applying…' : 'Apply'}
+                    </button>
+                  </div>
+                  {#if manualTmdbError}
+                    <p class="mt-1 text-xs text-red-400">{manualTmdbError}</p>
+                  {/if}
+                </div>
               </div>
             {/if}
           </div>
