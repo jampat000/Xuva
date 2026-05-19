@@ -208,7 +208,7 @@ func (s *Service) RefreshBatch(ctx context.Context, kind string, limit int) (Bat
 	candidateWindow := batchCandidateWindow(limit)
 	switch kind {
 	case "movie", "movies":
-		movies, err := s.catalog.ListMovies(ctx, candidateWindow)
+		movies, err := s.catalog.ListMovies(ctx, candidateWindow, "")
 		if err != nil {
 			return BatchResult{}, err
 		}
@@ -230,7 +230,7 @@ func (s *Service) RefreshBatch(ctx context.Context, kind string, limit int) (Bat
 			result.Items = append(result.Items, refresh)
 		}
 	case "series", "tv":
-		series, err := s.catalog.ListSeries(ctx, candidateWindow)
+		series, err := s.catalog.ListSeries(ctx, candidateWindow, "")
 		if err != nil {
 			return BatchResult{}, err
 		}
