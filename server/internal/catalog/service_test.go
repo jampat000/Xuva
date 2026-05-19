@@ -1,4 +1,4 @@
-package catalog
+﻿package catalog
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func TestSaveMovieScanIsIdempotent(t *testing.T) {
 		t.Fatalf("expected two scan runs, got %d", summary.ScanRuns)
 	}
 
-	movies, err := service.ListMovies(ctx, 10)
+	movies, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list movies: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestSaveTVScanStoresSeriesEpisodeAndSource(t *testing.T) {
 		t.Fatalf("expected one media source, got %d", summary.MediaSources)
 	}
 
-	series, err := service.ListSeries(ctx, 10)
+	series, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list series: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestBestMetadataHonorsLibrarySourceOrder(t *testing.T) {
 	if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
 		t.Fatalf("save movie scan: %v", err)
 	}
-	movieList, err := service.ListMovies(ctx, 10)
+	movieList, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list movies: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestBestMetadataUsesSeparateArtworkSourceOrder(t *testing.T) {
 	if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
 		t.Fatalf("save movie scan: %v", err)
 	}
-	movieList, err := service.ListMovies(ctx, 10)
+	movieList, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list movies: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestGetSeriesAttachesSeasonAndEpisodeMetadata(t *testing.T) {
 	if _, err := service.SaveTVScan(ctx, library, result, candidates); err != nil {
 		t.Fatalf("save tv scan: %v", err)
 	}
-	seriesList, err := service.ListSeries(ctx, 10)
+	seriesList, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list series: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestListSeriesCollapsesDuplicatesBySharedExternalIdentity(t *testing.T) {
 		t.Fatalf("save tv scan: %v", err)
 	}
 
-	series, err := service.ListSeries(ctx, 10)
+	series, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list raw series: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestListSeriesCollapsesDuplicatesBySharedExternalIdentity(t *testing.T) {
 		}
 	}
 
-	grouped, err := service.ListSeries(ctx, 10)
+	grouped, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list grouped series: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestGetSeriesAggregatesDuplicateSeriesMembers(t *testing.T) {
 		t.Fatalf("save tv scan: %v", err)
 	}
 
-	rawSeries, err := service.ListSeries(ctx, 10)
+	rawSeries, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list series: %v", err)
 	}
@@ -622,7 +622,7 @@ func TestSearchLibrary_EmptyQueryReturnsEmptyBuckets(t *testing.T) {
 	service := newTestService(t)
 	seedSearchableLibrary(t, service)
 
-	results, err := service.SearchLibrary(ctx, "", 8)
+	results, err := service.SearchLibrary(ctx, "", 8, "")
 	if err != nil {
 		t.Fatalf("search empty: %v", err)
 	}
@@ -643,7 +643,7 @@ func TestSearchLibrary_NoMatchesReturnsEmptyBuckets(t *testing.T) {
 	service := newTestService(t)
 	seedSearchableLibrary(t, service)
 
-	results, err := service.SearchLibrary(ctx, "zzznosuchword", 8)
+	results, err := service.SearchLibrary(ctx, "zzznosuchword", 8, "")
 	if err != nil {
 		t.Fatalf("search no matches: %v", err)
 	}
@@ -660,7 +660,7 @@ func TestSearchLibrary_PopulatesAllFourBuckets(t *testing.T) {
 	// "spider" matches a movie ("Spiderhead"), a series ("Spider Forest"), a
 	// person ("Spider Lee"), and a collection ("Spider Saga"). See
 	// seedSearchableLibrary for the fixture wiring.
-	results, err := service.SearchLibrary(ctx, "spider", 8)
+	results, err := service.SearchLibrary(ctx, "spider", 8, "")
 	if err != nil {
 		t.Fatalf("search spider: %v", err)
 	}
@@ -684,7 +684,7 @@ func TestSearchLibrary_LimitEnforcedAndCappedAtForty(t *testing.T) {
 	seedManyMovies(t, service, "limitcheck", 12)
 
 	// Custom limit applied per bucket.
-	results, err := service.SearchLibrary(ctx, "limitcheck", 5)
+	results, err := service.SearchLibrary(ctx, "limitcheck", 5, "")
 	if err != nil {
 		t.Fatalf("search with limit 5: %v", err)
 	}
@@ -693,7 +693,7 @@ func TestSearchLibrary_LimitEnforcedAndCappedAtForty(t *testing.T) {
 	}
 
 	// Default (zero/negative) limit is treated as 8.
-	resultsDefault, err := service.SearchLibrary(ctx, "limitcheck", 0)
+	resultsDefault, err := service.SearchLibrary(ctx, "limitcheck", 0, "")
 	if err != nil {
 		t.Fatalf("search default limit: %v", err)
 	}
@@ -703,7 +703,7 @@ func TestSearchLibrary_LimitEnforcedAndCappedAtForty(t *testing.T) {
 
 	// Limit is clamped to 40.
 	seedManyMovies(t, service, "bigcap", 60)
-	resultsCap, err := service.SearchLibrary(ctx, "bigcap", 100)
+	resultsCap, err := service.SearchLibrary(ctx, "bigcap", 100, "")
 	if err != nil {
 		t.Fatalf("search huge limit: %v", err)
 	}
@@ -735,7 +735,7 @@ func TestSearchLibrary_ScoringOrderExactPrefixWordPrefixContains(t *testing.T) {
 
 	// Apply tmdb metadata that keeps the title stable so SearchLibrary's
 	// scorer (which uses the metadata-applied title) sees the same strings.
-	movieList, err := service.ListMovies(ctx, 100)
+	movieList, err := service.ListMovies(ctx, 100, "")
 	if err != nil {
 		t.Fatalf("list movies: %v", err)
 	}
@@ -752,7 +752,7 @@ func TestSearchLibrary_ScoringOrderExactPrefixWordPrefixContains(t *testing.T) {
 		}
 	}
 
-	results, err := service.SearchLibrary(ctx, "rain", 10)
+	results, err := service.SearchLibrary(ctx, "rain", 10, "")
 	if err != nil {
 		t.Fatalf("search rain: %v", err)
 	}
@@ -772,7 +772,7 @@ func TestSearchLibrary_PeopleDeduplicatedByName(t *testing.T) {
 	service := newTestService(t)
 	library := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
 
-	// Two movies that both credit "Pat Coverstar" — the dedupe key is name
+	// Two movies that both credit "Pat Coverstar" â€” the dedupe key is name
 	// (lower-cased). After search, we expect a single hit with CreditCount=2.
 	for i, title := range []string{"Coverstar Origins", "Coverstar Returns"} {
 		rel := title + "/" + title + ".mkv"
@@ -783,7 +783,7 @@ func TestSearchLibrary_PeopleDeduplicatedByName(t *testing.T) {
 			t.Fatalf("save %q: %v", title, err)
 		}
 	}
-	movieList, err := service.ListMovies(ctx, 10)
+	movieList, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list movies: %v", err)
 	}
@@ -803,7 +803,7 @@ func TestSearchLibrary_PeopleDeduplicatedByName(t *testing.T) {
 		}
 	}
 
-	results, err := service.SearchLibrary(ctx, "coverstar", 8)
+	results, err := service.SearchLibrary(ctx, "coverstar", 8, "")
 	if err != nil {
 		t.Fatalf("search coverstar: %v", err)
 	}
@@ -836,7 +836,7 @@ func TestSearchLibrary_CollectionsDeduplicatedByID(t *testing.T) {
 			t.Fatalf("save %q: %v", title, err)
 		}
 	}
-	movieList, err := service.ListMovies(ctx, 10)
+	movieList, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list movies: %v", err)
 	}
@@ -858,7 +858,7 @@ func TestSearchLibrary_CollectionsDeduplicatedByID(t *testing.T) {
 		}
 	}
 
-	results, err := service.SearchLibrary(ctx, "galaxy", 8)
+	results, err := service.SearchLibrary(ctx, "galaxy", 8, "")
 	if err != nil {
 		t.Fatalf("search galaxy: %v", err)
 	}
@@ -899,7 +899,7 @@ func seedSearchableLibrary(t *testing.T, service *Service) {
 		t.Fatalf("seed second movie: %v", err)
 	}
 
-	movieList, err := service.ListMovies(ctx, 10)
+	movieList, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list seed movies: %v", err)
 	}
@@ -937,7 +937,7 @@ func seedSearchableLibrary(t *testing.T, service *Service) {
 	if _, err := service.SaveTVScan(ctx, tvLib, tvResult, tvCandidates); err != nil {
 		t.Fatalf("seed tv: %v", err)
 	}
-	seriesList, err := service.ListSeries(ctx, 10)
+	seriesList, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list seed series: %v", err)
 	}
@@ -1043,3 +1043,4 @@ func fileCandidate(path string, relPath string) scanner.FileCandidate {
 		Changed:    true,
 	}
 }
+

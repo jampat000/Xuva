@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 import (
 	"bytes"
@@ -287,7 +287,7 @@ func TestRootBuildInfoIsServedNoStore(t *testing.T) {
 	// build-info.json was removed from the SvelteKit publish output. The
 	// webapp.go handler still applies no-store headers if it ever returns,
 	// but the file is not embedded, so the route now 404s. This test guards
-	// against accidentally shipping a cached build marker again — if a future
+	// against accidentally shipping a cached build marker again â€” if a future
 	// commit adds build-info.json back, it must serve with no-store headers.
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/build-info.json", nil)
@@ -849,7 +849,7 @@ func TestMetricsIncludesTimeline(t *testing.T) {
 	deps := testDeps(t, time.Now())
 	router := NewRouter(deps)
 	deps.Events.Publish("session.route.changed", map[string]any{"toRoute": "adaptive"})
-	// The event bus is asynchronous — poll until the timeline is populated
+	// The event bus is asynchronous â€” poll until the timeline is populated
 	// (up to 2 seconds) to avoid a race between publish and the subscriber goroutine.
 	var timeline []any
 	deadline := time.Now().Add(2 * time.Second)
@@ -1057,7 +1057,7 @@ func TestClientSearchHandler_LimitParamRespectedAndCapped(t *testing.T) {
 
 // TestClientSearchHandler_EmptyQueryReturnsEmptyBuckets documents the
 // observed behavior: the handler returns 200 with empty buckets for an empty
-// query rather than a 400. (Flagged as a behavior choice — the original spec
+// query rather than a 400. (Flagged as a behavior choice â€” the original spec
 // suggested 400, but the implementation prefers a non-error empty response so
 // the client's debounced typeahead can call without special-casing.)
 func TestClientSearchHandler_EmptyQueryReturnsEmptyBuckets(t *testing.T) {
@@ -1132,7 +1132,7 @@ func seedSearchFixtures(t *testing.T, service *catalog.Service) {
 		}
 	}
 
-	movieList, err := service.ListMovies(ctx, 10)
+	movieList, err := service.ListMovies(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list seeded movies: %v", err)
 	}
@@ -1189,7 +1189,7 @@ func seedSearchFixtures(t *testing.T, service *catalog.Service) {
 	if _, err := service.SaveTVScan(ctx, tvLib, tvResult, tvCandidates); err != nil {
 		t.Fatalf("seed tv: %v", err)
 	}
-	seriesList, err := service.ListSeries(ctx, 10)
+	seriesList, err := service.ListSeries(ctx, 10, "")
 	if err != nil {
 		t.Fatalf("list seeded series: %v", err)
 	}
@@ -2668,7 +2668,7 @@ func TestSettingsFolderBrowseListsDirectories(t *testing.T) {
 }
 
 func TestSettingsRuntimePathsReflectSavedValuesBeforeRestart(t *testing.T) {
-	// Note: DataDir is intentionally json:"-" — it's resolved at startup from
+	// Note: DataDir is intentionally json:"-" â€” it's resolved at startup from
 	// XUVA_DATA_DIR and can't be modified via the settings API (settings.json
 	// itself lives inside DataDir). This test exercises a settable runtime
 	// path (transcodeDir) to verify saved values surface in /api/settings,
@@ -3502,3 +3502,4 @@ func anyToString(value any) string {
 	}
 	return string(raw)
 }
+
