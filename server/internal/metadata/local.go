@@ -294,9 +294,11 @@ func commonAncestor(paths []string) string {
 	if len(paths) == 0 {
 		return ""
 	}
-	segments := splitPath(filepath.Dir(paths[0]))
+	first := filepath.Dir(paths[0])
+	isAbs := filepath.IsAbs(first)
+	segments := splitPath(first)
 	if len(segments) == 0 {
-		return filepath.Dir(paths[0])
+		return first
 	}
 	for _, path := range paths[1:] {
 		parts := splitPath(filepath.Dir(path))
@@ -310,10 +312,20 @@ func commonAncestor(paths []string) string {
 		}
 		segments = segments[:i]
 		if len(segments) == 0 {
-			return filepath.VolumeName(path) + string(filepath.Separator)
+			if vol := filepath.VolumeName(path); vol != "" {
+				return vol + string(filepath.Separator)
+			}
+			if isAbs {
+				return string(filepath.Separator)
+			}
+			return ""
 		}
 	}
-	return joinPath(segments)
+	joined := joinPath(segments)
+	if isAbs && !filepath.IsAbs(joined) {
+		joined = string(filepath.Separator) + joined
+	}
+	return joined
 }
 
 func splitPath(path string) []string {

@@ -75,6 +75,55 @@ Public client bootstrap routes:
 | `DELETE /api/sessions/{id}` | sessions | `session.stop` | admin, standard |
 | `PUT /api/playback/state/{id}` | playback | `playback.state.update` | admin, standard |
 | `GET /play/{id}` | playback | `player.open` | admin, standard |
+| `GET /api/metrics` | system | `system.metrics` | admin |
+| `GET /api/events` | system | `system.events` | admin |
+| `GET /api/architecture` | system | `system.architecture` | admin |
+| `GET /api/system/status` | system | `system.status` | admin |
+| `GET /api/remote/access` | remote | `remote.access.read` | admin |
+| `GET /api/libraries` | libraries | `library.list` | admin |
+| `GET /api/catalog/summary` | catalog | `catalog.summary` | admin |
+| `GET /api/catalog/health` | catalog | `catalog.health` | admin |
+| `GET /api/review` | metadata | `metadata.review` | admin |
+| `GET /api/metadata/providers` | metadata | `metadata.providers` | admin |
+| `GET /api/metadata/suggestions` | metadata | `metadata.suggestions` | admin |
+| `GET /api/metadata/{kind}/{id}` | metadata | `metadata.read` | admin, standard |
+| `GET /api/metadata/candidates` | metadata | `metadata.candidates` | admin |
+| `GET /api/metadata/backfill` | metadata | `metadata.backfill.read` | admin |
+| `POST /api/metadata/backfill` | metadata | `metadata.backfill.start` | admin |
+| `DELETE /api/metadata/backfill` | metadata | `metadata.backfill.stop` | admin |
+| `GET /api/artwork/{kind}/{id}` | metadata | `artwork.read` | admin, standard |
+| `GET /api/trailers/{tmdbId}` | metadata | `trailer.read` | admin, standard |
+| `GET /api/settings` | settings | `settings.read` | admin |
+| `GET /api/settings/performance` | settings | `settings.performance.read` | admin |
+| `GET /api/probes` | media | `probe.list` | admin |
+| `GET /api/probes/{id}` | media | `probe.read` | admin |
+| `GET /api/work` | work | `work.list` | admin |
+| `GET /api/downloads` | downloads | `downloads.list` | admin |
+| `GET /api/downloads/{id}` | downloads | `downloads.read` | admin |
+| `GET /api/scans` | libraries | `scans.list` | admin |
+| `GET /api/scans/{id}` | libraries | `scans.read` | admin |
+| `GET /api/movies` | catalog | `movies.list` | admin, standard |
+| `GET /api/movies/{id}` | catalog | `movies.read` | admin, standard |
+| `GET /api/series` | catalog | `series.list` | admin, standard |
+| `GET /api/series/{id}` | catalog | `series.read` | admin, standard |
+| `GET /api/versions` | catalog | `versions.read` | admin, standard |
+| `GET /api/media-sources` | media | `media.list` | admin, standard |
+| `GET /api/media-sources/{id}` | media | `media.read` | admin, standard |
+| `GET /api/media-sources/{id}/tracks` | media | `media.tracks` | admin, standard |
+| `GET /api/media-sources/{id}/subtitles` | media | `media.subtitles` | admin, standard |
+| `GET /api/media-sources/{id}/thumbnails/status` | media | `media.thumbnails.status` | admin, standard |
+| `POST /api/media-sources/{id}/thumbnails/generate` | media | `media.thumbnails.generate` | admin |
+| `GET /api/media-sources/{id}/thumbnails/sprite.jpg` | media | `media.thumbnails.sprite` | admin, standard |
+| `GET /api/media-sources/{id}/thumbnails/thumbnails.vtt` | media | `media.thumbnails.vtt` | admin, standard |
+| `GET /api/media-sources/{id}/thumbnails/chapters.vtt` | media | `media.thumbnails.chapters` | admin, standard |
+| `GET /api/devices/profiles` | devices | `devices.profiles` | admin, standard |
+| `GET /api/playback/recent` | playback | `playback.recent` | admin, standard |
+| `GET /api/playback/state/{id}` | playback | `playback.state.read` | admin, standard |
+| `GET /api/playback/decision` | playback | `playback.decision` | admin, standard |
+| `GET /api/playback/route` | playback | `playback.route` | admin, standard |
+| `GET /api/client/collections/{id}` | client | `client.collection.detail` | admin, standard |
+| `GET /api/client/people/{name}` | client | `client.person.detail` | admin, standard |
+| `POST /api/setup/complete` | setup | `setup.complete` | admin |
 
 Audit events are emitted as `audit.route` with:
 
