@@ -170,6 +170,11 @@ func TestRefreshUsesAutomaticSeriesAndMovieProvidersWithoutUserKeys(t *testing.T
 }
 
 func TestRefreshUsesTVDBWhenConfigured(t *testing.T) {
+	// TVDB provider is permanently disabled in this build (see automatic.go
+	// refreshTVDB + config/keys.go notes). Test is preserved but skipped so
+	// the historical fixture stays alongside the dormant code path; remove
+	// both together if/when TVDB is re-enabled.
+	t.Skip("TVDB provider disabled; embedded-keys build does not support per-installation TVDB subscriptions")
 	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -208,7 +213,7 @@ func TestRefreshUsesTVDBWhenConfigured(t *testing.T) {
 		t.Fatalf("open database: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	cfg := config.Config{MetadataDir: filepath.Join(root, "metadata"), TVDBAPIKey: "test-key"}
+	cfg := config.Config{MetadataDir: filepath.Join(root, "metadata")}
 	if err := os.MkdirAll(cfg.MetadataDir, 0o755); err != nil {
 		t.Fatalf("mkdir metadata dir: %v", err)
 	}

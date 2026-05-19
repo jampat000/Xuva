@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appState } from '$lib/stores/appState.svelte';
   import heroFeatured from "$lib/assets/hero-featured.jpg";
   import CollectionsBento from "$lib/components/CollectionsBento.svelte";
   import ContentRow from "$lib/components/ContentRow.svelte";
   import Header from "$lib/components/Header.svelte";
   import Hero from "$lib/components/Hero.svelte";
   import Logo from "$lib/components/Logo.svelte";
-  import MoodSelector from "$lib/components/MoodSelector.svelte";
   import Top10Row from "$lib/components/Top10Row.svelte";
   import { getClientHome } from '$lib/api/home';
   import { clientHomeItemToMedia } from '$lib/api/adapters';
@@ -19,27 +19,35 @@
   let recentMovies = $state<Media[]>([]);
   let recentSeries = $state<Media[]>([]);
   let topTen = $state<Media[]>([]);
+  let topRowTitle = $state('Highest rated');
+  let topRowEyebrow = $state('From your library');
   let collections = $state<Collection[]>([]);
   let loading = $state(true);
 
   onMount(async () => {
     try {
       const resp = await getClientHome();
-      if (resp.hero) {
-        slides = [clientHomeItemToMedia(resp.hero)];
+      if (resp.heroes?.length) {
+        slides = resp.heroes.map(clientHomeItemToMedia);
       }
       for (const row of resp.rows ?? []) {
         const items = (row.items ?? []).map(clientHomeItemToMedia);
+        const id = (row.id ?? '').toLowerCase();
         const t = (row.title ?? '').toLowerCase();
-        if (t.includes('continue') || t.includes('watching')) {
+        if (id === 'continue' || t.includes('continue') || t.includes('watching')) {
           continueWatching = items;
-        } else if (t.includes('movie')) {
+        } else if (id === 'movies' || t.includes('movie')) {
           recentMovies = items;
-        } else if (t.includes('series') || t.includes('show') || t.includes('episode')) {
+        } else if (id === 'tv' || t.includes('series') || t.includes('show') || t.includes('episode')) {
           recentSeries = items;
-        } else if (t.includes('top')) {
+        } else if (id === 'top' || t.includes('top') || t.includes('trend') || t.includes('rated')) {
           topTen = items;
+          const r = row as Record<string, unknown>;
+          if (r.title) topRowTitle = r.title as string;
+          if (r.eyebrow) topRowEyebrow = r.eyebrow as string;
         }
+        // 'recently-added' is intentionally not rendered on web — movies and
+        // series are already shown in their own dedicated rows above.
       }
     } catch {
       // Components render gracefully with empty arrays
@@ -50,7 +58,7 @@
 </script>
 
 <svelte:head>
-  <title>Xuva — Your home cinema, on every screen</title>
+  <title>{appState.serverName} — Your home cinema, on every screen</title>
   <meta
     name="description"
     content="Xuva is your personal media server for movies and series — stream your collection on every screen in your home."
@@ -71,7 +79,7 @@
       <Hero slides={slides} />
     {/if}
 
-    <div class={`relative z-10 space-y-16 md:space-y-20 ${slides.length > 0 ? '-mt-12 md:-mt-16' : 'pt-24 md:pt-28'}`}>
+    <div class={`relative z-10 space-y-16 md:space-y-20 ${slides.length > 0 ? 'pt-10 md:pt-14' : 'pt-24 md:pt-28'}`}>
       {#if continueWatching.length > 0}
         <ContentRow
           eyebrow="Pick up where you left off"
@@ -81,10 +89,8 @@
         />
       {/if}
 
-      <MoodSelector />
-
       {#if topTen.length > 0}
-        <Top10Row items={topTen} />
+        <Top10Row items={topTen} title={topRowTitle} eyebrow={topRowEyebrow} />
       {/if}
 
       {#if collections.length > 0}

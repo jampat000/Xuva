@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/api"
@@ -37,6 +38,8 @@ import (
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
 	"github.com/jampat000/Xuva/server/internal/transcode"
+	"github.com/jampat000/Xuva/server/internal/trailers"
+	"github.com/jampat000/Xuva/server/internal/trending"
 	"github.com/jampat000/Xuva/server/internal/tv"
 )
 
@@ -72,6 +75,8 @@ type Application struct {
 	Downloads *downloads.Service
 	Pairing   *pairing.Service
 	Migration *migration.Service
+	Trending  *trending.Service
+	Trailers  *trailers.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -190,6 +195,49 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService, sessionService)
 	discoveryService := discovery.NewService(cfg)
 	discoveryService.Start(appCtx)
+	trendingService := trending.NewService(cfg.TMDBAPIKey, catalogService)
+
+	// Trailer downloader: spins up a worker pool that yt-dlp's each item's
+	// trailer to local MP4 on demand. Plays as a native <video> on the hero —
+	// no YouTube embed, no ads, works on a LAN.
+	trailersService := trailers.NewService(trailers.Config{
+		Enabled:   cfg.TrailersEnabled,
+		Dir:       cfg.TrailersDir,
+		YTDLPPath: cfg.YTDLPPath,
+		Workers:   cfg.TrailerWorkers,
+	}, catalogService, bus)
+	trailersService.Start(appCtx)
+	metadataService.SetTrailers(trailersService)
+
+	// Auto-backfill: when TMDB is configured at startup, dispatch a delayed
+	// background sweep that fetches TMDB rows for any catalog item missing
+	// them (typically wikipedia/filename-only items left over from before
+	// the key was added). The 30 s delay lets the rest of the server settle
+	// — DB indexes, providers, etc. — before we start hammering TMDB.
+	if strings.TrimSpace(cfg.TMDBAPIKey) != "" {
+		go func() {
+			select {
+			case <-appCtx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
+			missing, err := catalogService.CountItemsMissingProvider(appCtx, "movie", "tmdb")
+			if err != nil {
+				slog.Debug("auto-backfill skipped (count failed)", "err", err)
+				return
+			}
+			missingSeries, _ := catalogService.CountItemsMissingProvider(appCtx, "series", "tmdb")
+			total := missing + missingSeries
+			if total == 0 {
+				slog.Info("auto-backfill: nothing to do (all items have TMDB metadata)")
+				return
+			}
+			slog.Info("auto-backfill: starting TMDB backfill", "missingItems", total)
+			if err := metadataService.StartBackfill(appCtx, "tmdb"); err != nil {
+				slog.Warn("auto-backfill failed to start", "err", err)
+			}
+		}()
+	}
 
 	return &Application{
 		Config:    cfg,
@@ -222,6 +270,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Downloads: downloadService,
 		Pairing:   pairing.NewService(),
 		Migration: migration.NewService(databaseService, bus),
+		Trending:  trendingService,
+		Trailers:  trailersService,
 	}, nil
 }
 
@@ -372,6 +422,8 @@ func (a *Application) Router() http.Handler {
 		Sessions:  a.Sessions,
 		Subtitles: a.Subtitles,
 		Pairing:   a.Pairing,
+		Trending:  a.Trending,
+		Trailers:  a.Trailers,
 	})
 }
 

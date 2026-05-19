@@ -25,18 +25,47 @@
   let genre = $state("All");
   let sort = $state<Sort>("trending");
   let density = $state<Density>("M");
+  let sortOpen = $state(false);
 
-  let genres = $derived.by(() => {
-    const values = new Set<string>();
+  const sortOptions: { value: Sort; label: string }[] = [
+    { value: "trending",  label: "Trending" },
+    { value: "rating",    label: "Highest rated" },
+    { value: "year-desc", label: "Newest first" },
+    { value: "az",        label: "A → Z" },
+  ];
+  const sortLabel = $derived(sortOptions.find((o) => o.value === sort)?.label ?? "Sort");
+
+  // Aggregate genres with counts so chips show "Action 47" and the strip is
+  // sorted by populousness — what the user actually has the most of is the
+  // first thing they see. "All" leads, then descending count, ties broken
+  // alphabetically.
+  type GenreChip = { name: string; count: number };
+  let genreChips = $derived.by<GenreChip[]>(() => {
+    const counts = new Map<string, number>();
     for (const item of items) {
-      for (const currentGenre of item.genres) values.add(currentGenre);
+      for (const g of item.genres ?? []) {
+        counts.set(g, (counts.get(g) ?? 0) + 1);
+      }
     }
-    return ["All", ...Array.from(values).sort()];
+    const arr: GenreChip[] = [];
+    for (const [name, count] of counts) arr.push({ name, count });
+    arr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+    return [{ name: "All", count: items.length }, ...arr];
+  });
+
+  // If the active filter selection disappears (library updates, switched
+  // libraries, etc.) snap back to "All" so the grid never silently shows an
+  // empty result for a vanished selection.
+  $effect(() => {
+    if (genre === "All") return;
+    if (!genreChips.some((g) => g.name === genre)) {
+      genre = "All";
+    }
   });
 
   let filtered = $derived.by(() => {
     let list = items.filter((item: Media) => {
-      const matchesGenre = genre === "All" || item.genres.includes(genre);
+      const matchesGenre = genre === "All" || (item.genres ?? []).includes(genre);
       const matchesQ = !q || item.title.toLowerCase().includes(q.toLowerCase());
       return matchesGenre && matchesQ;
     });
@@ -55,7 +84,23 @@
 </script>
 
 <main class="pb-32">
-  <section class="relative overflow-hidden px-6 pb-10 pt-32 md:px-12 md:pb-14 md:pt-40 lg:px-20">
+  <section class="relative isolate overflow-hidden px-6 pb-10 pt-32 md:px-12 md:pb-14 md:pt-40 lg:px-20">
+    <!-- Backdrop photo — atmospheric base layer, fades toward bottom -->
+    {#if featured?.backdrop}
+      {#key featured.id}
+        <img
+          src={featured.backdrop}
+          alt=""
+          aria-hidden="true"
+          class="pointer-events-none absolute inset-x-0 top-0 -z-20 h-full w-full object-cover object-top"
+          style="opacity: 0.35;"
+          onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+        />
+      {/key}
+    {/if}
+    <!-- Bottom fade so the backdrop doesn't bleed into the filter bar -->
+    <div class="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-gradient-to-t from-background to-transparent"></div>
+    <!-- Radial colour accent from the featured item's palette -->
     <div
       aria-hidden="true"
       class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] opacity-70"
@@ -81,7 +126,7 @@
         <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
           <span><span class="text-foreground/90">{items.length}</span> in library</span>
           <span class="opacity-30">·</span>
-          <span><span class="text-foreground/90">{genres.length - 1}</span> genres</span>
+          <span><span class="text-foreground/90">{genreChips.length - 1}</span> genres</span>
           <span class="opacity-30">·</span>
           <span><span class="text-foreground/90">4K · HDR · Atmos</span></span>
         </div>
@@ -159,32 +204,62 @@
       </div>
 
       <div class="scrollbar-none -mx-2 flex flex-1 items-center gap-1.5 overflow-x-auto px-2">
-        {#each genres as itemGenre (itemGenre)}
+        {#each genreChips as chip (chip.name)}
+          {@const isActive = chip.name === genre}
           <button
-            onclick={() => (genre = itemGenre)}
-            class={`hairline shrink-0 rounded-full px-4 py-1.5 text-xs font-medium uppercase tracking-[0.15em] transition-colors ${
-              itemGenre === genre
+            onclick={() => (genre = isActive && chip.name !== "All" ? "All" : chip.name)}
+            class={`hairline group/chip shrink-0 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium uppercase tracking-[0.15em] transition-colors ${
+              isActive
                 ? "bg-foreground text-background"
                 : "bg-foreground/[0.04] text-foreground/75 hover:bg-foreground/[0.08] hover:text-foreground"
             }`}
+            aria-pressed={isActive}
           >
-            {itemGenre}
+            <span>{chip.name}</span>
+            <span class={`text-[10px] tabular-nums ${isActive ? "text-background/60" : "text-foreground/40"}`}>
+              {chip.count}
+            </span>
           </button>
         {/each}
       </div>
 
       <div class="flex items-center gap-2">
-        <div class="hairline flex items-center gap-1 rounded-full bg-foreground/[0.04] px-2 py-1 text-xs text-muted-foreground">
-          <SlidersHorizontal class="ml-1 h-3.5 w-3.5" />
-          <select
-            bind:value={sort}
-            class="cursor-pointer appearance-none bg-transparent px-2 py-1 text-foreground outline-none"
+        <!-- Custom sort picker — replaces native <select> to avoid
+             the OS white-background dropdown that can't be themed. -->
+        <div class="relative">
+          <button
+            type="button"
+            onclick={() => (sortOpen = !sortOpen)}
+            class={`hairline flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs transition-colors hover:bg-foreground/[0.08] ${sortOpen ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
-            <option value="trending">Trending</option>
-            <option value="rating">Highest rated</option>
-            <option value="year-desc">Newest first</option>
-            <option value="az">A → Z</option>
-          </select>
+            <SlidersHorizontal class="h-3.5 w-3.5" />
+            {sortLabel}
+          </button>
+          {#if sortOpen}
+            <!-- invisible scrim: click outside closes the menu -->
+            <button
+              type="button"
+              class="fixed inset-0 z-40 cursor-default"
+              aria-hidden="true"
+              tabindex="-1"
+              onclick={() => (sortOpen = false)}
+            ></button>
+            <div class="absolute right-0 top-full z-50 mt-1.5 min-w-[148px] overflow-hidden rounded-xl border border-border bg-surface/95 py-1 shadow-xl backdrop-blur-xl">
+              {#each sortOptions as opt (opt.value)}
+                <button
+                  type="button"
+                  onclick={() => { sort = opt.value; sortOpen = false; }}
+                  class={`flex w-full items-center px-3.5 py-2 text-left text-xs transition-colors ${
+                    sort === opt.value
+                      ? "text-foreground font-medium bg-foreground/[0.07]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
         <div class="hairline hidden items-center rounded-full bg-foreground/[0.04] p-1 md:flex">
           {#each ["S", "M", "L"] as option (option)}

@@ -74,8 +74,8 @@ export function movieToMedia(item: MovieListItem): Media {
 		genres: (meta?.genres as string[] | undefined) ?? [],
 		rating: (meta?.voteAverage as number | undefined) ?? 0,
 		synopsis: item.metadata?.overview ?? '',
-		poster: item.metadata?.posterUrl,
-		backdrop: item.metadata?.backdropUrl,
+		poster: item.metadata?.posterUrl || undefined,
+		backdrop: item.metadata?.backdropUrl || undefined,
 		...hashPalette(id),
 	};
 }
@@ -94,8 +94,8 @@ export function seriesToMedia(item: SeriesListItem): Media {
 		seasons: item.seasonCount,
 		episodes: item.episodeCount,
 		synopsis: item.metadata?.overview ?? '',
-		poster: item.metadata?.posterUrl,
-		backdrop: item.metadata?.backdropUrl,
+		poster: item.metadata?.posterUrl || undefined,
+		backdrop: item.metadata?.backdropUrl || undefined,
 		...hashPalette(id),
 	};
 }
@@ -117,8 +117,18 @@ export function clientHomeItemToMedia(item: ClientHomeItem): Media {
 		seasons: (unknownFields.seasonCount as number | undefined) ?? (unknownFields.seasons as number | undefined),
 		episodes: (unknownFields.episodeCount as number | undefined) ?? (unknownFields.episodes as number | undefined),
 		synopsis: item.overview ?? item.description ?? '',
-		poster: item.posterUrl,
-		backdrop: item.backdropUrl,
+		// Normalise empty strings to undefined: the API returns "" for items
+		// without artwork, and `??` fallbacks downstream only catch null/
+		// undefined — leaving "" in place causes <img src=""> to render nothing.
+		poster: item.posterUrl || undefined,
+		backdrop: item.backdropUrl || undefined,
+		logo: (unknownFields.logoUrl as string | undefined) || undefined,
+		thumbnail: (unknownFields.thumbnailUrl as string | undefined) || undefined,
+		banner: (unknownFields.bannerUrl as string | undefined) || undefined,
+		videoKey: (unknownFields.videoKey as string | undefined) || undefined,
+		trailerUrl: (unknownFields.trailerUrl as string | undefined) || undefined,
+		parentId: (unknownFields.parentId as string | undefined) || undefined,
+		parentKind: (unknownFields.parentKind as string | undefined) || undefined,
 		progress: typeof item.percent === 'number' ? item.percent / 100
 			: typeof item.progressPercent === 'number' ? item.progressPercent / 100
 			: undefined,

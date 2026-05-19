@@ -1,6 +1,31 @@
 import { apiClient, type ApiClient } from './client';
 import type { LibraryRecord } from './home';
 
+export interface SetupStatus {
+	requiresSetup: boolean;
+	steps: {
+		account: boolean;
+		region: boolean;
+		libraries: boolean;
+	};
+}
+
+export interface SetupCompleteRequest {
+	country?: string;
+	timezone?: string;
+}
+
+export function getSetupStatus(client: ApiClient = apiClient): Promise<SetupStatus> {
+	return client.request<SetupStatus>('/api/setup/status');
+}
+
+export function completeSetup(
+	payload: SetupCompleteRequest,
+	client: ApiClient = apiClient
+): Promise<{ ok: boolean }> {
+	return client.send<{ ok: boolean }, SetupCompleteRequest>('/api/setup/complete', payload, 'POST');
+}
+
 export interface FolderBrowseEntry {
 	name?: string;
 	path?: string;

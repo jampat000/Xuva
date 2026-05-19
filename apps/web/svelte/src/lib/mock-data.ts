@@ -11,9 +11,15 @@ export type Media = {
   episodes?: number;
   progress?: number;
   synopsis: string;
-  poster?: string;
-  backdrop?: string;
-  logo?: string;
+  poster?: string;     // 2:3 portrait, primary card art (TMDB + Fanart)
+  backdrop?: string;   // 16:9 widescreen, hero/detail bg (TMDB + Fanart)
+  logo?: string;       // transparent PNG, clearlogo treatment (TMDB + Fanart)
+  thumbnail?: string;  // landscape still, episode/scene art (TMDB StillPath + Fanart)
+  banner?: string;     // ultra-wide marquee art, Fanart only
+  videoKey?: string;   // YouTube key (fallback if no local trailer cached)
+  trailerUrl?: string; // local self-hosted MP4 path, preferred over YouTube
+  parentId?: string;   // For Continue Watching: id of the parent movie/series
+  parentKind?: string; // For Continue Watching: "movie" or "series"
   palette: [string, string];
   accent: string;
   badge?: string;

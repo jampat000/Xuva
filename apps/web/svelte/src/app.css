@@ -195,17 +195,13 @@
 }
 
 @keyframes kenburns {
-  0% {
-    transform: scale(1.06) translate(0, 0);
-  }
-
-  100% {
-    transform: scale(1.14) translate(-1.5%, -1%);
-  }
+  0%   { transform: scale(1.0); }
+  100% { transform: scale(1.06); }
 }
 
 .animate-kenburns {
   animation: kenburns 22s ease-out forwards;
+  transform-origin: top center;
 }
 
 @keyframes fade-up {

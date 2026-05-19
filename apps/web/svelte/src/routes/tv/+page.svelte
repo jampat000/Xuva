@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
   import { getSeries } from '$lib/api/browse';
@@ -23,7 +24,7 @@
 </script>
 
 <svelte:head>
-  <title>TV — Xuva</title>
+  <title>TV — {appState.serverName}</title>
   <meta
     name="description"
     content="Browse your TV library on Xuva, track what is next, and move through your series shelf season by season."

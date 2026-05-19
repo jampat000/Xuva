@@ -360,6 +360,8 @@ export interface SettingsResponse {
 		transcodeWorkers?: number;
 		gpuWorkers?: number;
 		hardwareUnlocked?: boolean;
+		country?: string;
+		timezone?: string;
 	};
 	libraries?: Array<{
 		id?: string;
@@ -382,6 +384,8 @@ export interface UpdateSettingsRequest {
 	librarySyncMode?: string;
 	syncIntervalMins?: number;
 	watchDebounceSecs?: number;
+	country?: string;
+	timezone?: string;
 	probeBatchLimit?: number;
 	playbackPolicy?: string;
 }

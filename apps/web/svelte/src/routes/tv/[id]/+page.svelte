@@ -1,7 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { appState } from '$lib/stores/appState.svelte';
   import { onMount } from 'svelte';
-  import { Star, ChevronLeft, Play, Plus, Tv } from 'lucide-svelte';
+  import { Star, ChevronLeft, Play, Plus, Check, Tv, User } from 'lucide-svelte';
+  import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import Header from '$lib/components/Header.svelte';
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getSeriesDetail } from '$lib/api/home';
@@ -46,6 +48,11 @@
   const seasonCount = $derived(seasons.length);
   const episodeCount = $derived(seasons.reduce((sum, s) => sum + (s.episodes?.length ?? 0), 0));
 
+  // Cast from merged best metadata record.
+  type Credit = { name?: string; character?: string; role?: string; profileUrl?: string; sortOrder?: number };
+  const metaAny = $derived(metadata as Record<string, unknown> | null);
+  const cast = $derived<Credit[]>((metaAny?.cast as Credit[] | undefined) ?? []);
+
   // Find first playable episode across all seasons
   const firstMediaSourceId = $derived(() => {
     for (const season of seasons) {
@@ -70,6 +77,36 @@
   }
 
   let playHref = $state('');
+
+  // Watchlist
+  const inWatchlist = $derived(isInWatchlist(id, 'series'));
+  function handleWatchlist() {
+    toggleWatchlist({
+      id,
+      kind: 'series',
+      title,
+      year,
+      posterUrl,
+      backdropUrl,
+      genres,
+    });
+  }
+
+  // Track which seasons are expanded. First season auto-expands once data
+  // loads so users see episodes immediately without an extra click.
+  let expandedSeasons = $state<Set<string>>(new Set());
+  $effect(() => {
+    if (seasons.length > 0 && expandedSeasons.size === 0) {
+      const first = seasons[0];
+      if (first?.id) expandedSeasons = new Set([first.id]);
+    }
+  });
+  function toggleSeason(seasonId: string) {
+    const next = new Set(expandedSeasons);
+    if (next.has(seasonId)) next.delete(seasonId);
+    else next.add(seasonId);
+    expandedSeasons = next;
+  }
 
   async function load() {
     try {
@@ -103,7 +140,7 @@
 </script>
 
 <svelte:head>
-  <title>{title} — Xuva</title>
+  <title>{title} — {appState.serverName}</title>
   <meta name="description" content={overview || `Watch ${title} on Xuva.`} />
 </svelte:head>
 
@@ -131,7 +168,7 @@
         <img
           src={backdropUrl}
           alt=""
-          class="h-full w-full object-cover"
+          class="h-full w-full object-cover object-top"
           onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
         />
       {/if}
@@ -214,10 +251,20 @@
             {/if}
             <button
               type="button"
-              aria-label="Add to watchlist"
-              class="hairline flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5 text-foreground backdrop-blur-md transition-colors hover:bg-foreground/10"
+              onclick={handleWatchlist}
+              aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+              title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+              class={`hairline flex h-12 w-12 items-center justify-center rounded-full backdrop-blur-md transition-all ${
+                inWatchlist
+                  ? 'bg-primary/20 text-primary-glow hover:bg-primary/30'
+                  : 'bg-foreground/5 text-foreground hover:bg-foreground/10'
+              }`}
             >
-              <Plus class="h-5 w-5" />
+              {#if inWatchlist}
+                <Check class="h-5 w-5" />
+              {:else}
+                <Plus class="h-5 w-5" />
+              {/if}
             </button>
           </div>
 
@@ -231,30 +278,159 @@
             </div>
           {/if}
 
-          <!-- Seasons list -->
+          <!-- Seasons + Episodes -->
           {#if seasons.length > 0}
             <div class="mt-10 border-t border-border pt-8">
               <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Seasons</h3>
-              <div class="mt-4 space-y-2">
-                {#each seasons as season, i (i)}
+              <div class="mt-4 space-y-3">
+                {#each seasons as season, i (season.id ?? i)}
                   {@const epCount = season.episodes?.length ?? 0}
                   {@const firstEp = season.episodes?.[0]?.versions?.[0]?.mediaSourceId}
-                  <div class="hairline flex items-center justify-between rounded-xl bg-surface/30 px-4 py-3">
-                    <div>
-                      <span class="font-medium">Season {i + 1}</span>
-                      {#if epCount > 0}
-                        <span class="ml-2 text-xs text-muted-foreground">{epCount} episode{epCount !== 1 ? 's' : ''}</span>
+                  {@const seasonRecord = season as Record<string, unknown>}
+                  {@const seasonPoster = seasonRecord.posterUrl as string | undefined}
+                  {@const seasonName = (seasonRecord.name as string | undefined) || `Season ${i + 1}`}
+                  {@const seasonOverview = seasonRecord.overview as string | undefined}
+                  {@const isOpen = expandedSeasons.has(season.id ?? `s${i}`)}
+                  <div class="hairline overflow-hidden rounded-xl bg-surface/30">
+                    <!-- Season header (clickable to toggle) -->
+                    <button
+                      type="button"
+                      onclick={() => toggleSeason(season.id ?? `s${i}`)}
+                      class="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface/60"
+                    >
+                      {#if seasonPoster}
+                        <img
+                          src={seasonPoster}
+                          alt={seasonName}
+                          loading="lazy"
+                          class="h-16 w-12 shrink-0 rounded-md object-cover shadow-md"
+                          onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                        />
+                      {:else}
+                        <div class="h-16 w-12 shrink-0 rounded-md bg-gradient-to-br from-surface to-surface-elevated"></div>
                       {/if}
-                    </div>
-                    {#if firstEp}
-                      <a
-                        href={episodePlayUrl(firstEp, `Season ${i + 1}, Episode 1`)}
-                        class="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.12] hover:text-foreground"
-                      >
-                        <Play class="h-3 w-3 fill-current" /> Play
-                      </a>
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-3">
+                          <span class="font-medium text-foreground">{seasonName}</span>
+                          {#if epCount > 0}
+                            <span class="text-xs text-muted-foreground">{epCount} ep{epCount !== 1 ? 's' : ''}</span>
+                          {/if}
+                        </div>
+                        {#if seasonOverview}
+                          <p class="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{seasonOverview}</p>
+                        {/if}
+                      </div>
+                      {#if firstEp}
+                        <a
+                          href={episodePlayUrl(firstEp, `${seasonName}, Episode 1`)}
+                          onclick={(e) => e.stopPropagation()}
+                          class="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.12] hover:text-foreground"
+                        >
+                          <Play class="h-3 w-3 fill-current" /> Play
+                        </a>
+                      {/if}
+                      <span class="text-muted-foreground transition-transform duration-200" style={`transform: rotate(${isOpen ? 90 : 0}deg)`}>›</span>
+                    </button>
+
+                    <!-- Episode list (collapsed by default for all but the first season) -->
+                    {#if isOpen && epCount > 0}
+                      <div class="border-t border-border bg-background/40 p-3">
+                        <ul class="space-y-2">
+                          {#each season.episodes ?? [] as ep, epIdx (ep.id ?? epIdx)}
+                            {@const epRecord = ep as Record<string, unknown>}
+                            {@const epThumb = epRecord.thumbnailUrl as string | undefined}
+                            {@const epOverview = epRecord.overview as string | undefined}
+                            {@const epRuntime = epRecord.runtimeMinutes as number | undefined}
+                            {@const epAirDate = epRecord.airDate as string | undefined}
+                            {@const epMsid = ep.versions?.[0]?.mediaSourceId}
+                            {@const epLabel = `E${String(ep.episodeNumber ?? epIdx + 1).padStart(2, '0')}`}
+                            {@const epTitle = ep.title || epLabel}
+                            <li class="group flex gap-3 rounded-lg p-2 transition-colors hover:bg-surface/40">
+                              <!-- 16:9 thumbnail with play overlay -->
+                              <div class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-surface to-surface-elevated md:w-40">
+                                {#if epThumb}
+                                  <img
+                                    src={epThumb}
+                                    alt={epTitle}
+                                    loading="lazy"
+                                    class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                    onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                                  />
+                                {/if}
+                                {#if epMsid}
+                                  <a
+                                    href={episodePlayUrl(epMsid, `${seasonName} — ${epLabel}`)}
+                                    aria-label={`Play ${epTitle}`}
+                                    class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100"
+                                  >
+                                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-foreground/95">
+                                      <Play class="h-4 w-4 translate-x-0.5 fill-background text-background" />
+                                    </span>
+                                  </a>
+                                {/if}
+                                <div class="absolute left-1.5 top-1.5 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-white">
+                                  {epLabel}
+                                </div>
+                              </div>
+
+                              <!-- Episode meta -->
+                              <div class="min-w-0 flex-1">
+                                <div class="flex items-start justify-between gap-3">
+                                  <h4 class="truncate text-sm font-semibold text-foreground">{epTitle}</h4>
+                                  {#if epRuntime}
+                                    <span class="shrink-0 text-[11px] uppercase tracking-wider text-muted-foreground">{epRuntime}m</span>
+                                  {/if}
+                                </div>
+                                {#if epAirDate}
+                                  <div class="mt-0.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{epAirDate}</div>
+                                {/if}
+                                {#if epOverview}
+                                  <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{epOverview}</p>
+                                {/if}
+                              </div>
+                            </li>
+                          {/each}
+                        </ul>
+                      </div>
                     {/if}
                   </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Cast strip -->
+          {#if cast.length > 0}
+            <div class="mt-10 border-t border-border pt-8">
+              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Cast</h3>
+              <div class="scrollbar-none mt-5 -mx-1 flex gap-4 overflow-x-auto px-1 pb-3">
+                {#each cast.slice(0, 16) as person, i (person.name ?? i)}
+                  <a
+                    href={`/people/${encodeURIComponent(person.name ?? '')}`}
+                    class="group flex w-[72px] shrink-0 flex-col items-center gap-2 text-center"
+                  >
+                    <div class="relative h-[72px] w-[72px] overflow-hidden rounded-full bg-surface-elevated ring-2 ring-border/40 transition-all duration-300 group-hover:ring-primary/40">
+                      {#if person.profileUrl}
+                        <img
+                          src={person.profileUrl}
+                          alt={person.name}
+                          loading="lazy"
+                          class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                        />
+                      {:else}
+                        <div class="flex h-full w-full items-center justify-center text-muted-foreground">
+                          <User class="h-7 w-7" />
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="w-full min-w-0">
+                      <p class="truncate text-[11px] font-medium leading-tight text-foreground">{person.name ?? ''}</p>
+                      {#if person.character}
+                        <p class="mt-0.5 truncate text-[10px] leading-tight text-muted-foreground">{person.character}</p>
+                      {/if}
+                    </div>
+                  </a>
                 {/each}
               </div>
             </div>

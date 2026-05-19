@@ -335,8 +335,14 @@ func (s *Service) refreshWikidata(ctx context.Context, request RefreshRequest, o
 }
 
 func (s *Service) refreshTVDB(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {
+	// TVDB support is disabled: subscription licence is incompatible with
+	// embedded-key UX. Function preserved (call sites still compile) but
+	// short-circuits to a no-op. Re-enabling would require restoring the
+	// TVDBAPIKey field to config and supplying a corporate licence key.
+	return errors.New("tvdb provider disabled")
+	// unreachable: code kept for reference if/when we re-enable.
 	var login tvdbLoginResponse
-	if err := s.postJSON(ctx, s.tvdbBaseURL+"/login", map[string]string{"apikey": cfg.TVDBAPIKey}, nil, &login); err != nil {
+	if err := s.postJSON(ctx, s.tvdbBaseURL+"/login", map[string]string{"apikey": ""}, nil, &login); err != nil {
 		return err
 	}
 	if strings.TrimSpace(login.Data.Token) == "" {

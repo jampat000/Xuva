@@ -267,6 +267,8 @@ var migrations = []string{
 		thumbnail_url TEXT NOT NULL DEFAULT '',
 		logo_url TEXT NOT NULL DEFAULT '',
 		banner_url TEXT NOT NULL DEFAULT '',
+		video_key TEXT NOT NULL DEFAULT '',
+		trailer_path TEXT NOT NULL DEFAULT '',
 		artwork_json TEXT NOT NULL DEFAULT '{}',
 		details_json TEXT NOT NULL DEFAULT '{}',
 		confidence REAL NOT NULL DEFAULT 0,
@@ -280,6 +282,8 @@ var migrations = []string{
 	`ALTER TABLE metadata_records ADD COLUMN banner_url TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE metadata_records ADD COLUMN artwork_json TEXT NOT NULL DEFAULT '{}'`,
 	`ALTER TABLE metadata_records ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'`,
+	`ALTER TABLE metadata_records ADD COLUMN video_key TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE metadata_records ADD COLUMN trailer_path TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_records_item ON metadata_records(kind, item_id, updated_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_metadata_records_best ON metadata_records(kind, item_id, provider, confidence DESC, updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS metadata_external_ids (

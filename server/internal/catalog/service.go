@@ -56,6 +56,9 @@ type RuntimeSettings struct {
 	SyncIntervalMins  int    `json:"syncIntervalMins"`
 	WatchDebounceSecs int    `json:"watchDebounceSecs"`
 	ProbeBatchLimit   int    `json:"probeBatchLimit"`
+	Country           string `json:"country,omitempty"`
+	Timezone          string `json:"timezone,omitempty"`
+	SetupComplete     bool   `json:"setupComplete,omitempty"`
 }
 
 type Summary struct {
@@ -183,6 +186,8 @@ type MetadataRecord struct {
 	ThumbnailURL string            `json:"thumbnailUrl,omitempty"`
 	LogoURL     string             `json:"logoUrl,omitempty"`
 	BannerURL   string             `json:"bannerUrl,omitempty"`
+	VideoKey    string             `json:"videoKey,omitempty"`    // YouTube key for the official trailer
+	TrailerPath string             `json:"trailerPath,omitempty"` // Local MP4 path once downloaded
 	OriginalTitle string           `json:"originalTitle,omitempty"`
 	ReleaseDate string             `json:"releaseDate,omitempty"`
 	FirstAirDate string            `json:"firstAirDate,omitempty"`
@@ -506,6 +511,9 @@ func (s *Service) SaveSettings(ctx context.Context, settings RuntimeSettings) er
 		"syncIntervalMins":  intString(settings.SyncIntervalMins),
 		"watchDebounceSecs": intString(settings.WatchDebounceSecs),
 		"probeBatchLimit":   intString(settings.ProbeBatchLimit),
+		"country":           settings.Country,
+		"timezone":          settings.Timezone,
+		"setupComplete":     boolString(settings.SetupComplete),
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -606,6 +614,324 @@ func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, e
 		output = append(output, item)
 	}
 	return output, rows.Err()
+}
+
+// CollectionResult is the header record returned by ListMoviesByCollection.
+type CollectionResult struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	PosterURL   string `json:"posterUrl,omitempty"`
+	BackdropURL string `json:"backdropUrl,omitempty"`
+	LogoURL     string `json:"logoUrl,omitempty"`
+}
+
+// PersonProfile is the person header for the people detail endpoint.
+type PersonProfile struct {
+	Name       string `json:"name"`
+	ProfileURL string `json:"profileUrl,omitempty"`
+	Department string `json:"department,omitempty"`
+}
+
+// PersonCreditItem is one entry in a person's filmography.
+type PersonCreditItem struct {
+	Kind      string          `json:"kind"`
+	ID        string          `json:"id"`
+	Title     string          `json:"title"`
+	Year      int             `json:"year,omitempty"`
+	Character string          `json:"character,omitempty"`
+	Role      string          `json:"role,omitempty"`
+	Metadata  *MetadataRecord `json:"metadata,omitempty"`
+}
+
+// MissingProviderItem is a minimal stub for backfill callers: just enough to
+// dispatch a metadata refresh request without paying for full metadata loads
+// that the caller is about to overwrite anyway.
+type MissingProviderItem struct {
+	Kind   string // "movie" | "series"
+	ID     string
+	Title  string
+	Year   int
+}
+
+// ListItemsMissingProvider returns library items (movies or series) that do
+// NOT yet have a metadata_records row for the given provider. This is the
+// inverse of "shouldSkipMetadata" — we want items lacking THIS specific
+// provider, even if they're "enriched" by another (Wikipedia etc).
+//
+// Used by the metadata backfill to populate TMDB rows for items that
+// currently only have wiki/filename data.
+func (s *Service) ListItemsMissingProvider(ctx context.Context, kind string, provider string, limit int) ([]MissingProviderItem, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	provider = strings.TrimSpace(strings.ToLower(provider))
+	if provider == "" {
+		return nil, errors.New("provider required")
+	}
+	var query string
+	switch kind {
+	case "movie", "movies":
+		query = `
+			SELECT m.id, m.title, m.year
+			FROM movies m
+			WHERE NOT EXISTS (
+				SELECT 1 FROM metadata_records mr
+				WHERE mr.kind = 'movie' AND mr.item_id = m.id AND mr.provider = ?
+			)
+			ORDER BY m.sort_title, m.year
+			LIMIT ?
+		`
+	case "series", "tv":
+		query = `
+			SELECT s.id, s.title, 0
+			FROM tv_series s
+			WHERE NOT EXISTS (
+				SELECT 1 FROM metadata_records mr
+				WHERE mr.kind = 'series' AND mr.item_id = s.id AND mr.provider = ?
+			)
+			ORDER BY s.sort_title
+			LIMIT ?
+		`
+	default:
+		return nil, errors.New("kind must be movie or series")
+	}
+	rows, err := s.db.QueryContext(ctx, query, provider, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	normalizedKind := "movie"
+	if kind == "series" || kind == "tv" {
+		normalizedKind = "series"
+	}
+	output := []MissingProviderItem{}
+	for rows.Next() {
+		var item MissingProviderItem
+		item.Kind = normalizedKind
+		if err := rows.Scan(&item.ID, &item.Title, &item.Year); err != nil {
+			return nil, err
+		}
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+// CountItemsMissingProvider returns the total count of items lacking the
+// given provider. Used by the backfill status endpoint to display "x of y
+// items remaining" without paginating through the whole list.
+func (s *Service) CountItemsMissingProvider(ctx context.Context, kind string, provider string) (int, error) {
+	provider = strings.TrimSpace(strings.ToLower(provider))
+	if provider == "" {
+		return 0, nil
+	}
+	var query string
+	switch kind {
+	case "movie", "movies":
+		query = `
+			SELECT COUNT(*) FROM movies m
+			WHERE NOT EXISTS (
+				SELECT 1 FROM metadata_records mr
+				WHERE mr.kind='movie' AND mr.item_id=m.id AND mr.provider=?
+			)
+		`
+	case "series", "tv":
+		query = `
+			SELECT COUNT(*) FROM tv_series s
+			WHERE NOT EXISTS (
+				SELECT 1 FROM metadata_records mr
+				WHERE mr.kind='series' AND mr.item_id=s.id AND mr.provider=?
+			)
+		`
+	default:
+		return 0, errors.New("kind must be movie or series")
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, query, provider).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// ListMoviesByCollection returns all library movies belonging to a TMDB
+// collection identified by collectionID (e.g. "195" for the Bond franchise).
+// The collection header is populated from the first movie's metadata.
+// Returns (nil, CollectionResult{}, false, nil) when no movies are found.
+func (s *Service) ListMoviesByCollection(ctx context.Context, collectionID string) ([]MovieListItem, CollectionResult, bool, error) {
+	collectionID = strings.TrimSpace(collectionID)
+	if collectionID == "" {
+		return nil, CollectionResult{}, false, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT m.id, m.title, m.year, m.sort_title
+		FROM movies m
+		WHERE EXISTS (
+			SELECT 1 FROM metadata_records mr
+			WHERE mr.kind = 'movie' AND mr.item_id = m.id
+			AND json_extract(mr.details_json, '$.collection.id') = ?
+		)
+		ORDER BY m.year, m.sort_title
+	`, collectionID)
+	if err != nil {
+		return nil, CollectionResult{}, false, err
+	}
+	defer rows.Close()
+	type stub struct {
+		id, title, sortTitle string
+		year                 int
+	}
+	var stubs []stub
+	for rows.Next() {
+		var st stub
+		if err := rows.Scan(&st.id, &st.title, &st.year, &st.sortTitle); err != nil {
+			return nil, CollectionResult{}, false, err
+		}
+		stubs = append(stubs, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, CollectionResult{}, false, err
+	}
+	if len(stubs) == 0 {
+		return nil, CollectionResult{}, false, nil
+	}
+	var header CollectionResult
+	var output []MovieListItem
+	for _, st := range stubs {
+		item := MovieListItem{ID: st.id, Title: st.title, Year: st.year, SortTitle: st.sortTitle}
+		if record, ok, err := s.GetBestMetadata(ctx, "movie", st.id); err == nil && ok {
+			item.Metadata = &record
+			applyMovieMetadata(&item.Title, &item.Year, &item.SortTitle, record)
+			if header.Name == "" && record.Collection != nil {
+				header = CollectionResult{
+					ID:          collectionID,
+					Name:        record.Collection.Name,
+					PosterURL:   record.Collection.PosterURL,
+					BackdropURL: record.Collection.BackdropURL,
+					LogoURL:     record.Collection.LogoURL,
+				}
+			}
+		}
+		output = append(output, item)
+	}
+	if header.ID == "" {
+		header.ID = collectionID
+	}
+	return output, header, true, nil
+}
+
+// ListItemsByPerson returns all library movies and series in which the named
+// person appears as cast or crew. Results are ordered by year desc, then title.
+// Returns (nil, PersonProfile{}, false, nil) when the person is not found.
+func (s *Service) ListItemsByPerson(ctx context.Context, personName string, limit int) ([]PersonCreditItem, PersonProfile, bool, error) {
+	personName = strings.TrimSpace(personName)
+	if personName == "" {
+		return nil, PersonProfile{}, false, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	// Movies featuring this person.
+	movieRows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT m.id, m.title, m.year, m.sort_title
+		FROM movies m
+		WHERE EXISTS (
+			SELECT 1 FROM metadata_records mr
+			WHERE mr.kind = 'movie' AND mr.item_id = m.id
+			AND (
+				EXISTS (SELECT 1 FROM json_each(mr.details_json, '$.cast') je WHERE json_extract(je.value, '$.name') = ?)
+				OR EXISTS (SELECT 1 FROM json_each(mr.details_json, '$.crew') je WHERE json_extract(je.value, '$.name') = ?)
+			)
+		)
+		ORDER BY m.year DESC, m.sort_title
+		LIMIT ?
+	`, personName, personName, limit)
+	if err != nil {
+		return nil, PersonProfile{}, false, err
+	}
+	defer movieRows.Close()
+	type stub struct{ id, title, sortTitle, kind string; year int }
+	var stubs []stub
+	for movieRows.Next() {
+		var st stub
+		st.kind = "movie"
+		if err := movieRows.Scan(&st.id, &st.title, &st.year, &st.sortTitle); err != nil {
+			return nil, PersonProfile{}, false, err
+		}
+		stubs = append(stubs, st)
+	}
+	if err := movieRows.Err(); err != nil {
+		return nil, PersonProfile{}, false, err
+	}
+	// Series featuring this person.
+	seriesRows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT s.id, s.title, 0, s.sort_title
+		FROM tv_series s
+		WHERE EXISTS (
+			SELECT 1 FROM metadata_records mr
+			WHERE mr.kind = 'series' AND mr.item_id = s.id
+			AND (
+				EXISTS (SELECT 1 FROM json_each(mr.details_json, '$.cast') je WHERE json_extract(je.value, '$.name') = ?)
+				OR EXISTS (SELECT 1 FROM json_each(mr.details_json, '$.crew') je WHERE json_extract(je.value, '$.name') = ?)
+			)
+		)
+		ORDER BY s.sort_title
+		LIMIT ?
+	`, personName, personName, limit)
+	if err != nil {
+		return nil, PersonProfile{}, false, err
+	}
+	defer seriesRows.Close()
+	for seriesRows.Next() {
+		var st stub
+		st.kind = "series"
+		if err := seriesRows.Scan(&st.id, &st.title, &st.year, &st.sortTitle); err != nil {
+			return nil, PersonProfile{}, false, err
+		}
+		stubs = append(stubs, st)
+	}
+	if err := seriesRows.Err(); err != nil {
+		return nil, PersonProfile{}, false, err
+	}
+	if len(stubs) == 0 {
+		return nil, PersonProfile{}, false, nil
+	}
+	var profile PersonProfile
+	var credits []PersonCreditItem
+	for _, st := range stubs {
+		item := PersonCreditItem{Kind: st.kind, ID: st.id, Title: st.title, Year: st.year}
+		if record, ok, err := s.GetBestMetadata(ctx, st.kind, st.id); err == nil && ok {
+			item.Metadata = &record
+			if st.kind == "movie" {
+				applyMovieMetadata(&item.Title, &item.Year, nil, record)
+			}
+			// Walk cast first, then crew, to find character / role / profile.
+			for _, c := range record.Cast {
+				if strings.EqualFold(c.Name, personName) {
+					item.Character = c.Character
+					item.Role = firstNonEmptyTrimmed(c.Role, "Actor")
+					if profile.Name == "" {
+						profile = PersonProfile{Name: c.Name, ProfileURL: c.ProfileURL, Department: c.Department}
+					}
+					break
+				}
+			}
+			if item.Character == "" && item.Role == "" {
+				for _, c := range record.Crew {
+					if strings.EqualFold(c.Name, personName) {
+						item.Role = firstNonEmptyTrimmed(c.Role, c.Department)
+						if profile.Name == "" {
+							profile = PersonProfile{Name: c.Name, ProfileURL: c.ProfileURL, Department: c.Department}
+						}
+						break
+					}
+				}
+			}
+		}
+		if profile.Name == "" {
+			profile.Name = personName
+		}
+		credits = append(credits, item)
+	}
+	return credits, profile, true, nil
 }
 
 func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, error) {
@@ -1131,6 +1457,23 @@ func (s *Service) ApplyMetadata(ctx context.Context, update MetadataUpdate) erro
 	return tx.Commit()
 }
 
+// SetTrailerPath atomically updates the trailer_path for every provider row
+// of a given (kind, item_id). Called by the trailer downloader once the
+// local MP4 lands. Empty path clears the value.
+func (s *Service) SetTrailerPath(ctx context.Context, kind string, itemID string, trailerPath string) error {
+	switch kind {
+	case "movie", "series", "season", "episode":
+	default:
+		return errors.New("trailer kind must be movie, series, season, or episode")
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE metadata_records
+		SET trailer_path = ?, updated_at = ?
+		WHERE kind = ? AND item_id = ?
+	`, strings.TrimSpace(trailerPath), time.Now().UTC().Format(time.RFC3339Nano), kind, itemID)
+	return err
+}
+
 func (s *Service) UpsertMetadataRecord(ctx context.Context, record MetadataRecord) error {
 	switch record.Kind {
 	case "movie", "series", "season", "episode":
@@ -1153,7 +1496,7 @@ func (s *Service) UpsertMetadataRecord(ctx context.Context, record MetadataRecor
 
 func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID string) (MetadataRecord, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, video_key, trailer_path, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id = ?
 		ORDER BY updated_at DESC
@@ -1263,6 +1606,8 @@ func mergeArtworkFields(target *MetadataRecord, source MetadataRecord) {
 	assignStringField(&target.ThumbnailURL, source.ThumbnailURL, "thumbnail", source.Provider, &target.Provenance)
 	assignStringField(&target.LogoURL, source.LogoURL, "logo", source.Provider, &target.Provenance)
 	assignStringField(&target.BannerURL, source.BannerURL, "banner", source.Provider, &target.Provenance)
+	assignStringField(&target.VideoKey, source.VideoKey, "videoKey", source.Provider, &target.Provenance)
+	assignStringField(&target.TrailerPath, source.TrailerPath, "trailerPath", source.Provider, &target.Provenance)
 }
 
 func assignStringField(target *string, source string, field string, provider string, provenance *MetadataProvenance) {
@@ -1422,7 +1767,7 @@ func (s *Service) metadataOrderForItem(ctx context.Context, kind string, itemID 
 
 func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID string) ([]MetadataRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, video_key, trailer_path, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id = ?
 		ORDER BY updated_at DESC
@@ -1764,6 +2109,8 @@ func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
 			&item.ThumbnailURL,
 			&item.LogoURL,
 			&item.BannerURL,
+			&item.VideoKey,
+			&item.TrailerPath,
 			&item.ArtworkJSON,
 			&item.DetailsJSON,
 			&item.Confidence,
@@ -1797,6 +2144,24 @@ func (s *Service) UpsertExternalID(ctx context.Context, item ExternalID) error {
 			updated_at = excluded.updated_at
 	`, item.Kind, item.ItemID, item.Provider, item.ExternalID, now)
 	return err
+}
+
+// FindByExternalID returns the catalog itemID for a given provider + external ID.
+// Used to cross-reference TMDB/IMDB trending lists against the local library.
+func (s *Service) FindByExternalID(ctx context.Context, kind string, provider string, externalID string) (string, bool, error) {
+	var itemID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT item_id FROM external_ids
+		WHERE kind = ? AND provider = ? AND external_id = ?
+		LIMIT 1
+	`, kind, provider, externalID).Scan(&itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return itemID, true, nil
 }
 
 func (s *Service) ListExternalIDs(ctx context.Context, kind string, itemID string) ([]ExternalID, error) {
@@ -2363,11 +2728,16 @@ func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord
 	record.ThumbnailURL = strings.TrimSpace(record.ThumbnailURL)
 	record.LogoURL = strings.TrimSpace(record.LogoURL)
 	record.BannerURL = strings.TrimSpace(record.BannerURL)
+	record.VideoKey = strings.TrimSpace(record.VideoKey)
+	record.TrailerPath = strings.TrimSpace(record.TrailerPath)
 	record.DetailsJSON = metadataDetailsJSON(record)
 	record.ArtworkJSON = metadataArtworkJSON(record)
+	// trailer_path is preserved on upsert: re-fetching metadata should NOT
+	// blow away an already-downloaded trailer file. video_key is always
+	// overwritten with the freshly-parsed key from the provider response.
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO metadata_records(kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO metadata_records(kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, video_key, trailer_path, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(kind, item_id, provider) DO UPDATE SET
 			external_id = excluded.external_id,
 			title = excluded.title,
@@ -2378,13 +2748,15 @@ func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord
 			thumbnail_url = excluded.thumbnail_url,
 			logo_url = excluded.logo_url,
 			banner_url = excluded.banner_url,
+			video_key = excluded.video_key,
+			trailer_path = CASE WHEN metadata_records.trailer_path != '' THEN metadata_records.trailer_path ELSE excluded.trailer_path END,
 			artwork_json = excluded.artwork_json,
 			details_json = excluded.details_json,
 			confidence = excluded.confidence,
 			raw_json = excluded.raw_json,
 			fetched_at = excluded.fetched_at,
 			updated_at = excluded.updated_at
-	`, record.Kind, record.ItemID, record.Provider, record.ExternalID, record.Title, record.Year, record.Overview, record.PosterURL, record.BackdropURL, record.ThumbnailURL, record.LogoURL, record.BannerURL, record.ArtworkJSON, record.DetailsJSON, record.Confidence, record.RawJSON, record.FetchedAt, record.UpdatedAt)
+	`, record.Kind, record.ItemID, record.Provider, record.ExternalID, record.Title, record.Year, record.Overview, record.PosterURL, record.BackdropURL, record.ThumbnailURL, record.LogoURL, record.BannerURL, record.VideoKey, record.TrailerPath, record.ArtworkJSON, record.DetailsJSON, record.Confidence, record.RawJSON, record.FetchedAt, record.UpdatedAt)
 	return err
 }
 
@@ -2697,6 +3069,13 @@ func boolInt(value bool) int {
 
 func intString(value int) string {
 	return strconv.Itoa(value)
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return ""
 }
 
 func twoDigit(value int) string {

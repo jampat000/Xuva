@@ -24,7 +24,7 @@ export interface ClientHomeRow {
 
 export interface ClientHomeResponse {
 	profile?: string;
-	hero?: ClientHomeItem;
+	heroes?: ClientHomeItem[];
 	rows?: ClientHomeRow[];
 	actions?: Record<string, string>;
 }
@@ -124,4 +124,75 @@ export function getSeriesDetail(
 	client: ApiClient = apiClient
 ): Promise<SeriesDetailResponse> {
 	return client.request<SeriesDetailResponse>(`/api/series/${encodeURIComponent(id)}`);
+}
+
+// ── Collections ─────────────────────────────────────────────────────────────
+
+export interface CollectionMovie {
+	id?: string;
+	kind?: string;
+	title?: string;
+	year?: number;
+	posterUrl?: string;
+	backdropUrl?: string;
+	logoUrl?: string;
+	voteAverage?: number;
+	genres?: string[];
+	overview?: string;
+	director?: string;
+	runtimeMinutes?: number;
+}
+
+export interface CollectionDetailResponse {
+	collection?: {
+		id?: string;
+		name?: string;
+		posterUrl?: string;
+		backdropUrl?: string;
+		logoUrl?: string;
+	};
+	movies?: CollectionMovie[];
+}
+
+export function getCollectionDetail(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<CollectionDetailResponse> {
+	return client.request<CollectionDetailResponse>(
+		`/api/client/collections/${encodeURIComponent(id)}`
+	);
+}
+
+// ── People ───────────────────────────────────────────────────────────────────
+
+export interface PersonCreditItem {
+	id?: string;
+	kind?: string;
+	title?: string;
+	year?: number;
+	character?: string;
+	role?: string;
+	posterUrl?: string;
+	backdropUrl?: string;
+	voteAverage?: number;
+	genres?: string[];
+	overview?: string;
+}
+
+export interface PersonDetailResponse {
+	person?: {
+		name?: string;
+		profileUrl?: string;
+		department?: string;
+	};
+	credits?: PersonCreditItem[];
+}
+
+export function getPersonDetail(
+	name: string,
+	client: ApiClient = apiClient
+): Promise<PersonDetailResponse> {
+	return client.request<PersonDetailResponse>(
+		`/api/client/people/${encodeURIComponent(name)}`
+	);
 }

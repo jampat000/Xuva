@@ -35,10 +35,18 @@ type Config struct {
 	SeriesArtworkSources  []string `json:"seriesArtworkSources,omitempty"`
 	FFprobePath           string   `json:"ffprobePath"`
 	FFmpegPath            string   `json:"ffmpegPath"`
+	// API keys: when blank, the four-tier resolver in keys.go falls back to
+	// env vars then to build-time embedded defaults. End users do not need
+	// to populate these — they exist only as power-user overrides for cases
+	// like hitting the shared rate limit.
 	OMDbAPIKey            string   `json:"omdbApiKey,omitempty"`
 	TMDBAPIKey            string   `json:"tmdbApiKey,omitempty"`
-	TVDBAPIKey            string   `json:"tvdbApiKey,omitempty"`
 	FanartTVAPIKey        string   `json:"fanartTvApiKey,omitempty"`
+	// TVDB support has been dropped: their v4 licence requires a per-install
+	// subscription, which is incompatible with embed-and-ship UX. TMDB
+	// supplies full TV data (episodes, seasons, stills, credits, ratings).
+	// The field name is preserved on settings.json to allow forward-clean
+	// migration of any existing user file, but is no longer read.
 	EventBuffer           int      `json:"eventBuffer"`
 	ScanWorkers           int      `json:"scanWorkers"`
 	ProbeWorkers          int      `json:"probeWorkers"`
@@ -51,6 +59,15 @@ type Config struct {
 	WatchDebounceSecs     int      `json:"watchDebounceSecs,omitempty"`
 	ProbeBatchLimit       int      `json:"probeBatchLimit,omitempty"`
 	AllowedOrigins        []string `json:"allowedOrigins,omitempty"`
+	// Region settings — captured during the setup wizard.
+	Country               string   `json:"country,omitempty"`  // ISO 3166-1 alpha-2, e.g. "AU"
+	Timezone              string   `json:"timezone,omitempty"` // IANA tz, e.g. "Australia/Sydney"
+	SetupComplete         bool     `json:"setupComplete,omitempty"`
+	// Trailer downloader settings — self-hosted preview videos.
+	TrailersEnabled       bool     `json:"trailersEnabled,omitempty"`
+	TrailersDir           string   `json:"trailersDir,omitempty"`   // local MP4 cache
+	YTDLPPath             string   `json:"ytdlpPath,omitempty"`     // yt-dlp binary, defaults to PATH lookup
+	TrailerWorkers        int      `json:"trailerWorkers,omitempty"`
 	AuthDisabled          bool     `json:"-"`
 	AdminUsername         string   `json:"-"`
 	AdminPassword         string   `json:"-"`
@@ -108,10 +125,11 @@ func FromEnv() Config {
 		TVLibraryPath:        envString("XUVA_TV_PATH", ""),
 		FFprobePath:          envString("XUVA_FFPROBE_PATH", "ffprobe"),
 		FFmpegPath:           envString("XUVA_FFMPEG_PATH", "ffmpeg"),
-		OMDbAPIKey:           envString("XUVA_OMDB_API_KEY", ""),
-		TMDBAPIKey:           envString("XUVA_TMDB_API_KEY", ""),
-		TVDBAPIKey:           envString("XUVA_TVDB_API_KEY", ""),
-		FanartTVAPIKey:       envString("XUVA_FANARTTV_API_KEY", ""),
+		// Keys default empty here; ResolveProviderKey() in keys.go merges
+		// saved + env + embedded after settings.json is loaded below.
+		OMDbAPIKey:           "",
+		TMDBAPIKey:           "",
+		FanartTVAPIKey:       "",
 		EventBuffer:          envInt("XUVA_EVENT_BUFFER", 128),
 		ScanWorkers:          envInt("XUVA_SCAN_WORKERS", 1),
 		ProbeWorkers:         envInt("XUVA_PROBE_WORKERS", 2),
@@ -123,6 +141,12 @@ func FromEnv() Config {
 		SyncIntervalMins:     envInt("XUVA_SYNC_INTERVAL_MINS", 1440),
 		WatchDebounceSecs:    envInt("XUVA_WATCH_DEBOUNCE_SECS", 30),
 		ProbeBatchLimit:      envInt("XUVA_PROBE_BATCH_LIMIT", 50),
+		Country:              envString("XUVA_COUNTRY", ""),
+		Timezone:             envString("XUVA_TIMEZONE", ""),
+		TrailersEnabled:      envBool("XUVA_TRAILERS_ENABLED", true),
+		TrailersDir:          envString("XUVA_TRAILERS_DIR", filepath.Join(dataDir, "trailers")),
+		YTDLPPath:            envString("XUVA_YTDLP_PATH", "yt-dlp"),
+		TrailerWorkers:       envInt("XUVA_TRAILER_WORKERS", 1),
 		AllowedOrigins:       envCSV("XUVA_ALLOWED_ORIGINS", nil),
 		AuthDisabled:         envBool("XUVA_AUTH_DISABLED", false),
 		AdminUsername:        envString("XUVA_ADMIN_USERNAME", "admin"),
@@ -145,10 +169,30 @@ func FromEnv() Config {
 	cfg.TVLibraryPath = envString("XUVA_TV_PATH", cfg.TVLibraryPath)
 	cfg.FFprobePath = envString("XUVA_FFPROBE_PATH", cfg.FFprobePath)
 	cfg.FFmpegPath = envString("XUVA_FFMPEG_PATH", cfg.FFmpegPath)
-	cfg.OMDbAPIKey = envString("XUVA_OMDB_API_KEY", cfg.OMDbAPIKey)
-	cfg.TMDBAPIKey = envString("XUVA_TMDB_API_KEY", cfg.TMDBAPIKey)
-	cfg.TVDBAPIKey = envString("XUVA_TVDB_API_KEY", cfg.TVDBAPIKey)
-	cfg.FanartTVAPIKey = envString("XUVA_FANARTTV_API_KEY", cfg.FanartTVAPIKey)
+	// Four-tier resolution: settings.json → env → embedded build-time → empty.
+	// We pass cfg.* (already merged from saved settings) as `saved`, the env
+	// var explicitly, and the embedded default from keys.go.
+	cfg.TMDBAPIKey, _ = ResolveProviderKey(cfg.TMDBAPIKey, envString("XUVA_TMDB_API_KEY", ""), DefaultTMDBAPIKey)
+	cfg.FanartTVAPIKey, _ = ResolveProviderKey(cfg.FanartTVAPIKey, envString("XUVA_FANARTTV_API_KEY", ""), DefaultFanartTVAPIKey)
+	cfg.OMDbAPIKey, _ = ResolveProviderKey(cfg.OMDbAPIKey, envString("XUVA_OMDB_API_KEY", ""), DefaultOMDbAPIKey)
+
+	// Backfill source-order defaults whenever they're empty (covers fresh
+	// installs AND legacy installs from before the auto-default landed).
+	// The actual default lists live in package metasources to avoid an
+	// import cycle — config doesn't depend on metasources, so we duplicate
+	// the canonical order here. If you change one, change the other.
+	if len(cfg.MovieMetadataSources) == 0 {
+		cfg.MovieMetadataSources = defaultMovieMetadataSources()
+	}
+	if len(cfg.SeriesMetadataSources) == 0 {
+		cfg.SeriesMetadataSources = defaultSeriesMetadataSources()
+	}
+	if len(cfg.MovieArtworkSources) == 0 {
+		cfg.MovieArtworkSources = defaultArtworkSources()
+	}
+	if len(cfg.SeriesArtworkSources) == 0 {
+		cfg.SeriesArtworkSources = defaultArtworkSources()
+	}
 	cfg.EventBuffer = envInt("XUVA_EVENT_BUFFER", cfg.EventBuffer)
 	cfg.ScanWorkers = envInt("XUVA_SCAN_WORKERS", cfg.ScanWorkers)
 	cfg.ProbeWorkers = envInt("XUVA_PROBE_WORKERS", cfg.ProbeWorkers)
@@ -160,6 +204,12 @@ func FromEnv() Config {
 	cfg.SyncIntervalMins = envInt("XUVA_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
 	cfg.WatchDebounceSecs = envInt("XUVA_WATCH_DEBOUNCE_SECS", defaultInt(cfg.WatchDebounceSecs, 30))
 	cfg.ProbeBatchLimit = envInt("XUVA_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
+	cfg.Country = envString("XUVA_COUNTRY", cfg.Country)
+	cfg.Timezone = envString("XUVA_TIMEZONE", cfg.Timezone)
+	cfg.TrailersEnabled = envBool("XUVA_TRAILERS_ENABLED", cfg.TrailersEnabled)
+	cfg.TrailersDir = envString("XUVA_TRAILERS_DIR", defaultDir(cfg.TrailersDir, cfg.DataDir, "trailers"))
+	cfg.YTDLPPath = envString("XUVA_YTDLP_PATH", defaultString(cfg.YTDLPPath, "yt-dlp"))
+	cfg.TrailerWorkers = envInt("XUVA_TRAILER_WORKERS", defaultInt(cfg.TrailerWorkers, 1))
 	cfg.AllowedOrigins = envCSV("XUVA_ALLOWED_ORIGINS", cfg.AllowedOrigins)
 	cfg.AuthDisabled = envBool("XUVA_AUTH_DISABLED", cfg.AuthDisabled)
 	cfg.AdminUsername = envString("XUVA_ADMIN_USERNAME", cfg.AdminUsername)
@@ -244,9 +294,6 @@ func merge(base Config, saved Config) Config {
 	if saved.TMDBAPIKey != "" {
 		base.TMDBAPIKey = saved.TMDBAPIKey
 	}
-	if saved.TVDBAPIKey != "" {
-		base.TVDBAPIKey = saved.TVDBAPIKey
-	}
 	if saved.FanartTVAPIKey != "" {
 		base.FanartTVAPIKey = saved.FanartTVAPIKey
 	}
@@ -286,7 +333,53 @@ func merge(base Config, saved Config) Config {
 	if len(saved.AllowedOrigins) > 0 {
 		base.AllowedOrigins = saved.AllowedOrigins
 	}
+	if saved.Country != "" {
+		base.Country = saved.Country
+	}
+	if saved.Timezone != "" {
+		base.Timezone = saved.Timezone
+	}
+	if saved.SetupComplete {
+		base.SetupComplete = true
+	}
+	if saved.TrailersEnabled {
+		base.TrailersEnabled = true
+	}
+	if saved.TrailersDir != "" {
+		base.TrailersDir = saved.TrailersDir
+	}
+	if saved.YTDLPPath != "" {
+		base.YTDLPPath = saved.YTDLPPath
+	}
+	if saved.TrailerWorkers > 0 {
+		base.TrailerWorkers = saved.TrailerWorkers
+	}
 	return base
+}
+
+func defaultString(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+// defaultMovieMetadataSources / defaultSeriesMetadataSources / defaultArtworkSources
+// duplicate the canonical lists from package metasources to avoid an import
+// cycle (metasources imports config). Keep these in sync with
+// metasources.DefaultSourceOrder() and metasources.DefaultArtworkOrder().
+//
+// TVDB is intentionally absent — it's a disabled provider in this build.
+func defaultMovieMetadataSources() []string {
+	return []string{"nfo", "tmdb", "wikipedia", "wikidata", "omdb", "filename"}
+}
+
+func defaultSeriesMetadataSources() []string {
+	return []string{"nfo", "tmdb", "tvmaze", "wikipedia", "wikidata", "omdb", "filename"}
+}
+
+func defaultArtworkSources() []string {
+	return []string{"artwork", "nfo", "fanart", "tmdb", "wikipedia", "wikidata"}
 }
 
 func Merge(base Config, saved Config) Config {

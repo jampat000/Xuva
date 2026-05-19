@@ -2471,10 +2471,9 @@ func TestSettingsIgnoreManagedProviderKeysInUserSettings(t *testing.T) {
 	router := NewRouter(deps)
 
 	requestJSON(t, router, http.MethodPut, "/api/settings", map[string]any{
-		"tmdbApiKey": "tmdb-test-key",
-		"tvdbApiKey": "tvdb-test-key",
+		"tmdbApiKey":     "tmdb-test-key",
 		"fanartTvApiKey": "fanart-test-key",
-		"omdbApiKey": "omdb-test-key",
+		"omdbApiKey":     "omdb-test-key",
 	})
 
 	reloaded := getJSON(t, router, "/api/settings")
@@ -2487,7 +2486,7 @@ func TestSettingsIgnoreManagedProviderKeysInUserSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load saved settings file: %v", err)
 	}
-	if saved.TMDBAPIKey != "" || saved.TVDBAPIKey != "" || saved.FanartTVAPIKey != "" || saved.OMDbAPIKey != "" {
+	if saved.TMDBAPIKey != "" || saved.FanartTVAPIKey != "" || saved.OMDbAPIKey != "" {
 		t.Fatalf("expected settings API to ignore managed provider keys, got %#v", saved)
 	}
 }
