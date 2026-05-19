@@ -1,12 +1,14 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { Bell, Menu, Search, Settings, Film, Tv, LogOut, User, Layers } from "lucide-svelte";
+  import { Bell, Clock, Menu, Search, Settings, Film, Tv, LogOut, User, Layers, X, AlertTriangle, CheckCircle } from "lucide-svelte";
   import Logo from "./Logo.svelte";
   import { primeSearchCatalogue, runSearch, getSearchResults, isSearchLoading } from "$lib/stores/searchStore.svelte";
   import { getPlaybackRecent } from "$lib/api/home";
   import type { PlaybackRecentItem } from "$lib/api/home";
   import type { SearchHit } from "$lib/api/browse";
+  import { getNotifications, dismissNotification, dismissAllNotifications } from "$lib/api/operator";
+  import type { NotificationItem } from "$lib/api/operator";
 
   const nav = [
     { label: "Home", href: "/" },
@@ -92,20 +94,56 @@
 
   // ── Notifications ──────────────────────────────────────────────────────────
   let showNotifications = $state(false);
-  let recentItems = $state<PlaybackRecentItem[]>([]);
+  let notifications = $state<NotificationItem[]>([]);
   let notificationsLoaded = $state(false);
+
+  async function loadNotifications() {
+    try {
+      const resp = await getNotifications();
+      notifications = resp.notifications ?? [];
+    } catch {
+      notifications = [];
+    } finally {
+      notificationsLoaded = true;
+    }
+  }
 
   async function openNotifications() {
     showNotifications = !showNotifications;
     showProfile = false;
-    if (!notificationsLoaded) {
+    showRecentPlayed = false;
+    if (showNotifications) {
+      await loadNotifications();
+    }
+  }
+
+  async function handleDismiss(id: string) {
+    await dismissNotification(id).catch(() => {});
+    notifications = notifications.filter(n => n.id !== id);
+  }
+
+  async function handleDismissAll() {
+    await dismissAllNotifications().catch(() => {});
+    notifications = [];
+  }
+
+  // ── Recently Played ────────────────────────────────────────────────────────
+  let showRecentPlayed = $state(false);
+  let recentItems = $state<PlaybackRecentItem[]>([]);
+  let recentLoaded = $state(false);
+
+  async function openRecentPlayed() {
+    showRecentPlayed = !showRecentPlayed;
+    showProfile = false;
+    showNotifications = false;
+    if (showRecentPlayed && !recentLoaded) {
       try {
         const resp = await getPlaybackRecent(undefined, 8);
         recentItems = resp.recent ?? [];
       } catch {
         recentItems = [];
       } finally {
-        notificationsLoaded = true;
+        recentLoaded = true;
       }
     }
   }
@@ -120,7 +158,6 @@
   function friendlyName(item: PlaybackRecentItem): string {
     if (item.name) return item.name;
     if (item.relPath) {
-      // strip extension and quality tags
       return item.relPath
         .replace(/\.[a-z0-9]{2,4}$/i, '')
         .replace(/\s*\([^)]*(?:remux|bluray|1080p|2160p|720p|hdtv)[^)]*\)/gi, '')
@@ -155,7 +192,7 @@
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest("[data-search-container]")) searchFocused = false;
-      if (!target.closest("[data-notif-container]")) showNotifications = false;
+      if (!target.closest("[data-notif-container]")) { showNotifications = false; showRecentPlayed = false; }
       if (!target.closest("[data-profile-container]")) showProfile = false;
       if (!target.closest("[data-mobile-menu]") && !target.closest("[data-hamburger]")) showMobileMenu = false;
     };
@@ -323,8 +360,9 @@
         <Search class="h-5 w-5" />
       </button>
 
-      <!-- Notifications -->
-      <div class="relative hidden sm:block" data-notif-container>
+      <!-- Notifications + Recently Played -->
+      <div class="relative hidden items-center gap-1 sm:flex" data-notif-container>
+        <!-- Bell: notifications -->
         <button
           type="button"
           aria-label="Notifications"
@@ -332,21 +370,84 @@
           class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showNotifications ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
         >
           <Bell class="h-5 w-5" />
-          {#if notificationsLoaded && recentItems.length > 0}
+          {#if notificationsLoaded && notifications.filter(n => !n.dismissed).length > 0}
             <span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent shadow-glow"></span>
           {/if}
         </button>
 
+        <!-- Clock: recently played -->
+        <button
+          type="button"
+          aria-label="Recently Played"
+          onclick={openRecentPlayed}
+          class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showRecentPlayed ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
+        >
+          <Clock class="h-5 w-5" />
+          {#if recentLoaded && recentItems.length > 0}
+            <span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent shadow-glow"></span>
+          {/if}
+        </button>
+
+        <!-- Notifications dropdown (under Bell) -->
         {#if showNotifications}
+          <div class="absolute right-9 top-[calc(100%+8px)] z-50 w-80 overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl backdrop-blur-xl">
+            <div class="flex items-center justify-between border-b border-border px-4 py-3">
+              <h3 class="text-sm font-semibold">Notifications</h3>
+              {#if notifications.length > 0}
+                <button onclick={handleDismissAll} class="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                  Dismiss all
+                </button>
+              {/if}
+            </div>
+            {#if !notificationsLoaded}
+              <div class="px-4 py-3 text-sm text-muted-foreground">Loading…</div>
+            {:else if notifications.length === 0}
+              <div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                <Bell class="h-8 w-8 text-muted-foreground/30" />
+                <p class="text-sm text-muted-foreground">No notifications</p>
+              </div>
+            {:else}
+              <ul class="max-h-80 overflow-y-auto">
+                {#each notifications as notif (notif.id)}
+                  <li class="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface/40">
+                    <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface text-muted-foreground">
+                      {#if notif.kind?.includes('failed')}
+                        <AlertTriangle class="h-3.5 w-3.5" />
+                      {:else}
+                        <CheckCircle class="h-3.5 w-3.5" />
+                      {/if}
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-medium leading-tight">{notif.title}</p>
+                      {#if notif.message}
+                        <p class="mt-0.5 text-xs text-muted-foreground">{notif.message}</p>
+                      {/if}
+                    </div>
+                    <button
+                      onclick={() => handleDismiss(notif.id!)}
+                      aria-label="Dismiss"
+                      class="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <X class="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Recently Played dropdown (under Clock) -->
+        {#if showRecentPlayed}
           <div class="absolute right-0 top-[calc(100%+8px)] z-50 w-80 overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl backdrop-blur-xl">
             <div class="border-b border-border px-4 py-3">
               <h3 class="text-sm font-semibold">Recently Played</h3>
             </div>
-            {#if !notificationsLoaded}
+            {#if !recentLoaded}
               <div class="px-4 py-3 text-sm text-muted-foreground">Loading…</div>
             {:else if recentItems.length === 0}
               <div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
-                <Bell class="h-8 w-8 text-muted-foreground/30" />
+                <Clock class="h-8 w-8 text-muted-foreground/30" />
                 <p class="text-sm text-muted-foreground">Nothing played yet</p>
               </div>
             {:else}

@@ -127,6 +127,9 @@ Public client bootstrap routes:
 | `POST /api/setup/complete` | setup | `setup.complete` | admin |
 | `GET /api/backup/export` | backup | `backup.export` | admin |
 | `POST /api/backup/import` | backup | `backup.import` | admin |
+| `GET /api/notifications` | notifications | `notifications.list` | admin, standard |
+| `POST /api/notifications/{id}/dismiss` | notifications | `notifications.dismiss` | admin, standard |
+| `POST /api/notifications/dismiss-all` | notifications | `notifications.dismiss_all` | admin, standard |
 
 Audit events are emitted as `audit.route` with:
 

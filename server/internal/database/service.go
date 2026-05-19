@@ -400,4 +400,15 @@ var migrations = []string{
 	`ALTER TABLE media_probes ADD COLUMN dovi_profile INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE media_probes ADD COLUMN max_cll INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE media_probes ADD COLUMN max_fall INTEGER NOT NULL DEFAULT 0`,
+	// issue #89: in-app notification feed
+	`CREATE TABLE IF NOT EXISTS notifications (
+		id TEXT PRIMARY KEY,
+		kind TEXT NOT NULL,
+		title TEXT NOT NULL,
+		message TEXT NOT NULL DEFAULT '',
+		link TEXT NOT NULL DEFAULT '',
+		dismissed INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_notifications_dismissed_created ON notifications(dismissed, created_at DESC)`,
 }
