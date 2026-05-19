@@ -25,8 +25,10 @@ func route(pattern string, group string, action string, roles ...string) routePo
 }
 
 var routePolicies = map[string]routePolicy{
-	"GET /api/auth/session":         route("GET /api/auth/session", "auth", "session.read", roleAdmin, roleStandard),
-	"POST /api/auth/logout":         route("POST /api/auth/logout", "auth", "session.logout", roleAdmin, roleStandard),
+	"GET /api/auth/session":          route("GET /api/auth/session", "auth", "session.read", roleAdmin, roleStandard),
+	"POST /api/auth/logout":          route("POST /api/auth/logout", "auth", "session.logout", roleAdmin, roleStandard),
+	"GET /api/profiles":              route("GET /api/profiles", "auth", "profiles.list", roleAdmin, roleStandard),
+	"POST /api/auth/switch-profile":  route("POST /api/auth/switch-profile", "auth", "profile.switch", roleAdmin, roleStandard),
 	"GET /api/users":                route("GET /api/users", "auth", "users.list", roleAdmin),
 	"POST /api/users":               route("POST /api/users", "auth", "user.create", roleAdmin),
 	"PATCH /api/users/{id}":         route("PATCH /api/users/{id}", "auth", "user.update", roleAdmin),
