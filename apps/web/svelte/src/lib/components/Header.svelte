@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { Bell, Menu, Search, Settings, Film, Tv, LogOut, User, Layers } from "lucide-svelte";
+  import { Clock, Menu, Search, Settings, Film, Tv, LogOut, User, Layers } from "lucide-svelte";
   import Logo from "./Logo.svelte";
   import { primeSearchCatalogue, runSearch, getSearchResults, isSearchLoading } from "$lib/stores/searchStore.svelte";
   import { getPlaybackRecent } from "$lib/api/home";
@@ -90,7 +90,7 @@
     primeSearchCatalogue();
   }
 
-  // ── Notifications ──────────────────────────────────────────────────────────
+  // ── Recently Played ────────────────────────────────────────────────────────
   let showNotifications = $state(false);
   let recentItems = $state<PlaybackRecentItem[]>([]);
   let notificationsLoaded = $state(false);
@@ -323,15 +323,15 @@
         <Search class="h-5 w-5" />
       </button>
 
-      <!-- Notifications -->
+      <!-- Recently Played -->
       <div class="relative hidden sm:block" data-notif-container>
         <button
           type="button"
-          aria-label="Notifications"
+          aria-label="Recently Played"
           onclick={openNotifications}
           class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showNotifications ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
         >
-          <Bell class="h-5 w-5" />
+          <Clock class="h-5 w-5" />
           {#if notificationsLoaded && recentItems.length > 0}
             <span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent shadow-glow"></span>
           {/if}
@@ -346,7 +346,7 @@
               <div class="px-4 py-3 text-sm text-muted-foreground">Loading…</div>
             {:else if recentItems.length === 0}
               <div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
-                <Bell class="h-8 w-8 text-muted-foreground/30" />
+                <Clock class="h-8 w-8 text-muted-foreground/30" />
                 <p class="text-sm text-muted-foreground">Nothing played yet</p>
               </div>
             {:else}
