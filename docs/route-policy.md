@@ -16,6 +16,8 @@ Public client bootstrap routes:
 | --- | --- | --- | --- |
 | `GET /api/auth/session` | auth | `session.read` | admin, standard |
 | `POST /api/auth/logout` | auth | `session.logout` | admin, standard |
+| `GET /api/profiles` | auth | `profiles.list` | admin, standard |
+| `POST /api/auth/switch-profile` | auth | `profile.switch` | admin, standard |
 | `GET /api/users` | auth | `users.list` | admin |
 | `POST /api/users` | auth | `user.create` | admin |
 | `PATCH /api/users/{id}` | auth | `user.update` | admin |
