@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <circle cx="32" cy="32" r="32" fill="#2C3E6B"/>
+  <!-- head -->
+  <ellipse cx="32" cy="22" rx="13" ry="13" fill="#1a2440"/>
+  <!-- white face -->
+  <ellipse cx="32" cy="24" rx="9" ry="9" fill="#e8f0fc"/>
+  <!-- body -->
+  <ellipse cx="32" cy="44" rx="15" ry="13" fill="#1a2440"/>
+  <!-- white belly -->
+  <ellipse cx="32" cy="46" rx="9" ry="9" fill="#e8f0fc"/>
+  <!-- eyes -->
+  <circle cx="27" cy="21" r="3" fill="#1a1a2e"/>
+  <circle cx="37" cy="21" r="3" fill="#1a1a2e"/>
+  <circle cx="26" cy="20" r="1" fill="white"/>
+  <circle cx="36" cy="20" r="1" fill="white"/>
+  <!-- beak -->
+  <ellipse cx="32" cy="27" rx="3" ry="2" fill="#f0a030"/>
+  <!-- flippers -->
+  <ellipse cx="14" cy="42" rx="5" ry="10" fill="#1a2440" transform="rotate(-15 14 42)"/>
+  <ellipse cx="50" cy="42" rx="5" ry="10" fill="#1a2440" transform="rotate(15 50 42)"/>
+  <!-- feet -->
+  <ellipse cx="26" cy="56" rx="5" ry="2.5" fill="#f0a030"/>
+  <ellipse cx="38" cy="56" rx="5" ry="2.5" fill="#f0a030"/>
+</svg>
