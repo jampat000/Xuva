@@ -63,6 +63,10 @@ foreach ($name in $envLoaded) {
     $envExports += "`$env:$name = '$escaped'; "
 }
 
+# Always proxy non-API requests to Vite so the Go server never serves the
+# stale embedded SPA during development (see webapp.go devProxyHandler).
+$envExports += "`$env:XUVA_WEB_DEV_ORIGIN = 'http://localhost:5173'; "
+
 $airJob = Start-Process powershell `
     -ArgumentList "-NoExit", "-Command", "$envExports Set-Location '$serverDir'; air" `
     -PassThru
