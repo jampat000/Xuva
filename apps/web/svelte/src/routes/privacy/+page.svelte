@@ -31,8 +31,9 @@
         </section>
 
         <section>
+          <!-- Keep this list in sync with server/internal/metadata/metasources/catalog.go SourceCatalog -->
           <h2 class="font-serif-display mb-3 text-xl tracking-tight text-foreground">Metadata providers</h2>
-          <p>When Xuva fetches metadata (posters, descriptions, ratings), it sends movie and TV show titles to third-party providers such as TMDB and TheTVDB. No personal information is sent. Review each provider's privacy policy for details.</p>
+          <p>When Xuva fetches metadata (posters, descriptions, ratings), it sends movie and TV show titles to <a href="https://www.themoviedb.org/privacy-policy" class="underline underline-offset-2 hover:text-foreground" target="_blank" rel="noopener noreferrer">TMDB</a>. No personal information is sent. Review their privacy policy for details.</p>
         </section>
 
         <section>
