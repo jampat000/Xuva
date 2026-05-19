@@ -1772,11 +1772,11 @@ func TestPlaybackStateAndSessions(t *testing.T) {
 	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
 
 	state := requestJSON(t, router, http.MethodPut, "/api/playback/state/"+sourceID, map[string]any{
-		"progressSeconds": 91,
+		"progressSeconds": 50,
 		"durationSeconds": 100,
 	})
-	if state["watched"] != true {
-		t.Fatalf("expected 90 percent progress to mark watched, got %#v", state)
+	if state["watched"] != false {
+		t.Fatalf("expected 50 percent progress to not be marked watched, got %#v", state)
 	}
 	recent := getJSON(t, router, "/api/playback/recent")
 	if len(recent["recent"].([]any)) != 1 {
