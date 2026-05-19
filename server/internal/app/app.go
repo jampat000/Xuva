@@ -24,6 +24,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/metasources"
 	"github.com/jampat000/Xuva/server/internal/migration"
 	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/notifications"
 	"github.com/jampat000/Xuva/server/internal/observability"
 	"github.com/jampat000/Xuva/server/internal/pairing"
 	"github.com/jampat000/Xuva/server/internal/playback"
@@ -75,10 +76,11 @@ type Application struct {
 	Sessions  *sessions.Service
 	Downloads *downloads.Service
 	Pairing   *pairing.Service
-	Migration  *migration.Service
-	Trending   *trending.Service
-	Trailers   *trailers.Service
-	Thumbnails *thumbnails.Service
+	Migration     *migration.Service
+	Trending      *trending.Service
+	Trailers      *trailers.Service
+	Thumbnails    *thumbnails.Service
+	Notifications *notifications.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -256,6 +258,9 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		}()
 	}
 
+	notifService := notifications.NewService(databaseService.DB(), bus)
+	notifService.Start(appCtx)
+
 	return &Application{
 		Config:    cfg,
 		StartedAt: time.Now().UTC(),
@@ -286,10 +291,11 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Sessions:  sessionService,
 		Downloads: downloadService,
 		Pairing:   pairing.NewService(),
-		Migration:  migration.NewService(databaseService, bus),
-		Trending:   trendingService,
-		Trailers:   trailersService,
-		Thumbnails: thumbnails.New(cfg.CacheDir, cfg.FFmpegPath, cfg.FFprobePath),
+		Migration:     migration.NewService(databaseService, bus),
+		Trending:      trendingService,
+		Trailers:      trailersService,
+		Thumbnails:    thumbnails.New(cfg.CacheDir, cfg.FFmpegPath, cfg.FFprobePath),
+		Notifications: notifService,
 	}, nil
 }
 
@@ -441,10 +447,11 @@ func (a *Application) Router() http.Handler {
 		Sessions:  a.Sessions,
 		Subtitles: a.Subtitles,
 		Pairing:   a.Pairing,
-		Trending:   a.Trending,
-		Trailers:   a.Trailers,
-		Thumbnails: a.Thumbnails,
-		Migration:  a.Migration,
+		Trending:      a.Trending,
+		Trailers:      a.Trailers,
+		Thumbnails:    a.Thumbnails,
+		Migration:     a.Migration,
+		Notifications: a.Notifications,
 	})
 }
 
