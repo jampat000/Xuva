@@ -875,13 +875,22 @@ func TestClientHomeReturnsTVRows(t *testing.T) {
 	if home["profile"] != "apple-tv" {
 		t.Fatalf("expected apple-tv profile, got %#v", home)
 	}
-	hero := home["hero"].(map[string]any)
-	if hero["title"] == "" || hero["kind"] == "" {
-		t.Fatalf("expected hero item, got %#v", hero)
+	heroes, ok := home["heroes"].([]any)
+	if !ok || len(heroes) == 0 {
+		t.Fatalf("expected non-empty heroes array, got %#v", home["heroes"])
+	}
+	for i, raw := range heroes {
+		hero, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("expected hero %d to be an object, got %#v", i, raw)
+		}
+		if hero["title"] == "" || hero["kind"] == "" {
+			t.Fatalf("expected hero %d to have title and kind, got %#v", i, hero)
+		}
 	}
 	rows := home["rows"].([]any)
-	if len(rows) != 4 {
-		t.Fatalf("expected four TV rows, got %#v", rows)
+	if len(rows) < 4 {
+		t.Fatalf("expected at least four TV rows, got %#v", rows)
 	}
 	rowItems := map[string]int{}
 	for _, raw := range rows {
