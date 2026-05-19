@@ -940,6 +940,398 @@ func (s *Service) ListItemsByPerson(ctx context.Context, personName string, limi
 	return credits, profile, true, nil
 }
 
+// PersonHit is one search hit for a person discovered in metadata cast/crew.
+// CreditCount is the number of library items that reference this person.
+type PersonHit struct {
+	Name        string `json:"name"`
+	ProfileURL  string `json:"profileUrl,omitempty"`
+	Department  string `json:"department,omitempty"`
+	CreditCount int    `json:"creditCount"`
+}
+
+// CollectionHit is one search hit for a TMDB collection referenced by movies
+// in the library. MovieCount is the number of movies in the collection.
+type CollectionHit struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	PosterURL   string `json:"posterUrl,omitempty"`
+	BackdropURL string `json:"backdropUrl,omitempty"`
+	LogoURL     string `json:"logoUrl,omitempty"`
+	MovieCount  int    `json:"movieCount"`
+}
+
+// SearchResults is the aggregated payload returned by SearchLibrary.
+type SearchResults struct {
+	Query       string            `json:"query"`
+	Movies      []MovieListItem   `json:"movies"`
+	Series      []SeriesListItem  `json:"series"`
+	People      []PersonHit       `json:"people"`
+	Collections []CollectionHit   `json:"collections"`
+}
+
+// scoreSubstring returns 100 for an exact match, 80 for a prefix match, 60 for
+// any word-prefix match, 40 for a substring match, and 0 otherwise.
+// Both inputs are expected to be lowercased.
+func scoreSubstring(haystack, needle string) int {
+	if haystack == "" || needle == "" {
+		return 0
+	}
+	if haystack == needle {
+		return 100
+	}
+	if strings.HasPrefix(haystack, needle) {
+		return 80
+	}
+	for _, w := range strings.Fields(haystack) {
+		if strings.HasPrefix(w, needle) {
+			return 60
+		}
+	}
+	if strings.Contains(haystack, needle) {
+		return 40
+	}
+	return 0
+}
+
+// SearchLibrary returns up to `limit` matching movies, series, people, and
+// collections for the given query string. It is the single backend behind the
+// header search dropdown and the /search page. Limit defaults to 8 per
+// category and is clamped to 40.
+func (s *Service) SearchLibrary(ctx context.Context, query string, limit int) (SearchResults, error) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	result := SearchResults{Query: query, Movies: []MovieListItem{}, Series: []SeriesListItem{}, People: []PersonHit{}, Collections: []CollectionHit{}}
+	if q == "" {
+		return result, nil
+	}
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 40 {
+		limit = 40
+	}
+	like := "%" + q + "%"
+
+	// --- Movies -----------------------------------------------------------
+	// Use SQL LIKE on title for an initial set; we then score in Go so the
+	// ranking (exact > prefix > word-prefix > contains) is consistent across
+	// types. The over-fetch (4×) gives the scorer a useful pool when the
+	// catalogue has many partial hits.
+	movieFetch := limit * 4
+	if movieFetch < 32 {
+		movieFetch = 32
+	}
+	movieRows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review, count(mv.media_source_id) AS version_count
+		FROM movies m
+		LEFT JOIN movie_versions mv ON mv.movie_id = m.id
+		WHERE LOWER(m.title) LIKE ?
+		GROUP BY m.id
+		ORDER BY m.sort_title, m.year
+		LIMIT ?
+	`, like, movieFetch)
+	if err != nil {
+		return result, err
+	}
+	type scoredMovie struct {
+		item  MovieListItem
+		score int
+	}
+	var movieScored []scoredMovie
+	for movieRows.Next() {
+		var item MovieListItem
+		var needsReview int
+		if err := movieRows.Scan(&item.ID, &item.Title, &item.Year, &item.SortTitle, &needsReview, &item.VersionCount); err != nil {
+			movieRows.Close()
+			return result, err
+		}
+		item.NeedsReview = needsReview != 0
+		movieScored = append(movieScored, scoredMovie{item: item})
+	}
+	movieRows.Close()
+	if err := movieRows.Err(); err != nil {
+		return result, err
+	}
+	for i := range movieScored {
+		if record, ok, err := s.GetBestMetadata(ctx, "movie", movieScored[i].item.ID); err != nil {
+			return result, err
+		} else if ok {
+			movieScored[i].item.Metadata = &record
+			applyMovieMetadata(&movieScored[i].item.Title, &movieScored[i].item.Year, &movieScored[i].item.SortTitle, record)
+		}
+		movieScored[i].score = scoreSubstring(strings.ToLower(movieScored[i].item.Title), q)
+	}
+	sort.SliceStable(movieScored, func(i, j int) bool {
+		if movieScored[i].score != movieScored[j].score {
+			return movieScored[i].score > movieScored[j].score
+		}
+		return movieScored[i].item.Title < movieScored[j].item.Title
+	})
+	for i := 0; i < len(movieScored) && i < limit; i++ {
+		if movieScored[i].score == 0 {
+			break
+		}
+		result.Movies = append(result.Movies, movieScored[i].item)
+	}
+
+	// --- Series -----------------------------------------------------------
+	seriesFetch := movieFetch
+	seriesRows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
+		FROM tv_series s
+		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
+		LEFT JOIN tv_episodes e ON e.series_id = s.id
+		WHERE LOWER(s.title) LIKE ?
+		GROUP BY s.id
+		ORDER BY s.sort_title
+		LIMIT ?
+	`, like, seriesFetch)
+	if err != nil {
+		return result, err
+	}
+	type scoredSeries struct {
+		item  SeriesListItem
+		score int
+	}
+	var seriesScored []scoredSeries
+	for seriesRows.Next() {
+		var item SeriesListItem
+		if err := seriesRows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
+			seriesRows.Close()
+			return result, err
+		}
+		seriesScored = append(seriesScored, scoredSeries{item: item})
+	}
+	seriesRows.Close()
+	if err := seriesRows.Err(); err != nil {
+		return result, err
+	}
+	for i := range seriesScored {
+		if record, ok, err := s.GetBestMetadata(ctx, "series", seriesScored[i].item.ID); err != nil {
+			return result, err
+		} else if ok {
+			seriesScored[i].item.Metadata = &record
+			applyTitleMetadata(&seriesScored[i].item.Title, &seriesScored[i].item.SortTitle, record)
+		}
+		seriesScored[i].score = scoreSubstring(strings.ToLower(seriesScored[i].item.Title), q)
+	}
+	sort.SliceStable(seriesScored, func(i, j int) bool {
+		if seriesScored[i].score != seriesScored[j].score {
+			return seriesScored[i].score > seriesScored[j].score
+		}
+		return seriesScored[i].item.Title < seriesScored[j].item.Title
+	})
+	// Build the deduped series list (collapse common title variants),
+	// preserving score ordering.
+	addedSeries := make(map[string]bool)
+	for i := 0; i < len(seriesScored); i++ {
+		if seriesScored[i].score == 0 {
+			break
+		}
+		key := strings.ToLower(seriesScored[i].item.Title)
+		if addedSeries[key] {
+			continue
+		}
+		addedSeries[key] = true
+		result.Series = append(result.Series, seriesScored[i].item)
+		if len(result.Series) >= limit {
+			break
+		}
+	}
+
+	// --- People (from metadata cast + crew) ------------------------------
+	// Iterate metadata_records details_json arrays via json_each and dedupe
+	// by name. Searches both movie and series metadata. Scoring done in Go.
+	peopleAcc := map[string]*PersonHit{}
+	peopleQuery := `
+		SELECT DISTINCT
+			json_extract(je.value, '$.name') AS name,
+			json_extract(je.value, '$.profileUrl') AS profile_url,
+			json_extract(je.value, '$.department') AS department
+		FROM metadata_records mr, json_each(mr.details_json, ?) je
+		WHERE LOWER(json_extract(je.value, '$.name')) LIKE ?
+	`
+	for _, root := range []string{"$.cast", "$.crew"} {
+		rows, err := s.db.QueryContext(ctx, peopleQuery, root, like)
+		if err != nil {
+			return result, err
+		}
+		for rows.Next() {
+			var name, profileURL, department sql.NullString
+			if err := rows.Scan(&name, &profileURL, &department); err != nil {
+				rows.Close()
+				return result, err
+			}
+			n := strings.TrimSpace(name.String)
+			if n == "" {
+				continue
+			}
+			key := strings.ToLower(n)
+			if entry, ok := peopleAcc[key]; ok {
+				if entry.ProfileURL == "" && profileURL.Valid {
+					entry.ProfileURL = profileURL.String
+				}
+				if entry.Department == "" && department.Valid {
+					entry.Department = department.String
+				}
+				continue
+			}
+			peopleAcc[key] = &PersonHit{
+				Name:       n,
+				ProfileURL: profileURL.String,
+				Department: department.String,
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return result, err
+		}
+	}
+	// Populate credit counts for the candidates we kept. One COUNT query per
+	// person (capped at limit*4 candidates) is cheap given the LIKE filter
+	// has already narrowed the set.
+	peopleSlice := make([]*PersonHit, 0, len(peopleAcc))
+	for _, p := range peopleAcc {
+		peopleSlice = append(peopleSlice, p)
+	}
+	// Pre-score so we can cap the candidate set before issuing count queries.
+	type scoredPerson struct {
+		hit   *PersonHit
+		score int
+	}
+	personScored := make([]scoredPerson, 0, len(peopleSlice))
+	for _, p := range peopleSlice {
+		personScored = append(personScored, scoredPerson{hit: p, score: scoreSubstring(strings.ToLower(p.Name), q)})
+	}
+	sort.SliceStable(personScored, func(i, j int) bool {
+		if personScored[i].score != personScored[j].score {
+			return personScored[i].score > personScored[j].score
+		}
+		return personScored[i].hit.Name < personScored[j].hit.Name
+	})
+	personCap := limit * 2
+	if personCap > len(personScored) {
+		personCap = len(personScored)
+	}
+	for i := 0; i < personCap; i++ {
+		if personScored[i].score == 0 {
+			break
+		}
+		var n int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM metadata_records mr
+			WHERE EXISTS (
+				SELECT 1 FROM json_each(mr.details_json, '$.cast') je
+				WHERE LOWER(json_extract(je.value, '$.name')) = LOWER(?)
+			) OR EXISTS (
+				SELECT 1 FROM json_each(mr.details_json, '$.crew') je
+				WHERE LOWER(json_extract(je.value, '$.name')) = LOWER(?)
+			)
+		`, personScored[i].hit.Name, personScored[i].hit.Name).Scan(&n); err != nil {
+			return result, err
+		}
+		personScored[i].hit.CreditCount = n
+		if n > 0 {
+			result.People = append(result.People, *personScored[i].hit)
+			if len(result.People) >= limit {
+				break
+			}
+		}
+	}
+
+	// --- Collections (from movie metadata $.collection) -------------------
+	collectionsAcc := map[string]*CollectionHit{}
+	collRows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT
+			json_extract(mr.details_json, '$.collection.id') AS coll_id,
+			json_extract(mr.details_json, '$.collection.name') AS coll_name,
+			json_extract(mr.details_json, '$.collection.posterUrl') AS poster,
+			json_extract(mr.details_json, '$.collection.backdropUrl') AS backdrop,
+			json_extract(mr.details_json, '$.collection.logoUrl') AS logo
+		FROM metadata_records mr
+		WHERE mr.kind = 'movie'
+		  AND json_extract(mr.details_json, '$.collection.id') IS NOT NULL
+		  AND LOWER(json_extract(mr.details_json, '$.collection.name')) LIKE ?
+	`, like)
+	if err != nil {
+		return result, err
+	}
+	for collRows.Next() {
+		var id, name, poster, backdrop, logo sql.NullString
+		if err := collRows.Scan(&id, &name, &poster, &backdrop, &logo); err != nil {
+			collRows.Close()
+			return result, err
+		}
+		if !id.Valid || strings.TrimSpace(id.String) == "" || strings.TrimSpace(name.String) == "" {
+			continue
+		}
+		key := id.String
+		if entry, ok := collectionsAcc[key]; ok {
+			if entry.PosterURL == "" {
+				entry.PosterURL = poster.String
+			}
+			if entry.BackdropURL == "" {
+				entry.BackdropURL = backdrop.String
+			}
+			if entry.LogoURL == "" {
+				entry.LogoURL = logo.String
+			}
+			continue
+		}
+		collectionsAcc[key] = &CollectionHit{
+			ID:          id.String,
+			Name:        strings.TrimSpace(name.String),
+			PosterURL:   poster.String,
+			BackdropURL: backdrop.String,
+			LogoURL:     logo.String,
+		}
+	}
+	collRows.Close()
+	if err := collRows.Err(); err != nil {
+		return result, err
+	}
+	type scoredCollection struct {
+		hit   *CollectionHit
+		score int
+	}
+	collScored := make([]scoredCollection, 0, len(collectionsAcc))
+	for _, c := range collectionsAcc {
+		collScored = append(collScored, scoredCollection{hit: c, score: scoreSubstring(strings.ToLower(c.Name), q)})
+	}
+	sort.SliceStable(collScored, func(i, j int) bool {
+		if collScored[i].score != collScored[j].score {
+			return collScored[i].score > collScored[j].score
+		}
+		return collScored[i].hit.Name < collScored[j].hit.Name
+	})
+	collCap := limit * 2
+	if collCap > len(collScored) {
+		collCap = len(collScored)
+	}
+	for i := 0; i < collCap; i++ {
+		if collScored[i].score == 0 {
+			break
+		}
+		var n int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(DISTINCT m.id)
+			FROM movies m
+			JOIN metadata_records mr ON mr.kind = 'movie' AND mr.item_id = m.id
+			WHERE json_extract(mr.details_json, '$.collection.id') = ?
+		`, collScored[i].hit.ID).Scan(&n); err != nil {
+			return result, err
+		}
+		collScored[i].hit.MovieCount = n
+		if n > 0 {
+			result.Collections = append(result.Collections, *collScored[i].hit)
+			if len(result.Collections) >= limit {
+				break
+			}
+		}
+	}
+
+	return result, nil
+}
+
 func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, error) {
 	var detail MovieDetail
 	var needsReview int
