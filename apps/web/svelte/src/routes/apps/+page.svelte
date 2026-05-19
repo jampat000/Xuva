@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { ChevronLeft, Tv, Smartphone, Tablet, Monitor } from 'lucide-svelte';
+  import { ChevronLeft, Monitor } from 'lucide-svelte';
   import Header from '$lib/components/Header.svelte';
 </script>
 
 <svelte:head>
   <title>Apps — Xuva</title>
-  <meta name="description" content="Download Xuva on every screen — iOS, Android, tvOS, Android TV, and web." />
+  <meta name="description" content="Access Xuva through your web browser on any device." />
 </svelte:head>
 
 <div class="min-h-screen bg-background">
@@ -17,34 +17,26 @@
     </a>
 
     <div class="mx-auto max-w-3xl">
-      <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">Every screen</div>
       <h1 class="font-serif-display text-[clamp(2rem,5vw,3.5rem)] leading-[1] tracking-tight">
         Xuva apps
       </h1>
       <p class="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
-        Your library travels with you. Xuva is designed for every form factor — from couch to commute.
+        Xuva runs as a web app in your browser. Open it on any device on your local network.
       </p>
 
-      <div class="mt-12 grid gap-4 sm:grid-cols-2">
-        {#each [
-          { icon: Monitor, label: 'Web', sub: 'Cinematic browser experience', status: 'Available now', available: true },
-          { icon: Smartphone, label: 'iOS & Android', sub: 'Thumb-friendly mobile app', status: 'Coming soon', available: false },
-          { icon: Tablet, label: 'iPad', sub: 'Sidebar-rich tablet layout', status: 'Coming soon', available: false },
-          { icon: Tv, label: 'tvOS & Android TV', sub: 'Remote-friendly 10-foot UI', status: 'Coming soon', available: false },
-        ] as app (app.label)}
-          <div class={`hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-6 ${!app.available ? 'opacity-60' : ''}`}>
-            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-elevated/60 text-primary-glow">
-              <app.icon class="h-5 w-5" />
-            </div>
-            <div>
-              <div class="font-semibold">{app.label}</div>
-              <p class="mt-0.5 text-xs text-muted-foreground">{app.sub}</p>
-              <span class={`mt-3 inline-block rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${app.available ? 'bg-emerald-400/10 text-emerald-300' : 'bg-foreground/[0.06] text-muted-foreground'}`}>
-                {app.status}
-              </span>
-            </div>
+      <div class="mt-12 max-w-sm">
+        <div class="hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-6">
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-elevated/60 text-primary-glow">
+            <Monitor class="h-5 w-5" />
           </div>
-        {/each}
+          <div>
+            <div class="font-semibold">Web</div>
+            <p class="mt-0.5 text-xs text-muted-foreground">Full browser experience — Chrome, Firefox, Safari</p>
+            <span class="mt-3 inline-block rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
+              Available now
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   </main>
