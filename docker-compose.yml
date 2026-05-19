@@ -1,0 +1,24 @@
+services:
+  xuva:
+    image: ghcr.io/jampat000/xuva:latest
+    container_name: xuva
+    restart: unless-stopped
+    ports:
+      - "8097:8097"
+    volumes:
+      # Persistent database, cache, and generated files
+      - xuva_data:/data
+      # Mount your media directories (adjust paths for your system)
+      - /media/movies:/movies:ro
+      - /media/tv:/tv:ro
+    environment:
+      XUVA_DATA_DIR: /data
+      XUVA_HTTP_ADDR: 0.0.0.0:8097
+      XUVA_MOVIES_PATH: /movies
+      XUVA_TV_PATH: /tv
+      # XUVA_SERVER_NAME: My Xuva
+      # XUVA_FFMPEG_PATH: /usr/bin/ffmpeg
+      # XUVA_FFPROBE_PATH: /usr/bin/ffprobe
+
+volumes:
+  xuva_data:
