@@ -1213,8 +1213,8 @@
         class="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#0e0e0e]/95 shadow-2xl"
         onclick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label="Keyboard shortcuts"
         tabindex="-1"
+        aria-label="Keyboard shortcuts"
       >
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
