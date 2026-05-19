@@ -1,0 +1,35 @@
+[Unit]
+Description=Xuva media server
+Documentation=https://github.com/jampat000/xuva
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xuva
+Group=xuva
+
+# Adjust these paths for your installation
+ExecStart=/usr/local/bin/xuva
+
+# Data and media paths — override via drop-in or EnvironmentFile
+Environment=XUVA_DATA_DIR=/var/lib/xuva
+Environment=XUVA_HTTP_ADDR=0.0.0.0:8097
+# Environment=XUVA_MOVIES_PATH=/media/movies
+# Environment=XUVA_TV_PATH=/media/tv
+# Environment=XUVA_SERVER_NAME=Xuva
+
+# Or load from a file: /etc/xuva/env
+# EnvironmentFile=-/etc/xuva/env
+
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/xuva
+
+[Install]
+WantedBy=multi-user.target
