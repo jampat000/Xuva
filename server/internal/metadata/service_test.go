@@ -1,4 +1,4 @@
-package metadata
+﻿package metadata
 
 import (
 	"context"
@@ -473,7 +473,7 @@ func seedMovie(t *testing.T, ctx context.Context, service *catalog.Service, libr
 	if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
 		t.Fatalf("save movie scan: %v", err)
 	}
-	items, err := service.ListMovies(ctx, 10)
+	items, err := service.ListMovies(ctx, 10, "")
 	if err != nil || len(items) == 0 {
 		t.Fatalf("list movies: %v %#v", err, items)
 	}
@@ -497,7 +497,7 @@ func seedSeries(t *testing.T, ctx context.Context, service *catalog.Service, lib
 	if _, err := service.SaveTVScan(ctx, library, result, candidates); err != nil {
 		t.Fatalf("save tv scan: %v", err)
 	}
-	items, err := service.ListSeries(ctx, 10)
+	items, err := service.ListSeries(ctx, 10, "")
 	if err != nil || len(items) == 0 {
 		t.Fatalf("list series: %v %#v", err, items)
 	}
@@ -572,3 +572,4 @@ func writeFile(t *testing.T, path string, value string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+

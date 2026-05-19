@@ -586,12 +586,74 @@ func (s *Service) Health(ctx context.Context) (Health, error) {
 	return health, nil
 }
 
-func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, error) {
+// RatingOrder returns a numeric order for a content rating string, allowing
+// ceiling comparisons across both theatrical and TV rating scales.
+// Returns -1 if the rating is unrecognised (treated as "no rating" — shown
+// regardless of ceiling, since hiding all unknown ratings is too aggressive).
+func RatingOrder(rating string) int {
+	switch strings.ToUpper(strings.TrimSpace(rating)) {
+	// Theatrical
+	case "G":
+		return 10
+	case "PG":
+		return 20
+	case "PG-13":
+		return 30
+	case "R":
+		return 40
+	case "NC-17":
+		return 50
+	// TV
+	case "TV-Y":
+		return 10
+	case "TV-Y7", "TV-Y7-FV":
+		return 15
+	case "TV-G":
+		return 20
+	case "TV-PG":
+		return 25
+	case "TV-14":
+		return 35
+	case "TV-MA":
+		return 45
+	}
+	return -1
+}
+
+// withinCeiling reports whether an item with the given content rating should be
+// visible when the profile's max rating is ceiling. Items with unrecognised or
+// empty ratings always pass through (shown). Items with a recognised rating are
+// shown only when their order ≤ the ceiling order.
+func withinCeiling(itemRating, ceiling string) bool {
+	if ceiling == "" {
+		return true // no restriction
+	}
+	ceilingOrder := RatingOrder(ceiling)
+	if ceilingOrder < 0 {
+		return true // unrecognised ceiling — no enforcement
+	}
+	itemOrder := RatingOrder(itemRating)
+	if itemOrder < 0 {
+		return true // unrecognised item rating — pass through
+	}
+	return itemOrder <= ceilingOrder
+}
+
+func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string) ([]MovieListItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 2000 {
 		limit = 2000
+	}
+	// When a rating ceiling is active we over-fetch so the Go-level filter
+	// still has enough candidates to fill the requested limit.
+	sqlLimit := limit
+	if maxRating != "" {
+		sqlLimit = limit * 10
+		if sqlLimit > 2000 {
+			sqlLimit = 2000
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review, count(mv.media_source_id) AS version_count
@@ -600,7 +662,7 @@ func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, e
 		GROUP BY m.id
 		ORDER BY m.sort_title, m.year
 		LIMIT ?
-	`, limit)
+	`, sqlLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -620,7 +682,19 @@ func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, e
 			item.Metadata = &record
 			applyMovieMetadata(&item.Title, &item.Year, &item.SortTitle, record)
 		}
+		if maxRating != "" {
+			cr := ""
+			if item.Metadata != nil {
+				cr = item.Metadata.ContentRating
+			}
+			if !withinCeiling(cr, maxRating) {
+				continue
+			}
+		}
 		output = append(output, item)
+		if len(output) >= limit {
+			break
+		}
 	}
 	return output, rows.Err()
 }
@@ -1000,7 +1074,7 @@ func scoreSubstring(haystack, needle string) int {
 // collections for the given query string. It is the single backend behind the
 // header search dropdown and the /search page. Limit defaults to 8 per
 // category and is clamped to 40.
-func (s *Service) SearchLibrary(ctx context.Context, query string, limit int) (SearchResults, error) {
+func (s *Service) SearchLibrary(ctx context.Context, query string, limit int, maxRating string) (SearchResults, error) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	result := SearchResults{Query: query, Movies: []MovieListItem{}, Series: []SeriesListItem{}, People: []PersonHit{}, Collections: []CollectionHit{}}
 	if q == "" {
@@ -1069,9 +1143,16 @@ func (s *Service) SearchLibrary(ctx context.Context, query string, limit int) (S
 		}
 		return movieScored[i].item.Title < movieScored[j].item.Title
 	})
-	for i := 0; i < len(movieScored) && i < limit; i++ {
+	for i := 0; i < len(movieScored) && len(result.Movies) < limit; i++ {
 		if movieScored[i].score == 0 {
 			break
+		}
+		cr := ""
+		if movieScored[i].item.Metadata != nil {
+			cr = movieScored[i].item.Metadata.ContentRating
+		}
+		if !withinCeiling(cr, maxRating) {
+			continue
 		}
 		result.Movies = append(result.Movies, movieScored[i].item)
 	}
@@ -1124,11 +1205,18 @@ func (s *Service) SearchLibrary(ctx context.Context, query string, limit int) (S
 		return seriesScored[i].item.Title < seriesScored[j].item.Title
 	})
 	// Build the deduped series list (collapse common title variants),
-	// preserving score ordering.
+	// preserving score ordering, applying rating ceiling when set.
 	addedSeries := make(map[string]bool)
 	for i := 0; i < len(seriesScored); i++ {
 		if seriesScored[i].score == 0 {
 			break
+		}
+		cr := ""
+		if seriesScored[i].item.Metadata != nil {
+			cr = seriesScored[i].item.Metadata.ContentRating
+		}
+		if !withinCeiling(cr, maxRating) {
+			continue
 		}
 		key := strings.ToLower(seriesScored[i].item.Title)
 		if addedSeries[key] {
@@ -1336,12 +1424,19 @@ func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, e
 	return detail, true, rows.Err()
 }
 
-func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, error) {
+func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string) ([]SeriesListItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 2000 {
 		limit = 2000
+	}
+	sqlLimit := limit
+	if maxRating != "" {
+		sqlLimit = limit * 10
+		if sqlLimit > 2000 {
+			sqlLimit = 2000
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
@@ -1351,13 +1446,13 @@ func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, 
 		GROUP BY s.id
 		ORDER BY s.sort_title, s.id
 		LIMIT ?
-	`, limit)
+	`, sqlLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	output := []SeriesListItem{}
+	raw := []SeriesListItem{}
 	for rows.Next() {
 		var item SeriesListItem
 		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
@@ -1369,12 +1464,29 @@ func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, 
 			item.Metadata = &record
 			applyTitleMetadata(&item.Title, &item.SortTitle, record)
 		}
-		output = append(output, item)
+		raw = append(raw, item)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return collapseSeriesListItems(output), nil
+	collapsed := collapseSeriesListItems(raw)
+	if maxRating == "" {
+		return collapsed, nil
+	}
+	output := make([]SeriesListItem, 0, len(collapsed))
+	for _, item := range collapsed {
+		cr := ""
+		if item.Metadata != nil {
+			cr = item.Metadata.ContentRating
+		}
+		if withinCeiling(cr, maxRating) {
+			output = append(output, item)
+			if len(output) >= limit {
+				break
+			}
+		}
+	}
+	return output, nil
 }
 
 func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool, error) {

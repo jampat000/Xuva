@@ -1559,20 +1559,36 @@ func migrationRollbackHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+// activeMaxRating returns the max_rating ceiling for the currently active
+// profile (if any). Returns "" when no profile is active or the profile has no
+// ceiling configured, which means unrestricted access.
+func activeMaxRating(ctx context.Context, deps Deps) string {
+	if deps.Auth == nil {
+		return ""
+	}
+	profileUserID, ok := auth.ActiveProfileFromContext(ctx)
+	if !ok || profileUserID == "" {
+		return ""
+	}
+	rating, _ := deps.Auth.GetProfileMaxRating(ctx, profileUserID)
+	return rating
+}
+
 func clientHomeHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit := queryInt(r, "limit", 24)
+		maxRating := activeMaxRating(r.Context(), deps)
 		recent, err := deps.PlayState.Recent(r.Context(), requestUserID(r), limit)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "recent playback lookup failed")
 			return
 		}
-		movieItems, err := deps.Catalog.ListMovies(r.Context(), limit)
+		movieItems, err := deps.Catalog.ListMovies(r.Context(), limit, maxRating)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "movie list failed")
 			return
 		}
-		seriesItems, err := deps.Catalog.ListSeries(r.Context(), limit)
+		seriesItems, err := deps.Catalog.ListSeries(r.Context(), limit, maxRating)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "series list failed")
 			return
@@ -1786,7 +1802,7 @@ func clientSearchHandler(deps Deps) http.HandlerFunc {
 			})
 			return
 		}
-		results, err := deps.Catalog.SearchLibrary(r.Context(), query, limit)
+		results, err := deps.Catalog.SearchLibrary(r.Context(), query, limit, activeMaxRating(r.Context(), deps))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "search failed")
 			return
@@ -2835,7 +2851,7 @@ func plural(value int) string {
 
 func moviesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := deps.Catalog.ListMovies(r.Context(), queryInt(r, "limit", 100))
+		items, err := deps.Catalog.ListMovies(r.Context(), queryInt(r, "limit", 100), activeMaxRating(r.Context(), deps))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "movie list failed")
 			return
@@ -2861,7 +2877,7 @@ func movieDetailHandler(deps Deps) http.HandlerFunc {
 
 func seriesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := deps.Catalog.ListSeries(r.Context(), queryInt(r, "limit", 100))
+		items, err := deps.Catalog.ListSeries(r.Context(), queryInt(r, "limit", 100), activeMaxRating(r.Context(), deps))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "series list failed")
 			return

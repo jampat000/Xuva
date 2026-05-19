@@ -1141,3 +1141,20 @@ func (s *Service) UpdateProfileSettings(
 	a.HasPin = pinHash != ""
 	return a, nil
 }
+
+// GetProfileMaxRating returns the max_rating for a profile user ID, or an
+// empty string if the user has no ceiling configured or is not found. It is a
+// lightweight read used by catalog handlers to enforce content ceilings.
+func (s *Service) GetProfileMaxRating(ctx context.Context, profileUserID string) (string, error) {
+	if profileUserID == "" {
+		return "", nil
+	}
+	var maxRating string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT max_rating FROM users WHERE id = ?`, profileUserID,
+	).Scan(&maxRating)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return strings.TrimSpace(maxRating), err
+}
