@@ -228,6 +228,21 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		}
 	}()
 
+	// People materialization backfill: populates the people/people_credits
+	// tables for databases that existed before issue #85 was shipped.
+	// Runs 20 s after start so details-json backfill has had a chance to
+	// complete first on small databases.
+	go func() {
+		select {
+		case <-appCtx.Done():
+			return
+		case <-time.After(20 * time.Second):
+		}
+		if err := catalogService.BackfillPeople(appCtx); err != nil && appCtx.Err() == nil {
+			slog.Warn("people backfill failed", "err", err)
+		}
+	}()
+
 	// Auto-backfill: when TMDB is configured at startup, dispatch a delayed
 	// background sweep that fetches TMDB rows for any catalog item missing
 	// them (typically wikipedia/filename-only items left over from before
