@@ -15,7 +15,7 @@
   // nothing in the set has one — that keeps the hero cinematic instead of
   // flashing the bundled placeholder JPG between titles.
   let slides = $derived.by(() => {
-    const withBackdrop = rawSlides.filter((s) => !!s.backdrop);
+    const withBackdrop = rawSlides.filter((s: Media) => !!s.backdrop);
     return withBackdrop.length > 0 ? withBackdrop : rawSlides;
   });
 

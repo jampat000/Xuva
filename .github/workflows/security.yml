@@ -29,3 +29,25 @@ jobs:
       - name: Vulnerability scan
         working-directory: server
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  frontend-typecheck:
+    name: Frontend svelte-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/web/svelte/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web/svelte
+        run: npm ci
+
+      - name: Type-check (svelte-check)
+        working-directory: apps/web/svelte
+        run: npm run check
