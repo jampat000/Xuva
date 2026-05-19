@@ -6,11 +6,13 @@ These rules apply to every Claude Code session in this repo.
 - **All work goes through a PR into `main`.** Never `git push` directly to `main`, even when admin override allows it. The repo has branch protection; respect it.
 - Create a topic branch named for the work (e.g. `fix/<area>-<short>`, `chore/<area>-<short>`, `feat/<area>-<short>`).
 - Open a PR with `gh pr create` (or the MCP equivalent). Wait for CI to be green before merging. Merge with `--merge` (preserve commit history), not squash.
+- **Commit edits to a branch immediately after applying them.** Don't accumulate `Edit`/`Write` calls across multiple turns hoping to commit later — a silent file revert (by the user, a linter, or restored prior state) between your edit and your commit will lose the work without warning, and you'll only notice when someone says "I thought we shipped that." If a change is part of a larger PR and you can't commit the final state yet, push a WIP commit anyway so the work survives.
 
 ### Worktrees
 - **Never commit from a Claude worktree under `.claude/worktrees/...`.** That isolates commits onto a worktree branch where they invisibly diverge from `main`.
 - If the session CWD is `.claude/worktrees/...`, the agent must `cd` to `C:\Projects\Xuva` (or use `git -C C:\Projects\Xuva ...`) for every git operation.
 - When in doubt, run `git rev-parse --show-toplevel` to confirm where commits would land.
+- **Always use `git -C C:\Projects\Xuva ...` explicitly.** PowerShell's working directory can get stuck pointing at a removed worktree path (`Shell cwd was reset to ...`), which causes `git commit` to fail with `fatal: '/' is outside repository` while `git push` silently succeeds against the wrong ref. Belt-and-braces: pass `-C` on every git command, and write commit messages to a file (`git commit -F path/to/msg.txt`) rather than relying on PowerShell heredocs which can also misfire under the same cwd-reset.
 
 ### CI gate
 - The `Security` workflow (`.github/workflows/security.yml`) runs `tools/agent-check.cjs` as a governance gate. It enforces three-way consistency between:
