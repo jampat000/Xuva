@@ -99,6 +99,59 @@ func benchmarkMovieCandidates(count int) (libraries.Library, []scanner.FileCandi
 	return library, files, candidates
 }
 
+// BenchmarkSearchLibraryPeople measures the people search path against the
+// materialized people/people_credits tables introduced in issue #85.
+func BenchmarkSearchLibraryPeople(b *testing.B) {
+	ctx := context.Background()
+	service := newBenchmarkService(b)
+	library := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+	// Seed 500 movies each with a 10-person cast so the people table is
+	// representative of a mid-size library.
+	firstNames := []string{"Alice", "Bob", "Carol", "David", "Eva", "Frank", "Grace", "Henry", "Iris", "Jack"}
+	for i := 0; i < 500; i++ {
+		title := fmt.Sprintf("Bench Movie %04d", i)
+		file := scanner.FileCandidate{
+			Path:       filepath.Clean(fmt.Sprintf(`X:\Movies\%s (2024)\%s.mkv`, title, title)),
+			RelPath:    filepath.Clean(fmt.Sprintf(`%s (2024)\%s.mkv`, title, title)),
+			Name:       title + ".mkv",
+			Extension:  ".mkv",
+			Size:       1024,
+			ModifiedAt: time.Now().UTC(),
+			Changed:    true,
+		}
+		if _, err := service.SaveMovieScan(ctx, library, scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file}),
+			[]movies.Candidate{{Title: title, Year: 2024, QualityLabel: "1080p", Media: file}}); err != nil {
+			b.Fatalf("seed movie: %v", err)
+		}
+		cast := make([]MetadataCredit, len(firstNames))
+		for j, n := range firstNames {
+			cast[j] = MetadataCredit{Name: fmt.Sprintf("%s Smith-%04d", n, i), Character: "Role"}
+		}
+		movieList, err := service.ListMovies(ctx, 10000)
+		if err != nil {
+			b.Fatalf("list movies: %v", err)
+		}
+		for _, m := range movieList {
+			if m.Title != title {
+				continue
+			}
+			if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+				Kind: "movie", ItemID: m.ID, Provider: "tmdb",
+				Title: title, Confidence: 0.9, Cast: cast,
+			}); err != nil {
+				b.Fatalf("upsert metadata: %v", err)
+			}
+			break
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := service.SearchLibrary(ctx, "Alice", 8); err != nil {
+			b.Fatalf("search: %v", err)
+		}
+	}
+}
+
 func newBenchmarkService(b *testing.B) *Service {
 	b.Helper()
 	db, err := database.Open(context.Background(), b.TempDir())

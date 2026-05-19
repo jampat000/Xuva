@@ -1141,69 +1141,45 @@ func (s *Service) SearchLibrary(ctx context.Context, query string, limit int) (S
 		}
 	}
 
-	// --- People (from metadata cast + crew) ------------------------------
-	// Iterate metadata_records details_json arrays via json_each and dedupe
-	// by name. Searches both movie and series metadata. Scoring done in Go.
-	peopleAcc := map[string]*PersonHit{}
-	peopleQuery := `
-		SELECT DISTINCT
-			json_extract(je.value, '$.name') AS name,
-			json_extract(je.value, '$.profileUrl') AS profile_url,
-			json_extract(je.value, '$.department') AS department
-		FROM metadata_records mr, json_each(mr.details_json, ?) je
-		WHERE LOWER(json_extract(je.value, '$.name')) LIKE ?
-	`
-	for _, root := range []string{"$.cast", "$.crew"} {
-		rows, err := s.db.QueryContext(ctx, peopleQuery, root, like)
+	// --- People (from materialized people + people_credits tables) -------
+	// Single indexed query replaces the old json_each scan + N count queries.
+	type scoredPerson struct {
+		hit   PersonHit
+		score int
+	}
+	var personScored []scoredPerson
+	{
+		pRows, err := s.db.QueryContext(ctx, `
+			SELECT p.name, p.profile_url, p.department,
+			       COUNT(DISTINCT pc.item_kind || ':' || pc.item_id) AS credit_count
+			FROM people p
+			JOIN people_credits pc ON pc.person_id = p.id
+			WHERE p.name_lower LIKE ?
+			GROUP BY p.id
+			ORDER BY credit_count DESC, p.name
+			LIMIT ?
+		`, like, limit*4)
 		if err != nil {
 			return result, err
 		}
-		for rows.Next() {
-			var name, profileURL, department sql.NullString
-			if err := rows.Scan(&name, &profileURL, &department); err != nil {
-				rows.Close()
+		for pRows.Next() {
+			var hit PersonHit
+			var profileURL, department sql.NullString
+			if err := pRows.Scan(&hit.Name, &profileURL, &department, &hit.CreditCount); err != nil {
+				pRows.Close()
 				return result, err
 			}
-			n := strings.TrimSpace(name.String)
-			if n == "" {
-				continue
-			}
-			key := strings.ToLower(n)
-			if entry, ok := peopleAcc[key]; ok {
-				if entry.ProfileURL == "" && profileURL.Valid {
-					entry.ProfileURL = profileURL.String
-				}
-				if entry.Department == "" && department.Valid {
-					entry.Department = department.String
-				}
-				continue
-			}
-			peopleAcc[key] = &PersonHit{
-				Name:       n,
-				ProfileURL: profileURL.String,
-				Department: department.String,
-			}
+			hit.ProfileURL = profileURL.String
+			hit.Department = department.String
+			personScored = append(personScored, scoredPerson{
+				hit:   hit,
+				score: scoreSubstring(strings.ToLower(hit.Name), q),
+			})
 		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
+		pRows.Close()
+		if err := pRows.Err(); err != nil {
 			return result, err
 		}
-	}
-	// Populate credit counts for the candidates we kept. One COUNT query per
-	// person (capped at limit*4 candidates) is cheap given the LIKE filter
-	// has already narrowed the set.
-	peopleSlice := make([]*PersonHit, 0, len(peopleAcc))
-	for _, p := range peopleAcc {
-		peopleSlice = append(peopleSlice, p)
-	}
-	// Pre-score so we can cap the candidate set before issuing count queries.
-	type scoredPerson struct {
-		hit   *PersonHit
-		score int
-	}
-	personScored := make([]scoredPerson, 0, len(peopleSlice))
-	for _, p := range peopleSlice {
-		personScored = append(personScored, scoredPerson{hit: p, score: scoreSubstring(strings.ToLower(p.Name), q)})
 	}
 	sort.SliceStable(personScored, func(i, j int) bool {
 		if personScored[i].score != personScored[j].score {
@@ -1211,33 +1187,13 @@ func (s *Service) SearchLibrary(ctx context.Context, query string, limit int) (S
 		}
 		return personScored[i].hit.Name < personScored[j].hit.Name
 	})
-	personCap := limit * 2
-	if personCap > len(personScored) {
-		personCap = len(personScored)
-	}
-	for i := 0; i < personCap; i++ {
-		if personScored[i].score == 0 {
+	for _, sp := range personScored {
+		if sp.score == 0 {
 			break
 		}
-		var n int
-		if err := s.db.QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM metadata_records mr
-			WHERE EXISTS (
-				SELECT 1 FROM json_each(mr.details_json, '$.cast') je
-				WHERE LOWER(json_extract(je.value, '$.name')) = LOWER(?)
-			) OR EXISTS (
-				SELECT 1 FROM json_each(mr.details_json, '$.crew') je
-				WHERE LOWER(json_extract(je.value, '$.name')) = LOWER(?)
-			)
-		`, personScored[i].hit.Name, personScored[i].hit.Name).Scan(&n); err != nil {
-			return result, err
-		}
-		personScored[i].hit.CreditCount = n
-		if n > 0 {
-			result.People = append(result.People, *personScored[i].hit)
-			if len(result.People) >= limit {
-				break
-			}
+		result.People = append(result.People, sp.hit)
+		if len(result.People) >= limit {
+			break
 		}
 	}
 
@@ -3186,7 +3142,57 @@ func upsertMetadataRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord
 			fetched_at = excluded.fetched_at,
 			updated_at = excluded.updated_at
 	`, record.Kind, record.ItemID, record.Provider, record.ExternalID, record.Title, record.Year, record.Overview, record.PosterURL, record.BackdropURL, record.ThumbnailURL, record.LogoURL, record.BannerURL, record.VideoKey, record.TrailerPath, record.ArtworkJSON, record.DetailsJSON, record.Confidence, record.RawJSON, record.FetchedAt, record.UpdatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	return syncPeopleFromRecord(ctx, tx, record)
+}
+
+func personID(name string) string {
+	h := sha1.New()
+	h.Write([]byte(strings.ToLower(strings.TrimSpace(name))))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func syncPeopleFromRecord(ctx context.Context, tx *sql.Tx, record MetadataRecord) error {
+	allCredits := make([]MetadataCredit, 0, len(record.Cast)+len(record.Crew)+len(record.GuestCast))
+	allCredits = append(allCredits, record.Cast...)
+	allCredits = append(allCredits, record.Crew...)
+	allCredits = append(allCredits, record.GuestCast...)
+	if len(allCredits) == 0 {
+		return nil
+	}
+	now := timestamp(time.Now())
+	seen := map[string]struct{}{}
+	for _, credit := range allCredits {
+		name := strings.TrimSpace(credit.Name)
+		if name == "" {
+			continue
+		}
+		id := personID(name)
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO people(id, name, name_lower, profile_url, department, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				profile_url = CASE WHEN people.profile_url != '' THEN people.profile_url ELSE excluded.profile_url END,
+				department  = CASE WHEN people.department  != '' THEN people.department  ELSE excluded.department  END,
+				updated_at  = excluded.updated_at
+		`, id, name, strings.ToLower(name), credit.ProfileURL, credit.Department, now); err != nil {
+			return err
+		}
+		creditKey := id + "|" + record.Kind + "|" + record.ItemID + "|" + credit.Role
+		if _, dup := seen[creditKey]; dup {
+			continue
+		}
+		seen[creditKey] = struct{}{}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT OR REPLACE INTO people_credits(person_id, item_kind, item_id, role, character)
+			VALUES(?, ?, ?, ?, ?)
+		`, id, record.Kind, record.ItemID, credit.Role, credit.Character); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func metadataConfidence(needsReview bool) float64 {
@@ -3217,6 +3223,51 @@ func titleWithYear(title string, year int) string {
 		return title
 	}
 	return title + " (" + intString(year) + ")"
+}
+
+// BackfillPeople populates the people and people_credits tables from all
+// existing metadata_records rows. Safe to call multiple times; it is
+// idempotent thanks to ON CONFLICT/INSERT OR REPLACE semantics.
+func (s *Service) BackfillPeople(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, external_id, title, year, overview,
+		       poster_url, backdrop_url, thumbnail_url, logo_url, banner_url,
+		       video_key, trailer_path, artwork_json, details_json,
+		       confidence, raw_json, fetched_at, updated_at
+		FROM metadata_records
+		WHERE details_json != '{}' AND details_json != ''
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	records, err := scanMetadataRecords(rows)
+	if err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, record := range records {
+		if len(record.Cast)+len(record.Crew)+len(record.GuestCast) == 0 {
+			continue
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		if err := syncPeopleFromRecord(ctx, tx, record); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func episodeDisplayTitle(seriesTitle string, seasonNumber int, episodeNumber int, episodeEnd int, episodeTitle string) string {
