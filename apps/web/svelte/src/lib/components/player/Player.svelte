@@ -30,6 +30,7 @@
   } from '$lib/api/details';
   import { getChapters, type ChaptersResponse, type UserPreferences } from '$lib/api/operator';
   import { getAuthSession } from '$lib/api/auth';
+  import { fmt, parseTimestampVTT, thumbForTime as thumbForTimeHelper, type ThumbnailCue, type ChapterCue } from './helpers.js';
 
   // ─── Props ───────────────────────────────────────────────────────────────
   interface Props {
@@ -130,13 +131,7 @@
   const progressPercent = $derived(duration > 0 ? (currentTime / duration) * 100 : 0);
   const bufferedPercent = $derived(duration > 0 ? (buffered / duration) * 100 : 0);
 
-  function fmt(s: number): string {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = Math.floor(s % 60);
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-    return `${m}:${String(sec).padStart(2, '0')}`;
-  }
+  // fmt, parseTimestampVTT, thumbForTime imported from helpers.ts
 
   function fmtVolume(v: number): string {
     return `${Math.round(v * 100)}%`;
@@ -436,23 +431,11 @@
   }
 
   // ─── Thumbnails + chapters ────────────────────────────────────────────────
-  interface ThumbnailCue { start: number; end: number; x: number; y: number; w: number; h: number; }
-  interface ChapterCue   { start: number; end: number; title: string; }
+  // ThumbnailCue, ChapterCue interfaces imported from helpers.ts
 
   let thumbCues = $state<ThumbnailCue[]>([]);
   let chapterCues = $state<ChapterCue[]>([]);
   let spriteUrl = $state('');
-
-  function parseTimestampVTT(ts: string): number {
-    const parts = ts.trim().split(':');
-    if (parts.length === 3) {
-      return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-    }
-    if (parts.length === 2) {
-      return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
-    }
-    return parseFloat(parts[0]);
-  }
 
   async function loadThumbnailVTT() {
     try {
@@ -508,8 +491,7 @@
   }
 
   function thumbForTime(t: number): ThumbnailCue | null {
-    if (!thumbCues.length) return null;
-    return thumbCues.find(c => t >= c.start && t < c.end) ?? thumbCues[thumbCues.length - 1];
+    return thumbForTimeHelper(t, thumbCues);
   }
 
   // ─── Scrubber hover preview ───────────────────────────────────────────────
