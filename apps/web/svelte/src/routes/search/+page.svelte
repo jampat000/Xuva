@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { appState } from '$lib/stores/appState.svelte';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { Search, Film, Tv, SlidersHorizontal } from 'lucide-svelte';
@@ -48,7 +49,7 @@
 </script>
 
 <svelte:head>
-  <title>{localQuery ? `"${localQuery}" — Search` : 'Search'} — Xuva</title>
+  <title>{localQuery ? `"${localQuery}" — Search` : 'Search'} — {appState.serverName}</title>
   <meta name="description" content="Search your Xuva media library." />
 </svelte:head>
 

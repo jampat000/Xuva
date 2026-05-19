@@ -1,7 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { appState } from '$lib/stores/appState.svelte';
   import { onMount } from 'svelte';
-  import { Play, Plus, Star, Clock, ChevronLeft } from 'lucide-svelte';
+  import { Play, Plus, Check, Star, Clock, ChevronLeft, User, Film } from 'lucide-svelte';
+  import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import Header from '$lib/components/Header.svelte';
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getMovieDetail } from '$lib/api/home';
@@ -47,6 +49,15 @@
   const versionCount = $derived(detail?.versions?.length ?? 0);
   const mediaSourceId = $derived(detail?.versions?.[0]?.mediaSourceId);
 
+  // Cast / crew / collection — from the merged best metadata record.
+  // MetadataRecord has [key: string]: unknown so we cast explicitly.
+  type Credit = { name?: string; character?: string; role?: string; profileUrl?: string; sortOrder?: number };
+  type CollInfo = { id?: string; name?: string; posterUrl?: string; backdropUrl?: string; logoUrl?: string };
+  const metaAny = $derived(metadata as Record<string, unknown> | null);
+  const cast = $derived<Credit[]>((metaAny?.cast as Credit[] | undefined) ?? []);
+  const directors = $derived<string[]>((metaAny?.directors as string[] | undefined) ?? []);
+  const collection = $derived<CollInfo | undefined>(metaAny?.collection as CollInfo | undefined);
+
   // Build play URL including back-link and title for the player chrome
   const basePlayUrl = $derived(
     mediaSourceId
@@ -54,6 +65,20 @@
       : ''
   );
   let playHref = $state('');
+
+  // Watchlist
+  const inWatchlist = $derived(isInWatchlist(id, 'movie'));
+  function handleWatchlist() {
+    toggleWatchlist({
+      id,
+      kind: 'movie',
+      title,
+      year,
+      posterUrl,
+      backdropUrl,
+      genres,
+    });
+  }
 
   async function load() {
     try {
@@ -87,7 +112,7 @@
 </script>
 
 <svelte:head>
-  <title>{title} — Xuva</title>
+  <title>{title} — {appState.serverName}</title>
   <meta name="description" content={overview || `Watch ${title} on Xuva.`} />
 </svelte:head>
 
@@ -115,7 +140,7 @@
         <img
           src={backdropUrl}
           alt=""
-          class="h-full w-full object-cover"
+          class="h-full w-full object-cover object-top"
           onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
         />
       {/if}
@@ -194,10 +219,20 @@
             {/if}
             <button
               type="button"
-              aria-label="Add to watchlist"
-              class="hairline flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5 text-foreground backdrop-blur-md transition-colors hover:bg-foreground/10"
+              onclick={handleWatchlist}
+              aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+              title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+              class={`hairline flex h-12 w-12 items-center justify-center rounded-full backdrop-blur-md transition-all ${
+                inWatchlist
+                  ? 'bg-primary/20 text-primary-glow hover:bg-primary/30'
+                  : 'bg-foreground/5 text-foreground hover:bg-foreground/10'
+              }`}
             >
-              <Plus class="h-5 w-5" />
+              {#if inWatchlist}
+                <Check class="h-5 w-5" />
+              {:else}
+                <Plus class="h-5 w-5" />
+              {/if}
             </button>
           </div>
 
@@ -205,6 +240,76 @@
           {#if versionCount > 0}
             <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               <span><span class="text-foreground/80">{versionCount}</span> {versionCount === 1 ? 'version' : 'versions'}</span>
+              {#if directors.length > 0}
+                <span>Dir. <span class="text-foreground/80">{directors[0]}</span></span>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Cast strip -->
+          {#if cast.length > 0}
+            <div class="mt-10 border-t border-border pt-8">
+              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Cast</h3>
+              <div class="scrollbar-none mt-5 -mx-1 flex gap-4 overflow-x-auto px-1 pb-3">
+                {#each cast.slice(0, 16) as person, i (person.name ?? i)}
+                  <a
+                    href={`/people/${encodeURIComponent(person.name ?? '')}`}
+                    class="group flex w-[72px] shrink-0 flex-col items-center gap-2 text-center"
+                  >
+                    <div class="relative h-[72px] w-[72px] overflow-hidden rounded-full bg-surface-elevated ring-2 ring-border/40 transition-all duration-300 group-hover:ring-primary/40">
+                      {#if person.profileUrl}
+                        <img
+                          src={person.profileUrl}
+                          alt={person.name}
+                          loading="lazy"
+                          class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                        />
+                      {:else}
+                        <div class="flex h-full w-full items-center justify-center text-muted-foreground">
+                          <User class="h-7 w-7" />
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="w-full min-w-0">
+                      <p class="truncate text-[11px] font-medium leading-tight text-foreground">{person.name ?? ''}</p>
+                      {#if person.character}
+                        <p class="mt-0.5 truncate text-[10px] leading-tight text-muted-foreground">{person.character}</p>
+                      {/if}
+                    </div>
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Collection banner -->
+          {#if collection?.id && collection.name}
+            <div class="mt-10 border-t border-border pt-8">
+              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Part of a Collection</h3>
+              <a
+                href={`/collections/${encodeURIComponent(collection.id)}`}
+                class="hairline mt-4 flex items-center gap-0 overflow-hidden rounded-2xl bg-surface/30 transition-all duration-300 hover:bg-surface/60 hover:-translate-y-0.5"
+              >
+                {#if collection.posterUrl}
+                  <img
+                    src={collection.posterUrl}
+                    alt={collection.name}
+                    loading="lazy"
+                    class="h-24 w-16 shrink-0 object-cover"
+                    onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                  />
+                {:else}
+                  <div class="flex h-24 w-16 shrink-0 items-center justify-center bg-surface-elevated text-muted-foreground">
+                    <Film class="h-6 w-6" />
+                  </div>
+                {/if}
+                <div class="flex min-w-0 flex-1 flex-col gap-1 p-5">
+                  <span class="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Collection</span>
+                  <span class="truncate font-semibold text-foreground">{collection.name}</span>
+                  <span class="text-xs text-muted-foreground">View all movies →</span>
+                </div>
+              </a>
             </div>
           {/if}
 

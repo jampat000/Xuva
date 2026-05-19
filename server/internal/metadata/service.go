@@ -15,12 +15,14 @@ import (
 	"github.com/jampat000/Xuva/server/internal/catalog"
 	"github.com/jampat000/Xuva/server/internal/config"
 	"github.com/jampat000/Xuva/server/internal/events"
+	"github.com/jampat000/Xuva/server/internal/trailers"
 )
 
 type Service struct {
 	cfg                 config.Config
 	catalog             *catalog.Service
 	events              *events.Bus
+	trailers            *trailers.Service // optional: nil disables trailer fetch
 	client              *http.Client
 	tmdbBaseURL         string
 	omdbBaseURL         string
@@ -32,6 +34,32 @@ type Service struct {
 	wikipediaSummaryURL string
 	providerStateMu     sync.RWMutex
 	providerState       map[string]providerRuntimeState
+	backfillMu          sync.Mutex
+	backfill            BackfillStatus
+	backfillCancel      context.CancelFunc
+}
+
+// BackfillStatus is a snapshot of the missing-provider backfill job.
+// Exposed via the API for the Settings UI's "library health" panel.
+type BackfillStatus struct {
+	Running     bool      `json:"running"`
+	Provider    string    `json:"provider,omitempty"`    // which provider we're filling in (e.g. "tmdb")
+	Kind        string    `json:"kind,omitempty"`        // current sweep: "movie" | "series"
+	StartedAt   time.Time `json:"startedAt,omitempty"`
+	FinishedAt  time.Time `json:"finishedAt,omitempty"`
+	Total       int       `json:"total"`                 // total items needing this provider (computed once at start)
+	Refreshed   int       `json:"refreshed"`             // successful refreshes so far
+	Failed      int       `json:"failed"`                // attempted but errored
+	Remaining   int       `json:"remaining"`             // live count from catalog (decreases as we go)
+	LastTitle   string    `json:"lastTitle,omitempty"`
+	LastError   string    `json:"lastError,omitempty"`
+}
+
+// SetTrailers wires the trailer downloader so post-refresh hooks can queue
+// downloads. Called from app.go after both services are constructed —
+// kept as a setter to avoid a circular construction order.
+func (s *Service) SetTrailers(t *trailers.Service) {
+	s.trailers = t
 }
 
 type RefreshRequest struct {
@@ -123,7 +151,9 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			"nfo":       true,
 			"artwork":   true,
 			"tvmaze":    true,
-			"tvdb":      cfg.TVDBAPIKey != "",
+			// TVDB is disabled at the provider level (subscription model
+			// incompatible with embedded keys). Code remains dormant.
+			"tvdb":      false,
 			"wikidata":  true,
 			"wikipedia": true,
 			"fanart":    cfg.FanartTVAPIKey != "",
@@ -558,4 +588,166 @@ func firstNonEmpty(values ...string) string {
 func mustJSON(value any) string {
 	raw, _ := json.Marshal(value)
 	return string(raw)
+}
+
+// ── Backfill ────────────────────────────────────────────────────────────────
+//
+// Backfill walks the catalog and refreshes metadata for every item that
+// doesn't yet have a row for a given provider (e.g. TMDB). Unlike
+// RefreshBatch, which respects `shouldSkipMetadata` and therefore skips
+// items that have any enriched metadata, backfill explicitly targets
+// per-provider gaps — exactly what we need when a TMDB key arrives after
+// the library was already partially populated by Wikipedia/Wikidata.
+//
+// One backfill runs at a time, protected by a mutex. Status is published
+// to the events bus on every step so the Settings UI can render live
+// progress without polling.
+
+// BackfillStatus returns a snapshot of the current backfill state.
+func (s *Service) BackfillStatus() BackfillStatus {
+	s.backfillMu.Lock()
+	defer s.backfillMu.Unlock()
+	status := s.backfill
+	// If running, refresh `Remaining` lazily so callers see real progress
+	// even between batch boundaries.
+	if status.Running {
+		// fall through — Remaining is updated each batch
+	}
+	return status
+}
+
+// StartBackfill kicks off a one-shot backfill goroutine for the given
+// provider. Returns an error if a backfill is already running. Otherwise
+// returns immediately and progress can be polled via BackfillStatus or
+// observed via the "metadata.backfill.*" event channel.
+func (s *Service) StartBackfill(parentCtx context.Context, provider string) error {
+	provider = strings.TrimSpace(strings.ToLower(provider))
+	if provider == "" {
+		return errors.New("provider required")
+	}
+	if s.catalog == nil {
+		return errors.New("catalog not available")
+	}
+	cfg := s.activeConfig()
+	if managedProviderCredential(provider, cfg) == "" {
+		return errors.New("provider " + provider + " is not configured; set its API key first")
+	}
+
+	s.backfillMu.Lock()
+	if s.backfill.Running {
+		s.backfillMu.Unlock()
+		return errors.New("backfill already running")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.backfill = BackfillStatus{
+		Running:   true,
+		Provider:  provider,
+		StartedAt: time.Now().UTC(),
+	}
+	s.backfillCancel = cancel
+	s.backfillMu.Unlock()
+
+	go s.runBackfill(ctx, parentCtx, provider)
+	return nil
+}
+
+// StopBackfill aborts the running backfill, if any. No-op if idle.
+func (s *Service) StopBackfill() {
+	s.backfillMu.Lock()
+	if s.backfillCancel != nil {
+		s.backfillCancel()
+	}
+	s.backfillMu.Unlock()
+}
+
+func (s *Service) runBackfill(ctx context.Context, _ context.Context, provider string) {
+	defer func() {
+		s.backfillMu.Lock()
+		s.backfill.Running = false
+		s.backfill.FinishedAt = time.Now().UTC()
+		s.backfillCancel = nil
+		s.backfillMu.Unlock()
+		s.publishBackfillEvent("metadata.backfill.finished")
+	}()
+
+	// Compute initial totals across both kinds so the UI can show a real
+	// progress bar from the first frame.
+	totalMovies, _ := s.catalog.CountItemsMissingProvider(ctx, "movie", provider)
+	totalSeries, _ := s.catalog.CountItemsMissingProvider(ctx, "series", provider)
+	s.backfillMu.Lock()
+	s.backfill.Total = totalMovies + totalSeries
+	s.backfill.Remaining = s.backfill.Total
+	s.backfillMu.Unlock()
+	s.publishBackfillEvent("metadata.backfill.started")
+
+	const batchSize = 25
+	const pauseBetweenItems = 150 * time.Millisecond // gentle rate-limit
+
+	for _, kind := range []string{"movie", "series"} {
+		s.backfillMu.Lock()
+		s.backfill.Kind = kind
+		s.backfillMu.Unlock()
+
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			items, err := s.catalog.ListItemsMissingProvider(ctx, kind, provider, batchSize)
+			if err != nil {
+				s.recordBackfillError(err)
+				break
+			}
+			if len(items) == 0 {
+				break
+			}
+			for _, item := range items {
+				if ctx.Err() != nil {
+					return
+				}
+				_, err := s.Refresh(ctx, RefreshRequest{
+					Kind:  item.Kind,
+					ID:    item.ID,
+					Title: item.Title,
+					Year:  item.Year,
+				})
+				s.backfillMu.Lock()
+				s.backfill.LastTitle = item.Title
+				if err != nil {
+					s.backfill.Failed++
+					s.backfill.LastError = err.Error()
+				} else {
+					s.backfill.Refreshed++
+					s.backfill.LastError = ""
+				}
+				s.backfillMu.Unlock()
+				s.publishBackfillEvent("metadata.backfill.progress")
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(pauseBetweenItems):
+				}
+			}
+			// Refresh Remaining from the source of truth so a) any new items
+			// added by a parallel scan show up, and b) we don't loop forever
+			// if Refresh somehow fails to produce a provider row.
+			remainingMovies, _ := s.catalog.CountItemsMissingProvider(ctx, "movie", provider)
+			remainingSeries, _ := s.catalog.CountItemsMissingProvider(ctx, "series", provider)
+			s.backfillMu.Lock()
+			s.backfill.Remaining = remainingMovies + remainingSeries
+			s.backfillMu.Unlock()
+		}
+	}
+}
+
+func (s *Service) recordBackfillError(err error) {
+	s.backfillMu.Lock()
+	s.backfill.LastError = err.Error()
+	s.backfillMu.Unlock()
+}
+
+func (s *Service) publishBackfillEvent(event string) {
+	if s.events == nil {
+		return
+	}
+	s.events.Publish(event, s.BackfillStatus())
 }

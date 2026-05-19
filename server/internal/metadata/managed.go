@@ -274,11 +274,8 @@ func managedProviderCredential(provider string, cfg config.Config) string {
 			cfg.TMDBAPIKey,
 		)
 	case "tvdb":
-		return firstNonEmptyTrimmed(
-			os.Getenv("XUVA_MANAGED_TVDB_API_KEY"),
-			os.Getenv("XUVA_TVDB_API_KEY"),
-			cfg.TVDBAPIKey,
-		)
+		// Permanently empty — TVDB provider is disabled in this build.
+		return ""
 	case "fanart":
 		return firstNonEmptyTrimmed(
 			os.Getenv("XUVA_MANAGED_FANARTTV_API_KEY"),

@@ -5,6 +5,5 @@ export { default as PosterCard } from './PosterCard.svelte';
 export { default as ContentRow } from './ContentRow.svelte';
 export { default as Top10Row } from './Top10Row.svelte';
 export { default as CollectionsBento } from './CollectionsBento.svelte';
-export { default as MoodSelector } from './MoodSelector.svelte';
 export { default as LibraryGrid } from './LibraryGrid.svelte';
 export { default as LiveStrip } from './LiveStrip.svelte';

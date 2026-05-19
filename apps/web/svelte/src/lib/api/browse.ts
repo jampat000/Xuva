@@ -144,6 +144,63 @@ export function refreshMetadataBatch(
 	);
 }
 
+// ── Backfill: fill in metadata for items missing a specific provider ──────
+//
+// Used by Settings → Metadata to populate TMDB/Fanart for items that
+// currently have only filename/Wikipedia data. The server auto-starts a
+// TMDB backfill on boot when items are missing TMDB rows; the UI exposes
+// the same controls explicitly.
+
+export interface BackfillStatus {
+	running: boolean;
+	provider?: string;
+	kind?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	total: number;
+	refreshed: number;
+	failed: number;
+	remaining: number;
+	lastTitle?: string;
+	lastError?: string;
+}
+
+export interface BackfillResponse {
+	status: BackfillStatus;
+	missingMovies: number;
+	missingSeries: number;
+	missingTotal: number;
+}
+
+export interface BackfillStartResponse {
+	status: BackfillStatus;
+}
+
+export function getBackfillStatus(client: ApiClient = apiClient): Promise<BackfillResponse> {
+	return client.request<BackfillResponse>('/api/metadata/backfill');
+}
+
+export function startBackfill(
+	provider: string = 'tmdb',
+	client: ApiClient = apiClient
+): Promise<BackfillStartResponse> {
+	return client.send<BackfillStartResponse, { provider: string }>(
+		'/api/metadata/backfill',
+		{ provider },
+		'POST'
+	);
+}
+
+export function stopBackfill(
+	client: ApiClient = apiClient
+): Promise<BackfillStartResponse> {
+	return client.send<BackfillStartResponse, Record<string, never>>(
+		'/api/metadata/backfill',
+		{},
+		'DELETE'
+	);
+}
+
 export function getReviewItems(
 	client: ApiClient = apiClient,
 	limit = 100

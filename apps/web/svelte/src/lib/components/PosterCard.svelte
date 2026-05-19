@@ -10,7 +10,14 @@
   const isWide = $derived(variant === "wide");
   const gradient = $derived(`linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`);
   const art = $derived(isWide ? (media.backdrop ?? media.poster) : (media.poster ?? media.backdrop));
-  const href = $derived(media.type === 'Series' ? `/tv/${media.id}` : `/movies/${media.id}`);
+  // Continue-Watching items come keyed by media_source_id but the detail page
+  // expects the parent movie/series id. Use parentId/parentKind when present.
+  const href = $derived.by(() => {
+    if (media.parentId && media.parentKind) {
+      return media.parentKind === 'series' ? `/tv/${media.parentId}` : `/movies/${media.parentId}`;
+    }
+    return media.type === 'Series' ? `/tv/${media.id}` : `/movies/${media.id}`;
+  });
 </script>
 
 <a
@@ -53,24 +60,43 @@
 
     <div class="absolute inset-0 flex flex-col justify-between p-4">
       <div class="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-widest text-white/80">
-        <span
-          class="h-1.5 w-1.5 rounded-full"
-          style={`background: ${media.accent}; box-shadow: 0 0 10px ${media.accent};`}
-        ></span>
-        {media.genres[0]}
+        {#if media.genres && media.genres.length > 0}
+          <span
+            class="h-1.5 w-1.5 rounded-full"
+            style={`background: ${media.accent}; box-shadow: 0 0 10px ${media.accent};`}
+          ></span>
+          {media.genres[0]}
+        {/if}
       </div>
       <div>
-        <h3
-          class="font-display text-lg font-bold leading-tight text-white drop-shadow-lg md:text-xl"
-          style="text-shadow: 0 2px 12px rgba(0,0,0,0.6);"
-        >
-          {media.title}
-        </h3>
+        {#if isWide && media.logo}
+          <!-- Continue-Watching style: clearlogo as the title treatment on
+               the backdrop, mirroring Netflix's resume cards. -->
+          <img
+            src={media.logo}
+            alt={media.title}
+            class="max-h-12 w-auto max-w-[70%] object-contain drop-shadow-xl md:max-h-14"
+            style="filter: drop-shadow(0 2px 12px oklch(0 0 0 / 0.6));"
+          />
+        {:else}
+          <h3
+            class="font-display text-lg font-bold leading-tight text-white drop-shadow-lg md:text-xl"
+            style="text-shadow: 0 2px 12px rgba(0,0,0,0.6);"
+          >
+            {media.title}
+          </h3>
+        {/if}
         <div class="mt-1 flex items-center gap-2 text-[11px] text-white/75">
-          <span>{media.year}</span>
-          <span class="opacity-50">•</span>
-          <Star class="h-3 w-3 fill-current text-amber-300" />
-          <span>{media.rating.toFixed(1)}</span>
+          {#if media.year && media.year > 0}
+            <span>{media.year}</span>
+          {/if}
+          {#if media.year && media.year > 0 && media.rating > 0}
+            <span class="opacity-50">•</span>
+          {/if}
+          {#if media.rating > 0}
+            <Star class="h-3 w-3 fill-current text-amber-300" />
+            <span>{media.rating.toFixed(1)}</span>
+          {/if}
         </div>
       </div>
     </div>
@@ -101,7 +127,7 @@
     <div class="mt-3 px-1">
       <h4 class="truncate text-sm font-semibold text-foreground">{media.title}</h4>
       <p class="mt-0.5 text-xs text-muted-foreground">
-        {media.year} • {media.type}
+        {#if media.year && media.year > 0}{media.year} • {/if}{media.type}
         {#if typeof media.progress === "number"}
           • Resume from {Math.round(media.progress * 100)}%
         {/if}

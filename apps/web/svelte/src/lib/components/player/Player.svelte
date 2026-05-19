@@ -3,7 +3,7 @@
   import Hls from 'hls.js';
   import {
     Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-    SkipBack, SkipForward, Subtitles, Mic2, Settings, Info, ChevronLeft
+    SkipBack, SkipForward, Subtitles, Mic2, Settings, Info, ChevronLeft, Keyboard
   } from 'lucide-svelte';
   import RouteBadge from './RouteBadge.svelte';
   import TrackMenu from './TrackMenu.svelte';
@@ -87,6 +87,7 @@
   let showAudioMenu = $state(false);
   let showSubMenu = $state(false);
   let showQualityMenu = $state(false);
+  let showShortcuts = $state(false);
   let activeQualityId = $state('auto');
   let resumeToast = $state<string | null>(null);
   let seekToast = $state<string | null>(null);
@@ -494,7 +495,13 @@
         showSubMenu = false;
         showQualityMenu = false;
         break;
+      case '?':
+        e.preventDefault();
+        showShortcuts = !showShortcuts;
+        if (showShortcuts) keepControlsVisible();
+        break;
       case 'Escape':
+        if (showShortcuts) { showShortcuts = false; break; }
         showAudioMenu = false;
         showSubMenu = false;
         showQualityMenu = false;
@@ -969,6 +976,16 @@
           </div>
         {/if}
 
+        <!-- Keyboard shortcuts -->
+        <button
+          onclick={(e) => { e.stopPropagation(); showShortcuts = !showShortcuts; if (showShortcuts) keepControlsVisible(); }}
+          class={`hidden md:flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showShortcuts ? 'text-white' : 'text-white/60'}`}
+          aria-label="Keyboard shortcuts"
+          aria-pressed={showShortcuts}
+        >
+          <Keyboard class="h-5 w-5" />
+        </button>
+
         <!-- Inspector toggle -->
         <button
           onclick={(e) => { e.stopPropagation(); showInspector = !showInspector; }}
@@ -1004,4 +1021,63 @@
     durationSeconds={duration}
     onClose={() => { showInspector = false; }}
   />
+
+  <!-- ─── KEYBOARD SHORTCUTS PANEL ────────────────────────────────────────── -->
+  {#if showShortcuts}
+    <!-- Backdrop -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onclick={(e) => { if (e.target === e.currentTarget) showShortcuts = false; }}
+    >
+      <div
+        class="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#0e0e0e]/95 shadow-2xl"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Keyboard shortcuts"
+      >
+        <!-- Header -->
+        <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <span class="text-sm font-semibold text-white">Keyboard Shortcuts</span>
+          <button
+            onclick={() => { showShortcuts = false; }}
+            class="flex h-7 w-7 items-center justify-center rounded-full text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Close"
+          >✕</button>
+        </div>
+
+        <!-- Shortcut rows -->
+        <div class="divide-y divide-white/[0.06] px-5 py-2">
+          {#each [
+            { keys: ['Space', 'K'], label: 'Play / Pause' },
+            { keys: ['J'], label: 'Rewind 10 s' },
+            { keys: ['L'], label: 'Forward 10 s' },
+            { keys: ['←', '→'], label: 'Skip ±10 s' },
+            { keys: ['⇧←', '⇧→'], label: 'Skip ±30 s' },
+            { keys: ['↑', '↓'], label: 'Volume ±10%' },
+            { keys: ['M'], label: 'Mute / Unmute' },
+            { keys: ['F'], label: 'Fullscreen' },
+            { keys: ['C'], label: 'Subtitles' },
+            { keys: ['A'], label: 'Audio track' },
+            { keys: ['0–9'], label: 'Jump to 0%–90%' },
+            { keys: ['?'], label: 'This panel' },
+          ] as row (row.label)}
+            <div class="flex items-center justify-between py-2.5">
+              <span class="text-sm text-white/70">{row.label}</span>
+              <div class="flex items-center gap-1.5">
+                {#each row.keys as k (k)}
+                  <kbd class="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-mono text-[11px] text-white/90">{k}</kbd>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <div class="border-t border-white/10 px-5 py-3 text-center text-[11px] text-white/30">
+          Press <kbd class="rounded border border-white/15 bg-white/10 px-1.5 font-mono text-[10px] text-white/40">Esc</kbd> or click outside to close
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>

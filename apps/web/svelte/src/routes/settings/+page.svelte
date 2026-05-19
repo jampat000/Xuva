@@ -32,6 +32,7 @@
     Wifi
   } from "lucide-svelte";
   import { onMount } from 'svelte';
+  import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import {
     getSystemStatus,
@@ -75,6 +76,12 @@
     type HardwareTestResponse,
     type DeviceProfile,
   } from '$lib/api/operator';
+  import {
+    getBackfillStatus,
+    startBackfill,
+    stopBackfill,
+    type BackfillResponse,
+  } from '$lib/api/browse';
 
   type Group = "Account" | "Server" | "Devices" | "Advanced";
 
@@ -228,6 +235,8 @@
   // ─── Editable config snapshot ─────────────────────────────────────────────
   let editConfig = $state({
     serverName: '',
+    country: '',
+    timezone: '',
     librarySyncMode: 'auto',
     syncIntervalMins: 60,
     watchDebounceSecs: 5,
@@ -245,6 +254,8 @@
     const c = s.config ?? {};
     editConfig = {
       serverName: c.serverName ?? '',
+      country: c.country ?? '',
+      timezone: c.timezone ?? '',
       librarySyncMode: c.librarySyncMode ?? 'auto',
       syncIntervalMins: c.syncIntervalMins ?? 60,
       watchDebounceSecs: c.watchDebounceSecs ?? 5,
@@ -261,7 +272,9 @@
 
   // ─── Per-section dirty checks ──────────────────────────────────────────────
   const generalDirty = $derived(
-    editConfig.serverName !== (settingsData?.config?.serverName ?? '')
+    editConfig.serverName !== (settingsData?.config?.serverName ?? '') ||
+    editConfig.country   !== (settingsData?.config?.country   ?? '') ||
+    editConfig.timezone  !== (settingsData?.config?.timezone  ?? '')
   );
   const scanningDirty = $derived(
     editConfig.librarySyncMode !== (settingsData?.config?.librarySyncMode ?? 'auto') ||
@@ -287,6 +300,58 @@
   let editMetaPrefs = $state({ movie: [] as string[], series: [] as string[], movieArtwork: [] as string[], seriesArtwork: [] as string[] });
   let savedMetaPrefs = $state({ movie: [] as string[], series: [] as string[], movieArtwork: [] as string[], seriesArtwork: [] as string[] });
   const metaDirty = $derived(JSON.stringify(editMetaPrefs) !== JSON.stringify(savedMetaPrefs));
+
+  // ── Metadata backfill (library-wide refresh of missing TMDB rows) ──────
+  // Polls the server every 3s while running; stays quiet when idle.
+  let backfill = $state<BackfillResponse | null>(null);
+  let backfillError = $state<string | null>(null);
+  let backfillPolling = $state<ReturnType<typeof setInterval> | null>(null);
+
+  async function refreshBackfillStatus() {
+    try {
+      backfill = await getBackfillStatus();
+      backfillError = null;
+    } catch (e) {
+      backfillError = e instanceof Error ? e.message : 'Could not load backfill status';
+    }
+  }
+  async function triggerBackfill() {
+    try {
+      await startBackfill('tmdb');
+      backfillError = null;
+      await refreshBackfillStatus();
+    } catch (e) {
+      backfillError = e instanceof Error ? e.message : 'Could not start backfill';
+    }
+  }
+  async function cancelBackfill() {
+    try {
+      await stopBackfill();
+      await refreshBackfillStatus();
+    } catch (e) {
+      backfillError = e instanceof Error ? e.message : 'Could not stop backfill';
+    }
+  }
+
+  // Start polling whenever the Metadata tab is open. Stop on leave/unmount.
+  $effect(() => {
+    if (active !== 'metadata') {
+      if (backfillPolling) { clearInterval(backfillPolling); backfillPolling = null; }
+      return;
+    }
+    refreshBackfillStatus();
+    backfillPolling = setInterval(refreshBackfillStatus, 3000);
+    return () => {
+      if (backfillPolling) { clearInterval(backfillPolling); backfillPolling = null; }
+    };
+  });
+
+  const backfillProgressPct = $derived.by(() => {
+    const s = backfill?.status;
+    if (!s || s.total === 0) return 0;
+    const done = s.refreshed + s.failed;
+    return Math.min(100, Math.round((done / s.total) * 100));
+  });
 
   function moveMetaPref(list: keyof typeof editMetaPrefs, idx: number, dir: -1 | 1) {
     const arr = [...editMetaPrefs[list]];
@@ -332,7 +397,11 @@
     const c = settingsData.config ?? {};
     sectionError = null;
     switch (active) {
-      case 'general': editConfig.serverName = c.serverName ?? ''; break;
+      case 'general':
+        editConfig.serverName = c.serverName ?? '';
+        editConfig.country    = c.country    ?? '';
+        editConfig.timezone   = c.timezone   ?? '';
+        break;
       case 'scanning':
         editConfig.librarySyncMode = c.librarySyncMode ?? 'auto';
         editConfig.syncIntervalMins = c.syncIntervalMins ?? 60;
@@ -357,7 +426,11 @@
     try {
       if (active === 'general') {
         generalSaving = true;
-        const r = await updateSettings({ serverName: editConfig.serverName });
+        const r = await updateSettings({
+          serverName: editConfig.serverName,
+          country:    editConfig.country   || '',
+          timezone:   editConfig.timezone  || '',
+        });
         settingsData = r; seedEditConfig(r);
       } else if (active === 'scanning') {
         scanningSaving = true;
@@ -732,7 +805,7 @@
 </script>
 
 <svelte:head>
-  <title>Settings — Xuva</title>
+  <title>Settings — {appState.serverName}</title>
   <meta
     name="description"
     content="Configure your Xuva media server — metadata, libraries, playback, devices, and advanced controls."
@@ -884,7 +957,89 @@
           {@const movieSources = settingsData?.metadataSources?.movie ?? []}
           {@const seriesSources = settingsData?.metadataSources?.series ?? []}
           {@const allSources = [...movieSources, ...seriesSources].filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i)}
+          {@const bfs = backfill?.status}
+          {@const bfRunning = bfs?.running === true}
+          {@const bfMissing = backfill?.missingTotal ?? 0}
+          {@const bfTotal = bfs?.total ?? bfMissing}
           <div class="space-y-12">
+
+            <!-- Library health: missing-metadata backfill -->
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Library health</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Xuva backfills missing TMDB metadata automatically in the background. You can also trigger it manually.
+                </p>
+              </div>
+              <div class="hairline rounded-2xl bg-surface/40 p-5 space-y-4">
+                {#if bfRunning}
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="inline-block h-2 w-2 rounded-full bg-primary-glow animate-pulse"></span>
+                        <span class="font-semibold">Backfilling {bfs?.provider ?? 'metadata'} ({bfs?.kind ?? '…'})</span>
+                      </div>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        {bfs?.refreshed ?? 0} refreshed
+                        {#if (bfs?.failed ?? 0) > 0}· {bfs?.failed} failed{/if}
+                        {#if (bfs?.remaining ?? 0) > 0}· {bfs?.remaining} remaining{/if}
+                      </p>
+                      {#if bfs?.lastTitle}
+                        <p class="mt-1 truncate text-xs text-muted-foreground/80">Last: {bfs.lastTitle}</p>
+                      {/if}
+                    </div>
+                    <button
+                      type="button"
+                      onclick={cancelBackfill}
+                      class="hairline shrink-0 rounded-full bg-foreground/[0.05] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300"
+                    >
+                      Stop
+                    </button>
+                  </div>
+                  <div class="h-1.5 overflow-hidden rounded-full bg-foreground/[0.06]">
+                    <div class="h-full rounded-full bg-gradient-primary transition-all duration-500" style={`width: ${Math.max(backfillProgressPct, 2)}%`}></div>
+                  </div>
+                {:else}
+                  <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="min-w-0">
+                      {#if bfMissing === 0}
+                        <div class="flex items-center gap-2 text-emerald-300">
+                          <Check class="h-4 w-4" />
+                          <span class="font-semibold">All items have TMDB metadata</span>
+                        </div>
+                        <p class="mt-1 text-xs text-muted-foreground">Everything in your library is enriched. Nothing to backfill.</p>
+                      {:else}
+                        <div class="flex items-center gap-2">
+                          <span class="inline-block h-2 w-2 rounded-full bg-amber-300"></span>
+                          <span class="font-semibold">{bfMissing} item{bfMissing === 1 ? '' : 's'} missing TMDB metadata</span>
+                        </div>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                          {backfill?.missingMovies ?? 0} movies · {backfill?.missingSeries ?? 0} series
+                        </p>
+                        {#if bfs?.finishedAt && (bfs?.refreshed ?? 0) + (bfs?.failed ?? 0) > 0}
+                          <p class="mt-1 text-xs text-muted-foreground/80">
+                            Last run: {bfs.refreshed} refreshed
+                            {#if (bfs?.failed ?? 0) > 0}, {bfs?.failed} failed{/if}
+                          </p>
+                        {/if}
+                      {/if}
+                    </div>
+                    {#if bfMissing > 0}
+                      <button
+                        type="button"
+                        onclick={triggerBackfill}
+                        class="shrink-0 inline-flex items-center gap-2 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-background transition-all hover:bg-foreground/90"
+                      >
+                        Refresh missing metadata
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
+                {#if backfillError}
+                  <p class="text-xs text-red-300">{backfillError}</p>
+                {/if}
+              </div>
+            </section>
 
             <!-- Provider health -->
             <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
@@ -2373,6 +2528,85 @@
                     <option value="de">German</option>
                     <option value="it">Italian</option>
                     <option value="pt">Portuguese</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Region</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Used to show trending titles from your country. Timezone is stored for scheduling and display purposes.
+                </p>
+              </div>
+              <div class="space-y-5">
+                <div>
+                  <label for="st-country" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+                    Country
+                  </label>
+                  <select
+                    id="st-country"
+                    bind:value={editConfig.country}
+                    class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60 focus:bg-background/70"
+                  >
+                    <option value="">— Not set —</option>
+                    {#each [
+                      { code: 'AU', label: 'Australia' },
+                      { code: 'BR', label: 'Brazil' },
+                      { code: 'CA', label: 'Canada' },
+                      { code: 'FR', label: 'France' },
+                      { code: 'DE', label: 'Germany' },
+                      { code: 'IN', label: 'India' },
+                      { code: 'IT', label: 'Italy' },
+                      { code: 'JP', label: 'Japan' },
+                      { code: 'MX', label: 'Mexico' },
+                      { code: 'NL', label: 'Netherlands' },
+                      { code: 'NZ', label: 'New Zealand' },
+                      { code: 'PL', label: 'Poland' },
+                      { code: 'PT', label: 'Portugal' },
+                      { code: 'ES', label: 'Spain' },
+                      { code: 'SE', label: 'Sweden' },
+                      { code: 'CH', label: 'Switzerland' },
+                      { code: 'GB', label: 'United Kingdom' },
+                      { code: 'US', label: 'United States' },
+                    ] as c (c.code)}
+                      <option value={c.code}>{c.label}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div>
+                  <label for="st-tz" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+                    Timezone
+                  </label>
+                  <select
+                    id="st-tz"
+                    bind:value={editConfig.timezone}
+                    class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60 focus:bg-background/70"
+                  >
+                    <option value="">— Not set —</option>
+                    {#each [
+                      { id: 'Pacific/Honolulu',    label: 'Hawaii (UTC−10)' },
+                      { id: 'America/Los_Angeles', label: 'Pacific Time (UTC−8/−7)' },
+                      { id: 'America/Denver',      label: 'Mountain Time (UTC−7/−6)' },
+                      { id: 'America/Chicago',     label: 'Central Time (UTC−6/−5)' },
+                      { id: 'America/New_York',    label: 'Eastern Time (UTC−5/−4)' },
+                      { id: 'America/Sao_Paulo',   label: 'Brasília (UTC−3)' },
+                      { id: 'Atlantic/Reykjavik',  label: 'Reykjavik (UTC+0)' },
+                      { id: 'Europe/London',       label: 'London (UTC+0/+1)' },
+                      { id: 'Europe/Paris',        label: 'Paris / Berlin (UTC+1/+2)' },
+                      { id: 'Europe/Helsinki',     label: 'Helsinki (UTC+2/+3)' },
+                      { id: 'Europe/Moscow',       label: 'Moscow (UTC+3)' },
+                      { id: 'Asia/Dubai',          label: 'Dubai (UTC+4)' },
+                      { id: 'Asia/Kolkata',        label: 'India (UTC+5:30)' },
+                      { id: 'Asia/Bangkok',        label: 'Bangkok (UTC+7)' },
+                      { id: 'Asia/Singapore',      label: 'Singapore (UTC+8)' },
+                      { id: 'Asia/Tokyo',          label: 'Tokyo (UTC+9)' },
+                      { id: 'Australia/Sydney',    label: 'Sydney (UTC+10/+11)' },
+                      { id: 'Pacific/Auckland',    label: 'Auckland (UTC+12/+13)' },
+                    ] as tz (tz.id)}
+                      <option value={tz.id}>{tz.label}</option>
+                    {/each}
                   </select>
                 </div>
               </div>

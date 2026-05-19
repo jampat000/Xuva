@@ -121,7 +121,14 @@
     return () => document.removeEventListener("mousedown", handler);
   });
 
-  // ── ⌘K shortcut ───────────────────────────────────────────────────────────
+  // ── ⌘K / Ctrl+K shortcut ─────────────────────────────────────────────────
+  let isMac = $state(false);
+
+  $effect(() => {
+    if (typeof navigator === "undefined") return;
+    isMac = /Macintosh|MacIntel|MacPPC|Mac68K/.test(navigator.userAgent);
+  });
+
   $effect(() => {
     if (typeof document === "undefined") return;
     const handler = (e: KeyboardEvent) => {
@@ -188,7 +195,7 @@
           onfocus={handleSearchFocus}
           onkeydown={handleSearchKeydown}
         />
-        <kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground lg:inline-block">⌘K</kbd>
+        <kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground lg:inline-block">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
 
         {#if showSearchDropdown}
           <div class="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl backdrop-blur-xl">

@@ -29,28 +29,34 @@ func SourceCatalog(cfg config.Config) []SourceDefinition {
 		{ID: "wikipedia", Name: "Wikipedia", Description: "Adds richer summaries and artwork when a matching article is available.", Coverage: "Movies and TV", Note: "No user account required", Kinds: []string{"movie", "series"}, Available: true, SupportsMetadata: true, SupportsArtwork: true},
 		{ID: "wikidata", Name: "Wikidata", Description: "Adds structured labels, descriptions, poster files, and external IDs from Wikimedia data.", Coverage: "Movies and TV", Note: "No user account required", Kinds: []string{"movie", "series"}, Available: true, SupportsMetadata: true, SupportsArtwork: true},
 		{ID: "tvmaze", Name: "TVMaze", Description: "Adds series metadata, external IDs, and TV ratings without a user account.", Coverage: "TV libraries", Note: "No user account required", Kinds: []string{"series"}, Available: true, SupportsMetadata: true},
-		{ID: "tmdb", Name: "TMDB", Description: "Adds movie, show, season, and episode metadata plus artwork through the metadata layer.", Coverage: "Movies and TV", Note: "Managed by Xuva", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: true, Available: strings.TrimSpace(cfg.TMDBAPIKey) != "", SupportsMetadata: true, SupportsArtwork: true},
-		{ID: "tvdb", Name: "TheTVDB", Description: "Adds TV metadata, IDs, ratings, and artwork fallback where configured.", Coverage: "Movies and TV", Note: "Managed by Xuva", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: true, Available: strings.TrimSpace(cfg.TVDBAPIKey) != "", SupportsMetadata: true, SupportsArtwork: true},
-		{ID: "fanart", Name: "Fanart.tv", Description: "Adds logos, clearlogo, banners, thumbs, and extra backdrop artwork.", Coverage: "Movies and TV artwork", Note: "Managed by Xuva", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: true, Available: strings.TrimSpace(cfg.FanartTVAPIKey) != "", SupportsArtwork: true},
-		{ID: "omdb", Name: "OMDb", Description: "Adds IMDb, Rotten Tomatoes, and Metacritic ratings through the metadata layer.", Coverage: "Movies and TV", Note: "Managed by Xuva", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: true, Available: strings.TrimSpace(cfg.OMDbAPIKey) != "", SupportsMetadata: true},
+		// TMDB and Fanart.tv use embedded project keys by default (config/keys.go),
+		// so RequiresConfig=false in the user-facing sense. They're only
+		// "unavailable" if the embedded key was stripped AND the user hasn't
+		// supplied a personal key — at which point Available reflects that.
+		{ID: "tmdb", Name: "TMDB", Description: "Adds movie, show, season, and episode metadata plus artwork through the metadata layer.", Coverage: "Movies and TV", Note: "Built-in", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: false, Available: strings.TrimSpace(cfg.TMDBAPIKey) != "", SupportsMetadata: true, SupportsArtwork: true},
+		{ID: "fanart", Name: "Fanart.tv", Description: "Adds logos, clearlogo, banners, thumbs, and extra backdrop artwork.", Coverage: "Movies and TV artwork", Note: "Built-in", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: false, Available: strings.TrimSpace(cfg.FanartTVAPIKey) != "", SupportsArtwork: true},
+		{ID: "omdb", Name: "OMDb", Description: "Adds IMDb, Rotten Tomatoes, and Metacritic ratings through the metadata layer.", Coverage: "Movies and TV", Note: "Optional", Kinds: []string{"movie", "series"}, Managed: true, RequiresConfig: true, Available: strings.TrimSpace(cfg.OMDbAPIKey) != "", SupportsMetadata: true},
+		// TheTVDB removed: per-installation subscription model is incompatible
+		// with embed-and-ship UX. TMDB covers full TV data including episode
+		// stills, season posters, aggregate credits, and content ratings.
 	}
 }
 
 func DefaultSourceOrder(kind string) []string {
 	switch NormalizeKind(kind) {
 	case "series":
-		return []string{"nfo", "tmdb", "tvdb", "tvmaze", "wikipedia", "wikidata", "omdb", "filename"}
+		return []string{"nfo", "tmdb", "tvmaze", "wikipedia", "wikidata", "omdb", "filename"}
 	default:
-		return []string{"nfo", "tmdb", "tvdb", "wikipedia", "wikidata", "omdb", "filename"}
+		return []string{"nfo", "tmdb", "wikipedia", "wikidata", "omdb", "filename"}
 	}
 }
 
 func DefaultArtworkOrder(kind string) []string {
 	switch NormalizeKind(kind) {
 	case "series":
-		return []string{"artwork", "nfo", "fanart", "tmdb", "tvdb", "wikipedia", "wikidata"}
+		return []string{"artwork", "nfo", "fanart", "tmdb", "wikipedia", "wikidata"}
 	default:
-		return []string{"artwork", "nfo", "fanart", "tmdb", "tvdb", "wikipedia", "wikidata"}
+		return []string{"artwork", "nfo", "fanart", "tmdb", "wikipedia", "wikidata"}
 	}
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
   import { getMovies } from '$lib/api/browse';
@@ -23,7 +24,7 @@
 </script>
 
 <svelte:head>
-  <title>Movies — Xuva</title>
+  <title>Movies — {appState.serverName}</title>
   <meta
     name="description"
     content="Browse your movie library on Xuva with editorial filtering, search, and density controls."

@@ -11,7 +11,23 @@ import (
 
 	"github.com/jampat000/Xuva/server/internal/catalog"
 	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/trailers"
 )
+
+// videosToCandidates flattens TMDB's videos.results into the trailer
+// picker's input shape. Kept here so refreshTMDBMovie/Series share it.
+func videosToCandidates(in []tmdbVideoAsset) []trailers.VideoCandidate {
+	out := make([]trailers.VideoCandidate, 0, len(in))
+	for _, v := range in {
+		out = append(out, trailers.VideoCandidate{
+			Key:      v.Key,
+			Site:     v.Site,
+			Type:     v.Type,
+			Official: v.Official,
+		})
+	}
+	return out
+}
 
 func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order []string, cfg config.Config, result *RefreshResult) error {
 	if request.Kind != "movie" && request.Kind != "series" {
@@ -23,8 +39,9 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order
 		path = "tv"
 	}
 	searchURL := fmt.Sprintf("%s/search/%s?", strings.TrimRight(s.tmdbBaseURL, "/"), path) + url.Values{
-		"api_key": {apiKey},
-		"query":   {request.Title},
+		"api_key":  {apiKey},
+		"query":    {request.Title},
+		"language": {"en-US"},
 	}.Encode()
 	if request.Year > 0 && request.Kind == "movie" {
 		searchURL += "&year=" + strconv.Itoa(request.Year)
@@ -49,9 +66,11 @@ func (s *Service) refreshTMDB(ctx context.Context, request RefreshRequest, order
 
 func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, order []string, apiKey string, tmdbID int, now string, result *RefreshResult) error {
 	detailURL := fmt.Sprintf("%s/movie/%d?", strings.TrimRight(s.tmdbBaseURL, "/"), tmdbID) + url.Values{
-		"api_key":            {apiKey},
-		"append_to_response": {"credits,release_dates,images,external_ids"},
-		"include_image_language": {"en,null"},
+		"api_key":                 {apiKey},
+		"language":                {"en-US"},
+		"append_to_response":      {"credits,release_dates,images,external_ids,videos"},
+		"include_image_language":  {"en,null"},
+		"include_video_language":  {"en,null"},
 	}.Encode()
 	var detail tmdbMovieDetail
 	if err := s.getJSON(ctx, detailURL, &detail); err != nil {
@@ -76,11 +95,12 @@ func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, 
 		Writers:             tmdbCrewNames(detail.Credits.Crew, "Writer", "Screenplay", "Story"),
 		Studios:             tmdbCompanyNames(detail.ProductionCompanies),
 		ProductionCompanies: tmdbCompanyNames(detail.ProductionCompanies),
-		PosterURL:           tmdbImageURL(detail.PosterPath, "original"),
+		PosterURL:           tmdbBestPoster(detail.Images.Posters, detail.PosterPath),
 		BackdropURL:         tmdbImageURL(detail.BackdropPath, "original"),
 		LogoURL:             tmdbLogoURL(detail.Images.Logos),
 		BannerURL:           "",
 		ThumbnailURL:        tmdbImageURL(detail.BackdropPath, "w780"),
+		VideoKey:            trailers.PickBestTrailer(videosToCandidates(detail.Videos.Results)),
 		Collection:          tmdbCollectionRecord(detail.BelongsToCollection),
 		Confidence:          sourceConfidence(order, "tmdb", 0.9),
 		RawJSON:             mustJSON(detail),
@@ -91,6 +111,16 @@ func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, 
 		return err
 	}
 	result.Records = append(result.Records, record)
+	// Kick off a background trailer download for this title. Fire-and-forget;
+	// the downloader handles dedupe, backoff, and disk caching internally.
+	if s.trailers != nil && record.VideoKey != "" {
+		s.trailers.Queue(trailers.Job{
+			Kind:     request.Kind,
+			ItemID:   request.ID,
+			TMDBID:   strconv.Itoa(detail.ID),
+			VideoKey: record.VideoKey,
+		})
+	}
 	upsertTMDBExternalIDs(ctx, s.catalog, request.Kind, request.ID, detail.ExternalIDs, strconv.Itoa(detail.ID), now, result)
 	return s.upsertTMDBRating(ctx, request.Kind, request.ID, "movie", detail.ID, detail.VoteAverage, detail.VoteCount, now, result)
 }
@@ -98,8 +128,10 @@ func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, 
 func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest, order []string, apiKey string, tmdbID int, now string, result *RefreshResult) error {
 	detailURL := fmt.Sprintf("%s/tv/%d?", strings.TrimRight(s.tmdbBaseURL, "/"), tmdbID) + url.Values{
 		"api_key":                 {apiKey},
-		"append_to_response":      {"aggregate_credits,content_ratings,images,external_ids"},
+		"language":                {"en-US"},
+		"append_to_response":      {"aggregate_credits,content_ratings,images,external_ids,videos"},
 		"include_image_language":  {"en,null"},
+		"include_video_language":  {"en,null"},
 	}.Encode()
 	var detail tmdbTVDetail
 	if err := s.getJSON(ctx, detailURL, &detail); err != nil {
@@ -126,10 +158,11 @@ func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest,
 		Networks:            tmdbNetworkNames(detail.Networks),
 		StatusText:          detail.Status,
 		EpisodeCount:        detail.NumberOfEpisodes,
-		PosterURL:           tmdbImageURL(detail.PosterPath, "original"),
+		PosterURL:           tmdbBestPoster(detail.Images.Posters, detail.PosterPath),
 		BackdropURL:         tmdbImageURL(detail.BackdropPath, "original"),
 		LogoURL:             tmdbLogoURL(detail.Images.Logos),
 		ThumbnailURL:        tmdbImageURL(detail.BackdropPath, "w780"),
+		VideoKey:            trailers.PickBestTrailer(videosToCandidates(detail.Videos.Results)),
 		Confidence:          sourceConfidence(order, "tmdb", 0.9),
 		RawJSON:             mustJSON(detail),
 		FetchedAt:           now,
@@ -139,6 +172,14 @@ func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest,
 		return err
 	}
 	result.Records = append(result.Records, record)
+	if s.trailers != nil && record.VideoKey != "" {
+		s.trailers.Queue(trailers.Job{
+			Kind:     request.Kind,
+			ItemID:   request.ID,
+			TMDBID:   strconv.Itoa(detail.ID),
+			VideoKey: record.VideoKey,
+		})
+	}
 	upsertTMDBExternalIDs(ctx, s.catalog, request.Kind, request.ID, detail.ExternalIDs, strconv.Itoa(detail.ID), now, result)
 	if err := s.upsertTMDBRating(ctx, request.Kind, request.ID, "tv", detail.ID, detail.VoteAverage, detail.VoteCount, now, result); err != nil {
 		return err
@@ -454,6 +495,26 @@ func tmdbLogoURL(items []tmdbImageAsset) string {
 	return ""
 }
 
+// tmdbBestPoster picks the best English-language poster from the filtered
+// images list (already limited to en+null by include_image_language=en,null).
+// Falls back through: English-tagged → language-neutral → raw poster_path.
+func tmdbBestPoster(items []tmdbImageAsset, fallbackPath string) string {
+	for _, item := range items {
+		if strings.EqualFold(item.ISO6391, "en") && strings.TrimSpace(item.FilePath) != "" {
+			return tmdbImageURL(item.FilePath, "original")
+		}
+	}
+	for _, item := range items {
+		if item.ISO6391 == "" && strings.TrimSpace(item.FilePath) != "" {
+			return tmdbImageURL(item.FilePath, "original")
+		}
+	}
+	if strings.TrimSpace(fallbackPath) != "" {
+		return tmdbImageURL(fallbackPath, "original")
+	}
+	return ""
+}
+
 func tmdbCollectionRecord(item *tmdbCollection) *catalog.MetadataCollection {
 	if item == nil || item.ID == 0 {
 		return nil
@@ -489,8 +550,12 @@ type tmdbMovieDetail struct {
 		Results []tmdbMovieReleaseCountry `json:"results"`
 	} `json:"release_dates"`
 	Images struct {
-		Logos []tmdbImageAsset `json:"logos"`
+		Posters []tmdbImageAsset `json:"posters"`
+		Logos   []tmdbImageAsset `json:"logos"`
 	} `json:"images"`
+	Videos struct {
+		Results []tmdbVideoAsset `json:"results"`
+	} `json:"videos"`
 }
 
 type tmdbTVDetail struct {
@@ -518,8 +583,22 @@ type tmdbTVDetail struct {
 		Crew []tmdbCredit         `json:"crew"`
 	} `json:"aggregate_credits"`
 	Images struct {
-		Logos []tmdbImageAsset `json:"logos"`
+		Posters []tmdbImageAsset `json:"posters"`
+		Logos   []tmdbImageAsset `json:"logos"`
 	} `json:"images"`
+	Videos struct {
+		Results []tmdbVideoAsset `json:"results"`
+	} `json:"videos"`
+}
+
+type tmdbVideoAsset struct {
+	Key         string `json:"key"`
+	Site        string `json:"site"`
+	Type        string `json:"type"`
+	Official    bool   `json:"official"`
+	Size        int    `json:"size"`
+	ISO_639_1   string `json:"iso_639_1"`
+	PublishedAt string `json:"published_at"`
 }
 
 type tmdbSeasonDetail struct {

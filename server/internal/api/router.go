@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,7 +57,9 @@ import (
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
 	"github.com/jampat000/Xuva/server/internal/systemstats"
+	"github.com/jampat000/Xuva/server/internal/trailers"
 	"github.com/jampat000/Xuva/server/internal/transcode"
+	"github.com/jampat000/Xuva/server/internal/trending"
 	"github.com/jampat000/Xuva/server/internal/tv"
 	"github.com/jampat000/Xuva/server/internal/webapp"
 )
@@ -90,6 +93,8 @@ type Deps struct {
 	Subtitles *subtitles.Service
 	Pairing   *pairing.Service
 	Migration *migration.Service
+	Trending  *trending.Service
+	Trailers  *trailers.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -110,6 +115,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))     // unpaired clients submit a request
 	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))       // first-run admin create
 	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))               // sign in
+	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))            // first-run wizard gate, no PII
 
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
@@ -134,9 +140,12 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/migrations/dry-run", migrationDryRunHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/migrations/import", migrationImportHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/migrations/runs/{id}/rollback", migrationRollbackHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/setup/complete", setupCompleteHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/home", clientHomeHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/movies/{id}", clientMovieDetailHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/series/{id}", clientSeriesDetailHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/collections/{id}", clientCollectionHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/people/{name}", clientPersonHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/client/playback/start", clientPlaybackStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "PATCH /api/client/playback/{id}", clientPlaybackHeartbeatHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/client/playback/{id}/stop", clientPlaybackStopHandler(deps))
@@ -151,7 +160,11 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "PUT /api/metadata/match", metadataMatchHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/metadata/refresh", metadataRefreshHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/metadata/refresh-batch", metadataRefreshBatchHandler(deps))
+	handleProtected(mux, deps, "GET /api/metadata/backfill", metadataBackfillStatusHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/metadata/backfill", metadataBackfillStartHandler(deps))
+	handleProtectedCSRF(mux, deps, "DELETE /api/metadata/backfill", metadataBackfillStopHandler(deps))
 	handleProtected(mux, deps, "GET /api/artwork/{kind}/{id}", artworkHandler(deps))
+	handleProtected(mux, deps, "GET /api/trailers/{tmdbId}", trailerHandler(deps))
 	handleProtected(mux, deps, "GET /api/versions", versionsHandler(deps))
 	handleProtected(mux, deps, "GET /api/settings/performance", performanceSettingsHandler(deps))
 	handleProtected(mux, deps, "GET /api/settings", settingsHandler(deps))
@@ -1505,15 +1518,49 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "series list failed")
 			return
 		}
+		// Keep only in-progress items for the continue-watching row.
+		var inProgress []playstate.RecentItem
+		for _, item := range recent {
+			if !item.Watched && item.Percent > 0 {
+				inProgress = append(inProgress, item)
+			}
+		}
 		rows := []map[string]any{
-			{"id": "continue", "title": "Continue Watching", "items": tvRecentItems(recent)},
+			{"id": "continue", "title": "Continue Watching", "items": tvRecentItems(r.Context(), deps, inProgress)},
 			{"id": "movies", "title": "Movies", "items": tvMovieItems(movieItems)},
 			{"id": "tv", "title": "TV Shows", "items": tvSeriesItems(seriesItems)},
 			{"id": "recently-added", "title": "Recently Added", "items": tvRecentlyAddedItems(movieItems, seriesItems, limit)},
 		}
+		// Trending row: use TMDB regional trending cross-referenced against the
+		// local library when available; fall back to a random spotlight of catalog
+		// titles so the row always has content.
+		var topItems []map[string]any
+		if cfg := currentConfig(deps); deps.Trending != nil && cfg.Country != "" {
+			if trendingItems, err := deps.Trending.Trending(r.Context(), cfg.Country, 10); err == nil {
+				topItems = trendingToTVItems(trendingItems)
+			}
+		}
+		if len(topItems) == 0 {
+			topItems = tvSpotlightItems(movieItems, seriesItems, 10)
+		}
+		if len(topItems) > 0 {
+			title := "Highest rated"
+			eyebrow := "From your library"
+			if deps.Trending != nil && currentConfig(deps).Country != "" {
+				country := currentConfig(deps).Country
+				title = "Trending this week"
+				eyebrow = "Your region · " + country
+			}
+			rows = append(rows, map[string]any{
+				"id":      "top",
+				"title":   title,
+				"eyebrow": eyebrow,
+				"items":   topItems,
+			})
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"profile": firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv"),
-			"hero":    firstTVHomeItem(rows),
+			"heroes":  randomHeroItems(movieItems, seriesItems, 5),
 			"rows":    rows,
 			"actions": map[string]string{
 				"movieDetail":  "/api/movies/{id}",
@@ -1551,6 +1598,107 @@ func clientSeriesDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, clientSeriesDetailPayload(r.Context(), deps, r, detail))
+	}
+}
+
+func clientCollectionHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionID := strings.TrimSpace(r.PathValue("id"))
+		if collectionID == "" {
+			writeError(w, http.StatusBadRequest, "collection id is required")
+			return
+		}
+		movies, header, found, err := deps.Catalog.ListMoviesByCollection(r.Context(), collectionID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "collection lookup failed")
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "collection not found")
+			return
+		}
+		movieItems := make([]map[string]any, 0, len(movies))
+		for _, movie := range movies {
+			entry := map[string]any{
+				"id":          movie.ID,
+				"kind":        "movie",
+				"title":       movie.Title,
+				"year":        movie.Year,
+				"posterUrl":   metadataPoster(movie.Metadata),
+				"backdropUrl": metadataBackdrop(movie.Metadata),
+				"logoUrl":     metadataLogo(movie.Metadata),
+			}
+			if movie.Metadata != nil {
+				entry["voteAverage"] = heroRating(movie.Metadata.Ratings)
+				entry["genres"] = movie.Metadata.Genres
+				entry["overview"] = movie.Metadata.Overview
+				if len(movie.Metadata.Directors) > 0 {
+					entry["director"] = movie.Metadata.Directors[0]
+				}
+				if movie.Metadata.RuntimeMinutes > 0 {
+					entry["runtimeMinutes"] = movie.Metadata.RuntimeMinutes
+				}
+			}
+			movieItems = append(movieItems, entry)
+		}
+		collPayload := map[string]any{
+			"id":          header.ID,
+			"name":        header.Name,
+			"posterUrl":   normalizeArtworkSourceURL(header.PosterURL, "poster"),
+			"backdropUrl": normalizeArtworkSourceURL(header.BackdropURL, "backdrop"),
+			"logoUrl":     normalizeArtworkSourceURL(header.LogoURL, "logo"),
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"collection": collPayload,
+			"movies":     movieItems,
+		})
+	}
+}
+
+func clientPersonHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		personName := strings.TrimSpace(r.PathValue("name"))
+		if personName == "" {
+			writeError(w, http.StatusBadRequest, "person name is required")
+			return
+		}
+		credits, profile, found, err := deps.Catalog.ListItemsByPerson(r.Context(), personName, 100)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "person lookup failed")
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "no credits found for this person")
+			return
+		}
+		creditItems := make([]map[string]any, 0, len(credits))
+		for _, credit := range credits {
+			entry := map[string]any{
+				"id":          credit.ID,
+				"kind":        credit.Kind,
+				"title":       credit.Title,
+				"year":        credit.Year,
+				"character":   credit.Character,
+				"role":        credit.Role,
+				"posterUrl":   metadataPoster(credit.Metadata),
+				"backdropUrl": metadataBackdrop(credit.Metadata),
+			}
+			if credit.Metadata != nil {
+				entry["voteAverage"] = heroRating(credit.Metadata.Ratings)
+				entry["genres"] = credit.Metadata.Genres
+				entry["overview"] = credit.Metadata.Overview
+			}
+			creditItems = append(creditItems, entry)
+		}
+		personPayload := map[string]any{
+			"name":       profile.Name,
+			"profileUrl": normalizeArtworkSourceURL(profile.ProfileURL, "poster"),
+			"department": profile.Department,
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"person":  personPayload,
+			"credits": creditItems,
+		})
 	}
 }
 
@@ -1699,17 +1847,45 @@ func clientMovieDetailPayload(ctx context.Context, deps Deps, r *http.Request, d
 			versions = append(versions, payload)
 		}
 	}
+	itemPayload := map[string]any{
+		"id":           detail.ID,
+		"kind":         "movie",
+		"title":        detail.Title,
+		"year":         detail.Year,
+		"overview":     metadataOverview(detail.Metadata),
+		"posterUrl":    metadataPoster(detail.Metadata),
+		"backdropUrl":  metadataBackdrop(detail.Metadata),
+		"logoUrl":      metadataLogo(detail.Metadata),
+		"thumbnailUrl": metadataThumbnail(detail.Metadata),
+		"bannerUrl":    metadataBanner(detail.Metadata),
+		"videoKey":     trailerVideoKey(detail.Metadata),
+		"trailerUrl":   trailerURL(detail.Metadata),
+		"versionCount": detail.VersionCount,
+	}
+	if detail.Metadata != nil {
+		itemPayload["voteAverage"] = heroRating(detail.Metadata.Ratings)
+		itemPayload["genres"] = detail.Metadata.Genres
+		if detail.Metadata.RuntimeMinutes > 0 {
+			itemPayload["runtimeMinutes"] = detail.Metadata.RuntimeMinutes
+		}
+		if len(detail.Metadata.Directors) > 0 {
+			itemPayload["director"] = detail.Metadata.Directors[0]
+		}
+		// Surface collection art when this movie belongs to a franchise.
+		if c := detail.Metadata.Collection; c != nil && c.ID != "" {
+			itemPayload["collection"] = map[string]any{
+				"id":           c.ID,
+				"name":         c.Name,
+				"posterUrl":    normalizeArtworkSourceURL(c.PosterURL, "poster"),
+				"backdropUrl":  normalizeArtworkSourceURL(c.BackdropURL, "backdrop"),
+				"logoUrl":      normalizeArtworkSourceURL(c.LogoURL, "logo"),
+				"bannerUrl":    normalizeArtworkSourceURL(c.BannerURL, "banner"),
+				"landscapeUrl": normalizeArtworkSourceURL(c.LandscapeURL, "landscape"),
+			}
+		}
+	}
 	return map[string]any{
-		"item": map[string]any{
-			"id":           detail.ID,
-			"kind":         "movie",
-			"title":        detail.Title,
-			"year":         detail.Year,
-			"overview":     metadataOverview(detail.Metadata),
-			"posterUrl":    metadataPoster(detail.Metadata),
-			"backdropUrl":  metadataBackdrop(detail.Metadata),
-			"versionCount": detail.VersionCount,
-		},
+		"item":                 itemPayload,
 		"defaultMediaSourceId": defaultMediaSourceID,
 		"versions":             versions,
 	}
@@ -1730,32 +1906,65 @@ func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, 
 					versionPayloads = append(versionPayloads, payload)
 				}
 			}
-			episodes = append(episodes, map[string]any{
+			epEntry := map[string]any{
 				"id":            episode.ID,
 				"title":         firstNonEmpty(episode.Title, episodeEpisodeLabel(episode)),
 				"seasonNumber":  episode.SeasonNumber,
 				"episodeNumber": episode.EpisodeNumber,
 				"versionCount":  episode.VersionCount,
 				"versions":      versionPayloads,
-			})
+				// Per-episode artwork (TMDB StillPath → ThumbnailURL).
+				"thumbnailUrl": metadataThumbnail(episode.Metadata),
+			}
+			if episode.Metadata != nil {
+				epEntry["overview"] = episode.Metadata.Overview
+				epEntry["airDate"] = firstNonEmpty(episode.Metadata.AirDate, episode.Metadata.FirstAirDate)
+				if episode.Metadata.RuntimeMinutes > 0 {
+					epEntry["runtimeMinutes"] = episode.Metadata.RuntimeMinutes
+				}
+				epEntry["voteAverage"] = heroRating(episode.Metadata.Ratings)
+			}
+			episodes = append(episodes, epEntry)
 		}
-		seasons = append(seasons, map[string]any{
+		seasonEntry := map[string]any{
 			"id":           season.ID,
 			"seasonNumber": season.SeasonNumber,
 			"episodes":     episodes,
-		})
+			// Per-season artwork (TMDB /tv/{id}/season/{n} → poster_path).
+			"posterUrl":   metadataPoster(season.Metadata),
+			"backdropUrl": metadataBackdrop(season.Metadata),
+		}
+		if season.Metadata != nil {
+			seasonEntry["name"] = season.Metadata.Title
+			seasonEntry["overview"] = season.Metadata.Overview
+			seasonEntry["airDate"] = season.Metadata.AirDate
+		}
+		seasons = append(seasons, seasonEntry)
+	}
+	itemPayload := map[string]any{
+		"id":           detail.ID,
+		"kind":         "series",
+		"title":        detail.Title,
+		"overview":     metadataOverview(detail.Metadata),
+		"posterUrl":    metadataPoster(detail.Metadata),
+		"backdropUrl":  metadataBackdrop(detail.Metadata),
+		"logoUrl":      metadataLogo(detail.Metadata),
+		"thumbnailUrl": metadataThumbnail(detail.Metadata),
+		"bannerUrl":    metadataBanner(detail.Metadata),
+		"videoKey":     trailerVideoKey(detail.Metadata),
+		"trailerUrl":   trailerURL(detail.Metadata),
+		"seasonCount":  detail.SeasonCount,
+		"episodeCount": detail.EpisodeCount,
+	}
+	if detail.Metadata != nil {
+		itemPayload["voteAverage"] = heroRating(detail.Metadata.Ratings)
+		itemPayload["genres"] = detail.Metadata.Genres
+		if detail.Metadata.Year > 0 {
+			itemPayload["year"] = detail.Metadata.Year
+		}
 	}
 	return map[string]any{
-		"item": map[string]any{
-			"id":           detail.ID,
-			"kind":         "series",
-			"title":        detail.Title,
-			"overview":     metadataOverview(detail.Metadata),
-			"posterUrl":    metadataPoster(detail.Metadata),
-			"backdropUrl":  metadataBackdrop(detail.Metadata),
-			"seasonCount":  detail.SeasonCount,
-			"episodeCount": detail.EpisodeCount,
-		},
+		"item":                 itemPayload,
 		"defaultMediaSourceId": defaultMediaSourceID,
 		"seasons":              seasons,
 	}
@@ -1939,10 +2148,15 @@ func episodeEpisodeLabel(episode catalog.EpisodeBrief) string {
 	return fmt.Sprintf("S%02d E%02d", episode.SeasonNumber, episode.EpisodeNumber)
 }
 
-func tvRecentItems(items []playstate.RecentItem) []map[string]any {
+// tvRecentItems builds the Continue Watching row. For each recent item, we
+// look up its parent (movie or series) via media_source_id → artwork id,
+// then pull the parent's backdrop + logo so the card can render the Netflix-
+// style "resume" tile (16:9 backdrop with clearlogo overlay) instead of the
+// plain 2:3 poster.
+func tvRecentItems(ctx context.Context, deps Deps, items []playstate.RecentItem) []map[string]any {
 	output := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		output = append(output, map[string]any{
+		entry := map[string]any{
 			"id":              item.MediaSourceID,
 			"kind":            item.Kind,
 			"title":           firstNonEmpty(item.Name, item.RelPath, "Resume playback"),
@@ -1951,7 +2165,31 @@ func tvRecentItems(items []playstate.RecentItem) []map[string]any {
 			"progressPercent": item.Percent,
 			"lastPlayedAt":    item.LastPlayedAt,
 			"route":           "Resume",
-		})
+		}
+		if deps.Catalog != nil {
+			if display, ok, err := deps.Catalog.GetMediaSourceDisplay(ctx, item.MediaSourceID); err == nil && ok {
+				// Use the display's resolved title (cleaner than the filename).
+				if display.Title != "" {
+					entry["title"] = display.Title
+				}
+				if display.ArtworkID != "" {
+					if record, has, err := deps.Catalog.GetBestMetadata(ctx, display.ArtworkKind, display.ArtworkID); err == nil && has {
+						entry["posterUrl"] = metadataPoster(&record)
+						entry["backdropUrl"] = metadataBackdrop(&record)
+						entry["logoUrl"] = metadataLogo(&record)
+						entry["thumbnailUrl"] = metadataThumbnail(&record)
+						if record.Year > 0 {
+							entry["year"] = record.Year
+						}
+						entry["voteAverage"] = heroRating(record.Ratings)
+						entry["genres"] = record.Genres
+						entry["parentId"] = display.ArtworkID
+						entry["parentKind"] = display.ArtworkKind
+					}
+				}
+			}
+		}
+		output = append(output, entry)
 	}
 	return output
 }
@@ -1963,16 +2201,25 @@ func tvMovieItems(items []catalog.MovieListItem) []map[string]any {
 		if item.Year > 0 {
 			subtitle = fmt.Sprintf("%d", item.Year)
 		}
-		output = append(output, map[string]any{
+		entry := map[string]any{
 			"id":           item.ID,
 			"kind":         "movie",
 			"title":        item.Title,
 			"subtitle":     subtitle,
+			"year":         item.Year,
 			"posterUrl":    metadataPoster(item.Metadata),
 			"backdropUrl":  metadataBackdrop(item.Metadata),
+			"logoUrl":      metadataLogo(item.Metadata),
+			"thumbnailUrl": metadataThumbnail(item.Metadata),
+			"bannerUrl":    metadataBanner(item.Metadata),
 			"versionCount": item.VersionCount,
 			"route":        "Ready",
-		})
+		}
+		if item.Metadata != nil {
+			entry["voteAverage"] = heroRating(item.Metadata.Ratings)
+			entry["genres"] = item.Metadata.Genres
+		}
+		output = append(output, entry)
 	}
 	return output
 }
@@ -1980,17 +2227,26 @@ func tvMovieItems(items []catalog.MovieListItem) []map[string]any {
 func tvSeriesItems(items []catalog.SeriesListItem) []map[string]any {
 	output := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		output = append(output, map[string]any{
+		entry := map[string]any{
 			"id":           item.ID,
 			"kind":         "series",
 			"title":        item.Title,
 			"subtitle":     fmt.Sprintf("%d season%s / %d episode%s", item.SeasonCount, plural(item.SeasonCount), item.EpisodeCount, plural(item.EpisodeCount)),
 			"posterUrl":    metadataPoster(item.Metadata),
 			"backdropUrl":  metadataBackdrop(item.Metadata),
+			"logoUrl":      metadataLogo(item.Metadata),
+			"thumbnailUrl": metadataThumbnail(item.Metadata),
+			"bannerUrl":    metadataBanner(item.Metadata),
 			"seasonCount":  item.SeasonCount,
 			"episodeCount": item.EpisodeCount,
 			"route":        "Ready",
-		})
+		}
+		if item.Metadata != nil {
+			entry["year"] = item.Metadata.Year
+			entry["voteAverage"] = heroRating(item.Metadata.Ratings)
+			entry["genres"] = item.Metadata.Genres
+		}
+		output = append(output, entry)
 	}
 	return output
 }
@@ -2005,20 +2261,150 @@ func tvRecentlyAddedItems(movies []catalog.MovieListItem, series []catalog.Serie
 	return output
 }
 
-func firstTVHomeItem(rows []map[string]any) map[string]any {
-	for _, row := range rows {
-		items, _ := row["items"].([]map[string]any)
-		if len(items) > 0 {
-			return items[0]
+func tvSpotlightItems(movies []catalog.MovieListItem, series []catalog.SeriesListItem, limit int) []map[string]any {
+	all := make([]map[string]any, 0, len(movies)+len(series))
+	all = append(all, tvMovieItems(movies)...)
+	all = append(all, tvSeriesItems(series)...)
+	rand.Shuffle(len(all), func(i, j int) { all[i], all[j] = all[j], all[i] })
+	if len(all) > limit {
+		return all[:limit]
+	}
+	return all
+}
+
+// trendingToTVItems converts TMDB trending items (already cross-referenced
+// against the local library) to the same map shape used by tvMovieItems /
+// tvSeriesItems so the home screen renders them identically.
+func trendingToTVItems(items []trending.Item) []map[string]any {
+	const tmdbImageBase = "https://image.tmdb.org/t/p"
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		subtitle := fmt.Sprintf("#%d", item.Rank)
+		if item.Year > 0 {
+			subtitle = fmt.Sprintf("#%d · %d", item.Rank, item.Year)
+		}
+		posterURL := ""
+		if item.PosterPath != "" {
+			posterURL = tmdbImageBase + "/w500" + item.PosterPath
+		}
+		backdropURL := ""
+		if item.BackdropPath != "" {
+			backdropURL = tmdbImageBase + "/original" + item.BackdropPath
+		}
+		out = append(out, map[string]any{
+			"id":          item.CatalogID,
+			"kind":        item.Kind,
+			"title":       item.Title,
+			"subtitle":    subtitle,
+			"posterUrl":   posterURL,
+			"backdropUrl": backdropURL,
+			"voteAverage": item.VoteAverage,
+			"rank":        item.Rank,
+			"route":       "Ready",
+		})
+	}
+	return out
+}
+
+// randomHeroItems picks n distinct random items from the full catalog for the
+// hero carousel. All available metadata is included so the banner renders as
+// richly as possible regardless of how complete the metadata is.
+func randomHeroItems(movies []catalog.MovieListItem, series []catalog.SeriesListItem, n int) []map[string]any {
+	all := make([]map[string]any, 0, len(movies)+len(series))
+
+	for _, m := range movies {
+		item := map[string]any{
+			"id":           m.ID,
+			"kind":         "movie",
+			"title":        m.Title,
+			"year":         m.Year,
+			"posterUrl":    metadataPoster(m.Metadata),
+			"backdropUrl":  metadataBackdrop(m.Metadata),
+			"logoUrl":      metadataLogo(m.Metadata),
+			"thumbnailUrl": metadataThumbnail(m.Metadata),
+			"bannerUrl":    metadataBanner(m.Metadata),
+			"videoKey":     trailerVideoKey(m.Metadata),
+			"trailerUrl":   trailerURL(m.Metadata),
+			"route":        "Ready",
+		}
+		if m.Metadata != nil {
+			item["overview"] = m.Metadata.Overview
+			item["genres"] = m.Metadata.Genres
+			item["voteAverage"] = heroRating(m.Metadata.Ratings)
+			if len(m.Metadata.Directors) > 0 {
+				item["director"] = m.Metadata.Directors[0]
+			}
+			if m.Metadata.RuntimeMinutes > 0 {
+				item["runtime"] = fmt.Sprintf("%d min", m.Metadata.RuntimeMinutes)
+			}
+		}
+		all = append(all, item)
+	}
+
+	for _, s := range series {
+		item := map[string]any{
+			"id":           s.ID,
+			"kind":         "series",
+			"title":        s.Title,
+			"posterUrl":    metadataPoster(s.Metadata),
+			"backdropUrl":  metadataBackdrop(s.Metadata),
+			"logoUrl":      metadataLogo(s.Metadata),
+			"thumbnailUrl": metadataThumbnail(s.Metadata),
+			"bannerUrl":    metadataBanner(s.Metadata),
+			"videoKey":     trailerVideoKey(s.Metadata),
+			"trailerUrl":   trailerURL(s.Metadata),
+			"seasonCount":  s.SeasonCount,
+			"episodeCount": s.EpisodeCount,
+			"route":        "Ready",
+		}
+		if s.Metadata != nil {
+			item["year"] = s.Metadata.Year
+			item["overview"] = s.Metadata.Overview
+			item["genres"] = s.Metadata.Genres
+			item["voteAverage"] = heroRating(s.Metadata.Ratings)
+		}
+		all = append(all, item)
+	}
+
+	if len(all) == 0 {
+		return []map[string]any{{
+			"id":       "empty",
+			"kind":     "empty",
+			"title":    "Add your first library",
+			"subtitle": "Open Xuva Settings to add Movies or TV Shows.",
+			"route":    "Setup",
+		}}
+	}
+	rand.Shuffle(len(all), func(i, j int) { all[i], all[j] = all[j], all[i] })
+	if len(all) > n {
+		return all[:n]
+	}
+	return all
+}
+
+// heroRating extracts the highest numeric rating from a Ratings map.
+// Handles float64 values and display strings like "8.5/10" or "85%".
+func heroRating(ratings catalog.Ratings) float64 {
+	best := 0.0
+	for _, v := range ratings {
+		var f float64
+		switch typed := v.(type) {
+		case float64:
+			f = typed
+		case string:
+			s := strings.TrimSpace(strings.Split(strings.TrimSuffix(typed, "%"), "/")[0])
+			if parsed, err := strconv.ParseFloat(s, 64); err == nil {
+				if parsed > 10 {
+					parsed /= 10
+				}
+				f = parsed
+			}
+		}
+		if f > best {
+			best = f
 		}
 	}
-	return map[string]any{
-		"id":       "empty",
-		"kind":     "empty",
-		"title":    "Add your first library",
-		"subtitle": "Open Xuva Settings to add Movies or TV Shows.",
-		"route":    "Setup",
-	}
+	return best
 }
 
 func metadataPoster(record *catalog.MetadataRecord) string {
@@ -2088,6 +2474,88 @@ func normalizeArtworkSourceURL(raw string, artType string) string {
 	}
 	parsed.Path = prefix + target + "/" + parts[1]
 	return parsed.String()
+}
+
+// trailerVideoKey returns the YouTube key for a metadata record, preferring
+// the field saved at fetch time. As a backwards-compat path for items whose
+// RawJSON was fetched before video parsing landed, it falls back to a
+// best-effort scan of the cached TMDB raw response.
+func trailerVideoKey(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	if key := strings.TrimSpace(record.VideoKey); key != "" {
+		return key
+	}
+	if strings.TrimSpace(record.RawJSON) == "" {
+		return ""
+	}
+	var parsed struct {
+		Videos struct {
+			Results []struct {
+				Key      string `json:"key"`
+				Site     string `json:"site"`
+				Type     string `json:"type"`
+				Official bool   `json:"official"`
+			} `json:"results"`
+		} `json:"videos"`
+	}
+	if err := json.Unmarshal([]byte(record.RawJSON), &parsed); err != nil {
+		return ""
+	}
+	var officialTrailer, anyTrailer, teaser, anyYouTube string
+	for _, v := range parsed.Videos.Results {
+		if !strings.EqualFold(v.Site, "YouTube") || strings.TrimSpace(v.Key) == "" {
+			continue
+		}
+		isTrailer := strings.EqualFold(v.Type, "Trailer")
+		isTeaser := strings.EqualFold(v.Type, "Teaser")
+		switch {
+		case isTrailer && v.Official && officialTrailer == "":
+			officialTrailer = v.Key
+		case isTrailer && anyTrailer == "":
+			anyTrailer = v.Key
+		case isTeaser && teaser == "":
+			teaser = v.Key
+		case anyYouTube == "":
+			anyYouTube = v.Key
+		}
+		if officialTrailer != "" {
+			break
+		}
+	}
+	if officialTrailer != "" {
+		return officialTrailer
+	}
+	if anyTrailer != "" {
+		return anyTrailer
+	}
+	if teaser != "" {
+		return teaser
+	}
+	return anyYouTube
+}
+
+// trailerURL returns the local /api/trailers/{tmdbId} URL when the MP4 has
+// been downloaded, or empty string. The frontend prefers the local URL and
+// only falls back to the YouTube key when this is empty.
+func trailerURL(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	if strings.TrimSpace(record.TrailerPath) == "" {
+		return ""
+	}
+	// Filename is "<tmdbID>.mp4" — use ExternalID (TMDB) when the provider is
+	// TMDB. For other providers, the file simply won't exist.
+	tmdbID := strings.TrimSpace(record.ExternalID)
+	if tmdbID == "" {
+		return ""
+	}
+	if _, err := strconv.Atoi(tmdbID); err != nil {
+		return ""
+	}
+	return "/api/trailers/" + tmdbID + ".mp4"
 }
 
 func formatProgress(value float64) string {
@@ -2284,6 +2752,76 @@ func metadataRefreshBatchHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+// metadataBackfillStatusHandler returns a snapshot of the running backfill
+// (or last-completed run). Used by the Settings UI's "library health" strip
+// to render live progress + by clients to detect whether a backfill is
+// already in flight before posting a new one.
+func metadataBackfillStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Metadata == nil {
+			writeError(w, http.StatusServiceUnavailable, "metadata providers are not available")
+			return
+		}
+		status := deps.Metadata.BackfillStatus()
+		// Include live counts even when idle, so the UI can show "x items
+		// missing TMDB metadata" without having to poll the catalog
+		// directly. We compute these only on the GET handler so the hot
+		// path (running backfill) isn't bottlenecked on extra queries.
+		missingMovies := 0
+		missingSeries := 0
+		if deps.Catalog != nil {
+			if n, err := deps.Catalog.CountItemsMissingProvider(r.Context(), "movie", "tmdb"); err == nil {
+				missingMovies = n
+			}
+			if n, err := deps.Catalog.CountItemsMissingProvider(r.Context(), "series", "tmdb"); err == nil {
+				missingSeries = n
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":        status,
+			"missingMovies": missingMovies,
+			"missingSeries": missingSeries,
+			"missingTotal":  missingMovies + missingSeries,
+		})
+	}
+}
+
+func metadataBackfillStartHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Metadata == nil {
+			writeError(w, http.StatusServiceUnavailable, "metadata providers are not available")
+			return
+		}
+		var request struct {
+			Provider string `json:"provider"`
+		}
+		_ = decodeJSON(w, r, &request)
+		if strings.TrimSpace(request.Provider) == "" {
+			request.Provider = "tmdb"
+		}
+		if err := deps.Metadata.StartBackfill(r.Context(), request.Provider); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"status": deps.Metadata.BackfillStatus(),
+		})
+	}
+}
+
+func metadataBackfillStopHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if deps.Metadata == nil {
+			writeError(w, http.StatusServiceUnavailable, "metadata providers are not available")
+			return
+		}
+		deps.Metadata.StopBackfill()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": deps.Metadata.BackfillStatus(),
+		})
+	}
+}
+
 func metadataProviders(ctx context.Context, deps Deps) []map[string]any {
 	cfg := currentConfig(deps)
 	health := map[string]metaprovider.ProviderHealth{}
@@ -2332,6 +2870,60 @@ func metadataProviders(ctx context.Context, deps Deps) []map[string]any {
 		provider["status"] = state.Status
 	}
 	return providers
+}
+
+// trailerHandler serves the locally cached MP4 trailer for a given TMDB id.
+// The URL is shaped /api/trailers/{tmdbId} — extension can be omitted or be
+// ".mp4". `http.ServeFile` handles Range/HEAD/304 automatically, which is
+// exactly what <video> needs for instant seek + adaptive buffering.
+//
+// We deliberately key on TMDB id (not catalog id) because:
+//   - It's stable across re-scans
+//   - It maps 1:1 with the on-disk filename
+//   - Multiple catalog items pointing at the same TMDB title share one file
+func trailerHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Trailers == nil || !deps.Trailers.Enabled() {
+			writeError(w, http.StatusNotFound, "trailers disabled")
+			return
+		}
+		raw := strings.TrimSuffix(r.PathValue("tmdbId"), ".mp4")
+		raw = strings.TrimSpace(raw)
+		if raw == "" || !safePathSegment(raw) {
+			writeError(w, http.StatusBadRequest, "invalid trailer id")
+			return
+		}
+		// TMDB IDs are integers; reject anything else so we never let a
+		// crafted path escape the trailers dir.
+		if _, err := strconv.Atoi(raw); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid trailer id")
+			return
+		}
+		path := deps.Trailers.LocalPath(raw)
+		// Double-check the resolved path is inside the trailers dir.
+		rootAbs, err := filepath.Abs(deps.Trailers.Dir())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "trailers root unavailable")
+			return
+		}
+		fileAbs, err := filepath.Abs(path)
+		if err != nil || !strings.HasPrefix(fileAbs, rootAbs+string(filepath.Separator)) {
+			writeError(w, http.StatusBadRequest, "trailer path escape")
+			return
+		}
+		fi, err := os.Stat(path)
+		if err != nil || fi.IsDir() || fi.Size() == 0 {
+			writeError(w, http.StatusNotFound, "trailer not yet available")
+			return
+		}
+		// Cache aggressively — the contents are immutable once written. The
+		// filename includes the TMDB id so a re-fetch would land at the
+		// same path (or be a new file via versioned id, in which case the
+		// frontend would request a fresh URL).
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("Content-Type", "video/mp4")
+		http.ServeFile(w, r, path)
+	}
 }
 
 func artworkHandler(deps Deps) http.HandlerFunc {
@@ -3056,6 +3648,23 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 		if request.AllowedOrigins != nil {
 			updated.AllowedOrigins = request.AllowedOrigins
 		}
+		// country / timezone may be set or explicitly cleared via the settings form
+		if value, ok := fields["country"]; ok {
+			var country string
+			if err := json.Unmarshal(value, &country); err != nil {
+				writeError(w, http.StatusBadRequest, "country must be text")
+				return
+			}
+			updated.Country = strings.ToUpper(strings.TrimSpace(country))
+		}
+		if value, ok := fields["timezone"]; ok {
+			var timezone string
+			if err := json.Unmarshal(value, &timezone); err != nil {
+				writeError(w, http.StatusBadRequest, "timezone must be text")
+				return
+			}
+			updated.Timezone = strings.TrimSpace(timezone)
+		}
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
 			return
@@ -3075,6 +3684,9 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			ProbeWorkers:     updated.ProbeWorkers,
 			TranscodeWorkers: updated.TranscodeWorkers,
 			GPUWorkers:       updated.GPUWorkers,
+			Country:          updated.Country,
+			Timezone:         updated.Timezone,
+			SetupComplete:    updated.SetupComplete,
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
 			return
@@ -3557,6 +4169,8 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"watchDebounceSecs": cfg.WatchDebounceSecs,
 		"probeBatchLimit":   cfg.ProbeBatchLimit,
 		"allowedOrigins":    cfg.AllowedOrigins,
+		"country":           cfg.Country,
+		"timezone":          cfg.Timezone,
 	}
 }
 
@@ -6781,4 +7395,91 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// setupStatusHandler returns whether the first-run wizard should be shown.
+// It is intentionally public (no auth required) so the frontend can gate
+// navigation before the user has created an account.
+func setupStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := currentConfig(deps)
+		requiresBootstrap := false
+		if deps.Auth != nil && !deps.Auth.Disabled() {
+			if required, err := deps.Auth.RequiresBootstrap(r.Context()); err == nil {
+				requiresBootstrap = required
+			}
+		}
+		hasLibraries := len(deps.Libraries.List()) > 0
+		// Show the wizard when there is no admin account yet, or when the server
+		// has never been explicitly finished (no libraries means nothing useful
+		// can be streamed yet, so nudge the user through setup).
+		requiresSetup := requiresBootstrap || (!cfg.SetupComplete && !hasLibraries)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"requiresSetup": requiresSetup,
+			"steps": map[string]bool{
+				"account":   !requiresBootstrap,
+				"region":    cfg.Country != "",
+				"libraries": hasLibraries,
+			},
+		})
+	}
+}
+
+// setupCompleteHandler saves the region/timezone chosen in the setup wizard
+// and marks setup as complete. Requires an authenticated session so it runs
+// after the account-creation step.
+func setupCompleteHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		Country  string `json:"country"`
+		Timezone string `json:"timezone"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		var req request
+		if len(strings.TrimSpace(string(body))) > 0 {
+			if err := json.Unmarshal(body, &req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid json body")
+				return
+			}
+		}
+		cfg := currentConfig(deps)
+		if v := strings.ToUpper(strings.TrimSpace(req.Country)); v != "" {
+			cfg.Country = v
+		}
+		if v := strings.TrimSpace(req.Timezone); v != "" {
+			cfg.Timezone = v
+		}
+		cfg.SetupComplete = true
+		if err := config.SaveFile(deps.Config.DataDir, cfg); err != nil {
+			writeError(w, http.StatusInternalServerError, "setup save failed")
+			return
+		}
+		_ = deps.Catalog.SaveSettings(r.Context(), catalog.RuntimeSettings{
+			HTTPAddr:          cfg.HTTPAddr,
+			DataDir:           cfg.DataDir,
+			TranscodeDir:      cfg.TranscodeDir,
+			DownloadsDir:      cfg.DownloadsDir,
+			MetadataDir:       cfg.MetadataDir,
+			CacheDir:          cfg.CacheDir,
+			TempDir:           cfg.TempDir,
+			FFmpegPath:        cfg.FFmpegPath,
+			FFprobePath:       cfg.FFprobePath,
+			ScanWorkers:       cfg.ScanWorkers,
+			ProbeWorkers:      cfg.ProbeWorkers,
+			TranscodeWorkers:  cfg.TranscodeWorkers,
+			GPUWorkers:        cfg.GPUWorkers,
+			LibrarySyncMode:   cfg.LibrarySyncMode,
+			SyncIntervalMins:  cfg.SyncIntervalMins,
+			WatchDebounceSecs: cfg.WatchDebounceSecs,
+			ProbeBatchLimit:   cfg.ProbeBatchLimit,
+			Country:           cfg.Country,
+			Timezone:          cfg.Timezone,
+			SetupComplete:     cfg.SetupComplete,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
 }
