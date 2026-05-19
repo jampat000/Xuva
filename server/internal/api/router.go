@@ -6995,6 +6995,13 @@ func playbackRecentHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "recent playback lookup failed")
 			return
 		}
+		if deps.Catalog != nil {
+			for i := range items {
+				if display, ok, err := deps.Catalog.GetMediaSourceDisplay(r.Context(), items[i].MediaSourceID); err == nil && ok && display.Title != "" {
+					items[i].Name = display.Title
+				}
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"recent": items})
 	}
 }
