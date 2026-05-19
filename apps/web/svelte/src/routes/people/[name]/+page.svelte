@@ -77,9 +77,13 @@
   {:else}
     <div class="px-6 pb-32 pt-28 md:px-12 lg:px-20">
       <!-- Person header -->
-      <a href="javascript:history.back()" class="mb-8 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+      <button
+        type="button"
+        onclick={() => history.back()}
+        class="mb-8 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
         <ChevronLeft class="h-4 w-4" /> Back
-      </a>
+      </button>
 
       <div class="flex items-center gap-6">
         <!-- Profile photo -->
