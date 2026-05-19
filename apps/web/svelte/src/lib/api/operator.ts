@@ -832,3 +832,46 @@ export async function importBackup(file: File): Promise<BackupImportResponse> {
 	}
 	return resp.json();
 }
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface NotificationItem {
+	id?: string;
+	kind?: string;
+	title?: string;
+	message?: string;
+	link?: string;
+	dismissed?: boolean;
+	createdAt?: string;
+}
+
+export interface NotificationsResponse {
+	notifications?: NotificationItem[];
+}
+
+export function getNotifications(
+	client: ApiClient = apiClient
+): Promise<NotificationsResponse> {
+	return client.request<NotificationsResponse>('/api/notifications');
+}
+
+export function dismissNotification(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.send<Record<string, unknown>, Record<string, never>>(
+		`/api/notifications/${encodeURIComponent(id)}/dismiss`,
+		{} as Record<string, never>,
+		'POST'
+	);
+}
+
+export function dismissAllNotifications(
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.send<Record<string, unknown>, Record<string, never>>(
+		'/api/notifications/dismiss-all',
+		{} as Record<string, never>,
+		'POST'
+	);
+}

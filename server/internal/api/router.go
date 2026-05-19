@@ -44,6 +44,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/metasources"
 	"github.com/jampat000/Xuva/server/internal/migration"
 	"github.com/jampat000/Xuva/server/internal/movies"
+	"github.com/jampat000/Xuva/server/internal/notifications"
 	"github.com/jampat000/Xuva/server/internal/observability"
 	"github.com/jampat000/Xuva/server/internal/pairing"
 	"github.com/jampat000/Xuva/server/internal/playback"
@@ -95,10 +96,11 @@ type Deps struct {
 	Sessions  *sessions.Service
 	Subtitles *subtitles.Service
 	Pairing   *pairing.Service
-	Migration *migration.Service
-	Trending   *trending.Service
-	Trailers   *trailers.Service
-	Thumbnails *thumbnails.Service
+	Migration     *migration.Service
+	Trending      *trending.Service
+	Trailers      *trailers.Service
+	Thumbnails    *thumbnails.Service
+	Notifications *notifications.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -180,6 +182,9 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
 	handleProtected(mux, deps, "GET /api/backup/export", backupExportHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/backup/import", backupImportHandler(deps))
+	handleProtected(mux, deps, "GET /api/notifications", notificationsListHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/notifications/{id}/dismiss", notificationsDismissHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/notifications/dismiss-all", notificationsDismissAllHandler(deps))
 	handleProtected(mux, deps, "GET /api/system/status", systemStatusHandler(deps))
 	handleProtected(mux, deps, "GET /api/remote/access", remoteAccessHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/remote/diagnostics", remoteDiagnosticsHandler(deps))
