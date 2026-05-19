@@ -87,6 +87,7 @@
     stopBackfill,
     type BackfillResponse,
   } from '$lib/api/browse';
+  import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
 
   type Group = "Account" | "Server" | "Devices" | "Advanced";
 
@@ -110,7 +111,6 @@
     { id: "storage", label: "Storage", icon: HardDrive, group: "Server", hint: "Directories & disk usage" },
     { id: "backup", label: "Backup", icon: ArchiveRestore, group: "Server", hint: "Export & restore your catalog database" },
     { id: "network", label: "Network", icon: Wifi, group: "Server", hint: "Ports, mDNS discovery, remote access" },
-    { id: "migration", label: "Migration", icon: ArrowRightLeft, group: "Server", hint: "Import from Plex, Emby & more" },
     { id: "watchlist-services", label: "Watchlist Services", icon: BookMarked, group: "Server", hint: "Sync with Trakt, Letterboxd & more" },
     { id: "users", label: "Users", icon: Users, group: "Server", hint: "Accounts & access roles" },
     { id: "pending-approvals", label: "Pending Approvals", icon: Link2, group: "Devices", hint: "Review & approve device requests" },
@@ -871,9 +871,12 @@
     if (active !== current.id) sectionError = null;
   });
 
+  let currentUser = $state<AuthSessionUser | null>(null);
+
   onMount(() => {
     loadDashboard();
     loadLibraries();
+    getAuthSession().then(r => { if (r.user) currentUser = r.user; }).catch(() => {});
   });
 </script>
 
@@ -1141,6 +1144,8 @@
                           <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-300"><Check class="h-3 w-3"/>Healthy</span>
                         {:else if configured}
                           <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-amber-300">Degraded</span>
+                        {:else if src.local}
+                          <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Built in</span>
                         {:else}
                           <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Not configured</span>
                         {/if}
@@ -2009,7 +2014,7 @@
                       <div>
                         <div class="text-sm font-semibold">GPU Transcoding</div>
                         <p class="mt-0.5 text-xs text-muted-foreground">
-                          {#if perfSettings?.hardwareAcceleration?.available}Available — {perfSettings.hardwareAcceleration.status ?? 'ready'}{:else}Not available on this hardware{/if}
+                          {#if perfSettings?.hardwareAcceleration?.available}{@const hwStatus = perfSettings.hardwareAcceleration.status ?? ''}{hwStatus && hwStatus.toLowerCase() !== 'available' ? `Available — ${hwStatus}` : 'Available — auto-detected'}{:else}Not available on this hardware{/if}
                         </p>
                       </div>
                       <label class="relative inline-flex cursor-pointer items-center gap-2">
@@ -3030,6 +3035,7 @@
                     id="account-username"
                     type="text"
                     disabled
+                    value={currentUser?.username ?? ''}
                     placeholder="username"
                     class="mt-2 h-11 w-full cursor-not-allowed rounded-xl border border-border bg-background/20 px-4 text-sm text-muted-foreground/60 outline-none"
                   />
