@@ -515,6 +515,6 @@
 
 	<!-- Footer -->
 	<p class="mt-8 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground/50">
-		Xuva · Your home cinema, on every screen
+		Xuva · Your personal media library
 	</p>
 </div>
