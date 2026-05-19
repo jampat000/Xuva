@@ -1227,6 +1227,7 @@
                               <input
                                 id={`wl-${svc.id}-key`}
                                 type="password"
+                                autocomplete="new-password"
                                 value={keyVal}
                                 oninput={(e) => { wlKeys = { ...wlKeys, [svc.id]: (e.currentTarget as HTMLInputElement).value }; }}
                                 placeholder="Paste your API key"
@@ -2455,7 +2456,7 @@
                   </div>
                   <div>
                     <label for="new-pass" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Password</label>
-                    <input id="new-pass" type="password" bind:value={newUserPass} placeholder="••••••••"
+                    <input id="new-pass" type="password" autocomplete="new-password" bind:value={newUserPass} placeholder="••••••••"
                       class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60" />
                   </div>
                   <div>
@@ -2943,6 +2944,7 @@
                   <input
                     id="current-password"
                     type="password"
+                    autocomplete="current-password"
                     placeholder="••••••••"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
@@ -2954,6 +2956,7 @@
                   <input
                     id="new-password"
                     type="password"
+                    autocomplete="new-password"
                     placeholder="••••••••"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
@@ -2965,6 +2968,7 @@
                   <input
                     id="confirm-password"
                     type="password"
+                    autocomplete="new-password"
                     placeholder="••••••••"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
