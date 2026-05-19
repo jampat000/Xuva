@@ -429,4 +429,15 @@ var migrations = []string{
 		PRIMARY KEY (person_id, item_kind, item_id, role)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_people_name_lower ON people(name_lower)`,
+	// issue #82: chapter markers (intro/credits) per media source
+	`CREATE TABLE IF NOT EXISTS media_source_chapters (
+		media_source_id TEXT PRIMARY KEY REFERENCES media_sources(id) ON DELETE CASCADE,
+		intro_start REAL NOT NULL DEFAULT -1,
+		intro_end REAL NOT NULL DEFAULT -1,
+		credits_start REAL NOT NULL DEFAULT -1,
+		analyzed_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
+	// issue #82: per-user preferences (auto-skip intros etc.)
+	`ALTER TABLE users ADD COLUMN preferences_json TEXT NOT NULL DEFAULT '{}'`,
 }

@@ -21,6 +21,7 @@ export interface AuthSessionResponse {
 	csrfToken?: string;
 	sessionToken?: string;
 	error?: string;
+	preferences?: { autoSkipIntros?: boolean };
 	[key: string]: unknown;
 }
 

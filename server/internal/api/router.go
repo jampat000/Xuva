@@ -31,6 +31,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/adaptive"
 	"github.com/jampat000/Xuva/server/internal/auth"
 	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/chapters"
 	"github.com/jampat000/Xuva/server/internal/config"
 	"github.com/jampat000/Xuva/server/internal/database"
 	"github.com/jampat000/Xuva/server/internal/devices"
@@ -101,6 +102,7 @@ type Deps struct {
 	Trailers      *trailers.Service
 	Thumbnails    *thumbnails.Service
 	Notifications *notifications.Service
+	Chapters      *chapters.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -206,6 +208,9 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/sprite.jpg", thumbnailSpriteHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/thumbnails.vtt", thumbnailVTTHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/thumbnails/chapters.vtt", thumbnailChaptersHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/chapters", chaptersGetHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/chapters/analyze", chaptersAnalyzeHandler(deps))
+	handleProtectedCSRF(mux, deps, "PATCH /api/users/me/preferences", userPreferencesUpdateHandler(deps))
 	handleProtected(mux, deps, "GET /api/probes", probesHandler(deps))
 	handleProtected(mux, deps, "GET /api/probes/{id}", probeJobHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/probes", probeStartHandler(deps))
@@ -640,6 +645,9 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 			"expiresAt": resolved.Session.ExpiresAt.Format(time.RFC3339),
 		}
 		payload["csrfToken"] = resolved.Session.CSRFToken
+		if prefs, err := deps.Auth.GetUserPreferences(r.Context(), resolved.Principal.ID); err == nil {
+			payload["preferences"] = prefs
+		}
 		writeJSON(w, http.StatusOK, payload)
 	}
 }
