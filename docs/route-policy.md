@@ -123,6 +123,7 @@ Public client bootstrap routes:
 | `GET /api/playback/route` | playback | `playback.route` | admin, standard |
 | `GET /api/client/collections/{id}` | client | `client.collection.detail` | admin, standard |
 | `GET /api/client/people/{name}` | client | `client.person.detail` | admin, standard |
+| `GET /api/client/search` | client | `client.search` | admin, standard |
 | `POST /api/setup/complete` | setup | `setup.complete` | admin |
 
 Audit events are emitted as `audit.route` with:

@@ -1,12 +1,12 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { Bell, Menu, Search, Settings, Film, Tv, LogOut, User } from "lucide-svelte";
+  import { Bell, Menu, Search, Settings, Film, Tv, LogOut, User, Layers } from "lucide-svelte";
   import Logo from "./Logo.svelte";
-  import { primeSearchCatalogue, searchCatalogue, isSearchLoading } from "$lib/stores/searchStore.svelte";
+  import { primeSearchCatalogue, runSearch, getSearchResults, isSearchLoading } from "$lib/stores/searchStore.svelte";
   import { getPlaybackRecent } from "$lib/api/home";
-  import type { Media } from "$lib/mock-data";
   import type { PlaybackRecentItem } from "$lib/api/home";
+  import type { SearchHit } from "$lib/api/browse";
 
   const nav = [
     { label: "Home", href: "/" },
@@ -22,7 +22,23 @@
   let searchFocused = $state(false);
   let searchInputEl = $state<HTMLInputElement | null>(null);
 
-  const searchResults = $derived(searchCatalogue(searchQuery, 8));
+  // Kick off backend search whenever the input changes; results are
+  // available via `getSearchResults()` once loading finishes.
+  $effect(() => {
+    runSearch(searchQuery, 8);
+  });
+
+  const searchResp = $derived(getSearchResults());
+  const searchResults = $derived<SearchHit[]>(
+    !searchResp || searchResp.query !== searchQuery.trim()
+      ? []
+      : [
+          ...searchResp.movies.slice(0, 4),
+          ...searchResp.series.slice(0, 4),
+          ...searchResp.people.slice(0, 3),
+          ...searchResp.collections.slice(0, 3),
+        ]
+  );
   const showSearchDropdown = $derived(searchFocused && searchQuery.trim().length > 0);
 
   function handleSearchKeydown(e: KeyboardEvent) {
@@ -37,10 +53,36 @@
     }
   }
 
-  function handleResultClick(m: Media) {
+  function handleResultClick(hit: SearchHit) {
     searchQuery = "";
     searchFocused = false;
-    goto(m.type === "Series" ? `/tv/${m.id}` : `/movies/${m.id}`);
+    switch (hit.kind) {
+      case "movie":
+        goto(`/movies/${hit.id}`);
+        return;
+      case "series":
+        goto(`/tv/${hit.id}`);
+        return;
+      case "person":
+        goto(`/people/${encodeURIComponent(hit.name)}`);
+        return;
+      case "collection":
+        goto(`/collections/${hit.id}`);
+        return;
+    }
+  }
+
+  function hitKey(h: SearchHit): string {
+    switch (h.kind) {
+      case "movie":
+        return `m:${h.id}`;
+      case "series":
+        return `s:${h.id}`;
+      case "person":
+        return `p:${h.name}`;
+      case "collection":
+        return `c:${h.id}`;
+    }
   }
 
   function handleSearchFocus() {
@@ -205,26 +247,56 @@
               <div class="px-4 py-3 text-sm text-muted-foreground">No results for "{searchQuery}"</div>
             {:else}
               <ul>
-                {#each searchResults as m (m.id)}
+                {#each searchResults as hit (hitKey(hit))}
                   <li>
                     <button
                       type="button"
                       class="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface/60"
-                      onmousedown={(e) => { e.preventDefault(); handleResultClick(m); }}
+                      onmousedown={(e) => { e.preventDefault(); handleResultClick(hit); }}
                     >
-                      {#if m.poster}
-                        <img src={m.poster} alt="" class="h-10 w-7 shrink-0 rounded object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+                      {#if hit.kind === 'movie' || hit.kind === 'series'}
+                        {#if hit.posterUrl}
+                          <img src={hit.posterUrl} alt="" class="h-10 w-7 shrink-0 rounded object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+                        {:else}
+                          <div class="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-surface-elevated text-muted-foreground">
+                            {#if hit.kind === 'series'}<Tv class="h-3.5 w-3.5" />{:else}<Film class="h-3.5 w-3.5" />{/if}
+                          </div>
+                        {/if}
+                        <div class="min-w-0 flex-1">
+                          <div class="truncate text-sm font-medium">{hit.title}</div>
+                          <div class="text-xs text-muted-foreground">
+                            {hit.year && hit.year > 0 ? `${hit.year} · ` : ''}{hit.kind === 'series' ? 'TV Series' : 'Movie'}
+                          </div>
+                        </div>
+                      {:else if hit.kind === 'person'}
+                        {#if hit.profileUrl}
+                          <img src={hit.profileUrl} alt="" class="h-10 w-10 shrink-0 rounded-full object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+                        {:else}
+                          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-elevated text-muted-foreground">
+                            <User class="h-4 w-4" />
+                          </div>
+                        {/if}
+                        <div class="min-w-0 flex-1">
+                          <div class="truncate text-sm font-medium">{hit.name}</div>
+                          <div class="text-xs text-muted-foreground">
+                            Person · {hit.creditCount} credit{hit.creditCount === 1 ? '' : 's'}
+                          </div>
+                        </div>
                       {:else}
-                        <div class="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-surface-elevated text-muted-foreground">
-                          {#if m.type === "Series"}<Tv class="h-3.5 w-3.5" />{:else}<Film class="h-3.5 w-3.5" />{/if}
+                        {#if hit.posterUrl}
+                          <img src={hit.posterUrl} alt="" class="h-10 w-7 shrink-0 rounded object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+                        {:else}
+                          <div class="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-surface-elevated text-muted-foreground">
+                            <Layers class="h-3.5 w-3.5" />
+                          </div>
+                        {/if}
+                        <div class="min-w-0 flex-1">
+                          <div class="truncate text-sm font-medium">{hit.name}</div>
+                          <div class="text-xs text-muted-foreground">
+                            Collection · {hit.movieCount} movie{hit.movieCount === 1 ? '' : 's'}
+                          </div>
                         </div>
                       {/if}
-                      <div class="min-w-0 flex-1">
-                        <div class="truncate text-sm font-medium">{m.title}</div>
-                        <div class="text-xs text-muted-foreground">
-                          {m.year > 0 ? m.year : ''}{m.year > 0 ? ' · ' : ''}{m.type === 'Series' ? 'TV Series' : 'Movie'}
-                        </div>
-                      </div>
                     </button>
                   </li>
                 {/each}
