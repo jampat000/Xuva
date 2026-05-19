@@ -67,6 +67,8 @@ var routePolicies = map[string]routePolicy{
 	"PUT /api/settings/metadata-sources":  route("PUT /api/settings/metadata-sources", "settings", "settings.metadata_sources.update", roleAdmin),
 	"GET /api/settings/folders/browse":    route("GET /api/settings/folders/browse", "settings", "settings.folders.browse", roleAdmin),
 	"POST /api/settings/hardware/test":    route("POST /api/settings/hardware/test", "settings", "settings.hardware.test", roleAdmin),
+	"GET /api/backup/export":              route("GET /api/backup/export", "backup", "backup.export", roleAdmin),
+	"POST /api/backup/import":             route("POST /api/backup/import", "backup", "backup.import", roleAdmin),
 	"POST /api/remote/diagnostics":        route("POST /api/remote/diagnostics", "remote", "remote.diagnostics.run", roleAdmin),
 	"POST /api/remote/wan":                route("POST /api/remote/wan", "remote", "remote.wan.lookup", roleAdmin),
 	"POST /api/setup/complete":            route("POST /api/setup/complete", "setup", "setup.complete", roleAdmin),

@@ -32,6 +32,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/auth"
 	"github.com/jampat000/Xuva/server/internal/catalog"
 	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/database"
 	"github.com/jampat000/Xuva/server/internal/devices"
 	"github.com/jampat000/Xuva/server/internal/discovery"
 	"github.com/jampat000/Xuva/server/internal/downloads"
@@ -68,6 +69,7 @@ import (
 type Deps struct {
 	Config    config.Config
 	StartedAt time.Time
+	Database  *database.Service
 	Auth      *auth.Service
 	Events    *events.Bus
 	Observe   *observability.Service
@@ -176,6 +178,8 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "PUT /api/settings", settingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/settings/metadata-sources", metadataSourceSettingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
+	handleProtected(mux, deps, "GET /api/backup/export", backupExportHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/backup/import", backupImportHandler(deps))
 	handleProtected(mux, deps, "GET /api/system/status", systemStatusHandler(deps))
 	handleProtected(mux, deps, "GET /api/remote/access", remoteAccessHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/remote/diagnostics", remoteDiagnosticsHandler(deps))

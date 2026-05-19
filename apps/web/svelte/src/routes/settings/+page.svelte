@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import {
     ArrowRightLeft,
+    ArchiveRestore,
     BookMarked,
     Check,
     ChevronLeft,
@@ -27,6 +28,7 @@
     Trash2,
     Tv,
     Unlink,
+    Upload,
     User,
     Users,
     Wifi
@@ -61,6 +63,8 @@
     getDeviceProfiles,
     scanAllLibraries,
     runHardwareTest,
+    exportBackup,
+    importBackup,
     type SystemStatusResponse,
     type CatalogSummaryResponse,
     type ScanJobItem,
@@ -75,6 +79,7 @@
     type UserItem,
     type HardwareTestResponse,
     type DeviceProfile,
+    type BackupImportResponse,
   } from '$lib/api/operator';
   import {
     getBackfillStatus,
@@ -103,6 +108,7 @@
     { id: "playback", label: "Playback", icon: Play, group: "Server", hint: "Streaming & quality defaults" },
     { id: "transcoding", label: "Transcoding", icon: Sliders, group: "Server", hint: "Hardware acceleration & workers" },
     { id: "storage", label: "Storage", icon: HardDrive, group: "Server", hint: "Directories & disk usage" },
+    { id: "backup", label: "Backup", icon: ArchiveRestore, group: "Server", hint: "Export & restore your catalog database" },
     { id: "network", label: "Network", icon: Wifi, group: "Server", hint: "Ports, mDNS discovery, remote access" },
     { id: "migration", label: "Migration", icon: ArrowRightLeft, group: "Server", hint: "Import from Plex, Emby & more" },
     { id: "watchlist-services", label: "Watchlist Services", icon: BookMarked, group: "Server", hint: "Sync with Trakt, Letterboxd & more" },
@@ -157,6 +163,42 @@
   let wlConnected = $state<Record<string, boolean>>({});
   let wlKeys = $state<Record<string, string>>({});
   let wlConnecting = $state<Record<string, boolean>>({});
+
+  // ─── Backup state ─────────────────────────────────────────────────────────
+  let backupExporting = $state(false);
+  let backupExportError = $state<string | null>(null);
+  let backupImporting = $state(false);
+  let backupImportResult = $state<BackupImportResponse | null>(null);
+  let backupImportError = $state<string | null>(null);
+
+  async function handleExport() {
+    backupExporting = true;
+    backupExportError = null;
+    try {
+      await exportBackup();
+    } catch (e) {
+      backupExportError = e instanceof Error ? e.message : 'Export failed';
+    } finally {
+      backupExporting = false;
+    }
+  }
+
+  async function handleImport(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    backupImporting = true;
+    backupImportResult = null;
+    backupImportError = null;
+    try {
+      backupImportResult = await importBackup(file);
+    } catch (err) {
+      backupImportError = err instanceof Error ? err.message : 'Import failed';
+    } finally {
+      backupImporting = false;
+      input.value = '';
+    }
+  }
 
   let current = $derived(sections.find((section) => section.id === active) ?? sections[0]);
 
@@ -2211,6 +2253,72 @@
                 </div>
               </section>
             {/if}
+          </div>
+
+        {:else if active === "backup"}
+          <div class="space-y-12">
+            <!-- Export -->
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Export backup</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Download a <code class="rounded bg-surface-elevated px-1 py-0.5 font-mono text-[11px]">.tar.gz</code> archive containing your catalog database, settings, and a manifest. Keep this file safe — it contains your watch history, metadata matches, and all curation work.
+                </p>
+              </div>
+              <div class="space-y-4">
+                <button
+                  type="button"
+                  onclick={handleExport}
+                  disabled={backupExporting}
+                  class="inline-flex items-center gap-2 rounded-xl bg-foreground/[0.08] hairline px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.14] disabled:opacity-50"
+                >
+                  <ArchiveRestore class="h-4 w-4 shrink-0" />
+                  {backupExporting ? 'Preparing archive…' : 'Download backup'}
+                </button>
+                {#if backupExportError}
+                  <p class="text-sm text-red-400">{backupExportError}</p>
+                {/if}
+              </div>
+            </section>
+
+            <!-- Import -->
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Restore from backup</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Upload a previously exported <code class="rounded bg-surface-elevated px-1 py-0.5 font-mono text-[11px]">.tar.gz</code> archive. The restore is staged and applied the next time the server starts — your current database is preserved as <code class="rounded bg-surface-elevated px-1 py-0.5 font-mono text-[11px]">xuva.db.bak</code> until the new one proves stable.
+                </p>
+              </div>
+              <div class="space-y-4">
+                {#if backupImportResult}
+                  <div class="hairline rounded-xl bg-surface/40 px-4 py-4 space-y-2">
+                    <div class="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Check class="h-4 w-4 text-emerald-400" /> Restore staged successfully
+                    </div>
+                    <p class="text-[13px] text-muted-foreground">
+                      Backup created <span class="font-mono">{backupImportResult.manifest?.createdAt ?? '—'}</span>.
+                      Restart the server to apply the restore.
+                    </p>
+                    {#if backupImportResult.manifest?.mediaPaths?.movies || backupImportResult.manifest?.mediaPaths?.tv}
+                      <p class="text-[12px] text-muted-foreground/70">
+                        Original media paths — Movies: <span class="font-mono">{backupImportResult.manifest?.mediaPaths?.movies || '—'}</span>,
+                        TV: <span class="font-mono">{backupImportResult.manifest?.mediaPaths?.tv || '—'}</span>.
+                        Verify these still match your current library locations after restart.
+                      </p>
+                    {/if}
+                  </div>
+                {:else}
+                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-foreground/[0.08] hairline px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.14]" class:opacity-50={backupImporting}>
+                    <Upload class="h-4 w-4 shrink-0" />
+                    {backupImporting ? 'Uploading…' : 'Choose backup file'}
+                    <input type="file" accept=".tar.gz,.tgz" onchange={handleImport} disabled={backupImporting} class="sr-only" />
+                  </label>
+                {/if}
+                {#if backupImportError}
+                  <p class="text-sm text-red-400">{backupImportError}</p>
+                {/if}
+              </div>
+            </section>
           </div>
 
         {:else if active === "network"}

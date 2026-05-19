@@ -778,3 +778,57 @@ export function scanAllLibraries(
 		'POST'
 	);
 }
+
+// ─── Backup / export ──────────────────────────────────────────────────────────
+
+export interface BackupManifest {
+	version?: number;
+	createdAt?: string;
+	dataDir?: string;
+	mediaPaths?: { movies?: string; tv?: string };
+}
+
+export interface BackupImportResponse {
+	status?: string;
+	requiresRestart?: boolean;
+	manifest?: BackupManifest;
+}
+
+/** Triggers a streamed archive download of the current database and settings. */
+export async function exportBackup(): Promise<void> {
+	const resp = await fetch('/api/backup/export', { credentials: 'include' });
+	if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
+	const blob = await resp.blob();
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	const cd = resp.headers.get('Content-Disposition') ?? '';
+	const m = cd.match(/filename="([^"]+)"/);
+	a.href = url;
+	a.download = m ? m[1] : `xuva-backup.tar.gz`;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
+}
+
+/** Uploads an archive file and stages a restore (applied on next server restart). */
+export async function importBackup(file: File): Promise<BackupImportResponse> {
+	const csrfToken = (() => {
+		if (typeof document === 'undefined') return '';
+		const m = document.cookie.match(/(?:^|; )xuva_csrf=([^;]*)/);
+		return m ? decodeURIComponent(m[1]) : '';
+	})();
+	const form = new FormData();
+	form.append('archive', file);
+	const resp = await fetch('/api/backup/import', {
+		method: 'POST',
+		credentials: 'include',
+		headers: { 'X-CSRF-Token': csrfToken },
+		body: form,
+	});
+	if (!resp.ok) {
+		const text = await resp.text();
+		throw new Error(text || `Import failed: ${resp.status}`);
+	}
+	return resp.json();
+}
