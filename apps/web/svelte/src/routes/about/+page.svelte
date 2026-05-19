@@ -6,7 +6,7 @@
 
 <svelte:head>
   <title>About — Xuva</title>
-  <meta name="description" content="About Xuva — your home cinema, on every screen." />
+  <meta name="description" content="About Xuva — a self-hosted personal media server." />
 </svelte:head>
 
 <div class="min-h-screen bg-background">
@@ -23,10 +23,10 @@
       </div>
 
       <h1 class="font-serif-display text-[clamp(2rem,5vw,3.5rem)] leading-[1] tracking-tight">
-        Your home cinema, <em>on every screen.</em>
+        Your personal media library.
       </h1>
       <p class="mt-6 text-base leading-relaxed text-muted-foreground">
-        Xuva is a personal media server designed for cinema lovers. Stream your collection on every screen in your home — from a 77-inch OLED to a tablet on the couch.
+        Xuva is a self-hosted media server for your movie and TV collection. It runs on your own hardware — no subscriptions, no cloud dependency.
       </p>
       <p class="mt-4 text-base leading-relaxed text-muted-foreground">
         Built on open-source foundations including SvelteKit, Go, and FFmpeg. Xuva puts you in control of your media — no subscriptions, no cloud dependency, no compromises.

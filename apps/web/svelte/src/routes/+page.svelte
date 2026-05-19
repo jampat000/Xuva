@@ -58,12 +58,12 @@
 </script>
 
 <svelte:head>
-  <title>{appState.serverName} — Your home cinema, on every screen</title>
+  <title>{appState.serverName} — Your personal media library</title>
   <meta
     name="description"
-    content="Xuva is your personal media server for movies and series — stream your collection on every screen in your home."
+    content="Xuva is your personal media server for movies and series."
   />
-  <meta property="og:title" content="Xuva — Your home cinema, on every screen" />
+  <meta property="og:title" content="Xuva — Your personal media library" />
   <meta
     property="og:description"
     content="A cinematic home for your personal library — continue watching, discover what is new, and jump between movies and series."
