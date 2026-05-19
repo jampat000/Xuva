@@ -587,8 +587,11 @@ func (s *Service) Health(ctx context.Context) (Health, error) {
 }
 
 func (s *Service) ListMovies(ctx context.Context, limit int) ([]MovieListItem, error) {
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 {
 		limit = 100
+	}
+	if limit > 2000 {
+		limit = 2000
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review, count(mv.media_source_id) AS version_count
@@ -1378,8 +1381,11 @@ func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, e
 }
 
 func (s *Service) ListSeries(ctx context.Context, limit int) ([]SeriesListItem, error) {
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 {
 		limit = 100
+	}
+	if limit > 2000 {
+		limit = 2000
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
