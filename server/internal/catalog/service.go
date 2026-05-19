@@ -300,6 +300,9 @@ type MediaSourceItem struct {
 	ColorTransfer   string  `json:"colorTransfer,omitempty"`
 	ColorSpace      string  `json:"colorSpace,omitempty"`
 	HDRFormat       string  `json:"hdrFormat,omitempty"`
+	DoviProfile     int     `json:"doviProfile,omitempty"`
+	MaxCLL          int     `json:"maxCll,omitempty"`
+	MaxFALL         int     `json:"maxFall,omitempty"`
 	Width           int     `json:"width,omitempty"`
 	Height          int     `json:"height,omitempty"`
 	AudioStreams    int     `json:"audioStreams,omitempty"`
@@ -334,6 +337,9 @@ type ProbeResult struct {
 	ColorTransfer   string  `json:"colorTransfer"`
 	ColorSpace      string  `json:"colorSpace"`
 	HDRFormat       string  `json:"hdrFormat"`
+	DoviProfile     int     `json:"doviProfile"`
+	MaxCLL          int     `json:"maxCll"`
+	MaxFALL         int     `json:"maxFall"`
 	Width           int     `json:"width"`
 	Height          int     `json:"height"`
 	AudioStreams    int     `json:"audioStreams"`
@@ -2268,7 +2274,7 @@ func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly 
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT ms.id, ms.library_id, ms.kind, ms.path, ms.rel_path, ms.name, ms.extension, ms.size_bytes, ms.modified_at,
-			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.video_profile, mp.video_level, mp.video_bit_depth, mp.video_frame_rate, mp.pixel_format, mp.color_primaries, mp.color_transfer, mp.color_space, mp.hdr_format, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
+			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.video_profile, mp.video_level, mp.video_bit_depth, mp.video_frame_rate, mp.pixel_format, mp.color_primaries, mp.color_transfer, mp.color_space, mp.hdr_format, mp.dovi_profile, mp.max_cll, mp.max_fall, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
 		FROM media_sources ms
 		LEFT JOIN media_probes mp ON mp.media_source_id = ms.id
 		`+filter+`
@@ -2285,7 +2291,7 @@ func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly 
 func (s *Service) GetMediaSource(ctx context.Context, id string) (MediaSourceItem, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT ms.id, ms.library_id, ms.kind, ms.path, ms.rel_path, ms.name, ms.extension, ms.size_bytes, ms.modified_at,
-			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.video_profile, mp.video_level, mp.video_bit_depth, mp.video_frame_rate, mp.pixel_format, mp.color_primaries, mp.color_transfer, mp.color_space, mp.hdr_format, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
+			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.video_profile, mp.video_level, mp.video_bit_depth, mp.video_frame_rate, mp.pixel_format, mp.color_primaries, mp.color_transfer, mp.color_space, mp.hdr_format, mp.dovi_profile, mp.max_cll, mp.max_fall, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
 		FROM media_sources ms
 		LEFT JOIN media_probes mp ON mp.media_source_id = ms.id
 		WHERE ms.id = ?
@@ -2393,8 +2399,8 @@ func (s *Service) GetMediaSourceTracks(ctx context.Context, id string) (MediaSou
 
 func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result ProbeResult) error {
 	const saveStatement = `
-		INSERT INTO media_probes(media_source_id, container, duration_seconds, bitrate, video_codec, video_profile, video_level, video_bit_depth, video_frame_rate, pixel_format, color_primaries, color_transfer, color_space, hdr_format, width, height, audio_streams, subtitle_streams, raw_json, probed_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO media_probes(media_source_id, container, duration_seconds, bitrate, video_codec, video_profile, video_level, video_bit_depth, video_frame_rate, pixel_format, color_primaries, color_transfer, color_space, hdr_format, dovi_profile, max_cll, max_fall, width, height, audio_streams, subtitle_streams, raw_json, probed_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(media_source_id) DO UPDATE SET
 			container = excluded.container,
 			duration_seconds = excluded.duration_seconds,
@@ -2409,6 +2415,9 @@ func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result Pr
 			color_transfer = excluded.color_transfer,
 			color_space = excluded.color_space,
 			hdr_format = excluded.hdr_format,
+			dovi_profile = excluded.dovi_profile,
+			max_cll = excluded.max_cll,
+			max_fall = excluded.max_fall,
 			width = excluded.width,
 			height = excluded.height,
 			audio_streams = excluded.audio_streams,
@@ -2418,7 +2427,7 @@ func (s *Service) SaveProbe(ctx context.Context, mediaSourceID string, result Pr
 	`
 	var lastErr error
 	for attempt := 1; attempt <= 5; attempt++ {
-		if _, err := s.db.ExecContext(ctx, saveStatement, mediaSourceID, result.Container, result.DurationSeconds, result.Bitrate, result.VideoCodec, result.VideoProfile, result.VideoLevel, result.VideoBitDepth, result.VideoFrameRate, result.PixelFormat, result.ColorPrimaries, result.ColorTransfer, result.ColorSpace, result.HDRFormat, result.Width, result.Height, result.AudioStreams, result.SubtitleStreams, result.RawJSON, timestamp(time.Now())); err != nil {
+		if _, err := s.db.ExecContext(ctx, saveStatement, mediaSourceID, result.Container, result.DurationSeconds, result.Bitrate, result.VideoCodec, result.VideoProfile, result.VideoLevel, result.VideoBitDepth, result.VideoFrameRate, result.PixelFormat, result.ColorPrimaries, result.ColorTransfer, result.ColorSpace, result.HDRFormat, result.DoviProfile, result.MaxCLL, result.MaxFALL, result.Width, result.Height, result.AudioStreams, result.SubtitleStreams, result.RawJSON, timestamp(time.Now())); err != nil {
 			lastErr = err
 			if !isSQLiteBusyError(err) || attempt == 5 {
 				return err
@@ -2463,11 +2472,14 @@ func scanMediaSources(rows *sql.Rows) ([]MediaSourceItem, error) {
 		var colorTransfer sql.NullString
 		var colorSpace sql.NullString
 		var hdrFormat sql.NullString
+		var doviProfile sql.NullInt64
+		var maxCLL sql.NullInt64
+		var maxFALL sql.NullInt64
 		var width sql.NullInt64
 		var height sql.NullInt64
 		var audioStreams sql.NullInt64
 		var subtitleStreams sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.LibraryID, &item.Kind, &item.Path, &item.RelPath, &item.Name, &item.Extension, &item.SizeBytes, &item.ModifiedAt, &container, &duration, &bitrate, &videoCodec, &videoProfile, &videoLevel, &videoBitDepth, &videoFrameRate, &pixelFormat, &colorPrimaries, &colorTransfer, &colorSpace, &hdrFormat, &width, &height, &audioStreams, &subtitleStreams); err != nil {
+		if err := rows.Scan(&item.ID, &item.LibraryID, &item.Kind, &item.Path, &item.RelPath, &item.Name, &item.Extension, &item.SizeBytes, &item.ModifiedAt, &container, &duration, &bitrate, &videoCodec, &videoProfile, &videoLevel, &videoBitDepth, &videoFrameRate, &pixelFormat, &colorPrimaries, &colorTransfer, &colorSpace, &hdrFormat, &doviProfile, &maxCLL, &maxFALL, &width, &height, &audioStreams, &subtitleStreams); err != nil {
 			return nil, err
 		}
 		item.Probed = container.Valid
@@ -2485,6 +2497,9 @@ func scanMediaSources(rows *sql.Rows) ([]MediaSourceItem, error) {
 			item.ColorTransfer = colorTransfer.String
 			item.ColorSpace = colorSpace.String
 			item.HDRFormat = hdrFormat.String
+			item.DoviProfile = int(doviProfile.Int64)
+			item.MaxCLL = int(maxCLL.Int64)
+			item.MaxFALL = int(maxFALL.Int64)
 			item.Width = int(width.Int64)
 			item.Height = int(height.Int64)
 			item.AudioStreams = int(audioStreams.Int64)

@@ -157,6 +157,11 @@ export interface PlaybackQueryOptions {
 	subtitleMode?: string;
 	subtitleTrackActive?: boolean;
 	supportsAdaptive?: boolean;
+	// Capability-derived fields sent as query params (issue #64)
+	supportsHdr?: boolean;
+	maxBitDepth?: number;
+	videoCodecs?: string[];
+	audioCodecs?: string[];
 }
 
 export interface DeviceProfile {
@@ -268,11 +273,24 @@ export interface ClientPlaybackSession {
 	startedAt?: string;
 }
 
+export interface ClientCapabilities {
+	containers: string[];
+	videoCodecs: string[];
+	audioCodecs: string[];
+	subtitleCodecs: string[];
+	maxVideoBitDepth: number;
+	maxVideoFrameRate: number;
+	supportsHdr: boolean;
+	supportsDolbyVision: boolean;
+	supportsHls: boolean;
+}
+
 export interface ClientPlaybackStartRequest {
 	mediaSourceId: string;
 	positionSeconds?: number;
 	clientProfile?: string;
 	deviceId?: string;
+	clientCapabilities?: ClientCapabilities;
 }
 
 export function startClientPlayback(
@@ -367,6 +385,19 @@ function playbackQueryString(mediaSourceId: string, options: PlaybackQueryOption
 	}
 	if (typeof options.supportsAdaptive === 'boolean') {
 		params.set('supportsAdaptive', options.supportsAdaptive ? 'true' : 'false');
+	}
+	// Capability flags derived from browser detection (issue #64)
+	if (typeof options.supportsHdr === 'boolean') {
+		params.set('supportsHdr', options.supportsHdr ? 'true' : 'false');
+	}
+	if (typeof options.maxBitDepth === 'number' && options.maxBitDepth > 0) {
+		params.set('maxBitDepth', String(options.maxBitDepth));
+	}
+	if (Array.isArray(options.videoCodecs) && options.videoCodecs.length > 0) {
+		params.set('videoCodecs', options.videoCodecs.join(','));
+	}
+	if (Array.isArray(options.audioCodecs) && options.audioCodecs.length > 0) {
+		params.set('audioCodecs', options.audioCodecs.join(','));
 	}
 	return params.toString();
 }

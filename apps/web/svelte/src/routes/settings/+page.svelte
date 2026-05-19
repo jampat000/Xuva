@@ -237,6 +237,7 @@
     serverName: '',
     country: '',
     timezone: '',
+    metadataLanguage: 'en-US',
     librarySyncMode: 'auto',
     syncIntervalMins: 60,
     watchDebounceSecs: 5,
@@ -248,6 +249,8 @@
     tempDir: '',
     hardwareUnlocked: false,
     playbackPolicy: 'auto',
+    preferTextSubtitles: false,
+    originalQualityOnly: false,
   });
 
   function seedEditConfig(s: SettingsResponse) {
@@ -256,6 +259,7 @@
       serverName: c.serverName ?? '',
       country: c.country ?? '',
       timezone: c.timezone ?? '',
+      metadataLanguage: c.metadataLanguage ?? 'en-US',
       librarySyncMode: c.librarySyncMode ?? 'auto',
       syncIntervalMins: c.syncIntervalMins ?? 60,
       watchDebounceSecs: c.watchDebounceSecs ?? 5,
@@ -267,14 +271,17 @@
       tempDir: c.tempDir ?? '',
       hardwareUnlocked: c.hardwareUnlocked ?? false,
       playbackPolicy: c.playbackPolicy ?? 'auto',
+      preferTextSubtitles: c.preferTextSubtitles ?? false,
+      originalQualityOnly: c.originalQualityOnly ?? false,
     };
   }
 
   // ─── Per-section dirty checks ──────────────────────────────────────────────
   const generalDirty = $derived(
-    editConfig.serverName !== (settingsData?.config?.serverName ?? '') ||
-    editConfig.country   !== (settingsData?.config?.country   ?? '') ||
-    editConfig.timezone  !== (settingsData?.config?.timezone  ?? '')
+    editConfig.serverName        !== (settingsData?.config?.serverName        ?? '') ||
+    editConfig.country           !== (settingsData?.config?.country           ?? '') ||
+    editConfig.timezone          !== (settingsData?.config?.timezone          ?? '') ||
+    editConfig.metadataLanguage  !== (settingsData?.config?.metadataLanguage  ?? 'en-US')
   );
   const scanningDirty = $derived(
     editConfig.librarySyncMode !== (settingsData?.config?.librarySyncMode ?? 'auto') ||
@@ -293,7 +300,9 @@
     editConfig.tempDir !== (settingsData?.config?.tempDir ?? '')
   );
   const playbackDirty = $derived(
-    editConfig.playbackPolicy !== (settingsData?.config?.playbackPolicy ?? 'auto')
+    editConfig.playbackPolicy       !== (settingsData?.config?.playbackPolicy       ?? 'auto') ||
+    editConfig.preferTextSubtitles  !== (settingsData?.config?.preferTextSubtitles  ?? false) ||
+    editConfig.originalQualityOnly  !== (settingsData?.config?.originalQualityOnly  ?? false)
   );
 
   // ─── Metadata preferences state ───────────────────────────────────────────
@@ -398,9 +407,10 @@
     sectionError = null;
     switch (active) {
       case 'general':
-        editConfig.serverName = c.serverName ?? '';
-        editConfig.country    = c.country    ?? '';
-        editConfig.timezone   = c.timezone   ?? '';
+        editConfig.serverName       = c.serverName       ?? '';
+        editConfig.country          = c.country          ?? '';
+        editConfig.timezone         = c.timezone         ?? '';
+        editConfig.metadataLanguage = c.metadataLanguage ?? 'en-US';
         break;
       case 'scanning':
         editConfig.librarySyncMode = c.librarySyncMode ?? 'auto';
@@ -416,7 +426,11 @@
         editConfig.cacheDir = c.cacheDir ?? '';
         editConfig.tempDir = c.tempDir ?? '';
         break;
-      case 'playback': editConfig.playbackPolicy = c.playbackPolicy ?? 'auto'; break;
+      case 'playback':
+        editConfig.playbackPolicy      = c.playbackPolicy      ?? 'auto';
+        editConfig.preferTextSubtitles = c.preferTextSubtitles ?? false;
+        editConfig.originalQualityOnly = c.originalQualityOnly ?? false;
+        break;
       case 'metadata': editMetaPrefs = { ...savedMetaPrefs }; break;
     }
   }
@@ -427,9 +441,10 @@
       if (active === 'general') {
         generalSaving = true;
         const r = await updateSettings({
-          serverName: editConfig.serverName,
-          country:    editConfig.country   || '',
-          timezone:   editConfig.timezone  || '',
+          serverName:       editConfig.serverName,
+          country:          editConfig.country          || '',
+          timezone:         editConfig.timezone         || '',
+          metadataLanguage: editConfig.metadataLanguage || 'en-US',
         });
         settingsData = r; seedEditConfig(r);
       } else if (active === 'scanning') {
@@ -457,7 +472,11 @@
         settingsData = r; seedEditConfig(r);
       } else if (active === 'playback') {
         playbackSaving = true;
-        const r = await updateSettings({ playbackPolicy: editConfig.playbackPolicy });
+        const r = await updateSettings({
+          playbackPolicy:      editConfig.playbackPolicy,
+          preferTextSubtitles: editConfig.preferTextSubtitles,
+          originalQualityOnly: editConfig.originalQualityOnly,
+        });
         settingsData = r; seedEditConfig(r);
       } else if (active === 'metadata') {
         metaSaving = true;
@@ -1949,6 +1968,22 @@
                     {/if}
                   </div>
 
+                  <!-- Detected accelerators panel (from ffmpeg -encoders scan) -->
+                  {#if perfSettings?.hardwareAcceleration?.encoders?.length > 0}
+                    <div class="space-y-1">
+                      <p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Detected accelerators</p>
+                      {#each perfSettings.hardwareAcceleration.encoders as enc (enc.id)}
+                        <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-3 py-2 text-xs">
+                          <span class="font-mono text-primary-glow/80">{enc.id}</span>
+                          <span class="text-muted-foreground">{enc.vendor ?? ''}</span>
+                          <span class="ml-auto font-medium text-muted-foreground/60">{enc.codec ?? ''}</span>
+                        </div>
+                      {/each}
+                    </div>
+                  {:else if perfSettings && !perfSettings?.hardwareAcceleration?.available}
+                    <p class="text-xs text-muted-foreground/60">No hardware encoders detected in FFmpeg.</p>
+                  {/if}
+
                   <button type="button" onclick={runHwTest} disabled={hwTestRunning}
                     class="hairline inline-flex items-center gap-2 rounded-full bg-foreground/[0.04] px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40">
                     {#if hwTestRunning}
@@ -1958,6 +1993,7 @@
                     {/if}
                   </button>
 
+                  <!-- Active test results -->
                   {#if hwTestResult}
                     <div class="hairline rounded-xl bg-surface/40 p-4 space-y-2">
                       <div class="flex items-center gap-2 text-sm font-semibold">
@@ -1969,6 +2005,33 @@
                         {/if}
                       </div>
                       {#each hwTestResult.tests ?? [] as t (t.id)}
+                        <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                          {#if t.ok}<Check class="h-3 w-3 shrink-0 text-emerald-300" />{:else}<span class="h-3 w-3 shrink-0 rounded-full bg-red-400/40"></span>{/if}
+                          <span class="font-medium">{t.label ?? t.id}</span>
+                          <span class="text-muted-foreground/60">{t.codec ?? ''}</span>
+                          {#if t.durationMs}<span class="ml-auto">{t.durationMs}ms</span>{/if}
+                          {#if t.error}<span class="text-red-300">{t.error}</span>{/if}
+                        </div>
+                      {/each}
+                    </div>
+                  <!-- Last persisted test results (shown before any test is run in this session) -->
+                  {:else if perfSettings?.hardwareAcceleration?.lastTest}
+                    {@const last = perfSettings.hardwareAcceleration.lastTest}
+                    <div class="hairline rounded-xl bg-surface/40 p-4 space-y-2">
+                      <div class="flex items-center gap-2 text-sm font-semibold">
+                        {#if (last.working ?? 0) > 0}
+                          <Check class="h-4 w-4 text-emerald-300" />
+                          <span class="text-emerald-300">{last.working}/{last.tested} codecs working</span>
+                        {:else}
+                          <span class="text-amber-300">Last test: no working codecs</span>
+                        {/if}
+                        {#if last.testedAt}
+                          <span class="ml-auto text-[10px] text-muted-foreground/50">
+                            {new Date(last.testedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        {/if}
+                      </div>
+                      {#each last.tests ?? [] as t (t.id)}
                         <div class="flex items-center gap-3 text-xs text-muted-foreground">
                           {#if t.ok}<Check class="h-3 w-3 shrink-0 text-emerald-300" />{:else}<span class="h-3 w-3 shrink-0 rounded-full bg-red-400/40"></span>{/if}
                           <span class="font-medium">{t.label ?? t.id}</span>
@@ -2236,6 +2299,53 @@
                     <p class="mt-2 pl-7 text-xs text-muted-foreground">{opt.desc}</p>
                   </button>
                 {/each}
+              </div>
+            </section>
+
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Subtitle preferences</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Control how the server handles subtitles and video quality during playback.
+                </p>
+              </div>
+              <div class="space-y-4">
+                <!-- Prefer text subtitles toggle -->
+                <div class="hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-4">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold">Prefer text subtitles</p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                      Always use SRT/ASS text tracks over bitmap (PGS/DVB) subtitles when both are available. Reduces CPU/GPU usage during transcode.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onclick={() => (editConfig.preferTextSubtitles = !editConfig.preferTextSubtitles)}
+                    class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.preferTextSubtitles ? 'bg-primary-glow' : 'bg-border'}"
+                    role="switch"
+                    aria-checked={editConfig.preferTextSubtitles}
+                  >
+                    <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.preferTextSubtitles ? 'left-[22px]' : 'left-0.5'}"></span>
+                  </button>
+                </div>
+                <!-- Original quality only toggle -->
+                <div class="hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-4">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold">Original quality only</p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                      Refuse to transcode video. Files that can't be direct-played will return an error instead of being transcoded. Overrides the playback policy above.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onclick={() => (editConfig.originalQualityOnly = !editConfig.originalQualityOnly)}
+                    class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.originalQualityOnly ? 'bg-primary-glow' : 'bg-border'}"
+                    role="switch"
+                    aria-checked={editConfig.originalQualityOnly}
+                  >
+                    <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.originalQualityOnly ? 'left-[22px]' : 'left-0.5'}"></span>
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -2609,6 +2719,50 @@
                     {/each}
                   </select>
                 </div>
+              </div>
+            </section>
+
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Metadata language</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Language used when fetching titles, overviews, and artwork from TMDB. Changes apply to future metadata refreshes.
+                </p>
+              </div>
+              <div>
+                <label for="st-metalang" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+                  Language
+                </label>
+                <select
+                  id="st-metalang"
+                  bind:value={editConfig.metadataLanguage}
+                  class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none focus:border-primary/60 focus:bg-background/70"
+                >
+                  {#each [
+                    { code: 'en-US', label: 'English (US)' },
+                    { code: 'en-GB', label: 'English (UK)' },
+                    { code: 'fr-FR', label: 'French' },
+                    { code: 'de-DE', label: 'German' },
+                    { code: 'es-ES', label: 'Spanish (Spain)' },
+                    { code: 'es-MX', label: 'Spanish (Mexico)' },
+                    { code: 'it-IT', label: 'Italian' },
+                    { code: 'pt-BR', label: 'Portuguese (Brazil)' },
+                    { code: 'pt-PT', label: 'Portuguese (Portugal)' },
+                    { code: 'nl-NL', label: 'Dutch' },
+                    { code: 'pl-PL', label: 'Polish' },
+                    { code: 'sv-SE', label: 'Swedish' },
+                    { code: 'nb-NO', label: 'Norwegian' },
+                    { code: 'da-DK', label: 'Danish' },
+                    { code: 'fi-FI', label: 'Finnish' },
+                    { code: 'ru-RU', label: 'Russian' },
+                    { code: 'ja-JP', label: 'Japanese' },
+                    { code: 'ko-KR', label: 'Korean' },
+                    { code: 'zh-CN', label: 'Chinese (Simplified)' },
+                    { code: 'zh-TW', label: 'Chinese (Traditional)' },
+                  ] as lang (lang.code)}
+                    <option value={lang.code}>{lang.label}</option>
+                  {/each}
+                </select>
               </div>
             </section>
 

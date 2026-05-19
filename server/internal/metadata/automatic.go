@@ -720,6 +720,36 @@ func stripWikipediaQualifier(value string) string {
 	return strings.TrimSpace(value[:index])
 }
 
+// extractTMDBIDFromFilename parses the Plex-style {tmdb-12345} annotation
+// from a filename or path. Returns 0 when no annotation is found.
+func extractTMDBIDFromFilename(filename string) int {
+	base := strings.ToLower(filename)
+	// Normalise path separators
+	base = strings.ReplaceAll(base, "\\", "/")
+	if idx := strings.LastIndex(base, "/"); idx >= 0 {
+		base = base[idx+1:]
+	}
+	// Look for {tmdb-NNN} or {tmdb=NNN}
+	const prefix1 = "{tmdb-"
+	const prefix2 = "{tmdb="
+	for _, prefix := range []string{prefix1, prefix2} {
+		start := strings.Index(base, prefix)
+		if start < 0 {
+			continue
+		}
+		rest := base[start+len(prefix):]
+		end := strings.IndexByte(rest, '}')
+		if end < 0 {
+			continue
+		}
+		raw := strings.TrimSpace(rest[:end])
+		if id, err := strconv.Atoi(raw); err == nil && id > 0 {
+			return id
+		}
+	}
+	return 0
+}
+
 func matchScore(left string, right string, leftYear int, rightYear int) float64 {
 	leftNorm := normalizeTitle(left)
 	rightNorm := normalizeTitle(right)

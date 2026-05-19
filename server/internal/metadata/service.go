@@ -63,10 +63,17 @@ func (s *Service) SetTrailers(t *trailers.Service) {
 }
 
 type RefreshRequest struct {
-	Kind  string `json:"kind"`
-	ID    string `json:"id"`
-	Title string `json:"title,omitempty"`
-	Year  int    `json:"year,omitempty"`
+	Kind           string `json:"kind"`
+	ID             string `json:"id"`
+	Title          string `json:"title,omitempty"`
+	Year           int    `json:"year,omitempty"`
+	// TMDBOverrideID, when set, skips the search and fetches this TMDB ID directly.
+	// It can be extracted from the filename ({tmdb-12345} notation) or supplied
+	// by the user via the manual "Match by TMDB ID" UI.
+	TMDBOverrideID int    `json:"tmdbOverrideId,omitempty"`
+	// Filename is the original media source filename. Used to extract embedded
+	// TMDB IDs ({tmdb-12345}) before falling back to the search-based path.
+	Filename       string `json:"filename,omitempty"`
 }
 
 type RefreshResult struct {
@@ -495,6 +502,60 @@ type tmdbResult struct {
 	BackdropPath string  `json:"backdrop_path"`
 	VoteAverage  float64 `json:"vote_average"`
 	VoteCount    int     `json:"vote_count"`
+}
+
+// TMDBCandidate is the shape returned by TMDBCandidates for disambiguation UI.
+type TMDBCandidate struct {
+	ID          int     `json:"id"`
+	Title       string  `json:"title"`
+	Year        int     `json:"year"`
+	Overview    string  `json:"overview"`
+	PosterURL   string  `json:"posterUrl"`
+	BackdropURL string  `json:"backdropUrl"`
+	VoteAverage float64 `json:"voteAverage"`
+	VoteCount   int     `json:"voteCount"`
+}
+
+// TMDBCandidates returns the top N TMDB search results for a given title/year
+// without persisting anything. Used by the disambiguation UI (#62).
+func (s *Service) TMDBCandidates(ctx context.Context, kind string, title string, year int, limit int) ([]TMDBCandidate, error) {
+	cfg := s.activeConfig()
+	apiKey := managedProviderCredential("tmdb", cfg)
+	path := "movie"
+	if kind == "series" {
+		path = "tv"
+	}
+	searchURL := strings.TrimRight(s.tmdbBaseURL, "/") + "/search/" + path + "?" + url.Values{
+		"api_key":  {apiKey},
+		"query":    {title},
+		"language": {cfg.MetadataLanguage},
+	}.Encode()
+	if year > 0 && kind == "movie" {
+		searchURL += "&year=" + strconv.Itoa(year)
+	}
+	var search tmdbSearch
+	if err := s.getJSON(ctx, searchURL, &search); err != nil {
+		return nil, err
+	}
+	out := make([]TMDBCandidate, 0, limit)
+	for i, r := range search.Results {
+		if i >= limit {
+			break
+		}
+		itemTitle := firstNonEmpty(r.Title, r.Name)
+		itemYear := parseYear(firstNonEmpty(r.ReleaseDate, r.FirstAirDate), 0)
+		out = append(out, TMDBCandidate{
+			ID:          r.ID,
+			Title:       itemTitle,
+			Year:        itemYear,
+			Overview:    r.Overview,
+			PosterURL:   tmdbImageURL(r.PosterPath, "w342"),
+			BackdropURL: tmdbImageURL(r.BackdropPath, "w780"),
+			VoteAverage: r.VoteAverage,
+			VoteCount:   r.VoteCount,
+		})
+	}
+	return out, nil
 }
 
 func omdbRatings(request RefreshRequest, payload omdbResponse, now string) []catalog.Rating {

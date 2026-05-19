@@ -396,4 +396,8 @@ var migrations = []string{
 	`ALTER TABLE media_probes ADD COLUMN color_transfer TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE media_probes ADD COLUMN color_space TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE media_probes ADD COLUMN hdr_format TEXT NOT NULL DEFAULT ''`,
+	// issue #61: Dolby Vision detection + HDR10 MaxCLL/MaxFALL metadata
+	`ALTER TABLE media_probes ADD COLUMN dovi_profile INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE media_probes ADD COLUMN max_cll INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE media_probes ADD COLUMN max_fall INTEGER NOT NULL DEFAULT 0`,
 }

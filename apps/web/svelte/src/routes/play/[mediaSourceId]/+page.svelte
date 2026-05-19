@@ -11,6 +11,7 @@
     type PlaybackStateResponse,
     type MediaSourceItem,
   } from '$lib/api/details';
+  import { buildCapabilityReport } from '$lib/api/capabilities';
 
   // ─── Route param ──────────────────────────────────────────────────────────
   const mediaSourceId = $derived($page.params.mediaSourceId ?? '');
@@ -35,11 +36,18 @@
     }
 
     try {
+      // Detect client capabilities once — synchronous canPlayType calls
+      const caps = buildCapabilityReport();
+
       // Parallel fetch: route + saved state + file detail
       const [routeResp, stateResp, sourceResp] = await Promise.allSettled([
         getPlaybackRoute(mediaSourceId, {
           clientProfile: 'web',
           supportsAdaptive: true,
+          supportsHdr: caps.supportsHdr,
+          maxBitDepth: caps.maxVideoBitDepth,
+          videoCodecs: caps.videoCodecs,
+          audioCodecs: caps.audioCodecs,
         }),
         getPlaybackState(mediaSourceId),
         getMediaSourceDetail(mediaSourceId),
@@ -61,12 +69,13 @@
         mediaSource = sourceResp.value;
       }
 
-      // Start a client playback session
+      // Start a client playback session (with full capability report)
       try {
         const session = await startClientPlayback({
           mediaSourceId,
           positionSeconds: savedState?.progressSeconds ?? 0,
           clientProfile: 'web',
+          clientCapabilities: caps,
         });
         clientSessionId = session.id;
       } catch {
