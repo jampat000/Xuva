@@ -382,6 +382,8 @@ export interface SettingsResponse {
 		metadataLanguage?: string;
 		preferTextSubtitles?: boolean;
 		originalQualityOnly?: boolean;
+		defaultSubtitlesMovies?: boolean;
+		defaultSubtitlesTV?: boolean;
 	};
 	libraries?: Array<{
 		id?: string;
@@ -409,6 +411,8 @@ export interface UpdateSettingsRequest {
 	metadataLanguage?: string;
 	preferTextSubtitles?: boolean;
 	originalQualityOnly?: boolean;
+	defaultSubtitlesMovies?: boolean;
+	defaultSubtitlesTV?: boolean;
 	probeBatchLimit?: number;
 	playbackPolicy?: string;
 }

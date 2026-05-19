@@ -251,6 +251,8 @@
     playbackPolicy: 'auto',
     preferTextSubtitles: false,
     originalQualityOnly: false,
+    defaultSubtitlesMovies: false,
+    defaultSubtitlesTV: false,
   });
 
   function seedEditConfig(s: SettingsResponse) {
@@ -273,6 +275,8 @@
       playbackPolicy: c.playbackPolicy ?? 'auto',
       preferTextSubtitles: c.preferTextSubtitles ?? false,
       originalQualityOnly: c.originalQualityOnly ?? false,
+      defaultSubtitlesMovies: c.defaultSubtitlesMovies ?? false,
+      defaultSubtitlesTV: c.defaultSubtitlesTV ?? false,
     };
   }
 
@@ -300,9 +304,11 @@
     editConfig.tempDir !== (settingsData?.config?.tempDir ?? '')
   );
   const playbackDirty = $derived(
-    editConfig.playbackPolicy       !== (settingsData?.config?.playbackPolicy       ?? 'auto') ||
-    editConfig.preferTextSubtitles  !== (settingsData?.config?.preferTextSubtitles  ?? false) ||
-    editConfig.originalQualityOnly  !== (settingsData?.config?.originalQualityOnly  ?? false)
+    editConfig.playbackPolicy         !== (settingsData?.config?.playbackPolicy         ?? 'auto') ||
+    editConfig.preferTextSubtitles    !== (settingsData?.config?.preferTextSubtitles    ?? false) ||
+    editConfig.originalQualityOnly    !== (settingsData?.config?.originalQualityOnly    ?? false) ||
+    editConfig.defaultSubtitlesMovies !== (settingsData?.config?.defaultSubtitlesMovies ?? false) ||
+    editConfig.defaultSubtitlesTV     !== (settingsData?.config?.defaultSubtitlesTV     ?? false)
   );
 
   // ─── Metadata preferences state ───────────────────────────────────────────
@@ -427,9 +433,11 @@
         editConfig.tempDir = c.tempDir ?? '';
         break;
       case 'playback':
-        editConfig.playbackPolicy      = c.playbackPolicy      ?? 'auto';
-        editConfig.preferTextSubtitles = c.preferTextSubtitles ?? false;
-        editConfig.originalQualityOnly = c.originalQualityOnly ?? false;
+        editConfig.playbackPolicy         = c.playbackPolicy         ?? 'auto';
+        editConfig.preferTextSubtitles    = c.preferTextSubtitles    ?? false;
+        editConfig.originalQualityOnly    = c.originalQualityOnly    ?? false;
+        editConfig.defaultSubtitlesMovies = c.defaultSubtitlesMovies ?? false;
+        editConfig.defaultSubtitlesTV     = c.defaultSubtitlesTV     ?? false;
         break;
       case 'metadata': editMetaPrefs = { ...savedMetaPrefs }; break;
     }
@@ -473,9 +481,11 @@
       } else if (active === 'playback') {
         playbackSaving = true;
         const r = await updateSettings({
-          playbackPolicy:      editConfig.playbackPolicy,
-          preferTextSubtitles: editConfig.preferTextSubtitles,
-          originalQualityOnly: editConfig.originalQualityOnly,
+          playbackPolicy:         editConfig.playbackPolicy,
+          preferTextSubtitles:    editConfig.preferTextSubtitles,
+          originalQualityOnly:    editConfig.originalQualityOnly,
+          defaultSubtitlesMovies: editConfig.defaultSubtitlesMovies,
+          defaultSubtitlesTV:     editConfig.defaultSubtitlesTV,
         });
         settingsData = r; seedEditConfig(r);
       } else if (active === 'metadata') {
@@ -2344,6 +2354,42 @@
                     aria-checked={editConfig.originalQualityOnly}
                   >
                     <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.originalQualityOnly ? 'left-[22px]' : 'left-0.5'}"></span>
+                  </button>
+                </div>
+                <!-- Default subtitles on for movies -->
+                <div class="hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-4">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold">Subtitles on by default — Movies</p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                      When you start a movie, automatically enable the first available subtitle track. You can still toggle subtitles off in the player.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onclick={() => (editConfig.defaultSubtitlesMovies = !editConfig.defaultSubtitlesMovies)}
+                    class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.defaultSubtitlesMovies ? 'bg-primary-glow' : 'bg-border'}"
+                    role="switch"
+                    aria-checked={editConfig.defaultSubtitlesMovies}
+                  >
+                    <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.defaultSubtitlesMovies ? 'left-[22px]' : 'left-0.5'}"></span>
+                  </button>
+                </div>
+                <!-- Default subtitles on for TV -->
+                <div class="hairline flex items-start gap-4 rounded-2xl bg-surface/40 p-4">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold">Subtitles on by default — TV</p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                      When you start a TV episode, automatically enable the first available subtitle track.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onclick={() => (editConfig.defaultSubtitlesTV = !editConfig.defaultSubtitlesTV)}
+                    class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.defaultSubtitlesTV ? 'bg-primary-glow' : 'bg-border'}"
+                    role="switch"
+                    aria-checked={editConfig.defaultSubtitlesTV}
+                  >
+                    <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.defaultSubtitlesTV ? 'left-[22px]' : 'left-0.5'}"></span>
                   </button>
                 </div>
               </div>

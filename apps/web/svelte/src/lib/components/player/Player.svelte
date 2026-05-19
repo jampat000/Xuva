@@ -37,6 +37,7 @@
     initialState?: PlaybackStateResponse;
     mediaSource?: MediaSourceItem;
     clientSessionId?: string;
+    defaultSubtitlesEnabled?: boolean;
     backHref?: string;
   }
 
@@ -47,6 +48,7 @@
     initialState,
     mediaSource,
     clientSessionId,
+    defaultSubtitlesEnabled = false,
     backHref = '/'
   }: Props = $props();
 
@@ -707,6 +709,17 @@
 
     // Load the video
     await loadSource(initialRoute, resumePos);
+
+    // Auto-enable subtitles if the user opted in (Settings → Playback). Done
+    // after initial load so we don't block first frame. Picks the first
+    // non-forced track; user can change in the subtitle menu.
+    if (defaultSubtitlesEnabled && activeSubtitleIndex === null && subtitleTracks.length > 0) {
+      const preferred = subtitleTracks.find(t => !t.forced) ?? subtitleTracks[0];
+      const idx = preferred?.index;
+      if (typeof idx === 'number') {
+        switchSubtitleTrack(idx).catch(() => {});
+      }
+    }
 
     // Start heartbeat
     startHeartbeat();

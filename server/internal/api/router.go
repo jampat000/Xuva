@@ -1785,16 +1785,26 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		// Determine default subtitle behaviour from saved settings (#63 follow-up).
+		liveCfg := currentConfig(deps)
+		defaultSubs := false
+		switch source.Kind {
+		case "movie":
+			defaultSubs = liveCfg.DefaultSubtitlesMovies
+		case "episode":
+			defaultSubs = liveCfg.DefaultSubtitlesTV
+		}
 		resp := map[string]any{
-			"sessionId":           session.ID,
-			"deviceId":            session.DeviceID,
-			"mediaSourceId":       session.MediaSourceID,
-			"playbackStateUrl":    "/api/playback/state/" + session.MediaSourceID,
-			"heartbeatUrl":        "/api/client/playback/" + session.ID,
-			"stopUrl":             "/api/client/playback/" + session.ID + "/stop",
-			"heartbeatIntervalMs": 2000,
-			"decision":            decision,
-			"route":               routePayload,
+			"sessionId":               session.ID,
+			"deviceId":                session.DeviceID,
+			"mediaSourceId":           session.MediaSourceID,
+			"playbackStateUrl":        "/api/playback/state/" + session.MediaSourceID,
+			"heartbeatUrl":            "/api/client/playback/" + session.ID,
+			"stopUrl":                 "/api/client/playback/" + session.ID + "/stop",
+			"heartbeatIntervalMs":     2000,
+			"decision":                decision,
+			"route":                   routePayload,
+			"defaultSubtitlesEnabled": defaultSubs,
 		}
 		if probedOnDemand {
 			resp["probedOnDemand"] = true
@@ -3828,6 +3838,22 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			}
 			updated.OriginalQualityOnly = v
 		}
+		if value, ok := fields["defaultSubtitlesMovies"]; ok {
+			var v bool
+			if err := json.Unmarshal(value, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "defaultSubtitlesMovies must be true or false")
+				return
+			}
+			updated.DefaultSubtitlesMovies = v
+		}
+		if value, ok := fields["defaultSubtitlesTV"]; ok {
+			var v bool
+			if err := json.Unmarshal(value, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "defaultSubtitlesTV must be true or false")
+				return
+			}
+			updated.DefaultSubtitlesTV = v
+		}
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
 			return
@@ -4392,9 +4418,11 @@ func settingsPayload(cfg config.Config) map[string]any {
 		"allowedOrigins":    cfg.AllowedOrigins,
 		"country":              cfg.Country,
 		"timezone":             cfg.Timezone,
-		"metadataLanguage":     cfg.MetadataLanguage,
-		"preferTextSubtitles":  cfg.PreferTextSubtitles,
-		"originalQualityOnly":  cfg.OriginalQualityOnly,
+		"metadataLanguage":       cfg.MetadataLanguage,
+		"preferTextSubtitles":    cfg.PreferTextSubtitles,
+		"originalQualityOnly":    cfg.OriginalQualityOnly,
+		"defaultSubtitlesMovies": cfg.DefaultSubtitlesMovies,
+		"defaultSubtitlesTV":     cfg.DefaultSubtitlesTV,
 	}
 }
 
