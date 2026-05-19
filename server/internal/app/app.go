@@ -415,6 +415,7 @@ func (a *Application) Router() http.Handler {
 	return api.NewRouter(api.Deps{
 		Config:    a.Config,
 		StartedAt: a.StartedAt,
+		Database:  a.Database,
 		Auth:      a.Auth,
 		Events:    a.Events,
 		Observe:   a.Observe,

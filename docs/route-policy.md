@@ -125,6 +125,8 @@ Public client bootstrap routes:
 | `GET /api/client/people/{name}` | client | `client.person.detail` | admin, standard |
 | `GET /api/client/search` | client | `client.search` | admin, standard |
 | `POST /api/setup/complete` | setup | `setup.complete` | admin |
+| `GET /api/backup/export` | backup | `backup.export` | admin |
+| `POST /api/backup/import` | backup | `backup.import` | admin |
 
 Audit events are emitted as `audit.route` with:
 
