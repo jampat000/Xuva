@@ -569,12 +569,13 @@
   // ─── Pairing requests state ───────────────────────────────────────────────
   let pairingRequests = $state<PairingRequestItem[]>([]);
   let pairingLoading = $state(false);
+  let pairingLoaded = $state(false);
   let pairingActionId = $state<string | null>(null);
 
   async function loadPairingRequests() {
     pairingLoading = true;
     try { pairingRequests = (await getPairingRequests()).requests ?? []; } catch { /* ignore */ }
-    finally { pairingLoading = false; }
+    finally { pairingLoading = false; pairingLoaded = true; }
   }
 
   async function handleApprove(id: string) {
@@ -592,12 +593,13 @@
   // ─── Approved devices state ───────────────────────────────────────────────
   let approvedDevices = $state<ApprovedDeviceItem[]>([]);
   let devicesLoading = $state(false);
+  let devicesLoaded = $state(false);
   let deviceRevokingId = $state<string | null>(null);
 
   async function loadApprovedDevices() {
     devicesLoading = true;
     try { approvedDevices = (await getApprovedDevices()).devices ?? []; } catch { /* ignore */ }
-    finally { devicesLoading = false; }
+    finally { devicesLoading = false; devicesLoaded = true; }
   }
 
   async function handleRevoke(id: string) {
@@ -820,8 +822,8 @@
     if (active === 'transcoding' && !perfSettings && !perfLoading) loadPerf();
     if (active === 'network' && !discoveryStatus && !discoveryLoading) loadDiscovery();
     if (active === 'users' && usersList.length === 0 && !usersLoading) loadUsers();
-    if (active === 'pending-approvals' && pairingRequests.length === 0 && !pairingLoading) loadPairingRequests();
-    if (active === 'approved-devices' && approvedDevices.length === 0 && !devicesLoading) loadApprovedDevices();
+    if (active === 'pending-approvals' && !pairingLoaded && !pairingLoading) loadPairingRequests();
+    if (active === 'approved-devices' && !devicesLoaded && !devicesLoading) loadApprovedDevices();
     if (active === 'playback' && deviceProfiles.length === 0) loadDeviceProfiles();
     if ((active === 'transcoding' || active === 'playback' || active === 'scanning') && !perfSettings && !perfLoading) loadPerf();
     if (active !== current.id) sectionError = null;
