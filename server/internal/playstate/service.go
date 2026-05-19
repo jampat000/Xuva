@@ -129,6 +129,8 @@ func (s *Service) Recent(ctx context.Context, userID string, limit int) ([]Recen
 		FROM playback_states ps
 		JOIN media_sources ms ON ms.id = ps.media_source_id
 		WHERE ps.user_id = ?
+		AND ps.progress_seconds > 0
+		AND ps.watched = 0
 		ORDER BY ps.last_played_at DESC
 		LIMIT ?
 	`, userID, limit)
