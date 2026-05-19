@@ -2334,6 +2334,7 @@
                     class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.preferTextSubtitles ? 'bg-primary-glow' : 'bg-border'}"
                     role="switch"
                     aria-checked={editConfig.preferTextSubtitles}
+                    aria-label="Prefer text subtitles"
                   >
                     <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.preferTextSubtitles ? 'left-[22px]' : 'left-0.5'}"></span>
                   </button>
@@ -2352,6 +2353,7 @@
                     class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.originalQualityOnly ? 'bg-primary-glow' : 'bg-border'}"
                     role="switch"
                     aria-checked={editConfig.originalQualityOnly}
+                    aria-label="Original quality only"
                   >
                     <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.originalQualityOnly ? 'left-[22px]' : 'left-0.5'}"></span>
                   </button>
@@ -2370,6 +2372,7 @@
                     class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.defaultSubtitlesMovies ? 'bg-primary-glow' : 'bg-border'}"
                     role="switch"
                     aria-checked={editConfig.defaultSubtitlesMovies}
+                    aria-label="Subtitles on by default — Movies"
                   >
                     <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.defaultSubtitlesMovies ? 'left-[22px]' : 'left-0.5'}"></span>
                   </button>
@@ -2388,6 +2391,7 @@
                     class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {editConfig.defaultSubtitlesTV ? 'bg-primary-glow' : 'bg-border'}"
                     role="switch"
                     aria-checked={editConfig.defaultSubtitlesTV}
+                    aria-label="Subtitles on by default — TV"
                   >
                     <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {editConfig.defaultSubtitlesTV ? 'left-[22px]' : 'left-0.5'}"></span>
                   </button>
@@ -2670,6 +2674,7 @@
                     placeholder="Xuva"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
+                </div>
                 <div>
                   <label for="interface-lang" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
                     Interface language

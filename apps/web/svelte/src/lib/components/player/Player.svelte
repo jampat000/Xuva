@@ -71,7 +71,7 @@
   let hasStarted = $state(false);
 
   // ─── Route / decision ─────────────────────────────────────────────────────
-  // eslint-disable-next-line svelte/valid-compile
+  // svelte-ignore state_referenced_locally — intentional one-time snapshot of the prop
   let route = $state<PlaybackRouteResponse>({ ...initialRoute });
   let decision = $derived(route.decision);
   let isAdaptive = $derived(route.protocol === 'hls');
@@ -795,13 +795,16 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={containerEl}
   class={`relative h-screen w-screen overflow-hidden bg-black ${controlsVisible ? 'cursor-default' : 'cursor-none'}`}
   onmousemove={showControls}
   onclick={onVideoTap}
+  onkeydown={onKeyDown}
   role="application"
   aria-label="Video player"
+  tabindex="-1"
 >
   <!-- ─── VIDEO ─────────────────────────────────────────────────────────── -->
   <video
@@ -878,6 +881,7 @@
     class={`absolute inset-0 flex flex-col justify-between transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     role="toolbar"
     aria-label="Player controls"
+    tabindex="0"
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
   >
@@ -1199,6 +1203,7 @@
         onclick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Keyboard shortcuts"
+        tabindex="-1"
       >
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">

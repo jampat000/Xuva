@@ -50,7 +50,7 @@ jobs:
 
       - name: Type-check (svelte-check)
         working-directory: apps/web/svelte
-        run: npm run check
+        run: npm run check:ci
 
   built-bundle-smoke:
     name: Built-bundle CSP smoke check
