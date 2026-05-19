@@ -148,6 +148,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/client/series/{id}", clientSeriesDetailHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/collections/{id}", clientCollectionHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/people/{name}", clientPersonHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/search", clientSearchHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/client/playback/start", clientPlaybackStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "PATCH /api/client/playback/{id}", clientPlaybackHeartbeatHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/client/playback/{id}/stop", clientPlaybackStopHandler(deps))
@@ -1706,6 +1707,106 @@ func clientPersonHandler(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"person":  personPayload,
 			"credits": creditItems,
+		})
+	}
+}
+
+func clientSearchHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		limit := 8
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil {
+				if parsed < 1 {
+					parsed = 1
+				}
+				if parsed > 40 {
+					parsed = 40
+				}
+				limit = parsed
+			}
+		}
+		if query == "" {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"query":       "",
+				"movies":      []any{},
+				"series":      []any{},
+				"people":      []any{},
+				"collections": []any{},
+			})
+			return
+		}
+		results, err := deps.Catalog.SearchLibrary(r.Context(), query, limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "search failed")
+			return
+		}
+		movieItems := make([]map[string]any, 0, len(results.Movies))
+		for _, m := range results.Movies {
+			entry := map[string]any{
+				"id":          m.ID,
+				"kind":        "movie",
+				"title":       m.Title,
+				"year":        m.Year,
+				"posterUrl":   metadataPoster(m.Metadata),
+				"backdropUrl": metadataBackdrop(m.Metadata),
+				"logoUrl":     metadataLogo(m.Metadata),
+			}
+			if m.Metadata != nil {
+				entry["voteAverage"] = heroRating(m.Metadata.Ratings)
+				entry["genres"] = m.Metadata.Genres
+				entry["overview"] = m.Metadata.Overview
+			}
+			movieItems = append(movieItems, entry)
+		}
+		seriesItems := make([]map[string]any, 0, len(results.Series))
+		for _, s := range results.Series {
+			entry := map[string]any{
+				"id":           s.ID,
+				"kind":         "series",
+				"title":        s.Title,
+				"seasonCount":  s.SeasonCount,
+				"episodeCount": s.EpisodeCount,
+				"posterUrl":    metadataPoster(s.Metadata),
+				"backdropUrl":  metadataBackdrop(s.Metadata),
+				"logoUrl":      metadataLogo(s.Metadata),
+			}
+			if s.Metadata != nil {
+				entry["voteAverage"] = heroRating(s.Metadata.Ratings)
+				entry["genres"] = s.Metadata.Genres
+				entry["overview"] = s.Metadata.Overview
+				entry["year"] = s.Metadata.Year
+			}
+			seriesItems = append(seriesItems, entry)
+		}
+		peopleItems := make([]map[string]any, 0, len(results.People))
+		for _, p := range results.People {
+			peopleItems = append(peopleItems, map[string]any{
+				"kind":        "person",
+				"name":        p.Name,
+				"profileUrl":  normalizeArtworkSourceURL(p.ProfileURL, "poster"),
+				"department":  p.Department,
+				"creditCount": p.CreditCount,
+			})
+		}
+		collectionItems := make([]map[string]any, 0, len(results.Collections))
+		for _, c := range results.Collections {
+			collectionItems = append(collectionItems, map[string]any{
+				"kind":        "collection",
+				"id":          c.ID,
+				"name":        c.Name,
+				"posterUrl":   normalizeArtworkSourceURL(c.PosterURL, "poster"),
+				"backdropUrl": normalizeArtworkSourceURL(c.BackdropURL, "backdrop"),
+				"logoUrl":     normalizeArtworkSourceURL(c.LogoURL, "logo"),
+				"movieCount":  c.MovieCount,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"query":       results.Query,
+			"movies":      movieItems,
+			"series":      seriesItems,
+			"people":      peopleItems,
+			"collections": collectionItems,
 		})
 	}
 }

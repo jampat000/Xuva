@@ -121,6 +121,81 @@ export interface MetadataMatchRequest {
 	review: boolean;
 }
 
+// ── Library search ────────────────────────────────────────────────────────
+//
+// Aggregated search across movies, series, people (cast/crew), and
+// collections (TMDB franchises). Server returns up to `limit` per type
+// (default 8, max 40). Each item carries a `kind` discriminator.
+
+export interface SearchMovieHit {
+	kind: 'movie';
+	id: string;
+	title: string;
+	year?: number;
+	posterUrl?: string;
+	backdropUrl?: string;
+	logoUrl?: string;
+	overview?: string;
+	genres?: string[];
+	voteAverage?: number;
+}
+
+export interface SearchSeriesHit {
+	kind: 'series';
+	id: string;
+	title: string;
+	year?: number;
+	seasonCount?: number;
+	episodeCount?: number;
+	posterUrl?: string;
+	backdropUrl?: string;
+	logoUrl?: string;
+	overview?: string;
+	genres?: string[];
+	voteAverage?: number;
+}
+
+export interface SearchPersonHit {
+	kind: 'person';
+	name: string;
+	profileUrl?: string;
+	department?: string;
+	creditCount: number;
+}
+
+export interface SearchCollectionHit {
+	kind: 'collection';
+	id: string;
+	name: string;
+	posterUrl?: string;
+	backdropUrl?: string;
+	logoUrl?: string;
+	movieCount: number;
+}
+
+export type SearchHit =
+	| SearchMovieHit
+	| SearchSeriesHit
+	| SearchPersonHit
+	| SearchCollectionHit;
+
+export interface SearchResponse {
+	query: string;
+	movies: SearchMovieHit[];
+	series: SearchSeriesHit[];
+	people: SearchPersonHit[];
+	collections: SearchCollectionHit[];
+}
+
+export function searchLibrary(
+	q: string,
+	limit = 8,
+	client: ApiClient = apiClient,
+): Promise<SearchResponse> {
+	const params = new URLSearchParams({ q, limit: String(limit) });
+	return client.request<SearchResponse>(`/api/client/search?${params}`);
+}
+
 export function getMovies(client: ApiClient = apiClient, limit = 500): Promise<MoviesResponse> {
 	return client.request<MoviesResponse>(`/api/movies?limit=${encodeURIComponent(String(limit))}`);
 }
