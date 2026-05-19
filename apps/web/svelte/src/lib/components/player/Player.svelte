@@ -825,7 +825,6 @@
   class={`relative h-screen w-screen overflow-hidden bg-black ${controlsVisible ? 'cursor-default' : 'cursor-none'}`}
   onmousemove={showControls}
   onclick={onVideoTap}
-  onkeydown={onKeyDown}
   role="application"
   aria-label="Video player"
   tabindex="-1"
@@ -940,7 +939,6 @@
     aria-label="Player controls"
     tabindex="0"
     onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.stopPropagation()}
   >
     <!-- Top bar: back + title + route badge -->
     <div
@@ -1029,8 +1027,8 @@
             aria-valuetext={fmt(currentTime)}
             tabindex="0"
             onkeydown={(e) => {
-              if (e.key === 'ArrowLeft') skip(-5);
-              if (e.key === 'ArrowRight') skip(5);
+              if (e.key === 'ArrowLeft') { e.stopPropagation(); e.preventDefault(); skip(-5); }
+              if (e.key === 'ArrowRight') { e.stopPropagation(); e.preventDefault(); skip(5); }
             }}
           >
             <!-- Buffer -->
