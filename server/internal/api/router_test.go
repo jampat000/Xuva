@@ -973,6 +973,287 @@ func TestClientDetailEndpointsReturnNativePayloads(t *testing.T) {
 	}
 }
 
+// TestClientSearchHandler_ReturnsShape exercises the happy path: a query that
+// matches a movie, a series, a person (via metadata cast), and a collection
+// (via metadata $.collection) returns one HTTP 200 payload with all four
+// buckets populated and the expected per-kind field shape.
+func TestClientSearchHandler_ReturnsShape(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+	seedSearchFixtures(t, deps.Catalog)
+
+	payload := getJSON(t, router, "/api/client/search?q=spider")
+	if payload["query"] != "spider" {
+		t.Fatalf("expected query echoed back, got %#v", payload["query"])
+	}
+	for _, bucket := range []string{"movies", "series", "people", "collections"} {
+		arr, ok := payload[bucket].([]any)
+		if !ok {
+			t.Fatalf("expected %s to be an array, got %#v", bucket, payload[bucket])
+		}
+		if len(arr) == 0 {
+			t.Fatalf("expected %s bucket to contain at least one hit, got empty", bucket)
+		}
+	}
+
+	movie := payload["movies"].([]any)[0].(map[string]any)
+	if movie["kind"] != "movie" || movie["id"] == "" || movie["title"] == "" {
+		t.Fatalf("movie hit missing kind/id/title: %#v", movie)
+	}
+	series := payload["series"].([]any)[0].(map[string]any)
+	if series["kind"] != "series" || series["id"] == "" || series["title"] == "" {
+		t.Fatalf("series hit missing kind/id/title: %#v", series)
+	}
+	person := payload["people"].([]any)[0].(map[string]any)
+	if person["kind"] != "person" || person["name"] == "" {
+		t.Fatalf("person hit missing kind/name: %#v", person)
+	}
+	if _, ok := person["creditCount"]; !ok {
+		t.Fatalf("person hit missing creditCount: %#v", person)
+	}
+	collection := payload["collections"].([]any)[0].(map[string]any)
+	if collection["kind"] != "collection" || collection["id"] == "" || collection["name"] == "" {
+		t.Fatalf("collection hit missing kind/id/name: %#v", collection)
+	}
+	if _, ok := collection["movieCount"]; !ok {
+		t.Fatalf("collection hit missing movieCount: %#v", collection)
+	}
+}
+
+// TestClientSearchHandler_DefaultLimit verifies that omitting the limit param
+// applies the documented default of 8 per bucket.
+func TestClientSearchHandler_DefaultLimit(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+	seedManyMoviesForHandler(t, deps.Catalog, "deflim", 12)
+
+	payload := getJSON(t, router, "/api/client/search?q=deflim")
+	movies := payload["movies"].([]any)
+	if len(movies) != 8 {
+		t.Fatalf("expected default limit of 8 movies, got %d", len(movies))
+	}
+}
+
+// TestClientSearchHandler_LimitParamRespectedAndCapped verifies that an
+// explicit limit is honored and that values above 40 are clamped.
+func TestClientSearchHandler_LimitParamRespectedAndCapped(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+	seedManyMoviesForHandler(t, deps.Catalog, "lim", 12)
+
+	payload := getJSON(t, router, "/api/client/search?q=lim&limit=3")
+	movies := payload["movies"].([]any)
+	if len(movies) != 3 {
+		t.Fatalf("expected limit=3 to return 3 movies, got %d", len(movies))
+	}
+
+	seedManyMoviesForHandler(t, deps.Catalog, "capcheck", 55)
+	capped := getJSON(t, router, "/api/client/search?q=capcheck&limit=100")
+	cappedMovies := capped["movies"].([]any)
+	if len(cappedMovies) > 40 {
+		t.Fatalf("expected limit clamped to 40, got %d", len(cappedMovies))
+	}
+}
+
+// TestClientSearchHandler_EmptyQueryReturnsEmptyBuckets documents the
+// observed behavior: the handler returns 200 with empty buckets for an empty
+// query rather than a 400. (Flagged as a behavior choice — the original spec
+// suggested 400, but the implementation prefers a non-error empty response so
+// the client's debounced typeahead can call without special-casing.)
+func TestClientSearchHandler_EmptyQueryReturnsEmptyBuckets(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/client/search?q=", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty query, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if payload["query"] != "" {
+		t.Fatalf("expected query to echo empty string, got %#v", payload["query"])
+	}
+	for _, bucket := range []string{"movies", "series", "people", "collections"} {
+		arr, ok := payload[bucket].([]any)
+		if !ok {
+			t.Fatalf("expected %s to be an array, got %#v", bucket, payload[bucket])
+		}
+		if len(arr) != 0 {
+			t.Fatalf("expected %s to be empty for empty query, got %#v", bucket, arr)
+		}
+	}
+}
+
+// seedSearchFixtures populates the catalog with cross-bucket fixtures for
+// handler-level coverage. The data is independent of the catalog-package
+// fixtures so the handler tests don't share state with service tests.
+func seedSearchFixtures(t *testing.T, service *catalog.Service) {
+	t.Helper()
+	ctx := context.Background()
+
+	movieLib := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+	tvLib := libraries.Library{ID: "tv", Name: "TV", Path: `X:\TV`, Kind: libraries.KindTV}
+
+	makeMovieFile := func(title string) scanner.FileCandidate {
+		rel := filepath.Clean(title + "/" + title + ".1080p.mkv")
+		return scanner.FileCandidate{
+			Path:       filepath.Clean(`X:\Movies\` + rel),
+			RelPath:    rel,
+			Name:       title + ".1080p.mkv",
+			Extension:  ".mkv",
+			Size:       1024,
+			ModifiedAt: time.Now().UTC(),
+			Changed:    true,
+		}
+	}
+
+	for i, title := range []string{"Spiderhead", "Spider Sequel"} {
+		file := makeMovieFile(title)
+		summary := scanner.Summary{
+			Kind:         scanner.KindMovies,
+			Root:         movieLib.Path,
+			StartedAt:    time.Now().UTC(),
+			CompletedAt:  time.Now().UTC().Add(time.Millisecond),
+			DurationMS:   1,
+			TotalFiles:   1,
+			MediaFiles:   1,
+			ChangedFiles: 1,
+			Extensions:   map[string]int{".mkv": 1},
+		}
+		result := scanner.Result{Summary: summary, Files: []scanner.FileCandidate{file}, SeenRelPaths: []string{file.RelPath}}
+		candidates := []movies.Candidate{{Title: title, Year: 2020 + i, Media: file}}
+		if _, err := service.SaveMovieScan(ctx, movieLib, result, candidates); err != nil {
+			t.Fatalf("seed movie %q: %v", title, err)
+		}
+	}
+
+	movieList, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list seeded movies: %v", err)
+	}
+	for _, item := range movieList {
+		if err := service.UpsertMetadataRecord(ctx, catalog.MetadataRecord{
+			Kind:       "movie",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Year:       item.Year,
+			Confidence: 0.9,
+			Cast: []catalog.MetadataCredit{
+				{Name: "Spider Lee", Character: "Hero", ProfileURL: "https://images.example/spider-lee.jpg"},
+			},
+			Collection: &catalog.MetadataCollection{
+				ID:        "42",
+				Name:      "Spider Saga",
+				PosterURL: "https://images.example/spider-saga.jpg",
+			},
+		}); err != nil {
+			t.Fatalf("upsert movie metadata for %q: %v", item.Title, err)
+		}
+	}
+
+	// TV
+	tvFile := scanner.FileCandidate{
+		Path:       filepath.Clean(`X:\TV\Spider Forest\Season 01\Spider.Forest.S01E01.mkv`),
+		RelPath:    filepath.Clean("Spider Forest/Season 01/Spider.Forest.S01E01.mkv"),
+		Name:       "Spider.Forest.S01E01.mkv",
+		Extension:  ".mkv",
+		Size:       1024,
+		ModifiedAt: time.Now().UTC(),
+		Changed:    true,
+	}
+	tvSummary := scanner.Summary{
+		Kind:         scanner.KindTV,
+		Root:         tvLib.Path,
+		StartedAt:    time.Now().UTC(),
+		CompletedAt:  time.Now().UTC().Add(time.Millisecond),
+		DurationMS:   1,
+		TotalFiles:   1,
+		MediaFiles:   1,
+		ChangedFiles: 1,
+		Extensions:   map[string]int{".mkv": 1},
+	}
+	tvResult := scanner.Result{Summary: tvSummary, Files: []scanner.FileCandidate{tvFile}, SeenRelPaths: []string{tvFile.RelPath}}
+	tvCandidates := []tv.EpisodeCandidate{{
+		SeriesTitle:   "Spider Forest",
+		SeasonNumber:  1,
+		EpisodeNumber: 1,
+		EpisodeTitle:  "Pilot",
+		Media:         tvFile,
+	}}
+	if _, err := service.SaveTVScan(ctx, tvLib, tvResult, tvCandidates); err != nil {
+		t.Fatalf("seed tv: %v", err)
+	}
+	seriesList, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list seeded series: %v", err)
+	}
+	for _, item := range seriesList {
+		if err := service.UpsertMetadataRecord(ctx, catalog.MetadataRecord{
+			Kind:       "series",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Confidence: 0.9,
+		}); err != nil {
+			t.Fatalf("upsert series metadata: %v", err)
+		}
+	}
+}
+
+// seedManyMoviesForHandler creates n movies whose titles all begin with prefix
+// so the handler returns a deterministic, scoreable set per limit assertion.
+func seedManyMoviesForHandler(t *testing.T, service *catalog.Service, prefix string, n int) {
+	t.Helper()
+	ctx := context.Background()
+	library := libraries.Library{ID: "movies-" + prefix, Name: "Movies-" + prefix, Path: `X:\Movies\` + prefix, Kind: libraries.KindMovies}
+	for i := 0; i < n; i++ {
+		title := prefix + "-" + padInt(i)
+		rel := filepath.Clean(title + "/" + title + ".mkv")
+		file := scanner.FileCandidate{
+			Path:       filepath.Clean(library.Path + `\` + rel),
+			RelPath:    rel,
+			Name:       title + ".mkv",
+			Extension:  ".mkv",
+			Size:       1024,
+			ModifiedAt: time.Now().UTC(),
+			Changed:    true,
+		}
+		summary := scanner.Summary{
+			Kind:         scanner.KindMovies,
+			Root:         library.Path,
+			StartedAt:    time.Now().UTC(),
+			CompletedAt:  time.Now().UTC().Add(time.Millisecond),
+			DurationMS:   1,
+			TotalFiles:   1,
+			MediaFiles:   1,
+			ChangedFiles: 1,
+			Extensions:   map[string]int{".mkv": 1},
+		}
+		result := scanner.Result{Summary: summary, Files: []scanner.FileCandidate{file}, SeenRelPaths: []string{file.RelPath}}
+		candidates := []movies.Candidate{{Title: title, Year: 2000 + i, Media: file}}
+		if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+			t.Fatalf("seed movie %q: %v", title, err)
+		}
+	}
+}
+
+func padInt(i int) string {
+	const digits = "0123456789"
+	if i < 10 {
+		return "0" + string(digits[i])
+	}
+	if i < 100 {
+		return string(digits[i/10]) + string(digits[i%10])
+	}
+	return string(digits[i/100]) + string(digits[(i/10)%10]) + string(digits[i%10])
+}
+
 func TestClientPlaybackStartHeartbeatAndStop(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))

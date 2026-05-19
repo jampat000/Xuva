@@ -617,6 +617,375 @@ func TestGetSeriesAggregatesDuplicateSeriesMembers(t *testing.T) {
 	}
 }
 
+func TestSearchLibrary_EmptyQueryReturnsEmptyBuckets(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	seedSearchableLibrary(t, service)
+
+	results, err := service.SearchLibrary(ctx, "", 8)
+	if err != nil {
+		t.Fatalf("search empty: %v", err)
+	}
+	if results.Query != "" {
+		t.Fatalf("expected echoed empty query, got %q", results.Query)
+	}
+	if len(results.Movies) != 0 || len(results.Series) != 0 || len(results.People) != 0 || len(results.Collections) != 0 {
+		t.Fatalf("expected all buckets empty, got %#v", results)
+	}
+	// All buckets should be non-nil JSON arrays, not nil.
+	if results.Movies == nil || results.Series == nil || results.People == nil || results.Collections == nil {
+		t.Fatalf("expected all buckets to be non-nil slices, got %#v", results)
+	}
+}
+
+func TestSearchLibrary_NoMatchesReturnsEmptyBuckets(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	seedSearchableLibrary(t, service)
+
+	results, err := service.SearchLibrary(ctx, "zzznosuchword", 8)
+	if err != nil {
+		t.Fatalf("search no matches: %v", err)
+	}
+	if len(results.Movies) != 0 || len(results.Series) != 0 || len(results.People) != 0 || len(results.Collections) != 0 {
+		t.Fatalf("expected empty results for no-match query, got %#v", results)
+	}
+}
+
+func TestSearchLibrary_PopulatesAllFourBuckets(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	seedSearchableLibrary(t, service)
+
+	// "spider" matches a movie ("Spiderhead"), a series ("Spider Forest"), a
+	// person ("Spider Lee"), and a collection ("Spider Saga"). See
+	// seedSearchableLibrary for the fixture wiring.
+	results, err := service.SearchLibrary(ctx, "spider", 8)
+	if err != nil {
+		t.Fatalf("search spider: %v", err)
+	}
+	if len(results.Movies) < 1 {
+		t.Fatalf("expected at least one movie hit, got %#v", results.Movies)
+	}
+	if len(results.Series) < 1 {
+		t.Fatalf("expected at least one series hit, got %#v", results.Series)
+	}
+	if len(results.People) < 1 {
+		t.Fatalf("expected at least one person hit, got %#v", results.People)
+	}
+	if len(results.Collections) < 1 {
+		t.Fatalf("expected at least one collection hit, got %#v", results.Collections)
+	}
+}
+
+func TestSearchLibrary_LimitEnforcedAndCappedAtForty(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	seedManyMovies(t, service, "limitcheck", 12)
+
+	// Custom limit applied per bucket.
+	results, err := service.SearchLibrary(ctx, "limitcheck", 5)
+	if err != nil {
+		t.Fatalf("search with limit 5: %v", err)
+	}
+	if len(results.Movies) != 5 {
+		t.Fatalf("expected exactly 5 movies for limit=5, got %d", len(results.Movies))
+	}
+
+	// Default (zero/negative) limit is treated as 8.
+	resultsDefault, err := service.SearchLibrary(ctx, "limitcheck", 0)
+	if err != nil {
+		t.Fatalf("search default limit: %v", err)
+	}
+	if len(resultsDefault.Movies) != 8 {
+		t.Fatalf("expected exactly 8 movies for default limit, got %d", len(resultsDefault.Movies))
+	}
+
+	// Limit is clamped to 40.
+	seedManyMovies(t, service, "bigcap", 60)
+	resultsCap, err := service.SearchLibrary(ctx, "bigcap", 100)
+	if err != nil {
+		t.Fatalf("search huge limit: %v", err)
+	}
+	if len(resultsCap.Movies) > 40 {
+		t.Fatalf("expected limit clamped to 40, got %d movies", len(resultsCap.Movies))
+	}
+}
+
+func TestSearchLibrary_ScoringOrderExactPrefixWordPrefixContains(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+
+	// All four titles contain "rain" but rank differently:
+	//   "Rain"           -> exact match (100)
+	//   "Rainmaker"      -> prefix match (80)
+	//   "Hard Rain"      -> word-prefix match (60)
+	//   "Brain Damage"   -> substring match (40)
+	titles := []string{"Rain", "Rainmaker", "Hard Rain", "Brain Damage"}
+	for i, title := range titles {
+		rel := title + "/" + title + ".1080p.mkv"
+		file := fileCandidate(`X:\Movies\`+rel, rel)
+		result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+		candidates := []movies.Candidate{{Title: title, Year: 2000 + i, QualityLabel: "1080p", Media: file}}
+		if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+			t.Fatalf("save movie %q: %v", title, err)
+		}
+	}
+
+	// Apply tmdb metadata that keeps the title stable so SearchLibrary's
+	// scorer (which uses the metadata-applied title) sees the same strings.
+	movieList, err := service.ListMovies(ctx, 100)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	for _, item := range movieList {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "movie",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Year:       item.Year,
+			Confidence: 0.9,
+		}); err != nil {
+			t.Fatalf("upsert movie metadata for %q: %v", item.Title, err)
+		}
+	}
+
+	results, err := service.SearchLibrary(ctx, "rain", 10)
+	if err != nil {
+		t.Fatalf("search rain: %v", err)
+	}
+	if len(results.Movies) != 4 {
+		t.Fatalf("expected 4 ranked movies, got %#v", results.Movies)
+	}
+	expectedOrder := []string{"Rain", "Rainmaker", "Hard Rain", "Brain Damage"}
+	for i, want := range expectedOrder {
+		if results.Movies[i].Title != want {
+			t.Fatalf("position %d: expected %q, got %q (full order %#v)", i, want, results.Movies[i].Title, results.Movies)
+		}
+	}
+}
+
+func TestSearchLibrary_PeopleDeduplicatedByName(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+
+	// Two movies that both credit "Pat Coverstar" — the dedupe key is name
+	// (lower-cased). After search, we expect a single hit with CreditCount=2.
+	for i, title := range []string{"Coverstar Origins", "Coverstar Returns"} {
+		rel := title + "/" + title + ".mkv"
+		file := fileCandidate(`X:\Movies\`+rel, rel)
+		result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+		candidates := []movies.Candidate{{Title: title, Year: 2010 + i, Media: file}}
+		if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+			t.Fatalf("save %q: %v", title, err)
+		}
+	}
+	movieList, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	for _, item := range movieList {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "movie",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Year:       item.Year,
+			Confidence: 0.9,
+			Cast: []MetadataCredit{
+				{Name: "Pat Coverstar", Character: "Lead", ProfileURL: "https://images.example/pat.jpg"},
+			},
+		}); err != nil {
+			t.Fatalf("upsert metadata for %q: %v", item.Title, err)
+		}
+	}
+
+	results, err := service.SearchLibrary(ctx, "coverstar", 8)
+	if err != nil {
+		t.Fatalf("search coverstar: %v", err)
+	}
+	if len(results.People) != 1 {
+		t.Fatalf("expected one deduped person, got %#v", results.People)
+	}
+	if results.People[0].Name != "Pat Coverstar" {
+		t.Fatalf("expected person name 'Pat Coverstar', got %q", results.People[0].Name)
+	}
+	if results.People[0].CreditCount < 2 {
+		t.Fatalf("expected creditCount >= 2 for person credited in two movies, got %d", results.People[0].CreditCount)
+	}
+}
+
+func TestSearchLibrary_CollectionsDeduplicatedByID(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+
+	// Three movies all reference the same collection id "555" but with
+	// slightly different cosmetic fields. SearchLibrary should collapse them
+	// to one CollectionHit with MovieCount=3.
+	titles := []string{"Galaxy Rescue", "Galaxy Heist", "Galaxy Revenge"}
+	for i, title := range titles {
+		rel := title + "/" + title + ".mkv"
+		file := fileCandidate(`X:\Movies\`+rel, rel)
+		result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+		candidates := []movies.Candidate{{Title: title, Year: 2015 + i, Media: file}}
+		if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+			t.Fatalf("save %q: %v", title, err)
+		}
+	}
+	movieList, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	for _, item := range movieList {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "movie",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Year:       item.Year,
+			Confidence: 0.9,
+			Collection: &MetadataCollection{
+				ID:        "555",
+				Name:      "Galaxy Trilogy",
+				PosterURL: "https://images.example/galaxy.jpg",
+			},
+		}); err != nil {
+			t.Fatalf("upsert metadata for %q: %v", item.Title, err)
+		}
+	}
+
+	results, err := service.SearchLibrary(ctx, "galaxy", 8)
+	if err != nil {
+		t.Fatalf("search galaxy: %v", err)
+	}
+	if len(results.Collections) != 1 {
+		t.Fatalf("expected one deduped collection, got %#v", results.Collections)
+	}
+	if results.Collections[0].ID != "555" {
+		t.Fatalf("expected collection id '555', got %q", results.Collections[0].ID)
+	}
+	if results.Collections[0].MovieCount != 3 {
+		t.Fatalf("expected movieCount=3 for collection across three movies, got %d", results.Collections[0].MovieCount)
+	}
+}
+
+// seedSearchableLibrary populates the catalog with enough cross-category data
+// to exercise all four search buckets simultaneously.
+func seedSearchableLibrary(t *testing.T, service *Service) {
+	t.Helper()
+	ctx := context.Background()
+
+	movieLib := libraries.Library{ID: "movies", Name: "Movies", Path: `X:\Movies`, Kind: libraries.KindMovies}
+	tvLib := libraries.Library{ID: "tv", Name: "TV", Path: `X:\TV`, Kind: libraries.KindTV}
+
+	// Movie "Spiderhead" with cast member "Spider Lee" and collection "Spider Saga".
+	movieFile := fileCandidate(`X:\Movies\Spiderhead\Spiderhead.1080p.mkv`, "Spiderhead/Spiderhead.1080p.mkv")
+	movieResult := scanResult(scanner.KindMovies, movieLib.Path, []scanner.FileCandidate{movieFile})
+	movieCandidates := []movies.Candidate{{Title: "Spiderhead", Year: 2022, Media: movieFile}}
+	if _, err := service.SaveMovieScan(ctx, movieLib, movieResult, movieCandidates); err != nil {
+		t.Fatalf("seed movie: %v", err)
+	}
+
+	// A second movie that also references the Spider Saga collection (so
+	// MovieCount > 0 and dedupe works deterministically).
+	movieFile2 := fileCandidate(`X:\Movies\Spider Sequel\Spider.Sequel.1080p.mkv`, "Spider Sequel/Spider.Sequel.1080p.mkv")
+	movieResult2 := scanResult(scanner.KindMovies, movieLib.Path, []scanner.FileCandidate{movieFile2})
+	movieCandidates2 := []movies.Candidate{{Title: "Spider Sequel", Year: 2024, Media: movieFile2}}
+	if _, err := service.SaveMovieScan(ctx, movieLib, movieResult2, movieCandidates2); err != nil {
+		t.Fatalf("seed second movie: %v", err)
+	}
+
+	movieList, err := service.ListMovies(ctx, 10)
+	if err != nil {
+		t.Fatalf("list seed movies: %v", err)
+	}
+	for _, item := range movieList {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "movie",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Year:       item.Year,
+			Confidence: 0.9,
+			Cast: []MetadataCredit{
+				{Name: "Spider Lee", Character: "Hero", ProfileURL: "https://images.example/spider-lee.jpg"},
+			},
+			Collection: &MetadataCollection{
+				ID:        "42",
+				Name:      "Spider Saga",
+				PosterURL: "https://images.example/spider-saga.jpg",
+			},
+		}); err != nil {
+			t.Fatalf("upsert movie metadata for %q: %v", item.Title, err)
+		}
+	}
+
+	// TV series "Spider Forest"
+	tvFile := fileCandidate(`X:\TV\Spider Forest\Season 01\Spider.Forest.S01E01.mkv`, "Spider Forest/Season 01/Spider.Forest.S01E01.mkv")
+	tvResult := scanResult(scanner.KindTV, tvLib.Path, []scanner.FileCandidate{tvFile})
+	tvCandidates := []tv.EpisodeCandidate{{
+		SeriesTitle:   "Spider Forest",
+		SeasonNumber:  1,
+		EpisodeNumber: 1,
+		EpisodeTitle:  "Pilot",
+		Media:         tvFile,
+	}}
+	if _, err := service.SaveTVScan(ctx, tvLib, tvResult, tvCandidates); err != nil {
+		t.Fatalf("seed tv: %v", err)
+	}
+	seriesList, err := service.ListSeries(ctx, 10)
+	if err != nil {
+		t.Fatalf("list seed series: %v", err)
+	}
+	for _, item := range seriesList {
+		if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+			Kind:       "series",
+			ItemID:     item.ID,
+			Provider:   "tmdb",
+			Title:      item.Title,
+			Confidence: 0.9,
+		}); err != nil {
+			t.Fatalf("upsert series metadata for %q: %v", item.Title, err)
+		}
+	}
+}
+
+// seedManyMovies inserts n movies whose titles all start with the given prefix
+// so SearchLibrary returns a deterministic, scoreable set for limit checks.
+func seedManyMovies(t *testing.T, service *Service, prefix string, n int) {
+	t.Helper()
+	ctx := context.Background()
+	library := libraries.Library{ID: "movies-" + prefix, Name: "Movies-" + prefix, Path: `X:\Movies\` + prefix, Kind: libraries.KindMovies}
+	for i := 0; i < n; i++ {
+		title := prefix + "-" + intToFixedString(i)
+		rel := title + "/" + title + ".mkv"
+		path := library.Path + `\` + rel
+		file := fileCandidate(path, rel)
+		result := scanResult(scanner.KindMovies, library.Path, []scanner.FileCandidate{file})
+		candidates := []movies.Candidate{{Title: title, Year: 2000 + i, Media: file}}
+		if _, err := service.SaveMovieScan(ctx, library, result, candidates); err != nil {
+			t.Fatalf("seed many movies (%q): %v", title, err)
+		}
+	}
+}
+
+// intToFixedString formats i with leading zeros so that lexical and numeric
+// orders agree across the seeded fixtures (avoids "10" sorting before "2").
+func intToFixedString(i int) string {
+	const digits = "0123456789"
+	if i < 10 {
+		return "0" + string(digits[i])
+	}
+	if i < 100 {
+		return string(digits[i/10]) + string(digits[i%10])
+	}
+	return string(digits[i/100]) + string(digits[(i/10)%10]) + string(digits[i%10])
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 
