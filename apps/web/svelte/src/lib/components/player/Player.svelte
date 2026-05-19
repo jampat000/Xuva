@@ -3,7 +3,7 @@
   import Hls from 'hls.js';
   import {
     Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-    SkipBack, SkipForward, Subtitles, Mic2, Settings, Info, ChevronLeft, Keyboard
+    SkipBack, SkipForward, Subtitles, Mic2, Settings, Info, ChevronLeft, Keyboard, AlertTriangle
   } from 'lucide-svelte';
   import RouteBadge from './RouteBadge.svelte';
   import TrackMenu from './TrackMenu.svelte';
@@ -833,11 +833,22 @@
   <!-- ─── ERROR ─────────────────────────────────────────────────────────── -->
   {#if error}
     <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80 p-8 text-center">
-      <div class="text-4xl">⚠️</div>
+      <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-white/60">
+        <AlertTriangle class="h-6 w-6" />
+      </div>
       <p class="max-w-md text-sm text-white/70 leading-relaxed">{error}</p>
-      <a href={backHref} class="mt-2 rounded-full bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20">
-        ← Back
-      </a>
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <a href={backHref} class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20">
+          ← Back
+        </a>
+        <button
+          type="button"
+          onclick={() => { showInspector = true; }}
+          class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+        >
+          View decision details
+        </button>
+      </div>
     </div>
   {/if}
 
