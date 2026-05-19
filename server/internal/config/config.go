@@ -64,8 +64,10 @@ type Config struct {
 	Timezone              string   `json:"timezone,omitempty"`         // IANA tz, e.g. "Australia/Sydney"
 	MetadataLanguage      string   `json:"metadataLanguage,omitempty"` // BCP-47 e.g. "en-US", "fr-FR", "de-DE"
 	// Playback preferences
-	PreferTextSubtitles   bool     `json:"preferTextSubtitles,omitempty"` // prefer SRT/ASS over bitmap subs
-	OriginalQualityOnly   bool     `json:"originalQualityOnly,omitempty"` // refuse to transcode video
+	PreferTextSubtitles    bool `json:"preferTextSubtitles,omitempty"`    // prefer SRT/ASS over bitmap subs
+	OriginalQualityOnly    bool `json:"originalQualityOnly,omitempty"`    // refuse to transcode video
+	DefaultSubtitlesMovies bool `json:"defaultSubtitlesMovies,omitempty"` // start movie playback with subs on
+	DefaultSubtitlesTV     bool `json:"defaultSubtitlesTV,omitempty"`     // start TV-episode playback with subs on
 	SetupComplete         bool     `json:"setupComplete,omitempty"`
 	// Trailer downloader settings — self-hosted preview videos.
 	TrailersEnabled       bool     `json:"trailersEnabled,omitempty"`
@@ -147,9 +149,11 @@ func FromEnv() Config {
 		ProbeBatchLimit:      envInt("XUVA_PROBE_BATCH_LIMIT", 50),
 		Country:              envString("XUVA_COUNTRY", ""),
 		Timezone:             envString("XUVA_TIMEZONE", ""),
-		MetadataLanguage:     envString("XUVA_METADATA_LANGUAGE", "en-US"),
-		PreferTextSubtitles:  envBool("XUVA_PREFER_TEXT_SUBTITLES", false),
-		OriginalQualityOnly:  envBool("XUVA_ORIGINAL_QUALITY_ONLY", false),
+		MetadataLanguage:       envString("XUVA_METADATA_LANGUAGE", "en-US"),
+		PreferTextSubtitles:    envBool("XUVA_PREFER_TEXT_SUBTITLES", false),
+		OriginalQualityOnly:    envBool("XUVA_ORIGINAL_QUALITY_ONLY", false),
+		DefaultSubtitlesMovies: envBool("XUVA_DEFAULT_SUBTITLES_MOVIES", false),
+		DefaultSubtitlesTV:     envBool("XUVA_DEFAULT_SUBTITLES_TV", false),
 		TrailersEnabled:      envBool("XUVA_TRAILERS_ENABLED", true),
 		TrailersDir:          envString("XUVA_TRAILERS_DIR", filepath.Join(dataDir, "trailers")),
 		YTDLPPath:            envString("XUVA_YTDLP_PATH", "yt-dlp"),
@@ -216,6 +220,8 @@ func FromEnv() Config {
 	cfg.MetadataLanguage = envString("XUVA_METADATA_LANGUAGE", defaultString(cfg.MetadataLanguage, "en-US"))
 	cfg.PreferTextSubtitles = envBool("XUVA_PREFER_TEXT_SUBTITLES", cfg.PreferTextSubtitles)
 	cfg.OriginalQualityOnly = envBool("XUVA_ORIGINAL_QUALITY_ONLY", cfg.OriginalQualityOnly)
+	cfg.DefaultSubtitlesMovies = envBool("XUVA_DEFAULT_SUBTITLES_MOVIES", cfg.DefaultSubtitlesMovies)
+	cfg.DefaultSubtitlesTV = envBool("XUVA_DEFAULT_SUBTITLES_TV", cfg.DefaultSubtitlesTV)
 	cfg.TrailersEnabled = envBool("XUVA_TRAILERS_ENABLED", cfg.TrailersEnabled)
 	cfg.TrailersDir = envString("XUVA_TRAILERS_DIR", defaultDir(cfg.TrailersDir, cfg.DataDir, "trailers"))
 	cfg.YTDLPPath = envString("XUVA_YTDLP_PATH", defaultString(cfg.YTDLPPath, "yt-dlp"))
@@ -357,6 +363,12 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.OriginalQualityOnly {
 		base.OriginalQualityOnly = true
+	}
+	if saved.DefaultSubtitlesMovies {
+		base.DefaultSubtitlesMovies = true
+	}
+	if saved.DefaultSubtitlesTV {
+		base.DefaultSubtitlesTV = true
 	}
 	if saved.SetupComplete {
 		base.SetupComplete = true

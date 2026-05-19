@@ -25,6 +25,7 @@
   let savedState = $state<PlaybackStateResponse | null>(null);
   let mediaSource = $state<MediaSourceItem | null>(null);
   let clientSessionId = $state<string | undefined>(undefined);
+  let defaultSubtitlesEnabled = $state(false);
   let loadError = $state<string | null>(null);
   let loading = $state(true);
 
@@ -78,6 +79,7 @@
           clientCapabilities: caps,
         });
         clientSessionId = session.id;
+        defaultSubtitlesEnabled = Boolean(session.defaultSubtitlesEnabled);
       } catch {
         // Non-fatal — heartbeat and stop will just be no-ops
       }
@@ -133,6 +135,7 @@
     initialState={savedState ?? undefined}
     mediaSource={mediaSource ?? undefined}
     {clientSessionId}
+    {defaultSubtitlesEnabled}
     {backHref}
   />
 {/if}

@@ -271,6 +271,7 @@ export interface ClientPlaybackSession {
 	mediaSourceId?: string;
 	status?: string;
 	startedAt?: string;
+	defaultSubtitlesEnabled?: boolean;
 }
 
 export interface ClientCapabilities {
