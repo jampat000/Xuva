@@ -211,6 +211,21 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	trailersService.Start(appCtx)
 	metadataService.SetTrailers(trailersService)
 
+	// One-time details-json backfill: re-parses raw_json for any TMDB record
+	// whose details_json is still '{}' (migration default). Fixes people
+	// search on databases created before cast/crew indexing was added.
+	// No API calls — purely local re-processing of stored raw_json.
+	go func() {
+		select {
+		case <-appCtx.Done():
+			return
+		case <-time.After(10 * time.Second):
+		}
+		if err := metadataService.BackfillDetailsJSON(appCtx); err != nil && appCtx.Err() == nil {
+			slog.Warn("details-json backfill failed", "err", err)
+		}
+	}()
+
 	// Auto-backfill: when TMDB is configured at startup, dispatch a delayed
 	// background sweep that fetches TMDB rows for any catalog item missing
 	// them (typically wikipedia/filename-only items left over from before
