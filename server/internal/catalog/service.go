@@ -2163,6 +2163,22 @@ func (s *Service) metadataOrderForItem(ctx context.Context, kind string, itemID 
 	return metasources.DefaultSourceOrder(string(libraryKind))
 }
 
+// ListStaleDetailsRecords returns all metadata records for a given provider
+// whose details_json is still the migration default ('{}'), but whose raw_json
+// is non-empty and can therefore be re-processed without an API call.
+func (s *Service) ListStaleDetailsRecords(ctx context.Context, provider string) ([]MetadataRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, video_key, trailer_path, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
+		FROM metadata_records
+		WHERE details_json = '{}' AND raw_json != '' AND provider = ?
+	`, provider)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMetadataRecords(rows)
+}
+
 func (s *Service) ListMetadataRecords(ctx context.Context, kind string, itemID string) ([]MetadataRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT kind, item_id, provider, external_id, title, year, overview, poster_url, backdrop_url, thumbnail_url, logo_url, banner_url, video_key, trailer_path, artwork_json, details_json, confidence, raw_json, fetched_at, updated_at
