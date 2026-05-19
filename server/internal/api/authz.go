@@ -150,6 +150,10 @@ var routePolicies = map[string]routePolicy{
 	"GET /api/playback/state/{id}":               route("GET /api/playback/state/{id}", "playback", "playback.state.read", roleAdmin, roleStandard),
 	"GET /api/playback/decision":                 route("GET /api/playback/decision", "playback", "playback.decision", roleAdmin, roleStandard),
 	"GET /api/playback/route":                    route("GET /api/playback/route", "playback", "playback.route", roleAdmin, roleStandard),
+
+	"GET /api/media-sources/{id}/chapters":          route("GET /api/media-sources/{id}/chapters", "chapters", "chapters.read", roleAdmin, roleStandard),
+	"POST /api/media-sources/{id}/chapters/analyze": route("POST /api/media-sources/{id}/chapters/analyze", "chapters", "chapters.analyze", roleAdmin),
+	"PATCH /api/users/me/preferences":               route("PATCH /api/users/me/preferences", "auth", "user.preferences.update", roleAdmin, roleStandard),
 }
 
 func handleProtected(mux *http.ServeMux, deps Deps, pattern string, next http.HandlerFunc) {

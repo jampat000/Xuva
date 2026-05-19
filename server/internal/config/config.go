@@ -35,6 +35,7 @@ type Config struct {
 	SeriesArtworkSources  []string `json:"seriesArtworkSources,omitempty"`
 	FFprobePath           string   `json:"ffprobePath"`
 	FFmpegPath            string   `json:"ffmpegPath"`
+	FpcalcPath            string   `json:"fpcalcPath,omitempty"` // path to fpcalc binary; empty = intro detection disabled
 	// API keys: when blank, the four-tier resolver in keys.go falls back to
 	// env vars then to build-time embedded defaults. End users do not need
 	// to populate these — they exist only as power-user overrides for cases
@@ -131,6 +132,7 @@ func FromEnv() Config {
 		TVLibraryPath:        envString("XUVA_TV_PATH", ""),
 		FFprobePath:          envString("XUVA_FFPROBE_PATH", "ffprobe"),
 		FFmpegPath:           envString("XUVA_FFMPEG_PATH", "ffmpeg"),
+		FpcalcPath:           envString("XUVA_FPCALC_PATH", ""),
 		// Keys default empty here; ResolveProviderKey() in keys.go merges
 		// saved + env + embedded after settings.json is loaded below.
 		OMDbAPIKey:           "",
@@ -180,6 +182,7 @@ func FromEnv() Config {
 	cfg.TVLibraryPath = envString("XUVA_TV_PATH", cfg.TVLibraryPath)
 	cfg.FFprobePath = envString("XUVA_FFPROBE_PATH", cfg.FFprobePath)
 	cfg.FFmpegPath = envString("XUVA_FFMPEG_PATH", cfg.FFmpegPath)
+	cfg.FpcalcPath = envString("XUVA_FPCALC_PATH", cfg.FpcalcPath)
 	// Four-tier resolution: settings.json → env → embedded build-time → empty.
 	// We pass cfg.* (already merged from saved settings) as `saved`, the env
 	// var explicitly, and the embedded default from keys.go.
@@ -303,6 +306,9 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.FFmpegPath != "" {
 		base.FFmpegPath = saved.FFmpegPath
+	}
+	if saved.FpcalcPath != "" {
+		base.FpcalcPath = saved.FpcalcPath
 	}
 	if saved.OMDbAPIKey != "" {
 		base.OMDbAPIKey = saved.OMDbAPIKey
