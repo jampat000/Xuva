@@ -411,4 +411,22 @@ var migrations = []string{
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_notifications_dismissed_created ON notifications(dismissed, created_at DESC)`,
+	// issue #85: materialized people index for fast search
+	`CREATE TABLE IF NOT EXISTS people (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		name_lower TEXT NOT NULL,
+		profile_url TEXT NOT NULL DEFAULT '',
+		department TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS people_credits (
+		person_id TEXT NOT NULL,
+		item_kind TEXT NOT NULL,
+		item_id TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT '',
+		character TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (person_id, item_kind, item_id, role)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_people_name_lower ON people(name_lower)`,
 }
