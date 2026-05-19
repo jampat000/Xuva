@@ -22,7 +22,7 @@
       : "An unexpected error occurred. Please try again or head back home."
   );
 
-  const icon = $derived(
+  const Icon = $derived(
     status === 404 ? SearchX
     : status === 403 || status === 401 ? ShieldOff
     : AlertTriangle
@@ -55,7 +55,7 @@
 
     <!-- Icon -->
     <div class="-mt-8 hairline flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-elevated/80 text-muted-foreground shadow-elev">
-      <svelte:component this={icon} class="h-6 w-6" />
+      <Icon class="h-6 w-6" />
     </div>
 
     <!-- Copy -->
