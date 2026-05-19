@@ -875,3 +875,50 @@ export function dismissAllNotifications(
 		'POST'
 	);
 }
+
+export interface ChapterSegment {
+	start: number;
+	end: number;
+}
+
+export interface ChaptersResponse {
+	mediaSourceId: string;
+	intro?: ChapterSegment;
+	credits?: ChapterSegment;
+	analyzedAt?: string;
+}
+
+export interface UserPreferences {
+	autoSkipIntros?: boolean;
+}
+
+export function getChapters(
+	mediaSourceId: string,
+	client: ApiClient = apiClient
+): Promise<ChaptersResponse> {
+	return client.request<ChaptersResponse>(
+		`/api/media-sources/${encodeURIComponent(mediaSourceId)}/chapters`
+	);
+}
+
+export function analyzeChapters(
+	mediaSourceId: string,
+	client: ApiClient = apiClient
+): Promise<Record<string, unknown>> {
+	return client.send<Record<string, unknown>, Record<string, never>>(
+		`/api/media-sources/${encodeURIComponent(mediaSourceId)}/chapters/analyze`,
+		{} as Record<string, never>,
+		'POST'
+	);
+}
+
+export function updateUserPreferences(
+	prefs: UserPreferences,
+	client: ApiClient = apiClient
+): Promise<UserPreferences> {
+	return client.send<UserPreferences, UserPreferences>(
+		'/api/users/me/preferences',
+		prefs,
+		'PATCH'
+	);
+}

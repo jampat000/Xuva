@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -779,6 +780,41 @@ func LockoutUntil(err error) (time.Time, bool) {
 		return time.Time(typed), true
 	}
 	return time.Time{}, false
+}
+
+// UserPreferences holds per-user settings stored as JSON in the users table.
+type UserPreferences struct {
+	AutoSkipIntros bool `json:"autoSkipIntros,omitempty"`
+}
+
+// GetUserPreferences returns the stored preferences for the given user ID.
+func (s *Service) GetUserPreferences(ctx context.Context, userID string) (UserPreferences, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT preferences_json FROM users WHERE id = ?`, userID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return UserPreferences{}, nil
+	}
+	if err != nil {
+		return UserPreferences{}, err
+	}
+	var prefs UserPreferences
+	if raw != "" && raw != "{}" {
+		if err := json.Unmarshal([]byte(raw), &prefs); err != nil {
+			return UserPreferences{}, err
+		}
+	}
+	return prefs, nil
+}
+
+// SetUserPreferences persists preferences for the given user ID.
+func (s *Service) SetUserPreferences(ctx context.Context, userID string, prefs UserPreferences) error {
+	raw, err := json.Marshal(prefs)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE users SET preferences_json = ?, updated_at = ? WHERE id = ?`,
+		string(raw), timestamp(time.Now().UTC()), userID)
+	return err
 }
 
 func ContextWithResolvedSession(ctx context.Context, resolved ResolvedSession) context.Context {

@@ -3564,3 +3564,40 @@ func twoDigit(value int) string {
 	}
 	return intString(value)
 }
+
+// SeasonPeer groups a media source ID with its file path and duration for season-level chapter analysis.
+type SeasonPeer struct {
+	MediaSourceID string
+	Path          string
+	Duration      float64
+}
+
+// GetSeasonPeers returns all media sources in the same TV season as the given media source.
+// Used to supply all episode inputs to chapter/intro detection.
+func (s *Service) GetSeasonPeers(ctx context.Context, mediaSourceID string) ([]SeasonPeer, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ms.id, ms.path, COALESCE(mp.duration_seconds, 0)
+		FROM episode_versions ev2
+		JOIN tv_episodes e2 ON e2.id = ev2.episode_id
+		JOIN tv_episodes e3 ON e3.season_id = e2.season_id
+		JOIN episode_versions ev3 ON ev3.episode_id = e3.id
+		JOIN media_sources ms ON ms.id = ev3.media_source_id
+		LEFT JOIN media_probes mp ON mp.media_source_id = ms.id
+		WHERE ev2.media_source_id = ?
+		GROUP BY ms.id
+		ORDER BY e3.episode_number ASC
+	`, mediaSourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeasonPeer
+	for rows.Next() {
+		var p SeasonPeer
+		if err := rows.Scan(&p.MediaSourceID, &p.Path, &p.Duration); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

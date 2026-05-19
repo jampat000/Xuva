@@ -11,6 +11,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/api"
 	"github.com/jampat000/Xuva/server/internal/auth"
 	"github.com/jampat000/Xuva/server/internal/catalog"
+	"github.com/jampat000/Xuva/server/internal/chapters"
 	"github.com/jampat000/Xuva/server/internal/config"
 	"github.com/jampat000/Xuva/server/internal/database"
 	"github.com/jampat000/Xuva/server/internal/devices"
@@ -81,6 +82,7 @@ type Application struct {
 	Trailers      *trailers.Service
 	Thumbnails    *thumbnails.Service
 	Notifications *notifications.Service
+	Chapters      *chapters.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -276,6 +278,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	notifService := notifications.NewService(databaseService.DB(), bus)
 	notifService.Start(appCtx)
 
+	chaptersService := chapters.NewService(databaseService.DB(), cfg.FFmpegPath, cfg.FpcalcPath)
+
 	return &Application{
 		Config:    cfg,
 		StartedAt: time.Now().UTC(),
@@ -311,6 +315,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Trailers:      trailersService,
 		Thumbnails:    thumbnails.New(cfg.CacheDir, cfg.FFmpegPath, cfg.FFprobePath),
 		Notifications: notifService,
+		Chapters:      chaptersService,
 	}, nil
 }
 
@@ -467,6 +472,7 @@ func (a *Application) Router() http.Handler {
 		Thumbnails:    a.Thumbnails,
 		Migration:     a.Migration,
 		Notifications: a.Notifications,
+		Chapters:      a.Chapters,
 	})
 }
 

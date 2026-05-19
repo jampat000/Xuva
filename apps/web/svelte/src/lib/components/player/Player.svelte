@@ -28,6 +28,8 @@
     getPlaybackRoute, getMediaSourceTracks,
     heartbeatClientPlayback, stopClientPlayback, setPlaybackState
   } from '$lib/api/details';
+  import { getChapters, type ChaptersResponse, type UserPreferences } from '$lib/api/operator';
+  import { getAuthSession } from '$lib/api/auth';
 
   // ─── Props ───────────────────────────────────────────────────────────────
   interface Props {
@@ -97,6 +99,29 @@
   let doubleTapLeft = $state(false);
   let doubleTapRight = $state(false);
   let doubleTapTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ─── Chapter markers (intro / credits) ───────────────────────────────────
+  let chaptersData = $state<ChaptersResponse | null>(null);
+  let userPrefs = $state<UserPreferences>({});
+  let skipIntroDismissed = $state(false);
+
+  const showSkipIntro = $derived(
+    !!chaptersData?.intro &&
+    !skipIntroDismissed &&
+    currentTime >= (chaptersData.intro.start) &&
+    currentTime <= (chaptersData.intro.end)
+  );
+
+  const showCreditsMarker = $derived(
+    !!chaptersData?.credits &&
+    currentTime >= (chaptersData.credits.start)
+  );
+
+  function skipIntro() {
+    if (!videoEl || !chaptersData?.intro) return;
+    videoEl.currentTime = chaptersData.intro.end;
+    skipIntroDismissed = true;
+  }
 
   // ─── Session lifecycle ────────────────────────────────────────────────────
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -296,6 +321,19 @@
     // Update buffered amount
     if (videoEl.buffered.length > 0) {
       buffered = videoEl.buffered.end(videoEl.buffered.length - 1);
+    }
+
+    // Reset skip-dismissed flag when scrubbing back before intro
+    if (chaptersData?.intro && currentTime < chaptersData.intro.start) {
+      skipIntroDismissed = false;
+    }
+
+    // Auto-skip intro if preference is set
+    if (userPrefs.autoSkipIntros && chaptersData?.intro && !skipIntroDismissed) {
+      if (currentTime >= chaptersData.intro.start && currentTime < chaptersData.intro.end) {
+        videoEl.currentTime = chaptersData.intro.end;
+        skipIntroDismissed = true;
+      }
     }
   }
 
@@ -707,6 +745,10 @@
     loadThumbnailVTT();
     loadChaptersVTT();
 
+    // Load chapter markers (intro/credits) and user preferences
+    getChapters(mediaSourceId).then(ch => { chaptersData = ch; }).catch(() => {});
+    getAuthSession().then(s => { if (s?.preferences) userPrefs = s.preferences as UserPreferences; }).catch(() => {});
+
     // Load the video
     await loadSource(initialRoute, resumePos);
 
@@ -883,6 +925,28 @@
       class="pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-5 py-2.5 text-sm text-white/90 backdrop-blur-sm"
     >
       {resumeToast}
+    </div>
+  {/if}
+
+  <!-- ─── SKIP INTRO BUTTON ─────────────────────────────────────────────── -->
+  {#if showSkipIntro}
+    <div class="absolute bottom-28 right-6">
+      <button
+        type="button"
+        onclick={skipIntro}
+        class="rounded-md border border-white/50 bg-black/60 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white hover:text-black"
+      >
+        Skip Intro
+      </button>
+    </div>
+  {/if}
+
+  <!-- ─── CREDITS MARKER ────────────────────────────────────────────────── -->
+  {#if showCreditsMarker}
+    <div class="absolute bottom-28 right-6">
+      <div class="rounded-md border border-white/30 bg-black/60 px-5 py-2.5 text-sm text-white/80 backdrop-blur-sm">
+        Credits
+      </div>
     </div>
   {/if}
 
