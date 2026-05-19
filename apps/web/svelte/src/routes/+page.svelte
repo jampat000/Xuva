@@ -139,62 +139,20 @@
       {/if}
     </div>
 
-    <section class="relative mx-6 mt-28 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-surface/60 via-surface/30 to-background p-10 backdrop-blur md:mx-12 md:p-16 lg:mx-20">
-      <div class="absolute -right-32 -top-32 h-[400px] w-[400px] rounded-full bg-primary/20 blur-[120px]"></div>
-      <div class="absolute -bottom-32 -left-32 h-[400px] w-[400px] rounded-full bg-accent/20 blur-[120px]"></div>
-      <div class="grain absolute inset-0"></div>
-      <div class="relative grid items-center gap-12 md:grid-cols-[1.3fr_1fr]">
-        <div>
-          <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">
-            One library · Every screen
-          </div>
-          <h2 class="font-serif-display text-4xl leading-[1.05] tracking-tight md:text-6xl">
-            Made for the couch, the commute, and everything between.
-          </h2>
-          <p class="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">
-            Xuva adapts to every screen — a remote-friendly grid on tvOS and Android TV, a thumb-shaped feed on mobile, a sidebar-rich layout on tablet, and this cinematic surface on the web.
-          </p>
-        </div>
-        <div class="grid grid-cols-2 gap-3 md:gap-4">
-          {#each [
-            { label: "Web", sub: "Cinematic" },
-            { label: "Mobile", sub: "iOS · Android" },
-            { label: "Tablet", sub: "iPadOS" },
-            { label: "TV", sub: "tvOS · Android TV" }
-          ] as device (device.label)}
-            <div
-              class="hairline rounded-2xl bg-background/40 p-5 backdrop-blur-md transition-all hover:-translate-y-1 hover:bg-background/60"
-            >
-              <div class="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-                {device.sub}
-              </div>
-              <div class="font-serif-display mt-2 text-2xl">
-                {device.label}
-              </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-    </section>
-
-    <footer class="mt-24 border-t border-border px-6 pt-12 md:px-12 lg:px-20">
-      <div class="flex flex-col items-start justify-between gap-6 pb-10 md:flex-row md:items-center">
-        <div>
+    <footer class="mt-24 border-t border-border px-6 py-6 md:px-12 lg:px-20">
+      <div class="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+        <div class="flex items-center gap-5">
           <Logo />
-          <p class="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Your personal cinema. Stream your collection on every screen you own.
-          </p>
+          <span class="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            © {currentYear} Xuva
+          </span>
         </div>
-        <div class="flex flex-wrap gap-x-10 gap-y-3 text-sm text-muted-foreground">
+        <div class="flex flex-wrap gap-x-8 gap-y-2 text-sm text-muted-foreground">
           <a class="transition-colors hover:text-foreground" href="/about">About</a>
-          <a class="transition-colors hover:text-foreground" href="/apps">Apps</a>
           <a class="transition-colors hover:text-foreground" href="/support">Support</a>
           <a class="transition-colors hover:text-foreground" href="/privacy">Privacy</a>
           <a class="transition-colors hover:text-foreground" href="/terms">Terms</a>
         </div>
-      </div>
-      <div class="border-t border-border py-6 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-        © {currentYear} Xuva · Crafted for cinema lovers
       </div>
     </footer>
   </main>
