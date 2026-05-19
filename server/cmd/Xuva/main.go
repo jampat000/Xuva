@@ -11,11 +11,18 @@ import (
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/app"
+	"github.com/jampat000/Xuva/server/internal/backup"
 	"github.com/jampat000/Xuva/server/internal/config"
 )
 
 func main() {
 	cfg := config.FromEnv()
+	if restored, err := backup.ApplyIfPending(cfg.DataDir); err != nil {
+		slog.Error("backup restore failed", "error", err)
+		os.Exit(1)
+	} else if restored {
+		slog.Info("backup restore applied — starting with restored database")
+	}
 	slog.Info("xuva server starting",
 		"dataDir", cfg.DataDir,
 		"httpAddr", cfg.HTTPAddr,
