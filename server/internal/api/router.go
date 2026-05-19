@@ -128,6 +128,8 @@ func NewRouter(deps Deps) http.Handler {
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/auth/logout", authLogoutHandler(deps))
+	handleProtected(mux, deps, "GET /api/profiles", profilesListHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/auth/switch-profile", authSwitchProfileHandler(deps))
 	handleProtected(mux, deps, "GET /api/users", usersListHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/users", usersCreateHandler(deps))
 	handleProtectedCSRF(mux, deps, "PATCH /api/users/{id}", usersUpdateHandler(deps))
@@ -400,13 +402,29 @@ func withResolvedSession(deps Deps, next http.Handler) http.Handler {
 		}
 		resolved := auth.ResolvedSession{}
 		var err error
+		// injectProfile attempts to add an active-profile user ID to the context
+		// when the client provides a valid X-Profile-Token header.
+		injectProfile := func(ctx context.Context, sessionID string) context.Context {
+			profileToken := strings.TrimSpace(r.Header.Get("X-Profile-Token"))
+			if profileToken == "" {
+				return ctx
+			}
+			profileUserID, err := deps.Auth.ValidateProfileToken(ctx, profileToken, sessionID)
+			if err != nil {
+				return ctx // expired/invalid — just ignore, don't fail the request
+			}
+			return auth.ContextWithActiveProfile(ctx, profileUserID)
+		}
+
 		if cookieToken != "" {
 			resolved, err = resolve(cookieToken)
 			if err == nil {
 				if resolved.Rotated {
 					writeAuthCookies(w, r, resolved)
 				}
-				next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), resolved)))
+				ctx := auth.ContextWithResolvedSession(r.Context(), resolved)
+				ctx = injectProfile(ctx, resolved.Session.ID)
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
@@ -417,7 +435,9 @@ func withResolvedSession(deps Deps, next http.Handler) http.Handler {
 					writeAuthCookies(w, r, resolved)
 				}
 				w.Header().Set("X-Auth-Token", resolved.Token)
-				next.ServeHTTP(w, r.WithContext(auth.ContextWithResolvedSession(r.Context(), resolved)))
+				ctx := auth.ContextWithResolvedSession(r.Context(), resolved)
+				ctx = injectProfile(ctx, resolved.Session.ID)
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
@@ -648,6 +668,16 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 		if prefs, err := deps.Auth.GetUserPreferences(r.Context(), resolved.Principal.ID); err == nil {
 			payload["preferences"] = prefs
 		}
+		// Include active profile if a profile token was presented on this request.
+		if profileUserID, ok := auth.ActiveProfileFromContext(r.Context()); ok {
+			profiles, _ := deps.Auth.ListProfiles(r.Context())
+			for _, p := range profiles {
+				if p.ID == profileUserID {
+					payload["activeProfile"] = p
+					break
+				}
+			}
+		}
 		writeJSON(w, http.StatusOK, payload)
 	}
 }
@@ -655,6 +685,9 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 func authLogoutHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth != nil && !deps.Auth.Disabled() {
+			if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok {
+				_ = deps.Auth.RevokeProfileSessions(r.Context(), resolved.Session.ID)
+			}
 			if cookie, err := r.Cookie(auth.SessionCookieName); err == nil && cookie.Value != "" {
 				_ = deps.Auth.Revoke(r.Context(), cookie.Value)
 			}

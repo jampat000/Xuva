@@ -440,4 +440,20 @@ var migrations = []string{
 	)`,
 	// issue #82: per-user preferences (auto-skip intros etc.)
 	`ALTER TABLE users ADD COLUMN preferences_json TEXT NOT NULL DEFAULT '{}'`,
+	// issue #83: household profiles — PIN, restriction flag, rating ceiling, avatar preset/colour
+	`ALTER TABLE users ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN is_restricted INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE users ADD COLUMN max_rating TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN avatar_preset TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN avatar_color TEXT NOT NULL DEFAULT ''`,
+	// issue #83: profile sessions — lightweight switch-profile tokens scoped to a main session
+	`CREATE TABLE IF NOT EXISTS profile_sessions (
+		token TEXT PRIMARY KEY,
+		session_id TEXT NOT NULL,
+		profile_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_session ON profile_sessions(session_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_user ON profile_sessions(profile_user_id)`,
 }
