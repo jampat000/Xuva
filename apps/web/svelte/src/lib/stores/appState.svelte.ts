@@ -9,6 +9,9 @@
  */
 class AppState {
   serverName = $state('Xuva');
+  /** Whether the hero should autoplay trailers. Defaults to true; set from
+   *  the bootstrap features.trailers flag once the server responds. */
+  trailersEnabled = $state(true);
 }
 
 export const appState = new AppState();
