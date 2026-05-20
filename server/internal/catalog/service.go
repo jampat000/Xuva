@@ -87,6 +87,8 @@ type MovieListItem struct {
 	SortTitle    string          `json:"sortTitle"`
 	NeedsReview  bool            `json:"needsReview"`
 	VersionCount int             `json:"versionCount"`
+	AddedAt      string          `json:"addedAt,omitempty"`
+	Watched      bool            `json:"watched,omitempty"`
 	Metadata     *MetadataRecord `json:"metadata,omitempty"`
 }
 
@@ -111,6 +113,9 @@ type SeriesListItem struct {
 	SortTitle    string          `json:"sortTitle"`
 	SeasonCount  int             `json:"seasonCount"`
 	EpisodeCount int             `json:"episodeCount"`
+	AddedAt      string          `json:"addedAt,omitempty"`
+	Watched      bool            `json:"watched,omitempty"`
+	NeedsReview  bool            `json:"needsReview,omitempty"`
 	Metadata     *MetadataRecord `json:"metadata,omitempty"`
 }
 
@@ -639,7 +644,7 @@ func withinCeiling(itemRating, ceiling string) bool {
 	return itemOrder <= ceilingOrder
 }
 
-func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string) ([]MovieListItem, error) {
+func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, userID string) ([]MovieListItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -656,13 +661,17 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string) (
 		}
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review, count(mv.media_source_id) AS version_count
+		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review,
+		       count(DISTINCT mv.media_source_id) AS version_count,
+		       m.created_at,
+		       MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END) AS is_watched
 		FROM movies m
 		LEFT JOIN movie_versions mv ON mv.movie_id = m.id
+		LEFT JOIN playback_states ps ON ps.media_source_id = mv.media_source_id AND ps.user_id = ?
 		GROUP BY m.id
 		ORDER BY m.sort_title, m.year
 		LIMIT ?
-	`, sqlLimit)
+	`, userID, sqlLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -671,11 +680,12 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string) (
 	output := []MovieListItem{}
 	for rows.Next() {
 		var item MovieListItem
-		var needsReview int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Year, &item.SortTitle, &needsReview, &item.VersionCount); err != nil {
+		var needsReview, isWatched int
+		if err := rows.Scan(&item.ID, &item.Title, &item.Year, &item.SortTitle, &needsReview, &item.VersionCount, &item.AddedAt, &isWatched); err != nil {
 			return nil, err
 		}
 		item.NeedsReview = needsReview != 0
+		item.Watched = isWatched != 0
 		if record, ok, err := s.GetBestMetadata(ctx, "movie", item.ID); err != nil {
 			return nil, err
 		} else if ok {
@@ -1424,7 +1434,7 @@ func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, e
 	return detail, true, rows.Err()
 }
 
-func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string) ([]SeriesListItem, error) {
+func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string, userID string) ([]SeriesListItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -1439,14 +1449,20 @@ func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string) (
 		}
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT s.id, s.title, s.sort_title, count(DISTINCT seasons.id) AS season_count, count(DISTINCT e.id) AS episode_count
+		SELECT s.id, s.title, s.sort_title,
+		       count(DISTINCT seasons.id) AS season_count,
+		       count(DISTINCT e.id) AS episode_count,
+		       s.created_at,
+		       MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END) AS is_watched
 		FROM tv_series s
 		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
 		LEFT JOIN tv_episodes e ON e.series_id = s.id
+		LEFT JOIN episode_versions ev ON ev.episode_id = e.id
+		LEFT JOIN playback_states ps ON ps.media_source_id = ev.media_source_id AND ps.user_id = ?
 		GROUP BY s.id
 		ORDER BY s.sort_title, s.id
 		LIMIT ?
-	`, sqlLimit)
+	`, userID, sqlLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1455,9 +1471,11 @@ func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string) (
 	raw := []SeriesListItem{}
 	for rows.Next() {
 		var item SeriesListItem
-		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
+		var isWatched int
+		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount, &item.AddedAt, &isWatched); err != nil {
 			return nil, err
 		}
+		item.Watched = isWatched != 0
 		if record, ok, err := s.GetBestMetadata(ctx, "series", item.ID); err != nil {
 			return nil, err
 		} else if ok {

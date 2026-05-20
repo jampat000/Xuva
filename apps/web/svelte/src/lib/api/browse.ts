@@ -19,6 +19,8 @@ export interface MovieListItem {
 	sortTitle?: string;
 	needsReview?: boolean;
 	versionCount?: number;
+	addedAt?: string;
+	watched?: boolean;
 	metadata?: MetadataRecord;
 }
 
@@ -28,6 +30,9 @@ export interface SeriesListItem {
 	sortTitle?: string;
 	seasonCount?: number;
 	episodeCount?: number;
+	addedAt?: string;
+	watched?: boolean;
+	needsReview?: boolean;
 	metadata?: MetadataRecord;
 }
 
