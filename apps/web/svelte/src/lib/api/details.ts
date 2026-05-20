@@ -162,6 +162,9 @@ export interface PlaybackQueryOptions {
 	maxBitDepth?: number;
 	videoCodecs?: string[];
 	audioCodecs?: string[];
+	// Override policy block — web browsers have hard codec limits (no AC3/DTS/TrueHD
+	// native support) so audio conversion is often unavoidable regardless of policy.
+	forcePlayable?: boolean;
 }
 
 export interface DeviceProfile {
@@ -426,6 +429,9 @@ function playbackQueryString(mediaSourceId: string, options: PlaybackQueryOption
 	}
 	if (Array.isArray(options.audioCodecs) && options.audioCodecs.length > 0) {
 		params.set('audioCodecs', options.audioCodecs.join(','));
+	}
+	if (options.forcePlayable) {
+		params.set('forcePlayable', 'true');
 	}
 	return params.toString();
 }

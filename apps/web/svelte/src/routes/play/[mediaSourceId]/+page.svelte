@@ -77,10 +77,34 @@
       if (stateResp.status === 'fulfilled') savedState = stateResp.value;
       if (sourceResp.status === 'fulfilled') mediaSource = sourceResp.value;
 
-      // ── Early-exit for blocked routes ─────────────────────────────────────
+      // ── Policy-block retry with forcePlayable ─────────────────────────────
+      // Web browsers can't play AC3/DTS/TrueHD natively — audio conversion is
+      // unavoidable regardless of the server's playback policy. When the first
+      // route request is blocked, retry with forcePlayable=true to let the
+      // server pick the best route it can actually serve. Only show the error
+      // screen if the retry is also blocked (or returns nothing useful).
+      let finalAttemptRoute = initialRoute;
       if (initialRoute.route === 'blocked' || initialRoute.status === 'blocked_by_policy') {
-        const reason = initialRoute.decision?.reasonText || initialRoute.decision?.reason || 'Playback is blocked by your server policy.';
-        const hints = (initialRoute.fallbackOptions ?? []).map(f => f.label).filter(Boolean);
+        try {
+          const retried = await getPlaybackRoute(mediaSourceId, {
+            clientProfile: 'web',
+            supportsAdaptive: true,
+            supportsHdr: caps.supportsHdr,
+            maxBitDepth: caps.maxVideoBitDepth,
+            videoCodecs: caps.videoCodecs,
+            audioCodecs: caps.audioCodecs,
+            forcePlayable: true,
+          });
+          finalAttemptRoute = retried;
+        } catch {
+          // Fall through to error display below with the original route
+        }
+      }
+
+      // If still blocked (or no URL) after the forcePlayable retry, surface error
+      if (finalAttemptRoute.route === 'blocked' || finalAttemptRoute.status === 'blocked_by_policy') {
+        const reason = finalAttemptRoute.decision?.reasonText || finalAttemptRoute.decision?.reason || 'Playback is blocked by your server policy.';
+        const hints = (finalAttemptRoute.fallbackOptions ?? []).map(f => f.label).filter(Boolean);
         loadError = hints.length
           ? `${reason}\n\nSuggested fixes: ${hints.join(', ')}`
           : reason;
@@ -91,9 +115,9 @@
       // ── Early-exit for transcode-needed but no ready URL ──────────────────
       // When a transcode job is queuing or in-progress, surface a clear message
       // rather than silently setting <video src=""> and freezing.
-      if (!initialRoute.url && !initialRoute.manifestUrl) {
-        const status = initialRoute.status ?? 'unknown';
-        const mode   = initialRoute.route  ?? 'transcode';
+      if (!finalAttemptRoute.url && !finalAttemptRoute.manifestUrl) {
+        const status = finalAttemptRoute.status ?? 'unknown';
+        const mode   = finalAttemptRoute.route  ?? 'transcode';
         if (status === 'queuing' || status === 'transcoding') {
           loadError = `This file needs to be transcoded before it can play (${mode}). Wait a moment and try again, or check Activity in Settings.`;
         } else {
@@ -133,13 +157,13 @@
       // to be present in the URL. We fetch those params here and patch the route
       // before handing it to the Player component.
       loadPhase = 'authorizing';
-      let finalRoute = initialRoute;
+      let finalRoute = finalAttemptRoute;
 
-      if (sessionId && initialRoute.url && !initialRoute.url.includes('token=')) {
+      if (sessionId && finalAttemptRoute.url && !finalAttemptRoute.url.includes('token=')) {
         try {
           const tokenResp = await getStreamToken(mediaSourceId, sessionId, 'web');
           if (tokenResp.streamUrl) {
-            finalRoute = { ...initialRoute, url: tokenResp.streamUrl };
+            finalRoute = { ...finalAttemptRoute, url: tokenResp.streamUrl };
           }
         } catch {
           // Auth is disabled — plain URL will work as-is. Continue.
@@ -147,12 +171,12 @@
       }
 
       // For adaptive streams, append the query string to the manifest URL too.
-      if (sessionId && initialRoute.manifestUrl && !initialRoute.manifestUrl.includes('token=')) {
+      if (sessionId && finalAttemptRoute.manifestUrl && !finalAttemptRoute.manifestUrl.includes('token=')) {
         try {
           const tokenResp = await getStreamToken(mediaSourceId, sessionId, 'web');
           if (tokenResp.query) {
-            const sep = initialRoute.manifestUrl.includes('?') ? '&' : '?';
-            finalRoute = { ...finalRoute, manifestUrl: initialRoute.manifestUrl + sep + tokenResp.query.replace(/^\?/, '') };
+            const sep = finalAttemptRoute.manifestUrl.includes('?') ? '&' : '?';
+            finalRoute = { ...finalRoute, manifestUrl: finalAttemptRoute.manifestUrl + sep + tokenResp.query.replace(/^\?/, '') };
           }
         } catch {
           // Auth disabled — continue with plain manifest URL.
