@@ -24,6 +24,9 @@ export type Media = {
   contentRating?: string;   // Parental rating: G, PG, PG-13, R, NC-17, TV-MA, etc.
   needsReview?: boolean;    // Flagged as needing metadata review
   versionCount?: number;    // Number of media files for this title
+  addedAt?: string;         // ISO date when item was first scanned into library
+  watched?: boolean;        // True if any version has been marked watched
+  studio?: string[];        // Production studios / networks from metadata
   palette: [string, string];
   accent: string;
   badge?: string;

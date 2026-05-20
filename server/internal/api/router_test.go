@@ -1132,7 +1132,7 @@ func seedSearchFixtures(t *testing.T, service *catalog.Service) {
 		}
 	}
 
-	movieList, err := service.ListMovies(ctx, 10, "")
+	movieList, err := service.ListMovies(ctx, 10, "", "")
 	if err != nil {
 		t.Fatalf("list seeded movies: %v", err)
 	}
@@ -1189,7 +1189,7 @@ func seedSearchFixtures(t *testing.T, service *catalog.Service) {
 	if _, err := service.SaveTVScan(ctx, tvLib, tvResult, tvCandidates); err != nil {
 		t.Fatalf("seed tv: %v", err)
 	}
-	seriesList, err := service.ListSeries(ctx, 10, "")
+	seriesList, err := service.ListSeries(ctx, 10, "", "")
 	if err != nil {
 		t.Fatalf("list seeded series: %v", err)
 	}
@@ -3502,4 +3502,6 @@ func anyToString(value any) string {
 	}
 	return string(raw)
 }
+
+
 

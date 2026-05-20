@@ -38,7 +38,7 @@ func BenchmarkCatalogMovieBrowse(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := service.ListMovies(ctx, 100, ""); err != nil {
+		if _, err := service.ListMovies(ctx, 100, "", ""); err != nil {
 			b.Fatalf("list movies: %v", err)
 		}
 	}
@@ -127,7 +127,7 @@ func BenchmarkSearchLibraryPeople(b *testing.B) {
 		for j, n := range firstNames {
 			cast[j] = MetadataCredit{Name: fmt.Sprintf("%s Smith-%04d", n, i), Character: "Role"}
 		}
-		movieList, err := service.ListMovies(ctx, 10000, "")
+		movieList, err := service.ListMovies(ctx, 10000, "", "")
 		if err != nil {
 			b.Fatalf("list movies: %v", err)
 		}
@@ -161,4 +161,5 @@ func newBenchmarkService(b *testing.B) *Service {
 	b.Cleanup(func() { _ = db.Close() })
 	return NewService(db)
 }
+
 

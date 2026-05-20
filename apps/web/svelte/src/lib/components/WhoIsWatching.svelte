@@ -148,7 +148,7 @@
     <div class="flex gap-8">
       {#each Array(3) as _, i (i)}
         <div class="flex flex-col items-center gap-3">
-          <div class="h-28 w-28 animate-pulse rounded-xl bg-surface"></div>
+          <div class="h-28 w-28 animate-pulse rounded-full bg-surface"></div>
           <div class="h-4 w-20 animate-pulse rounded bg-surface"></div>
         </div>
       {/each}
@@ -171,7 +171,7 @@
         >
           <!-- Avatar -->
           <div
-            class={`relative h-28 w-28 overflow-hidden rounded-xl ring-4 transition-all ${
+            class={`relative h-28 w-28 overflow-hidden rounded-full ring-4 transition-all ${
               isActive
                 ? 'ring-primary shadow-glow'
                 : 'ring-transparent group-hover:ring-primary/50'
