@@ -645,20 +645,14 @@ func withinCeiling(itemRating, ceiling string) bool {
 }
 
 func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, userID string) ([]MovieListItem, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-	if limit > 2000 {
-		limit = 2000
-	}
+	// limit <= 0 means "return everything". A positive limit is honoured as-is.
 	// When a rating ceiling is active we over-fetch so the Go-level filter
 	// still has enough candidates to fill the requested limit.
 	sqlLimit := limit
-	if maxRating != "" {
+	if sqlLimit <= 0 {
+		sqlLimit = -1 // SQLite: LIMIT -1 = no limit
+	} else if maxRating != "" {
 		sqlLimit = limit * 10
-		if sqlLimit > 2000 {
-			sqlLimit = 2000
-		}
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review,
@@ -702,7 +696,7 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 			}
 		}
 		output = append(output, item)
-		if len(output) >= limit {
+		if limit > 0 && len(output) >= limit {
 			break
 		}
 	}
@@ -1435,18 +1429,12 @@ func (s *Service) GetMovie(ctx context.Context, id string) (MovieDetail, bool, e
 }
 
 func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string, userID string) ([]SeriesListItem, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-	if limit > 2000 {
-		limit = 2000
-	}
+	// limit <= 0 means "return everything". A positive limit is honoured as-is.
 	sqlLimit := limit
-	if maxRating != "" {
+	if sqlLimit <= 0 {
+		sqlLimit = -1 // SQLite: LIMIT -1 = no limit
+	} else if maxRating != "" {
 		sqlLimit = limit * 10
-		if sqlLimit > 2000 {
-			sqlLimit = 2000
-		}
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, s.title, s.sort_title,
@@ -1489,6 +1477,9 @@ func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string, u
 	}
 	collapsed := collapseSeriesListItems(raw)
 	if maxRating == "" {
+		if limit > 0 && len(collapsed) > limit {
+			return collapsed[:limit], nil
+		}
 		return collapsed, nil
 	}
 	output := make([]SeriesListItem, 0, len(collapsed))
@@ -1499,7 +1490,7 @@ func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string, u
 		}
 		if withinCeiling(cr, maxRating) {
 			output = append(output, item)
-			if len(output) >= limit {
+			if limit > 0 && len(output) >= limit {
 				break
 			}
 		}

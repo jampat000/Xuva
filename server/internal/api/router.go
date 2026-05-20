@@ -2892,7 +2892,7 @@ func plural(value int) string {
 
 func moviesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := deps.Catalog.ListMovies(r.Context(), queryInt(r, "limit", 100), activeMaxRating(r.Context(), deps), requestUserID(r))
+		items, err := deps.Catalog.ListMovies(r.Context(), queryInt(r, "limit", 0), activeMaxRating(r.Context(), deps), requestUserID(r))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "movie list failed")
 			return
@@ -2918,7 +2918,7 @@ func movieDetailHandler(deps Deps) http.HandlerFunc {
 
 func seriesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := deps.Catalog.ListSeries(r.Context(), queryInt(r, "limit", 100), activeMaxRating(r.Context(), deps), requestUserID(r))
+		items, err := deps.Catalog.ListSeries(r.Context(), queryInt(r, "limit", 0), activeMaxRating(r.Context(), deps), requestUserID(r))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "series list failed")
 			return
