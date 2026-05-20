@@ -143,9 +143,16 @@
           clientCapabilities: caps,
         });
         clearTimeout(sessionTimer);
-        sessionId = session.id;
-        clientSessionId = session.id;
+        // Server returns "sessionId", NOT "id" — was the root cause of missing
+        // stream tokens and resulting 403s on every authenticated stream request.
+        sessionId = session.sessionId;
+        clientSessionId = session.sessionId;
         defaultSubtitlesEnabled = Boolean(session.defaultSubtitlesEnabled);
+        // The start response embeds the resolved route — use it to avoid a
+        // redundant getPlaybackRoute round-trip on the happy path.
+        if (session.route?.url || session.route?.manifestUrl) {
+          finalAttemptRoute = { ...finalAttemptRoute, ...session.route };
+        }
       } catch {
         // Non-fatal if auth is disabled; proceed with the plain URL.
         // If auth IS enabled, the stream will 403 and the player will show an error.
