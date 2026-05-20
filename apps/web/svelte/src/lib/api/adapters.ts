@@ -101,6 +101,9 @@ export function movieToMedia(item: MovieListItem): Media {
 		contentRating: (meta?.contentRating as string | undefined) || undefined,
 		needsReview: item.needsReview ?? false,
 		versionCount: item.versionCount ?? 1,
+		addedAt: item.addedAt || undefined,
+		watched: item.watched ?? false,
+		studio: (meta?.studios as string[] | undefined) ?? [],
 		...hashPalette(id),
 	};
 }
@@ -122,8 +125,12 @@ export function seriesToMedia(item: SeriesListItem): Media {
 		poster: item.metadata?.posterUrl || undefined,
 		backdrop: item.metadata?.backdropUrl || undefined,
 		contentRating: (meta?.contentRating as string | undefined) || undefined,
-		needsReview: (item as Record<string, unknown>).needsReview as boolean | undefined,
+		needsReview: item.needsReview ?? false,
 		versionCount: (item as Record<string, unknown>).versionCount as number | undefined,
+		addedAt: item.addedAt || undefined,
+		watched: item.watched ?? false,
+		// For series, prefer networks (streaming home) then fall back to studios
+		studio: ((meta?.networks as string[] | undefined) ?? (meta?.studios as string[] | undefined) ?? []),
 		...hashPalette(id),
 	};
 }

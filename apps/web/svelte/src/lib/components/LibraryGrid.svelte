@@ -20,6 +20,7 @@
   type Sort =
     | "az" | "za"
     | "year-desc" | "year-asc"
+    | "added-desc" | "added-asc"
     | "rating-desc"
     | "runtime-asc" | "runtime-desc"
     | "parental-asc"
@@ -34,15 +35,17 @@
 
   // ── Sort options ───────────────────────────────────────────────────────────
   const sortOptions: { value: Sort; label: string }[] = [
-    { value: "az",            label: "Title A → Z" },
-    { value: "za",            label: "Title Z → A" },
-    { value: "year-desc",     label: "Year — Newest" },
-    { value: "year-asc",      label: "Year — Oldest" },
-    { value: "rating-desc",   label: "Rating — Highest" },
-    { value: "runtime-asc",   label: "Runtime — Shortest" },
-    { value: "runtime-desc",  label: "Runtime — Longest" },
-    { value: "parental-asc",  label: "Parental Rating" },
-    { value: "random",        label: "Random" },
+    { value: "az",           label: "Title A → Z" },
+    { value: "za",           label: "Title Z → A" },
+    { value: "year-desc",    label: "Year — Newest" },
+    { value: "year-asc",     label: "Year — Oldest" },
+    { value: "added-desc",   label: "Date Added — Newest" },
+    { value: "added-asc",    label: "Date Added — Oldest" },
+    { value: "rating-desc",  label: "Rating — Highest" },
+    { value: "runtime-asc",  label: "Runtime — Shortest" },
+    { value: "runtime-desc", label: "Runtime — Longest" },
+    { value: "parental-asc", label: "Parental Rating" },
+    { value: "random",       label: "Random" },
   ];
 
   // Parental-rating sort order (G → most restricted)
@@ -60,8 +63,11 @@
   let selectedGenres   = $state(new Set<string>());
   let selectedDecades  = $state(new Set<string>());
   let selectedRatings  = $state(new Set<string>());
+  let selectedStudios  = $state(new Set<string>());
+  let watchFilter      = $state<"all" | "watched" | "unwatched">("all");
   let onlyNeedsReview  = $state(false);
   let onlyMultiVersion = $state(false);
+  let onlyMissingMeta  = $state(false);
 
   // ── Pseudo-random helper ───────────────────────────────────────────────────
   function pseudoRandom(id: string, seed: number): number {
@@ -124,6 +130,22 @@
 
   const hasNeedsReview     = $derived(items.some((i: Media) => i.needsReview));
   const hasMultipleVersion = $derived(items.some((i: Media) => (i.versionCount ?? 1) > 1));
+  const hasWatchData       = $derived(items.some((i: Media) => i.watched !== undefined));
+  const hasMissingMeta     = $derived(items.some((i: Media) => !i.poster && !i.synopsis));
+
+  type StudioChip = { name: string; count: number };
+  const studioChips = $derived.by<StudioChip[]>(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const s of item.studio ?? []) {
+        counts.set(s, (counts.get(s) ?? 0) + 1);
+      }
+    }
+    const arr: StudioChip[] = [];
+    for (const [name, count] of counts) arr.push({ name, count });
+    arr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+    return arr.slice(0, 20); // top 20 per spec
+  });
 
   // Snap invalid genre selections to empty if genres disappear (library reload).
   $effect(() => {
@@ -140,8 +162,9 @@
 
   // ── Active filter count (for badge) ───────────────────────────────────────
   const activeFilterCount = $derived(
-    selectedGenres.size + selectedDecades.size + selectedRatings.size +
-    (onlyNeedsReview ? 1 : 0) + (onlyMultiVersion ? 1 : 0)
+    selectedGenres.size + selectedDecades.size + selectedRatings.size + selectedStudios.size +
+    (watchFilter !== 'all' ? 1 : 0) +
+    (onlyNeedsReview ? 1 : 0) + (onlyMultiVersion ? 1 : 0) + (onlyMissingMeta ? 1 : 0)
   );
 
   // ── Sort label ─────────────────────────────────────────────────────────────
@@ -157,8 +180,12 @@
         const r = item.contentRating?.trim().toUpperCase() || 'NR';
         if (!selectedRatings.has(r)) return false;
       }
+      if (selectedStudios.size > 0 && !(item.studio ?? []).some((s: string) => selectedStudios.has(s))) return false;
+      if (watchFilter === 'watched' && !item.watched) return false;
+      if (watchFilter === 'unwatched' && item.watched) return false;
       if (onlyNeedsReview && !item.needsReview) return false;
       if (onlyMultiVersion && (item.versionCount ?? 1) <= 1) return false;
+      if (onlyMissingMeta && (item.poster || item.synopsis)) return false;
       return true;
     });
 
@@ -166,6 +193,8 @@
       case 'za':           list = [...list].sort((a, b) => b.title.localeCompare(a.title)); break;
       case 'year-desc':    list = [...list].sort((a, b) => (b.year || 0) - (a.year || 0)); break;
       case 'year-asc':     list = [...list].sort((a, b) => (a.year || 0) - (b.year || 0)); break;
+      case 'added-desc':   list = [...list].sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || '')); break;
+      case 'added-asc':    list = [...list].sort((a, b) => (a.addedAt || '').localeCompare(b.addedAt || '')); break;
       case 'rating-desc':  list = [...list].sort((a, b) => (b.rating || 0) - (a.rating || 0)); break;
       case 'runtime-asc':  list = [...list].sort((a, b) => (a.runtimeMins || 9999) - (b.runtimeMins || 9999)); break;
       case 'runtime-desc': list = [...list].sort((a, b) => (b.runtimeMins || 0) - (a.runtimeMins || 0)); break;
@@ -204,12 +233,20 @@
     if (next.has(r)) next.delete(r); else next.add(r);
     selectedRatings = next;
   }
+  function toggleStudio(s: string) {
+    const next = new Set(selectedStudios);
+    if (next.has(s)) next.delete(s); else next.add(s);
+    selectedStudios = next;
+  }
   function clearFilters() {
     selectedGenres   = new Set();
     selectedDecades  = new Set();
     selectedRatings  = new Set();
+    selectedStudios  = new Set();
+    watchFilter      = 'all';
     onlyNeedsReview  = false;
     onlyMultiVersion = false;
+    onlyMissingMeta  = false;
   }
 
   // ── URL state ──────────────────────────────────────────────────────────────
@@ -226,8 +263,13 @@
     if (dec) selectedDecades = new Set(dec.split(',').filter(Boolean));
     const rat = p.get('ratings');
     if (rat) selectedRatings = new Set(rat.split(',').filter(Boolean));
+    const stu = p.get('studios');
+    if (stu) selectedStudios = new Set(stu.split(',').filter(Boolean));
+    const wf = p.get('watch') as "watched" | "unwatched" | null;
+    if (wf === 'watched' || wf === 'unwatched') watchFilter = wf;
     if (p.get('review') === '1') onlyNeedsReview = true;
     if (p.get('multi') === '1') onlyMultiVersion = true;
+    if (p.get('missing') === '1') onlyMissingMeta = true;
     const seed = parseInt(p.get('seed') ?? '', 10);
     if (!isNaN(seed) && seed > 0) randomSeed = seed;
   });
@@ -241,8 +283,11 @@
     if (selectedGenres.size)  p.set('genres',  [...selectedGenres].sort().join(','));
     if (selectedDecades.size) p.set('decades', [...selectedDecades].sort().join(','));
     if (selectedRatings.size) p.set('ratings', [...selectedRatings].sort().join(','));
+    if (selectedStudios.size) p.set('studios', [...selectedStudios].sort().join(','));
+    if (watchFilter !== 'all') p.set('watch', watchFilter);
     if (onlyNeedsReview)  p.set('review', '1');
     if (onlyMultiVersion) p.set('multi', '1');
+    if (onlyMissingMeta)  p.set('missing', '1');
     const qs = p.toString();
     const cur = page.url.searchParams.toString();
     if (qs !== cur) {
@@ -517,8 +562,56 @@
             </div>
           {/if}
 
+          <!-- Studio / Network -->
+          {#if studioChips.length > 0}
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Studio</div>
+              <div class="flex flex-wrap gap-1.5">
+                {#each studioChips as chip (chip.name)}
+                  {@const active = selectedStudios.has(chip.name)}
+                  <button
+                    type="button"
+                    onclick={() => toggleStudio(chip.name)}
+                    class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      active
+                        ? 'bg-foreground text-background'
+                        : 'bg-foreground/[0.05] text-foreground/70 hover:bg-foreground/[0.10] hover:text-foreground'
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {chip.name}
+                    <span class={`tabular-nums text-[10px] ${active ? 'text-background/60' : 'text-foreground/40'}`}>{chip.count}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Watched / Unwatched -->
+          {#if hasWatchData}
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Watch State</div>
+              <div class="hairline inline-flex items-center overflow-hidden rounded-full bg-foreground/[0.04] p-0.5">
+                {#each ([['all', 'All'], ['unwatched', 'Unwatched'], ['watched', 'Watched']] as const) as [val, label] (val)}
+                  <button
+                    type="button"
+                    onclick={() => (watchFilter = val)}
+                    class={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      watchFilter === val
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    aria-pressed={watchFilter === val}
+                  >
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
           <!-- Flags -->
-          {#if hasNeedsReview || hasMultipleVersion}
+          {#if hasNeedsReview || hasMultipleVersion || hasMissingMeta}
             <div>
               <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Show only</div>
               <div class="flex flex-wrap gap-1.5">
@@ -548,6 +641,20 @@
                     aria-pressed={onlyMultiVersion}
                   >
                     Multiple Versions
+                  </button>
+                {/if}
+                {#if hasMissingMeta}
+                  <button
+                    type="button"
+                    onclick={() => (onlyMissingMeta = !onlyMissingMeta)}
+                    class={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      onlyMissingMeta
+                        ? 'bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/25'
+                        : 'bg-foreground/[0.05] text-foreground/70 hover:bg-foreground/[0.10] hover:text-foreground'
+                    }`}
+                    aria-pressed={onlyMissingMeta}
+                  >
+                    Missing Metadata
                   </button>
                 {/if}
               </div>
