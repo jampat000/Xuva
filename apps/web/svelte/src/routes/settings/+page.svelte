@@ -316,7 +316,7 @@
     cacheDir: '',
     tempDir: '',
     hardwareUnlocked: false,
-    playbackPolicy: 'auto',
+    playbackPolicy: 'original_only',
     preferTextSubtitles: false,
     originalQualityOnly: false,
     defaultSubtitlesMovies: false,
@@ -340,7 +340,7 @@
       cacheDir: c.cacheDir ?? '',
       tempDir: c.tempDir ?? '',
       hardwareUnlocked: c.hardwareUnlocked ?? false,
-      playbackPolicy: c.playbackPolicy ?? 'auto',
+      playbackPolicy: c.playbackPolicy ?? 'original_only',
       preferTextSubtitles: c.preferTextSubtitles ?? false,
       originalQualityOnly: c.originalQualityOnly ?? false,
       defaultSubtitlesMovies: c.defaultSubtitlesMovies ?? false,
@@ -374,7 +374,7 @@
     editConfig.tempDir !== (settingsData?.config?.tempDir ?? '')
   );
   const playbackDirty = $derived(
-    editConfig.playbackPolicy         !== (settingsData?.config?.playbackPolicy         ?? 'auto') ||
+    editConfig.playbackPolicy         !== (settingsData?.config?.playbackPolicy         ?? 'original_only') ||
     editConfig.preferTextSubtitles    !== (settingsData?.config?.preferTextSubtitles    ?? false) ||
     editConfig.originalQualityOnly    !== (settingsData?.config?.originalQualityOnly    ?? false) ||
     editConfig.defaultSubtitlesMovies !== (settingsData?.config?.defaultSubtitlesMovies ?? false) ||
@@ -2653,10 +2653,10 @@
               </div>
               <div class="space-y-3">
                 {#each ([
-                  { id: 'auto', label: 'Auto', desc: 'Server decides per-client based on capabilities and bitrate.' },
-                  { id: 'prefer-direct-play', label: 'Prefer direct play', desc: 'Stream original files when the client supports the format.' },
-                  { id: 'prefer-transcode', label: 'Prefer transcode', desc: 'Always transcode to a compatible format for maximum compatibility.' },
-                  { id: 'force-transcode', label: 'Always transcode', desc: 'Force transcoding for every stream regardless of client capabilities.' },
+                  { id: 'original_only', label: 'Original files only', desc: 'Stream originals as-is. Files that need conversion will show fallback options instead of converting automatically.' },
+                  { id: 'light', label: 'Light compatibility', desc: 'Allow audio conversion and container remux. Video stays untouched so quality is always preserved.' },
+                  { id: 'full', label: 'Full compatibility', desc: 'Allow video and audio conversion for maximum device compatibility. Recommended for most setups.' },
+                  { id: 'cinema', label: 'Cinema server', desc: 'Full conversion plus future automated optimisation controls for power users with heavy workloads.' },
                 ] as const) as opt (opt.id)}
                   <button type="button" onclick={() => (editConfig.playbackPolicy = opt.id)}
                     class="hairline w-full rounded-2xl p-4 text-left transition-all {editConfig.playbackPolicy === opt.id ? 'bg-surface-elevated/80 shadow-elev' : 'bg-surface/40 hover:bg-surface/70'}">
