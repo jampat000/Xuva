@@ -724,7 +724,7 @@
     ]);
 
     // Apply track results (the video is already loading in parallel)
-    if (tracksResult.status === 'fulfilled') {
+    if (tracksResult.status === 'fulfilled' && tracksResult.value != null) {
       const tracks = tracksResult.value;
       audioTracks = tracks.audioTracks ?? [];
       subtitleTracks = tracks.subtitleTracks ?? [];

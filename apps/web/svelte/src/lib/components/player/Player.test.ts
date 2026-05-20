@@ -50,7 +50,7 @@ describe('Player component', async () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it('mounts without throwing', () => {
