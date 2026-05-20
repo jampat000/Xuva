@@ -30,8 +30,9 @@
       }
 
       if (bootstrapResp.ok) {
-        const data = await bootstrapResp.json() as { server?: { name?: string } };
+        const data = await bootstrapResp.json() as { server?: { name?: string }; features?: { trailers?: boolean } };
         if (data.server?.name) appState.serverName = data.server.name;
+        if (data.features?.trailers === false) appState.trailersEnabled = false;
       }
     } catch {
       // Server unreachable — stay on current page.

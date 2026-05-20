@@ -5,7 +5,7 @@
   import heroImg from "$lib/assets/hero-featured.jpg";
   import type { Media } from "$lib/mock-data";
 
-  let { slides: rawSlides } = $props<{ slides: Media[] }>();
+  let { slides: rawSlides, trailersEnabled = true } = $props<{ slides: Media[]; trailersEnabled?: boolean }>();
 
   function detailHref(m: Media): string {
     return m.type === 'Series' ? `/tv/${m.id}` : `/movies/${m.id}`;
@@ -39,7 +39,7 @@
   let videoEl = $state<HTMLVideoElement | null>(null);
   let iframeEl = $state<HTMLIFrameElement | null>(null);
 
-  const hasLocalTrailer = $derived(!!media?.trailerUrl);
+  const hasLocalTrailer = $derived(trailersEnabled && !!media?.trailerUrl);
 
   // YouTube embed can be blocked for two reasons:
   //   • The owner disabled embedding (error 101/150)
@@ -74,13 +74,14 @@
     return () => window.removeEventListener("message", onMessage);
   });
 
-  const hasYouTubeFallback = $derived(!media?.trailerUrl && !!media?.videoKey && !youtubeEmbedBlocked);
+  const hasYouTubeFallback = $derived(trailersEnabled && !media?.trailerUrl && !!media?.videoKey && !youtubeEmbedBlocked);
 
   // Reset trailer state when slide changes; fade it in after a short hold.
   $effect(() => {
     void media?.id;
     trailerVisible = false;
     if (typeof window === "undefined") return;
+    if (!trailersEnabled) return;
     if (!media?.trailerUrl && !media?.videoKey) return;
     const wakeup = window.setTimeout(() => {
       trailerVisible = true;
