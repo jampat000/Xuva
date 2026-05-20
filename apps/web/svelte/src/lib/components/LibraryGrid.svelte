@@ -2,8 +2,9 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { ChevronDown, Play, Plus, RotateCcw, Search, SlidersHorizontal, X } from "lucide-svelte";
+  import { Check, ChevronDown, Play, Plus, RotateCcw, Search, SlidersHorizontal, X } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
+  import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
 
   let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "" } = $props<{
     eyebrow: string;
@@ -368,8 +369,28 @@
                 >
                   <Play class="h-3.5 w-3.5 fill-black" /> Play
                 </a>
-                <button aria-label="Add to list" class="hairline flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md hover:bg-white/20">
-                  <Plus class="h-4 w-4" />
+                <button
+                  aria-label={isInWatchlist(featured.id, featured.type === 'Series' ? 'series' : 'movie') ? "Remove from watchlist" : "Add to watchlist"}
+                  onclick={() => toggleWatchlist({
+                    id: featured.id,
+                    kind: featured.type === 'Series' ? 'series' : 'movie',
+                    title: featured.title,
+                    year: featured.year,
+                    posterUrl: featured.poster,
+                    backdropUrl: featured.backdrop,
+                    genres: featured.genres,
+                  })}
+                  class={`hairline flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-md transition-colors ${
+                    isInWatchlist(featured.id, featured.type === 'Series' ? 'series' : 'movie')
+                      ? 'bg-primary-glow/30 text-white ring-1 ring-primary-glow/60 hover:bg-primary-glow/40'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  {#if isInWatchlist(featured.id, featured.type === 'Series' ? 'series' : 'movie')}
+                    <Check class="h-4 w-4" />
+                  {:else}
+                    <Plus class="h-4 w-4" />
+                  {/if}
                 </button>
               </div>
             </div>
