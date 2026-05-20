@@ -3,6 +3,25 @@ import type { MovieListItem, SeriesListItem } from './browse';
 import type { ClientHomeItem } from './home';
 
 // ---------------------------------------------------------------------------
+// Runtime string → minutes
+// ---------------------------------------------------------------------------
+
+/** Parse "2h 13m", "1h 45m", "143", "90m" → minutes. Returns undefined if
+ *  the string is falsy or unparseable. */
+export function parseRuntimeMins(runtime: string | undefined): number | undefined {
+	if (!runtime) return undefined;
+	const minsOnly = runtime.match(/^(\d+)$/);
+	if (minsOnly) return parseInt(minsOnly[1], 10);
+	const hm = runtime.match(/(\d+)h\s*(\d+)m/);
+	if (hm) return parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
+	const hOnly = runtime.match(/(\d+)h/);
+	if (hOnly) return parseInt(hOnly[1], 10) * 60;
+	const mOnly = runtime.match(/(\d+)m/);
+	if (mOnly) return parseInt(mOnly[1], 10);
+	return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Title / year helpers
 // ---------------------------------------------------------------------------
 
@@ -66,6 +85,7 @@ export function movieToMedia(item: MovieListItem): Media {
 	const id = item.id ?? crypto.randomUUID();
 	const meta = item.metadata as Record<string, unknown> | undefined;
 	const rawTitle = item.title ?? (meta?.title as string | undefined) ?? 'Unknown';
+	const runtimeStr = (meta?.runtime as string | undefined) || undefined;
 	return {
 		id,
 		title: cleanTitle(rawTitle),
@@ -73,9 +93,14 @@ export function movieToMedia(item: MovieListItem): Media {
 		type: 'Movie',
 		genres: (meta?.genres as string[] | undefined) ?? [],
 		rating: (meta?.voteAverage as number | undefined) ?? 0,
+		runtime: runtimeStr,
+		runtimeMins: parseRuntimeMins(runtimeStr),
 		synopsis: item.metadata?.overview ?? '',
 		poster: item.metadata?.posterUrl || undefined,
 		backdrop: item.metadata?.backdropUrl || undefined,
+		contentRating: (meta?.contentRating as string | undefined) || undefined,
+		needsReview: item.needsReview ?? false,
+		versionCount: item.versionCount ?? 1,
 		...hashPalette(id),
 	};
 }
@@ -96,6 +121,9 @@ export function seriesToMedia(item: SeriesListItem): Media {
 		synopsis: item.metadata?.overview ?? '',
 		poster: item.metadata?.posterUrl || undefined,
 		backdrop: item.metadata?.backdropUrl || undefined,
+		contentRating: (meta?.contentRating as string | undefined) || undefined,
+		needsReview: (item as Record<string, unknown>).needsReview as boolean | undefined,
+		versionCount: (item as Record<string, unknown>).versionCount as number | undefined,
 		...hashPalette(id),
 	};
 }
