@@ -7,9 +7,37 @@ export interface MetadataRecord {
 	title?: string;
 	year?: number;
 	overview?: string;
+	tagline?: string;
 	posterUrl?: string;
 	backdropUrl?: string;
+	thumbnailUrl?: string;
+	logoUrl?: string;
+	bannerUrl?: string;
+	videoKey?: string;        // YouTube trailer key
+	trailerPath?: string;     // Local MP4 path once downloaded
+	contentRating?: string;   // G / PG / PG-13 / R / TV-MA …
+	releaseDate?: string;
+	firstAirDate?: string;
+	runtimeMinutes?: number;
+	genres?: string[];
+	directors?: string[];
+	writers?: string[];
+	studios?: string[];
+	productionCompanies?: string[];
+	networks?: string[];
+	statusText?: string;      // "Running" | "Ended" for series
+	cast?: MetadataCredit[];
+	voteAverage?: number;
+	runtime?: string;
 	[key: string]: unknown;
+}
+
+export interface MetadataCredit {
+	name?: string;
+	character?: string;
+	role?: string;
+	profileUrl?: string;
+	sortOrder?: number;
 }
 
 export interface MovieListItem {

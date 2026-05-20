@@ -2,7 +2,10 @@
   import { page } from '$app/state';
   import { appState } from '$lib/stores/appState.svelte';
   import { onMount } from 'svelte';
-  import { Star, ChevronLeft, Play, Plus, Check, Tv, User } from 'lucide-svelte';
+  import {
+    Star, ChevronLeft, Play, Plus, Check, Tv, User,
+    Clapperboard, X, Shield,
+  } from 'lucide-svelte';
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import Header from '$lib/components/Header.svelte';
   import ErrorState from '$lib/components/ErrorState.svelte';
@@ -10,7 +13,7 @@
   import { getSeriesDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import type { SeriesDetailResponse } from '$lib/api/home';
-  import type { MetadataRecord, TMDBCandidate } from '$lib/api/browse';
+  import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
   const id = $derived(page.params.id ?? '');
 
@@ -27,37 +30,38 @@
   let tmdbCandidatesError = $state<string | null>(null);
   let manualTmdbId = $state('');
   let manualTmdbError = $state<string | null>(null);
+  let showTrailer = $state(false);
 
-  const title = $derived(
-    (detail?.metadata as Record<string, unknown> | undefined)?.title as string
-      ?? detail?.title
-      ?? 'Unknown'
-  );
-  const year = $derived(
-    (detail?.metadata as Record<string, unknown> | undefined)?.year as number | undefined
-  );
-  const overview = $derived(detail?.metadata?.overview ?? '');
-  const posterUrl = $derived(
-    (detail?.metadata as Record<string, unknown> | undefined)?.posterUrl as string | undefined
-  );
-  const backdropUrl = $derived(
-    (detail?.metadata as Record<string, unknown> | undefined)?.backdropUrl as string | undefined
-  );
-  const genres = $derived(
-    (detail?.metadata as Record<string, unknown> | undefined)?.genres as string[] | undefined ?? []
-  );
-  const rating = $derived(
-    (detail?.metadata as Record<string, unknown> | undefined)?.voteAverage as number | undefined
-  );
+  // ── Derived metadata fields ──────────────────────────────────────────────
+  const title = $derived(metadata?.title ?? detail?.title ?? 'Unknown');
+  const year = $derived(metadata?.year as number | undefined ?? (metadata?.firstAirDate ? parseInt(metadata.firstAirDate) : undefined));
+  const overview = $derived(metadata?.overview ?? '');
+  const tagline = $derived(metadata?.tagline ?? '');
+  const posterUrl = $derived(metadata?.posterUrl ?? '');
+  const backdropUrl = $derived(metadata?.backdropUrl ?? '');
+  const logoUrl = $derived(metadata?.logoUrl ?? '');
+  const genres = $derived(metadata?.genres ?? []);
+  const rating = $derived(metadata?.voteAverage as number | undefined);
+  const contentRating = $derived(metadata?.contentRating ?? '');
+  const videoKey = $derived(metadata?.videoKey ?? '');
+  const trailerPath = $derived(metadata?.trailerPath ?? '');
+  const hasTrailer = $derived(!!(videoKey || trailerPath));
+  const statusText = $derived(metadata?.statusText ?? '');
 
   const seasons = $derived(detail?.seasons ?? []);
   const seasonCount = $derived(seasons.length);
   const episodeCount = $derived(seasons.reduce((sum, s) => sum + (s.episodes?.length ?? 0), 0));
 
-  // Cast from merged best metadata record.
-  type Credit = { name?: string; character?: string; role?: string; profileUrl?: string; sortOrder?: number };
-  const metaAny = $derived(metadata as Record<string, unknown> | null);
-  const cast = $derived<Credit[]>((metaAny?.cast as Credit[] | undefined) ?? []);
+  // Credits
+  const cast = $derived<MetadataCredit[]>(metadata?.cast ?? []);
+  const creators = $derived<string[]>(metadata?.directors ?? []); // TMDB uses directors for series creators
+  const writers = $derived<string[]>(metadata?.writers ?? []);
+
+  // Network / studio chips
+  const networkNames = $derived<string[]>([
+    ...(metadata?.networks ?? []),
+    ...(metadata?.studios ?? []),
+  ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4));
 
   // Find first playable episode across all seasons
   const firstMediaSourceId = $derived(() => {
@@ -87,19 +91,14 @@
   // Watchlist
   const inWatchlist = $derived(isInWatchlist(id, 'series'));
   function handleWatchlist() {
-    toggleWatchlist({
-      id,
-      kind: 'series',
-      title,
-      year,
-      posterUrl,
-      backdropUrl,
-      genres,
-    });
+    toggleWatchlist({ id, kind: 'series', title, year, posterUrl, backdropUrl, genres });
   }
 
-  // Track which seasons are expanded. First season auto-expands once data
-  // loads so users see episodes immediately without an extra click.
+  // Trailer
+  function openTrailer() { showTrailer = true; }
+  function closeTrailer() { showTrailer = false; }
+
+  // Track which seasons are expanded. First season auto-expands.
   let expandedSeasons = $state<Set<string>>(new Set());
   $effect(() => {
     if (seasons.length > 0 && expandedSeasons.size === 0) {
@@ -261,6 +260,7 @@
 
         <!-- Details -->
         <div>
+          <!-- Metadata strip -->
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
             {#if year}<span>{year}</span>{/if}
             {#if year && genres.length}<span class="opacity-30">·</span>{/if}
@@ -277,11 +277,40 @@
               <span class="opacity-30">·</span>
               <span class="flex items-center gap-1 text-amber-300"><Star class="h-3 w-3 fill-current" />{rating.toFixed(1)}</span>
             {/if}
+            {#if contentRating}
+              <span class="opacity-30">·</span>
+              <span class="inline-flex items-center gap-1 rounded border border-muted-foreground/40 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-muted-foreground">
+                <Shield class="h-2.5 w-2.5" />{contentRating}
+              </span>
+            {/if}
+            {#if statusText}
+              <span class="opacity-30">·</span>
+              <span class={`rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wider ${statusText === 'Ended' ? 'bg-surface text-muted-foreground' : 'bg-green-500/20 text-green-400'}`}>
+                {statusText}
+              </span>
+            {/if}
           </div>
 
-          <h1 class="font-serif-display mt-3 text-[clamp(2rem,5vw,4rem)] leading-[0.95] tracking-tight">
-            {title}
-          </h1>
+          <!-- Logo or title -->
+          {#if logoUrl}
+            <div class="mt-4">
+              <img
+                src={logoUrl}
+                alt={title}
+                class="h-auto max-h-28 max-w-xs object-contain drop-shadow-[0_2px_16px_rgba(0,0,0,0.8)] md:max-h-36 md:max-w-sm"
+                onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+              />
+            </div>
+          {:else}
+            <h1 class="font-serif-display mt-3 text-[clamp(2rem,5vw,4rem)] leading-[0.95] tracking-tight">
+              {title}
+            </h1>
+          {/if}
+
+          <!-- Tagline -->
+          {#if tagline}
+            <p class="mt-2 text-sm italic text-muted-foreground/80">{tagline}</p>
+          {/if}
 
           {#if overview}
             <p class="mt-5 max-w-2xl text-base leading-relaxed text-foreground/75">
@@ -289,6 +318,7 @@
             </p>
           {/if}
 
+          <!-- Action row -->
           <div class="mt-8 flex flex-wrap items-center gap-3">
             {#if firstMediaSourceId()}
               <a
@@ -308,6 +338,19 @@
                 <Play class="h-4 w-4 fill-background/60" /> No source
               </button>
             {/if}
+
+            <!-- Trailer button -->
+            {#if hasTrailer}
+              <button
+                type="button"
+                onclick={openTrailer}
+                class="hairline inline-flex items-center gap-2 rounded-full bg-foreground/[0.06] px-5 py-3.5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-foreground/[0.12]"
+              >
+                <Clapperboard class="h-4 w-4" /> Trailer
+              </button>
+            {/if}
+
+            <!-- Watchlist -->
             <button
               type="button"
               onclick={handleWatchlist}
@@ -327,13 +370,46 @@
             </button>
           </div>
 
-          <!-- Episode counts strip -->
-          {#if seasonCount > 0}
-            <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              <span><span class="text-foreground/80">{seasonCount}</span> {seasonCount === 1 ? 'season' : 'seasons'}</span>
-              {#if episodeCount > 0}
-                <span><span class="text-foreground/80">{episodeCount}</span> {episodeCount === 1 ? 'episode' : 'episodes'}</span>
-              {/if}
+          <!-- Episode counts + creators strip -->
+          <div class="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-xs text-muted-foreground">
+            {#if seasonCount > 0}
+              <div class="flex items-baseline gap-x-1.5">
+                <span class="uppercase tracking-[0.2em] text-[10px]">Seasons</span>
+                <span class="text-foreground/80">{seasonCount}</span>
+              </div>
+            {/if}
+            {#if episodeCount > 0}
+              <div class="flex items-baseline gap-x-1.5">
+                <span class="uppercase tracking-[0.2em] text-[10px]">Episodes</span>
+                <span class="text-foreground/80">{episodeCount}</span>
+              </div>
+            {/if}
+            {#if creators.length > 0}
+              <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+                <span class="uppercase tracking-[0.2em] text-[10px]">{creators.length === 1 ? 'Creator' : 'Creators'}</span>
+                {#each creators as c (c)}
+                  <a href={`/people/${encodeURIComponent(c)}`} class="text-foreground/80 hover:text-foreground hover:underline">{c}</a>
+                {/each}
+              </div>
+            {/if}
+            {#if writers.length > 0}
+              <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+                <span class="uppercase tracking-[0.2em] text-[10px]">Writers</span>
+                {#each writers.slice(0, 3) as w (w)}
+                  <a href={`/people/${encodeURIComponent(w)}`} class="text-foreground/80 hover:text-foreground hover:underline">{w}</a>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <!-- Network / studio chips -->
+          {#if networkNames.length > 0}
+            <div class="mt-4 flex flex-wrap gap-2">
+              {#each networkNames as net (net)}
+                <span class="hairline rounded-full bg-surface/40 px-3 py-1 text-[11px] text-muted-foreground">
+                  {net}
+                </span>
+              {/each}
             </div>
           {/if}
 
@@ -351,7 +427,6 @@
                   {@const seasonOverview = seasonRecord.overview as string | undefined}
                   {@const isOpen = expandedSeasons.has(season.id ?? `s${i}`)}
                   <div class="hairline overflow-hidden rounded-xl bg-surface/30">
-                    <!-- Season header (clickable to toggle) -->
                     <button
                       type="button"
                       onclick={() => toggleSeason(season.id ?? `s${i}`)}
@@ -391,7 +466,6 @@
                       <span class="text-muted-foreground transition-transform duration-200" style={`transform: rotate(${isOpen ? 90 : 0}deg)`}>›</span>
                     </button>
 
-                    <!-- Episode list (collapsed by default for all but the first season) -->
                     {#if isOpen && epCount > 0}
                       <div class="border-t border-border bg-background/40 p-3">
                         <ul class="space-y-2">
@@ -405,7 +479,6 @@
                             {@const epLabel = `E${String(ep.episodeNumber ?? epIdx + 1).padStart(2, '0')}`}
                             {@const epTitle = ep.title || epLabel}
                             <li class="group flex gap-3 rounded-lg p-2 transition-colors hover:bg-surface/40">
-                              <!-- 16:9 thumbnail with play overlay -->
                               <div class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-surface to-surface-elevated md:w-40">
                                 {#if epThumb}
                                   <img
@@ -431,8 +504,6 @@
                                   {epLabel}
                                 </div>
                               </div>
-
-                              <!-- Episode meta -->
                               <div class="min-w-0 flex-1">
                                 <div class="flex items-start justify-between gap-3">
                                   <h4 class="truncate text-sm font-semibold text-foreground">{epTitle}</h4>
@@ -520,7 +591,6 @@
 
             {#if showMetaPanel}
               <div class="mt-4 space-y-5">
-                <!-- TMDB Candidates -->
                 <div>
                   <div class="mb-2 flex items-center justify-between">
                     <p class="text-xs font-medium text-muted-foreground">TMDB matches for "{title}"</p>
@@ -580,7 +650,6 @@
                   {/if}
                 </div>
 
-                <!-- Manual TMDB ID -->
                 <div class="border-t border-border/40 pt-4">
                   <p class="mb-2 text-xs font-medium text-muted-foreground">Or enter a TMDB ID manually</p>
                   <div class="flex gap-2">
@@ -611,3 +680,49 @@
     </div>
   {/if}
 </div>
+
+<!-- ── Trailer modal ──────────────────────────────────────────────────────── -->
+{#if showTrailer}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+    role="dialog"
+    aria-label="{title} Trailer"
+    tabindex="-1"
+    onclick={(e) => { if (e.target === e.currentTarget) closeTrailer(); }}
+    onkeydown={(e) => e.key === 'Escape' && closeTrailer()}
+  >
+    <div class="relative w-full max-w-4xl px-4">
+      <button
+        type="button"
+        onclick={closeTrailer}
+        aria-label="Close trailer"
+        class="absolute -top-12 right-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/30"
+      >
+        <X class="h-5 w-5" />
+      </button>
+      <div class="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
+        {#if trailerPath}
+          <!-- Local MP4 trailer — always works, no CSP concern -->
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video
+            src={trailerPath}
+            controls
+            autoplay
+            class="h-full w-full"
+            title="{title} — Trailer"
+          ></video>
+        {:else if videoKey}
+          <!-- YouTube embed — requires frame-src https://www.youtube.com in CSP -->
+          <iframe
+            src={`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`}
+            class="h-full w-full"
+            frameborder="0"
+            allow="autoplay; fullscreen"
+            title="{title} — Trailer"
+          ></iframe>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
