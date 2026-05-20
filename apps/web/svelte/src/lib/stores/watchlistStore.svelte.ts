@@ -36,21 +36,16 @@ function persist(items: WatchlistItem[]) {
 	}
 }
 
-// Shared reactive state
-let items = $state<WatchlistItem[]>([]);
-let initialized = $state(false);
-
-function init() {
-	if (initialized) return;
-	items = loadFromStorage();
-	initialized = true;
-}
+// Shared reactive state — initialized eagerly at module load so that
+// isInWatchlist() and getWatchlist() are safe to call inside $derived
+// expressions and Svelte 5 template code (mutations inside $derived are
+// forbidden, so the old lazy-init pattern was triggering state_unsafe_mutation).
+let items = $state<WatchlistItem[]>(loadFromStorage());
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /** Add an item. No-op if already present. */
 export function addToWatchlist(item: Omit<WatchlistItem, 'addedAt'>) {
-	init();
 	if (items.some((i) => i.id === item.id && i.kind === item.kind)) return;
 	items = [{ ...item, addedAt: new Date().toISOString() }, ...items];
 	persist(items);
@@ -58,14 +53,12 @@ export function addToWatchlist(item: Omit<WatchlistItem, 'addedAt'>) {
 
 /** Remove an item. No-op if not present. */
 export function removeFromWatchlist(id: string, kind: 'movie' | 'series') {
-	init();
 	items = items.filter((i) => !(i.id === id && i.kind === kind));
 	persist(items);
 }
 
 /** Toggle: adds if absent, removes if present. Returns true when added. */
 export function toggleWatchlist(item: Omit<WatchlistItem, 'addedAt'>): boolean {
-	init();
 	const exists = isInWatchlist(item.id, item.kind);
 	if (exists) {
 		removeFromWatchlist(item.id, item.kind);
@@ -75,20 +68,17 @@ export function toggleWatchlist(item: Omit<WatchlistItem, 'addedAt'>): boolean {
 	return !exists;
 }
 
-/** Reactive check — use inside $derived / template for live updates. */
+/** Reactive check — safe to call inside $derived / template expressions. */
 export function isInWatchlist(id: string, kind: 'movie' | 'series'): boolean {
-	init();
 	return items.some((i) => i.id === id && i.kind === kind);
 }
 
 /** Reactive getter — returns the current watchlist (most-recently-added first). */
 export function getWatchlist(): WatchlistItem[] {
-	init();
 	return items;
 }
 
 /** Reactive count. */
 export function getWatchlistCount(): number {
-	init();
 	return items.length;
 }
