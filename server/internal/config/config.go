@@ -69,6 +69,10 @@ type Config struct {
 	OriginalQualityOnly    bool `json:"originalQualityOnly,omitempty"`    // refuse to transcode video
 	DefaultSubtitlesMovies bool `json:"defaultSubtitlesMovies,omitempty"` // start movie playback with subs on
 	DefaultSubtitlesTV     bool `json:"defaultSubtitlesTV,omitempty"`     // start TV-episode playback with subs on
+	// DisableTrailers suppresses trailer autoplay in the hero carousel. When
+	// true the hero always shows the static backdrop image regardless of whether
+	// trailer data is available. False (default/zero) means trailers are allowed.
+	DisableTrailers        bool `json:"disableTrailers,omitempty"`
 	SetupComplete         bool     `json:"setupComplete,omitempty"`
 	// Trailer downloader settings — self-hosted preview videos.
 	TrailersEnabled       bool     `json:"trailersEnabled,omitempty"`

@@ -76,7 +76,7 @@
   <Header />
   <main class="pb-24">
     {#if slides.length > 0}
-      <Hero slides={slides} />
+      <Hero slides={slides} trailersEnabled={appState.trailersEnabled} />
     {/if}
 
     <div class={`relative z-10 space-y-16 md:space-y-20 ${slides.length > 0 ? 'pt-10 md:pt-14' : 'pt-24 md:pt-28'}`}>

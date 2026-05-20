@@ -216,6 +216,9 @@
   let libraries = $state<LibraryItem[]>([]);
   let libLoading = $state(false);
   let libSaving = $state(false);
+  // Trailers toggle — stored as !disableTrailers so true = show trailers
+  let trailersOn = $state(true);
+  let trailersSaving = $state(false);
   let libScanningId = $state<string | null>(null);
   let libDeletingId = $state<string | null>(null);
   let libError = $state<string | null>(null);
@@ -321,6 +324,8 @@
       defaultSubtitlesMovies: c.defaultSubtitlesMovies ?? false,
       defaultSubtitlesTV: c.defaultSubtitlesTV ?? false,
     };
+    // Trailers toggle — separate reactive state (auto-saves, no Save bar needed)
+    trailersOn = !(c.disableTrailers ?? false);
   }
 
   // ─── Per-section dirty checks ──────────────────────────────────────────────
@@ -902,6 +907,23 @@
       libError = e instanceof Error ? e.message : 'Failed to start scan';
     } finally {
       libScanningId = null;
+    }
+  }
+
+  async function toggleTrailers() {
+    const next = !trailersOn;
+    trailersOn = next;
+    appState.trailersEnabled = next; // propagate immediately to live hero
+    trailersSaving = true;
+    try {
+      const r = await updateSettings({ disableTrailers: !next });
+      settingsData = r;
+    } catch {
+      // Revert optimistic update on error
+      trailersOn = !next;
+      appState.trailersEnabled = !next;
+    } finally {
+      trailersSaving = false;
     }
   }
 
@@ -1947,6 +1969,31 @@
                 </button>
               </div>
             {/if}
+
+            <!-- Trailers toggle -->
+            <div class="hairline rounded-2xl bg-surface/40 p-5">
+              <h3 class="mb-4 text-sm font-semibold">Display options</h3>
+              <div class="flex items-start gap-4">
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium">Show trailers in hero</p>
+                  <p class="mt-0.5 text-xs text-muted-foreground">
+                    When enabled, the home page hero autoplays a trailer (local MP4 or YouTube) for featured titles.
+                    Turn off to always show the static backdrop image instead.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onclick={toggleTrailers}
+                  disabled={trailersSaving}
+                  class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors {trailersOn ? 'bg-primary-glow' : 'bg-border'} disabled:opacity-50"
+                  role="switch"
+                  aria-checked={trailersOn}
+                  aria-label="Show trailers in hero"
+                >
+                  <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all {trailersOn ? 'left-[22px]' : 'left-0.5'}"></span>
+                </button>
+              </div>
+            </div>
           </div>
 
         {:else if active === "scanning"}

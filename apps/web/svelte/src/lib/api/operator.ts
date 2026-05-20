@@ -384,6 +384,7 @@ export interface SettingsResponse {
 		originalQualityOnly?: boolean;
 		defaultSubtitlesMovies?: boolean;
 		defaultSubtitlesTV?: boolean;
+		disableTrailers?: boolean;
 	};
 	libraries?: Array<{
 		id?: string;
@@ -415,6 +416,7 @@ export interface UpdateSettingsRequest {
 	defaultSubtitlesTV?: boolean;
 	probeBatchLimit?: number;
 	playbackPolicy?: string;
+	disableTrailers?: boolean;
 }
 
 export interface UpdateMetadataSourcePreferencesRequest {
