@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { Bell, Clock, Menu, Search, Settings, Film, Tv, LogOut, User, Layers, X, AlertTriangle, CheckCircle, Users } from "lucide-svelte";
+  import { Bell, Bookmark, Clock, Menu, Search, Settings, Film, Tv, LogOut, User, Layers, X, AlertTriangle, CheckCircle, Users } from "lucide-svelte";
   import Logo from "./Logo.svelte";
   import { primeSearchCatalogue, runSearch, getSearchResults, isSearchLoading } from "$lib/stores/searchStore.svelte";
   import { getPlaybackRecent } from "$lib/api/home";
@@ -14,7 +14,8 @@
   const nav = [
     { label: "Home", href: "/" },
     { label: "Movies", href: "/movies" },
-    { label: "TV", href: "/tv" }
+    { label: "TV", href: "/tv" },
+    { label: "Watchlist", href: "/watchlist" },
   ];
 
   let scrolled = $state(false);
@@ -580,7 +581,7 @@
                   onclick={() => (showProfile = false)}
                   class="flex items-center gap-3 px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-surface/60 hover:text-foreground"
                 >
-                  <User class="h-4 w-4" /> Watchlist
+                  <Bookmark class="h-4 w-4" /> Watchlist
                 </a>
               </li>
               <li class="border-t border-border">
