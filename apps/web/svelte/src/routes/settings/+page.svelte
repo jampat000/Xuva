@@ -59,6 +59,7 @@
     getUsers,
     createUser,
     deleteUser,
+    updateUser,
     updateUserPassword,
     getDeviceProfiles,
     scanAllLibraries,
@@ -87,7 +88,7 @@
     stopBackfill,
     type BackfillResponse,
   } from '$lib/api/browse';
-  import { getAuthSession, type AuthSessionUser } from '$lib/api/auth';
+  import { getAuthSession, logout, type AuthSessionUser } from '$lib/api/auth';
   import { updateProfileSettings, setProfilePin, RATING_OPTIONS, AVATAR_PRESETS } from '$lib/api/profiles';
 
   type Group = "Account" | "Server" | "Devices" | "Advanced";
@@ -978,6 +979,73 @@
   });
 
   let currentUser = $state<AuthSessionUser | null>(null);
+
+  // ─── Self-service Account section state ──────────────────────────────────
+  let acctDisplayName    = $state('');
+  let acctProfileSaving  = $state(false);
+  let acctProfileError   = $state<string | null>(null);
+  let acctProfileSuccess = $state(false);
+
+  let acctCurrentPw  = $state('');
+  let acctNewPw      = $state('');
+  let acctConfirmPw  = $state('');
+  let acctPwSaving   = $state(false);
+  let acctPwError    = $state<string | null>(null);
+  let acctPwSuccess  = $state(false);
+
+  // Seed the display name input once the session loads.
+  $effect(() => {
+    if (currentUser && !acctDisplayName) {
+      acctDisplayName = currentUser.displayName ?? '';
+    }
+  });
+
+  async function handleAccountSaveProfile() {
+    if (!currentUser) return;
+    acctProfileSaving = true;
+    acctProfileError = null;
+    acctProfileSuccess = false;
+    try {
+      const updated = await updateUser(currentUser.id, { displayName: acctDisplayName.trim() || currentUser.username });
+      currentUser = { ...currentUser, displayName: updated.displayName ?? currentUser.displayName };
+      acctProfileSuccess = true;
+      setTimeout(() => { acctProfileSuccess = false; }, 3000);
+    } catch (e) {
+      acctProfileError = e instanceof Error ? e.message : 'Failed to save profile';
+    } finally {
+      acctProfileSaving = false;
+    }
+  }
+
+  async function handleAccountUpdatePassword() {
+    if (!currentUser) return;
+    acctPwError = null;
+    acctPwSuccess = false;
+    if (!acctCurrentPw) { acctPwError = 'Enter your current password.'; return; }
+    if (!acctNewPw)      { acctPwError = 'Enter a new password.'; return; }
+    if (acctNewPw.length < 8) { acctPwError = 'New password must be at least 8 characters.'; return; }
+    if (acctNewPw !== acctConfirmPw) { acctPwError = 'Passwords do not match.'; return; }
+    acctPwSaving = true;
+    try {
+      await updateUserPassword(currentUser.id, { currentPassword: acctCurrentPw, password: acctNewPw });
+      acctCurrentPw = '';
+      acctNewPw = '';
+      acctConfirmPw = '';
+      acctPwSuccess = true;
+      setTimeout(() => { acctPwSuccess = false; }, 3000);
+    } catch (e) {
+      acctPwError = e instanceof Error ? e.message : 'Failed to update password';
+    } finally {
+      acctPwSaving = false;
+    }
+  }
+
+  async function handleSignOut() {
+    try { await logout(); } catch { /* ignore */ }
+    localStorage.removeItem('xuva-auth-token');
+    localStorage.removeItem('xuva-profile-token');
+    window.location.href = '/';
+  }
 
   onMount(() => {
     loadDashboard();
@@ -3278,6 +3346,7 @@
                   <input
                     id="display-name"
                     type="text"
+                    bind:value={acctDisplayName}
                     placeholder="Your name"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
@@ -3296,11 +3365,19 @@
                   />
                   <p class="mt-1.5 text-[11px] text-muted-foreground/60">Username cannot be changed after setup.</p>
                 </div>
+                {#if acctProfileError}
+                  <p class="text-xs text-red-400">{acctProfileError}</p>
+                {/if}
+                {#if acctProfileSuccess}
+                  <p class="text-xs text-green-400">Profile saved.</p>
+                {/if}
                 <button
                   type="button"
-                  class="rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110"
+                  onclick={handleAccountSaveProfile}
+                  disabled={acctProfileSaving}
+                  class="rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-50"
                 >
-                  Save profile
+                  {acctProfileSaving ? 'Saving…' : 'Save profile'}
                 </button>
               </div>
             </section>
@@ -3320,6 +3397,7 @@
                   <input
                     id="current-password"
                     type="password"
+                    bind:value={acctCurrentPw}
                     autocomplete="current-password"
                     placeholder="••••••••"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
@@ -3332,6 +3410,7 @@
                   <input
                     id="new-password"
                     type="password"
+                    bind:value={acctNewPw}
                     autocomplete="new-password"
                     placeholder="••••••••"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
@@ -3344,16 +3423,25 @@
                   <input
                     id="confirm-password"
                     type="password"
+                    bind:value={acctConfirmPw}
                     autocomplete="new-password"
                     placeholder="••••••••"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
                 </div>
+                {#if acctPwError}
+                  <p class="text-xs text-red-400">{acctPwError}</p>
+                {/if}
+                {#if acctPwSuccess}
+                  <p class="text-xs text-green-400">Password updated successfully.</p>
+                {/if}
                 <button
                   type="button"
-                  class="rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110"
+                  onclick={handleAccountUpdatePassword}
+                  disabled={acctPwSaving}
+                  class="rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-50"
                 >
-                  Update password
+                  {acctPwSaving ? 'Updating…' : 'Update password'}
                 </button>
               </div>
             </section>
@@ -3368,6 +3456,7 @@
               <div>
                 <button
                   type="button"
+                  onclick={handleSignOut}
                   class="hairline inline-flex items-center gap-2 rounded-xl bg-foreground/[0.04] px-5 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-300"
                 >
                   <LogOut class="h-4 w-4" /> Sign out
