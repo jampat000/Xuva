@@ -63,6 +63,10 @@ export interface LibrariesResponse {
 
 export interface MovieDetailVersion {
 	mediaSourceId?: string;
+	qualityLabel?: string;
+	edition?: string;
+	sizeBytes?: number;
+	relPath?: string;
 }
 
 export interface MovieDetailResponse {
