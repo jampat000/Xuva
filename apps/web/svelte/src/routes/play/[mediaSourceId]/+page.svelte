@@ -113,12 +113,12 @@
       }
 
       // ── Early-exit for transcode-needed but no ready URL ──────────────────
-      // When a transcode job is queuing or in-progress, surface a clear message
+      // When a transcode job is queued/queuing or in-progress, surface a clear message
       // rather than silently setting <video src=""> and freezing.
       if (!finalAttemptRoute.url && !finalAttemptRoute.manifestUrl) {
         const status = finalAttemptRoute.status ?? 'unknown';
         const mode   = finalAttemptRoute.route  ?? 'transcode';
-        if (status === 'queuing' || status === 'transcoding') {
+        if (status === 'queued' || status === 'queuing' || status === 'transcoding') {
           loadError = `This file needs to be transcoded before it can play (${mode}). Wait a moment and try again, or check Activity in Settings.`;
         } else {
           loadError = `No playback URL was returned (route: ${mode}, status: ${status}). Check the server logs.`;
