@@ -166,6 +166,27 @@
   let wlKeys = $state<Record<string, string>>({});
   let wlConnecting = $state<Record<string, boolean>>({});
 
+  // ─── Watchlist sync-behaviour options (persisted to localStorage) ─────────
+  const WL_SYNC_KEY = 'xuva-wl-sync-opts';
+  function loadWlSync(): Record<string, boolean> {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(WL_SYNC_KEY) : null;
+      return raw ? JSON.parse(raw) : { scrobble: true, ratings: true, watchlist_pull: true };
+    } catch { return { scrobble: true, ratings: true, watchlist_pull: true }; }
+  }
+  let wlSyncSaved = $state<Record<string, boolean>>(loadWlSync());
+  let wlSyncEdit  = $state<Record<string, boolean>>({ ...wlSyncSaved });
+  const wlSyncDirty = $derived(
+    Object.keys(wlSyncSaved).some(k => wlSyncEdit[k] !== wlSyncSaved[k])
+  );
+  function saveWlSync() {
+    wlSyncSaved = { ...wlSyncEdit };
+    try { localStorage.setItem(WL_SYNC_KEY, JSON.stringify(wlSyncSaved)); } catch { /* ignore */ }
+  }
+  function discardWlSync() {
+    wlSyncEdit = { ...wlSyncSaved };
+  }
+
   // ─── Backup state ─────────────────────────────────────────────────────────
   let backupExporting = $state(false);
   let backupExportError = $state<string | null>(null);
@@ -1542,13 +1563,37 @@
                   { id: 'watchlist_pull', label: 'Import watchlists', desc: 'Pull watchlists from services into your Xuva library wishlist' }
                 ] as opt (opt.id)}
                   <label class="hairline flex cursor-pointer items-start gap-4 rounded-xl bg-surface/40 p-4 transition-colors hover:bg-surface/60">
-                    <input type="checkbox" checked class="mt-0.5 h-4 w-4 cursor-pointer rounded accent-primary" />
+                    <input
+                      type="checkbox"
+                      checked={wlSyncEdit[opt.id] ?? true}
+                      onchange={(e) => { wlSyncEdit = { ...wlSyncEdit, [opt.id]: (e.currentTarget as HTMLInputElement).checked }; }}
+                      class="mt-0.5 h-4 w-4 cursor-pointer rounded accent-primary"
+                    />
                     <div>
                       <div class="text-sm font-medium">{opt.label}</div>
                       <p class="text-xs text-muted-foreground">{opt.desc}</p>
                     </div>
                   </label>
                 {/each}
+
+                {#if wlSyncDirty}
+                  <div class="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onclick={saveWlSync}
+                      class="rounded-full bg-gradient-primary px-5 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onclick={discardWlSync}
+                      class="hairline rounded-full bg-foreground/[0.04] px-5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                {/if}
               </div>
             </section>
           </div>
