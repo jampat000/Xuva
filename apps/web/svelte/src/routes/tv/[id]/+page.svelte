@@ -533,29 +533,29 @@
           {#if cast.length > 0}
             <div class="mt-10 border-t border-border pt-8">
               <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Cast</h3>
-              <div class="scrollbar-none mt-5 -mx-1 flex gap-4 overflow-x-auto px-1 pb-3">
+              <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto px-1 pb-3">
                 {#each cast.slice(0, 16) as person, i (person.name ?? i)}
                   <a
                     href={`/people/${encodeURIComponent(person.name ?? '')}`}
-                    class="group flex w-[72px] shrink-0 flex-col items-center gap-2 text-center"
+                    class="group flex w-24 shrink-0 flex-col gap-2.5 text-center"
                   >
-                    <div class="relative h-[72px] w-[72px] overflow-hidden rounded-full bg-surface-elevated ring-2 ring-border/40 transition-all duration-300 group-hover:ring-primary/40">
+                    <div class="relative h-36 w-24 overflow-hidden rounded-xl bg-surface-elevated ring-2 ring-border/40 transition-all duration-300 group-hover:scale-[1.03] group-hover:ring-primary/40 group-hover:shadow-lg">
                       {#if person.profileUrl}
                         <img
                           src={person.profileUrl}
                           alt={person.name}
                           loading="lazy"
-                          class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          class="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
                           onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                         />
                       {:else}
-                        <div class="flex h-full w-full items-center justify-center text-muted-foreground">
-                          <User class="h-7 w-7" />
+                        <div class="flex h-full w-full items-center justify-center text-muted-foreground/60">
+                          <User class="h-10 w-10" />
                         </div>
                       {/if}
                     </div>
-                    <div class="w-full min-w-0">
-                      <p class="truncate text-[11px] font-medium leading-tight text-foreground">{person.name ?? ''}</p>
+                    <div class="w-full min-w-0 px-0.5">
+                      <p class="truncate text-[11px] font-semibold leading-tight text-foreground">{person.name ?? ''}</p>
                       {#if person.character}
                         <p class="mt-0.5 truncate text-[10px] leading-tight text-muted-foreground">{person.character}</p>
                       {/if}
