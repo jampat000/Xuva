@@ -133,6 +133,7 @@
       // We surface a "Analysing file…" message so users know why it's slow.
       loadPhase = 'probing';
       let sessionId: string | undefined;
+      let sessionDeviceId: string | undefined;
 
       try {
         const sessionTimer = setTimeout(() => { loadPhase = 'probing'; }, 300);
@@ -140,12 +141,16 @@
           mediaSourceId,
           positionSeconds: savedState?.progressSeconds ?? 0,
           clientProfile: 'web',
+          deviceId: 'web',
           clientCapabilities: caps,
         });
         clearTimeout(sessionTimer);
-        // Server returns "sessionId", NOT "id" — was the root cause of missing
-        // stream tokens and resulting 403s on every authenticated stream request.
+        // Server returns "sessionId" and "deviceId" — capture both.
+        // The session was created with deviceId:'web' above; we mirror that
+        // value here so getStreamToken receives a matching deviceId, avoiding
+        // the 403 that occurs when they differ (server validates equality).
         sessionId = session.sessionId;
+        sessionDeviceId = session.deviceId ?? 'web';
         clientSessionId = session.sessionId;
         defaultSubtitlesEnabled = Boolean(session.defaultSubtitlesEnabled);
         // The start response embeds the resolved route — use it to avoid a
@@ -168,7 +173,7 @@
 
       if (sessionId && finalAttemptRoute.url && !finalAttemptRoute.url.includes('token=')) {
         try {
-          const tokenResp = await getStreamToken(mediaSourceId, sessionId, 'web');
+          const tokenResp = await getStreamToken(mediaSourceId, sessionId, sessionDeviceId ?? 'web');
           if (tokenResp.streamUrl) {
             finalRoute = { ...finalAttemptRoute, url: tokenResp.streamUrl };
           }
@@ -180,7 +185,7 @@
       // For adaptive streams, append the query string to the manifest URL too.
       if (sessionId && finalAttemptRoute.manifestUrl && !finalAttemptRoute.manifestUrl.includes('token=')) {
         try {
-          const tokenResp = await getStreamToken(mediaSourceId, sessionId, 'web');
+          const tokenResp = await getStreamToken(mediaSourceId, sessionId, sessionDeviceId ?? 'web');
           if (tokenResp.query) {
             const sep = finalAttemptRoute.manifestUrl.includes('?') ? '&' : '?';
             finalRoute = { ...finalRoute, manifestUrl: finalAttemptRoute.manifestUrl + sep + tokenResp.query.replace(/^\?/, '') };
