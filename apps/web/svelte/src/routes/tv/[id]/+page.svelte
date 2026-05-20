@@ -114,19 +114,23 @@
   }
 
   async function load() {
+    loading = true;
+    error = null;
+    // Fire metadata records request immediately so it runs in parallel,
+    // but don't block the render on it — getSeriesDetail already embeds
+    // the primary metadata record, so we can show the page right away.
+    const metaPromise = getMetadataRecords('series', id).catch(() => ({ best: null, records: [] as typeof altRecords }));
     try {
-      loading = true;
-      error = null;
-      const [detailResp, metaResp] = await Promise.all([
-        getSeriesDetail(id),
-        getMetadataRecords('series', id).catch(() => ({ best: null, records: [] }))
-      ]);
+      const detailResp = await getSeriesDetail(id);
       detail = detailResp;
-      metadata = metaResp.best ?? null;
+      // Use the metadata embedded in the detail response immediately.
+      metadata = (detailResp.metadata as typeof metadata) ?? null;
+      loading = false; // Show the page — rich provider records load below
+      const metaResp = await metaPromise;
+      metadata = metaResp.best ?? (detailResp.metadata as typeof metadata) ?? null;
       altRecords = metaResp.records ?? [];
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load';
-    } finally {
       loading = false;
     }
   }

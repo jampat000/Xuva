@@ -711,28 +711,27 @@
       setTimeout(() => { resumeToast = null; }, 3000);
     }
 
-    // Fetch tracks
-    try {
-      const tracks = await getMediaSourceTracks(mediaSourceId);
+    // Fire track fetch and video load in parallel — track metadata is not needed
+    // before the video can buffer, and saving ~200ms here is meaningful.
+    loadThumbnailVTT();
+    loadChaptersVTT();
+    getChapters(mediaSourceId).then(ch => { chaptersData = ch; }).catch(() => {});
+    getAuthSession().then(s => { if (s?.preferences) userPrefs = s.preferences as UserPreferences; }).catch(() => {});
+
+    const [tracksResult] = await Promise.allSettled([
+      getMediaSourceTracks(mediaSourceId),
+      loadSource(initialRoute, resumePos),
+    ]);
+
+    // Apply track results (the video is already loading in parallel)
+    if (tracksResult.status === 'fulfilled') {
+      const tracks = tracksResult.value;
       audioTracks = tracks.audioTracks ?? [];
       subtitleTracks = tracks.subtitleTracks ?? [];
       if (audioTracks.length > 0) {
         activeAudioIndex = audioTracks.find(t => t.default)?.index ?? audioTracks[0].index ?? 0;
       }
-    } catch {
-      // Non-fatal — tracks just won't show in menus
     }
-
-    // Load thumbnail VTT and chapters (best-effort, non-blocking)
-    loadThumbnailVTT();
-    loadChaptersVTT();
-
-    // Load chapter markers (intro/credits) and user preferences
-    getChapters(mediaSourceId).then(ch => { chaptersData = ch; }).catch(() => {});
-    getAuthSession().then(s => { if (s?.preferences) userPrefs = s.preferences as UserPreferences; }).catch(() => {});
-
-    // Load the video
-    await loadSource(initialRoute, resumePos);
 
     // Auto-enable subtitles if the user opted in (Settings → Playback). Done
     // after initial load so we don't block first frame. Picks the first
