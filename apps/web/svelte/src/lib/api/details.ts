@@ -339,6 +339,33 @@ export function stopClientPlayback(
 	);
 }
 
+// ── Stream token ────────────────────────────────────────────────────────────
+// POST /api/media-sources/{id}/stream-token returns a short-lived signed URL
+// that embeds sessionId + deviceId + HMAC token as query params. The native
+// <video> element (which doesn't send X-Auth-Token headers) MUST use this URL
+// when auth is enabled. When auth is disabled the plain /stream URL works too,
+// but always using the token URL is safe and portable.
+export interface StreamTokenResponse {
+	token?: string;
+	expiresAt?: string;
+	streamUrl?: string;       // "/api/media-sources/{id}/stream?sessionId=…&token=…"
+	subtitleBaseUrl?: string; // base for sidecar subtitle URLs (append "/{index}{query}")
+	query?: string;           // "?sessionId=…&deviceId=…&token=…" to append to any URL
+}
+
+export function getStreamToken(
+	mediaSourceId: string,
+	sessionId: string,
+	deviceId: string,
+	client: ApiClient = apiClient
+): Promise<StreamTokenResponse> {
+	return client.send<StreamTokenResponse, { sessionId: string; deviceId: string }>(
+		`/api/media-sources/${encodeURIComponent(mediaSourceId)}/stream-token`,
+		{ sessionId, deviceId },
+		'POST'
+	);
+}
+
 export interface SetPlaybackStateRequest {
 	progressSeconds: number;
 	durationSeconds?: number;

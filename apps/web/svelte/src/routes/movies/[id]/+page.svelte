@@ -87,19 +87,25 @@
   function closeTrailer() { showTrailer = false; }
 
   async function load() {
+    loading = true;
+    error = null;
+    // Fire metadata records request immediately so it runs in parallel,
+    // but don't block the render on it — getMovieDetail already embeds
+    // the primary metadata record, so we can show the page right away.
+    const metaPromise = getMetadataRecords('movie', id).catch(() => ({ best: null, records: [] as typeof altRecords }));
     try {
-      loading = true;
-      error = null;
-      const [detailResp, metaResp] = await Promise.all([
-        getMovieDetail(id),
-        getMetadataRecords('movie', id).catch(() => ({ best: null, records: [] }))
-      ]);
+      const detailResp = await getMovieDetail(id);
       detail = detailResp;
-      metadata = metaResp.best ?? null;
+      // Use the metadata embedded in the detail response immediately.
+      // metaRecords will override this once it resolves (usually within a few
+      // hundred ms), giving us the full multi-provider record set.
+      metadata = (detailResp.metadata as typeof metadata) ?? null;
+      loading = false; // Show the page — rich provider records load below
+      const metaResp = await metaPromise;
+      metadata = metaResp.best ?? (detailResp.metadata as typeof metadata) ?? null;
       altRecords = metaResp.records ?? [];
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load';
-    } finally {
       loading = false;
     }
   }

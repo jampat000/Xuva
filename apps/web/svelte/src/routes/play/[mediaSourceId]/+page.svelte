@@ -7,6 +7,7 @@
     getPlaybackState,
     getMediaSourceDetail,
     startClientPlayback,
+    getStreamToken,
     type PlaybackRouteResponse,
     type PlaybackStateResponse,
     type MediaSourceItem,
@@ -29,6 +30,16 @@
   let loadError = $state<string | null>(null);
   let loading = $state(true);
 
+  // Phase label shown inside the loading screen so users understand delays.
+  // "probing" is only shown when startClientPlayback triggers foreground ffprobe.
+  type LoadPhase = 'resolving' | 'probing' | 'authorizing';
+  let loadPhase = $state<LoadPhase>('resolving');
+  const PHASE_LABELS: Record<LoadPhase, string> = {
+    resolving:   'Resolving stream…',
+    probing:     'Analysing file — this may take a moment…',
+    authorizing: 'Authorising stream…',
+  };
+
   onMount(async () => {
     if (!mediaSourceId) {
       loadError = 'No media source specified.';
@@ -40,7 +51,8 @@
       // Detect client capabilities once — synchronous canPlayType calls
       const caps = buildCapabilityReport();
 
-      // Parallel fetch: route + saved state + file detail
+      // ── Phase 1: Parallel — route + saved state + file detail ────────────
+      loadPhase = 'resolving';
       const [routeResp, stateResp, sourceResp] = await Promise.allSettled([
         getPlaybackRoute(mediaSourceId, {
           clientProfile: 'web',
@@ -54,35 +66,100 @@
         getMediaSourceDetail(mediaSourceId),
       ]);
 
-      if (routeResp.status === 'fulfilled') {
-        route = routeResp.value;
-      } else {
+      if (routeResp.status !== 'fulfilled') {
         loadError = 'Could not determine a playback route for this file. The server may be unavailable or the file is not playable.';
         loading = false;
         return;
       }
 
-      if (stateResp.status === 'fulfilled') {
-        savedState = stateResp.value;
+      const initialRoute = routeResp.value;
+
+      if (stateResp.status === 'fulfilled') savedState = stateResp.value;
+      if (sourceResp.status === 'fulfilled') mediaSource = sourceResp.value;
+
+      // ── Early-exit for blocked routes ─────────────────────────────────────
+      if (initialRoute.route === 'blocked' || initialRoute.status === 'blocked_by_policy') {
+        const reason = initialRoute.decision?.reasonText || initialRoute.decision?.reason || 'Playback is blocked by your server policy.';
+        const hints = (initialRoute.fallbackOptions ?? []).map(f => f.label).filter(Boolean);
+        loadError = hints.length
+          ? `${reason}\n\nSuggested fixes: ${hints.join(', ')}`
+          : reason;
+        loading = false;
+        return;
       }
 
-      if (sourceResp.status === 'fulfilled') {
-        mediaSource = sourceResp.value;
+      // ── Early-exit for transcode-needed but no ready URL ──────────────────
+      // When a transcode job is queuing or in-progress, surface a clear message
+      // rather than silently setting <video src=""> and freezing.
+      if (!initialRoute.url && !initialRoute.manifestUrl) {
+        const status = initialRoute.status ?? 'unknown';
+        const mode   = initialRoute.route  ?? 'transcode';
+        if (status === 'queuing' || status === 'transcoding') {
+          loadError = `This file needs to be transcoded before it can play (${mode}). Wait a moment and try again, or check Activity in Settings.`;
+        } else {
+          loadError = `No playback URL was returned (route: ${mode}, status: ${status}). Check the server logs.`;
+        }
+        loading = false;
+        return;
       }
 
-      // Start a client playback session (with full capability report)
+      // ── Phase 2: Create playback session ─────────────────────────────────
+      // startClientPlayback may trigger a synchronous foreground ffprobe if
+      // this file has never been probed before — that can take up to 45s.
+      // We surface a "Analysing file…" message so users know why it's slow.
+      loadPhase = 'probing';
+      let sessionId: string | undefined;
+
       try {
+        const sessionTimer = setTimeout(() => { loadPhase = 'probing'; }, 300);
         const session = await startClientPlayback({
           mediaSourceId,
           positionSeconds: savedState?.progressSeconds ?? 0,
           clientProfile: 'web',
           clientCapabilities: caps,
         });
+        clearTimeout(sessionTimer);
+        sessionId = session.id;
         clientSessionId = session.id;
         defaultSubtitlesEnabled = Boolean(session.defaultSubtitlesEnabled);
       } catch {
-        // Non-fatal — heartbeat and stop will just be no-ops
+        // Non-fatal if auth is disabled; proceed with the plain URL.
+        // If auth IS enabled, the stream will 403 and the player will show an error.
       }
+
+      // ── Phase 3: Get signed stream URL ────────────────────────────────────
+      // The native <video> element does NOT send X-Auth-Token headers.
+      // authorizeStreamRequest on the server requires ?sessionId=&deviceId=&token=
+      // to be present in the URL. We fetch those params here and patch the route
+      // before handing it to the Player component.
+      loadPhase = 'authorizing';
+      let finalRoute = initialRoute;
+
+      if (sessionId && initialRoute.url && !initialRoute.url.includes('token=')) {
+        try {
+          const tokenResp = await getStreamToken(mediaSourceId, sessionId, 'web');
+          if (tokenResp.streamUrl) {
+            finalRoute = { ...initialRoute, url: tokenResp.streamUrl };
+          }
+        } catch {
+          // Auth is disabled — plain URL will work as-is. Continue.
+        }
+      }
+
+      // For adaptive streams, append the query string to the manifest URL too.
+      if (sessionId && initialRoute.manifestUrl && !initialRoute.manifestUrl.includes('token=')) {
+        try {
+          const tokenResp = await getStreamToken(mediaSourceId, sessionId, 'web');
+          if (tokenResp.query) {
+            const sep = initialRoute.manifestUrl.includes('?') ? '&' : '?';
+            finalRoute = { ...finalRoute, manifestUrl: initialRoute.manifestUrl + sep + tokenResp.query.replace(/^\?/, '') };
+          }
+        } catch {
+          // Auth disabled — continue with plain manifest URL.
+        }
+      }
+
+      route = finalRoute;
 
     } catch (e) {
       loadError = `Unexpected error: ${(e as Error)?.message ?? e}`;
@@ -100,9 +177,10 @@
 </svelte:head>
 
 {#if loading}
-  <!-- Full-screen black loader while fetching route -->
-  <div class="flex h-screen w-screen items-center justify-center bg-black">
+  <!-- Full-screen black loader with phase label so users see what's happening -->
+  <div class="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-black">
     <div class="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/70"></div>
+    <p class="text-xs tracking-widest text-white/40 uppercase">{PHASE_LABELS[loadPhase]}</p>
   </div>
 
 {:else if loadError || !route}
@@ -115,7 +193,7 @@
     </div>
     <div>
       <p class="font-serif-display text-2xl text-white">Playback unavailable</p>
-      <p class="mt-2 max-w-sm text-sm leading-relaxed text-white/50">
+      <p class="mt-2 max-w-sm text-sm leading-relaxed text-white/50" style="white-space: pre-line;">
         {loadError ?? 'No playback route could be determined.'}
       </p>
     </div>
