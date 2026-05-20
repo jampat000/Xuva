@@ -825,6 +825,7 @@
   class={`relative h-screen w-screen overflow-hidden bg-black ${controlsVisible ? 'cursor-default' : 'cursor-none'}`}
   onmousemove={showControls}
   onclick={onVideoTap}
+  onkeydown={onKeyDown}
   role="application"
   aria-label="Video player"
   tabindex="-1"
@@ -932,13 +933,13 @@
   {/if}
 
   <!-- ─── CONTROLS OVERLAY ─────────────────────────────────────────────── -->
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class={`absolute inset-0 flex flex-col justify-between transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     role="toolbar"
     aria-label="Player controls"
     tabindex="0"
     onclick={(e) => e.stopPropagation()}
+    onkeydown={(e) => e.stopPropagation()}
   >
     <!-- Top bar: back + title + route badge -->
     <div
