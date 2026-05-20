@@ -1199,6 +1199,7 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 				"devicePairing":     "local_code",
 				"remoteDiagnostics": true,
 				"vendorRelay":       false,
+				"trailers":          !cfg.DisableTrailers,
 			},
 			"endpoints": map[string]string{
 				"health":           "/api/health",
@@ -4060,6 +4061,14 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			updated.DefaultSubtitlesTV = v
+		}
+		if value, ok := fields["disableTrailers"]; ok {
+			var v bool
+			if err := json.Unmarshal(value, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "disableTrailers must be true or false")
+				return
+			}
+			updated.DisableTrailers = v
 		}
 		if err := config.SaveFile(deps.Config.DataDir, updated); err != nil {
 			writeError(w, http.StatusInternalServerError, "settings save failed")
