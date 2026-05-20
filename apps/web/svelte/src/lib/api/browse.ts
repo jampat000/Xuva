@@ -229,11 +229,11 @@ export function searchLibrary(
 	return client.request<SearchResponse>(`/api/client/search?${params}`);
 }
 
-export function getMovies(client: ApiClient = apiClient, limit = 2000): Promise<MoviesResponse> {
+export function getMovies(client: ApiClient = apiClient, limit = 0): Promise<MoviesResponse> {
 	return client.request<MoviesResponse>(`/api/movies?limit=${encodeURIComponent(String(limit))}`);
 }
 
-export function getSeries(client: ApiClient = apiClient, limit = 2000): Promise<SeriesResponse> {
+export function getSeries(client: ApiClient = apiClient, limit = 0): Promise<SeriesResponse> {
 	return client.request<SeriesResponse>(`/api/series?limit=${encodeURIComponent(String(limit))}`);
 }
 
