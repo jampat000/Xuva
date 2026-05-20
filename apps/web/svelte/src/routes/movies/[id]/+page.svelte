@@ -464,6 +464,47 @@
               </div>
             </div>
 
+            <!-- ── Provider records ──────────────────────────────────────────── -->
+            {#if altRecords.length > 0}
+              <div class="mt-4 space-y-1.5">
+                <p class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                  Data sources ({altRecords.length})
+                </p>
+                {#each altRecords as rec (rec.provider ?? rec.itemId)}
+                  <div class="hairline flex items-center gap-3 rounded-xl bg-surface/30 px-3 py-2.5">
+                    {#if rec.posterUrl}
+                      <img
+                        src={rec.posterUrl}
+                        alt={rec.title ?? ''}
+                        class="h-[52px] w-[35px] shrink-0 rounded-md object-cover"
+                        onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                      />
+                    {:else}
+                      <div class="flex h-[52px] w-[35px] shrink-0 items-center justify-center rounded-md bg-surface-elevated/60 text-muted-foreground/50">
+                        <Film class="h-4 w-4" />
+                      </div>
+                    {/if}
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        {#if rec.provider}
+                          <span class="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-primary-glow/15 text-primary-glow">
+                            {rec.provider}
+                          </span>
+                        {/if}
+                        {#if rec.title}
+                          <span class="truncate text-xs font-medium text-foreground">{rec.title}</span>
+                          {#if rec.year}<span class="text-[11px] text-muted-foreground">{rec.year}</span>{/if}
+                        {/if}
+                      </div>
+                      {#if rec.overview}
+                        <p class="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{rec.overview}</p>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
             {#if showMetaPanel}
               <div class="mt-4 space-y-5">
                 <div>
