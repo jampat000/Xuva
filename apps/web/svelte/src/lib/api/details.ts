@@ -270,11 +270,17 @@ export function startMediaProbe(
 // ─── Client playback session lifecycle ──────────────────────────────────────
 
 export interface ClientPlaybackSession {
-	id?: string;
+	// Server returns "sessionId" — note: NOT "id"
+	sessionId?: string;
+	deviceId?: string;
 	mediaSourceId?: string;
-	status?: string;
-	startedAt?: string;
+	heartbeatUrl?: string;
+	stopUrl?: string;
+	heartbeatIntervalMs?: number;
 	defaultSubtitlesEnabled?: boolean;
+	// The start response also embeds the resolved route — avoids a separate
+	// getPlaybackRoute call on the happy path.
+	route?: PlaybackRouteResponse;
 }
 
 export interface ClientCapabilities {
