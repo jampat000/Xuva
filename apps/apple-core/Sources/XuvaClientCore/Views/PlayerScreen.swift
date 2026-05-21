@@ -13,6 +13,11 @@ public struct PlayerScreen: View {
             XuvaVideoPlayer(url: url, authToken: store.api?.authToken, playback: playback) {
                 store.closePlayer()
             }
+            #if os(tvOS)
+            .onExitCommand {
+                Task { await store.stopPlayback() }
+            }
+            #endif
         } else {
             VStack(spacing: 18) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -33,6 +38,104 @@ public struct PlayerScreen: View {
     }
 }
 
+#if os(tvOS)
+struct XuvaVideoPlayer: UIViewControllerRepresentable {
+    @EnvironmentObject private var store: XuvaClientStore
+    let url: URL
+    let authToken: String?
+    let playback: PlaybackStartResponse
+    let close: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(playback: playback, close: close, sendHeartbeat: { pos, paused in
+            await sendHeartbeat(positionSeconds: pos, isPaused: paused, store: store)
+        }, stopPlayback: { pos in
+            await store.stopPlayback(positionSeconds: pos, completed: false)
+        })
+    }
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let item = makePlayerItem(url: url, authToken: authToken)
+        let player = AVPlayer(playerItem: item)
+        let vc = AVPlayerViewController()
+        vc.player = player
+        vc.allowsPictureInPicturePlayback = true
+        vc.delegate = context.coordinator
+        context.coordinator.attach(to: player)
+        player.play()
+        print("[XUVA] AVPlayerViewController created url=\(url.absoluteString)")
+        return vc
+    }
+
+    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {}
+
+    static func dismantleUIViewController(_ vc: AVPlayerViewController, coordinator: Coordinator) {
+        vc.player?.pause()
+        coordinator.detach()
+    }
+
+    @MainActor
+    func sendHeartbeat(positionSeconds: Int, isPaused: Bool, store: XuvaClientStore) async {
+        guard let heartbeatUrl = playback.heartbeatUrl else { return }
+        try? await store.api?.heartbeat(path: heartbeatUrl, positionSeconds: positionSeconds, isPaused: isPaused)
+    }
+
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        let playback: PlaybackStartResponse
+        let close: () -> Void
+        let sendHeartbeat: (Int, Bool) async -> Void
+        let stopPlayback: (Int) async -> Void
+        private weak var player: AVPlayer?
+        private var heartbeatTask: Task<Void, Never>?
+        private var errorObserver: NSObjectProtocol?
+        private var statusObservation: NSKeyValueObservation?
+
+        init(playback: PlaybackStartResponse, close: @escaping () -> Void, sendHeartbeat: @escaping (Int, Bool) async -> Void, stopPlayback: @escaping (Int) async -> Void) {
+            self.playback = playback
+            self.close = close
+            self.sendHeartbeat = sendHeartbeat
+            self.stopPlayback = stopPlayback
+        }
+
+        func attach(to player: AVPlayer) {
+            self.player = player
+            heartbeatTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    let intervalMs = max(self?.playback.heartbeatIntervalMs ?? 10_000, 2_000)
+                    try? await Task.sleep(nanoseconds: UInt64(intervalMs) * 1_000_000)
+                    guard let self, let p = self.player else { break }
+                    let seconds = CMTimeGetSeconds(p.currentTime())
+                    if seconds.isFinite {
+                        let paused = p.timeControlStatus != .playing
+                        await self.sendHeartbeat(max(0, Int(seconds)), paused)
+                    }
+                }
+            }
+            errorObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
+                if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
+                    print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
+                }
+            }
+            statusObservation = player.currentItem?.observe(\.status, options: [.new]) { item, _ in
+                print("[XUVA] AVPlayerItem.status -> \(item.status.rawValue) error=\(String(describing: item.error))")
+            }
+        }
+
+        func detach() {
+            heartbeatTask?.cancel()
+            heartbeatTask = nil
+            if let errorObserver { NotificationCenter.default.removeObserver(errorObserver) }
+            errorObserver = nil
+            statusObservation?.invalidate()
+            statusObservation = nil
+        }
+
+        func playerViewControllerDidEndDismissalTransition(_ playerViewController: AVPlayerViewController) {
+            close()
+        }
+    }
+}
+#else
 struct XuvaVideoPlayer: View {
     @EnvironmentObject private var store: XuvaClientStore
     let url: URL
@@ -44,8 +147,6 @@ struct XuvaVideoPlayer: View {
     @State private var currentSeconds: Double = 0
     @State private var durationSeconds: Double = 0
     @State private var isPlaying = true
-    @State private var showInspector = false
-    @State private var didFinish = false
     @State private var loadError: String?
     @State private var observers: [NSObjectProtocol] = []
 
@@ -54,7 +155,7 @@ struct XuvaVideoPlayer: View {
         self.authToken = authToken
         self.playback = playback
         self.close = close
-        _player = State(initialValue: AVPlayer(playerItem: Self.playerItem(url: url, authToken: authToken)))
+        _player = State(initialValue: AVPlayer(playerItem: makePlayerItem(url: url, authToken: authToken)))
     }
 
     var body: some View {
@@ -62,6 +163,7 @@ struct XuvaVideoPlayer: View {
             VideoPlayer(player: player)
                 .ignoresSafeArea()
                 .onAppear {
+                    print("[XUVA] VideoPlayer.onAppear url=\(url.absoluteString)")
                     addTimeObserver()
                     addErrorObservers()
                     player.play()
@@ -75,13 +177,9 @@ struct XuvaVideoPlayer: View {
 
             if let err = loadError {
                 ErrorOverlay(message: err, url: url, close: { Task { await stopAndClose() } })
-            }
-
-            #if !os(tvOS)
-            if loadError == nil {
+            } else {
                 customChrome
             }
-            #endif
         }
         .background(.black)
         .task {
@@ -93,27 +191,6 @@ struct XuvaVideoPlayer: View {
         }
     }
 
-    private func addErrorObservers() {
-        let center = NotificationCenter.default
-        // Only treat real "could not play this stream" failures as fatal.
-        // Transient error log entries (network retries, codec warm-up) are not
-        // shown to the user — the player recovers and keeps playing.
-        let failed = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
-            if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
-                loadError = "Playback failed: \(err.localizedDescription) (code \(err.code))"
-            } else {
-                loadError = "Playback failed to reach end of stream."
-            }
-        }
-        observers = [failed]
-    }
-
-    private func removeErrorObservers() {
-        for ob in observers { NotificationCenter.default.removeObserver(ob) }
-        observers.removeAll()
-    }
-
-    #if !os(tvOS)
     private var customChrome: some View {
         ZStack(alignment: .bottom) {
             LinearGradient(
@@ -139,7 +216,24 @@ struct XuvaVideoPlayer: View {
             .padding(.bottom, 28)
         }
     }
-    #endif
+
+    private func addErrorObservers() {
+        let center = NotificationCenter.default
+        let failed = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
+            if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
+                print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
+                loadError = "Playback failed: \(err.localizedDescription) (code \(err.code))"
+            } else {
+                loadError = "Playback failed to reach end of stream."
+            }
+        }
+        observers = [failed]
+    }
+
+    private func removeErrorObservers() {
+        for ob in observers { NotificationCenter.default.removeObserver(ob) }
+        observers.removeAll()
+    }
 
     private func togglePlay() {
         if isPlaying {
@@ -188,17 +282,22 @@ struct XuvaVideoPlayer: View {
         guard seconds.isFinite else { return }
         try? await store.api?.heartbeat(path: heartbeatUrl, positionSeconds: max(0, Int(seconds)), isPaused: !isPlaying)
     }
+}
+#endif
 
-    private static func playerItem(url: URL, authToken: String?) -> AVPlayerItem {
-        let token = authToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !token.isEmpty else {
-            return AVPlayerItem(url: url)
-        }
-        let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
-        ])
-        return AVPlayerItem(asset: asset)
+/// Build an AVPlayerItem with an optional X-Auth-Token forwarded on the
+/// initial playlist/segment request. AVAssetResourceLoader sub-requests for
+/// HLS sub-segments don't always inherit this, so we rely on signed query
+/// tokens for fan-out — the header here is principal auth.
+private func makePlayerItem(url: URL, authToken: String?) -> AVPlayerItem {
+    let token = authToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !token.isEmpty else {
+        return AVPlayerItem(url: url)
     }
+    let asset = AVURLAsset(url: url, options: [
+        "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
+    ])
+    return AVPlayerItem(asset: asset)
 }
 
 struct ErrorOverlay: View {
@@ -253,22 +352,18 @@ private struct PlayerChrome: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(XuvaIconButtonStyle())
-
                 RouteBadge(decision: decision)
                 Spacer()
             }
-
             VStack(spacing: 10) {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule().fill(.white.opacity(0.20))
-                        Capsule()
-                            .fill(XuvaTheme.text)
+                        Capsule().fill(XuvaTheme.text)
                             .frame(width: proxy.size.width * progress)
                     }
                 }
                 .frame(height: 5)
-
                 HStack {
                     Text(format(currentSeconds))
                     Spacer()
@@ -277,21 +372,10 @@ private struct PlayerChrome: View {
                 .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.white.opacity(0.72))
             }
-
             HStack(spacing: 16) {
-                Button(action: skipBackward) {
-                    Image(systemName: "gobackward.10")
-                }
-                .buttonStyle(XuvaIconButtonStyle())
-                Button(action: togglePlay) {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title2.weight(.bold))
-                }
-                .buttonStyle(XuvaIconButtonStyle())
-                Button(action: skipForward) {
-                    Image(systemName: "goforward.30")
-                }
-                .buttonStyle(XuvaIconButtonStyle())
+                Button(action: skipBackward) { Image(systemName: "gobackward.10") }.buttonStyle(XuvaIconButtonStyle())
+                Button(action: togglePlay) { Image(systemName: isPlaying ? "pause.fill" : "play.fill") }.buttonStyle(XuvaIconButtonStyle())
+                Button(action: skipForward) { Image(systemName: "goforward.30") }.buttonStyle(XuvaIconButtonStyle())
             }
         }
         .padding(20)
