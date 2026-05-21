@@ -1,15 +1,21 @@
 import SwiftUI
 
 public struct XuvaLogo: View {
-    public init() {}
+    let viewport: CGSize
+
+    public init(viewport: CGSize = XuvaScale.screenSize) {
+        self.viewport = viewport
+    }
 
     public var body: some View {
-        HStack(spacing: 10) {
+        let mark = XuvaScale.clamped(28, viewport.width * 0.022, 56)
+        let textSize = XuvaScale.clamped(16, viewport.width * 0.014, 32)
+        HStack(spacing: mark * 0.30) {
             ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: mark * 0.28, style: .continuous)
                     .fill(XuvaTheme.action.opacity(0.18))
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(XuvaTheme.action.opacity(0.55), lineWidth: 1.2)
+                RoundedRectangle(cornerRadius: mark * 0.31, style: .continuous)
+                    .stroke(XuvaTheme.action.opacity(0.55), lineWidth: mark * 0.04)
                 XuvaMark()
                     .stroke(
                         LinearGradient(
@@ -17,13 +23,13 @@ public struct XuvaLogo: View {
                             startPoint: .leading,
                             endPoint: .trailing
                         ),
-                        style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: max(2, mark * 0.085), lineCap: .round, lineJoin: .round)
                     )
-                    .padding(8)
+                    .padding(mark * 0.25)
             }
-            .frame(width: 32, height: 32)
+            .frame(width: mark, height: mark)
             Text("Xuva")
-                .font(.title3.weight(.semibold))
+                .font(.system(size: textSize, weight: .semibold))
                 .tracking(0.5)
         }
         .foregroundStyle(XuvaTheme.text)
@@ -99,23 +105,21 @@ struct RemoteLogo: View {
     }
 
     private var fallbackSize: CGFloat {
-        #if os(tvOS)
-        return maxHeight > 120 ? 72 : 24
-        #else
-        return maxHeight > 100 ? 44 : 18
-        #endif
+        XuvaScale.clamped(24, maxHeight * 0.55, 86)
     }
 }
 
 struct PosterTile: View {
     let item: HomeItem
+    let viewport: CGSize
     let ranked: Bool
     let rank: Int?
     let wide: Bool
     let action: () -> Void
 
-    init(item: HomeItem, ranked: Bool = false, rank: Int? = nil, wide: Bool = false, action: @escaping () -> Void) {
+    init(item: HomeItem, viewport: CGSize, ranked: Bool = false, rank: Int? = nil, wide: Bool = false, action: @escaping () -> Void) {
         self.item = item
+        self.viewport = viewport
         self.ranked = ranked
         self.rank = rank
         self.wide = wide
@@ -124,33 +128,33 @@ struct PosterTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: wide ? 12 : 0) {
+            VStack(alignment: .leading, spacing: wide ? 10 : 0) {
                 ZStack(alignment: .bottomLeading) {
                     RemoteImage(urlString: artworkURL, aspectRatio: wide ? 16 / 9 : 2 / 3)
                         .frame(width: posterWidth, height: posterHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     LinearGradient(colors: [.clear, XuvaTheme.background.opacity(0.90)], startPoint: .center, endPoint: .bottom)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 6) {
                         if let route = item.routeLabel, !route.isEmpty {
                             Text(route)
-                                .font(.caption2.bold())
+                                .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .bold))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(XuvaTheme.focus.opacity(0.16), in: Capsule())
                                 .foregroundStyle(XuvaTheme.focus)
                         }
                         if wide, let logoURL = item.logoUrl, !logoURL.isEmpty {
-                            RemoteLogo(urlString: logoURL, fallbackTitle: item.title ?? "Untitled", maxWidth: posterWidth * 0.62, maxHeight: 58)
+                            RemoteLogo(urlString: logoURL, fallbackTitle: item.title ?? "Untitled", maxWidth: posterWidth * 0.62, maxHeight: posterHeight * 0.35)
                         } else {
                             Text(item.title ?? "Untitled")
-                                .font(tileTitleFont)
+                                .font(.system(size: XuvaScale.metaFontSize(viewport) + 2, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .lineLimit(2)
                         }
                         if !wide {
                             Text([item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption)
+                                .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
                                 .foregroundStyle(.white.opacity(0.68))
                                 .lineLimit(1)
                         }
@@ -168,7 +172,7 @@ struct PosterTile: View {
                     .padding(14)
                     if ranked {
                         Text(rank.map { "#\($0)" } ?? "#")
-                            .font(.caption.bold())
+                            .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .bold))
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
                             .background(.black.opacity(0.58), in: Capsule())
@@ -178,26 +182,26 @@ struct PosterTile: View {
                 }
                 if wide {
                     Text(item.title ?? "Untitled")
-                        .font(.callout.weight(.bold))
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) + 1, weight: .bold))
                         .foregroundStyle(XuvaTheme.text)
                         .lineLimit(1)
                     Text(wideSubtitle)
-                        .font(.caption)
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
                         .foregroundStyle(XuvaTheme.muted)
                         .lineLimit(1)
                 }
             }
         }
         .buttonStyle(.plain)
-        .xuvaFocused(radius: 10)
+        .xuvaFocused(radius: 12)
     }
 
     private var posterWidth: CGFloat {
-        wide ? XuvaScale.widePosterWidth() : XuvaScale.posterWidth()
+        wide ? XuvaScale.widePosterWidth(viewport) : XuvaScale.posterWidth(viewport)
     }
 
     private var posterHeight: CGFloat {
-        wide ? XuvaScale.widePosterHeight() : XuvaScale.posterHeight()
+        wide ? XuvaScale.widePosterHeight(viewport) : XuvaScale.posterHeight(viewport)
     }
 
     private var artworkURL: String? {
@@ -213,28 +217,22 @@ struct PosterTile: View {
         }
         return parts.joined(separator: " · ")
     }
-
-    private var tileTitleFont: Font {
-        #if os(tvOS)
-        return .system(size: 22, weight: .semibold)
-        #else
-        return .headline
-        #endif
-    }
 }
 
 public struct RouteBadge: View {
     let decision: PlaybackDecision?
+    let viewport: CGSize
 
-    public init(decision: PlaybackDecision?) {
+    public init(decision: PlaybackDecision?, viewport: CGSize = XuvaScale.screenSize) {
         self.decision = decision
+        self.viewport = viewport
     }
 
     public var body: some View {
         HStack(spacing: 7) {
             Circle().fill(color).frame(width: 7, height: 7)
             Text(decision?.badgeLabel ?? "Route")
-                .font(.caption2.weight(.bold))
+                .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .bold))
                 .tracking(1.2)
                 .textCase(.uppercase)
         }
@@ -252,86 +250,65 @@ public struct RouteBadge: View {
         case "Adaptive": return XuvaTheme.primaryGlow
         case "Transcoding": return XuvaTheme.danger
         case "Audio Tx": return XuvaTheme.warn
+        case "Pending": return XuvaTheme.warn
         default: return XuvaTheme.secondaryText
         }
     }
 }
 
-private enum XuvaButtonMetrics {
-    static var height: CGFloat {
-        #if os(tvOS)
-        return 72
-        #else
-        return 52
-        #endif
-    }
-
-    static var font: Font {
-        #if os(tvOS)
-        return .system(size: 26, weight: .semibold)
-        #else
-        return .system(size: 16, weight: .semibold)
-        #endif
-    }
-
-    static var horizontalPadding: CGFloat {
-        #if os(tvOS)
-        return 34
-        #else
-        return 24
-        #endif
-    }
-
-    static var iconSize: CGFloat {
-        #if os(tvOS)
-        return 60
-        #else
-        return 44
-        #endif
-    }
-}
-
 public struct XuvaPrimaryButtonStyle: ButtonStyle {
-    public init() {}
+    let viewport: CGSize
+    public init(viewport: CGSize = XuvaScale.screenSize) {
+        self.viewport = viewport
+    }
 
     public func makeBody(configuration: Configuration) -> some View {
+        let h = XuvaScale.buttonHeight(viewport)
         configuration.label
-            .font(XuvaButtonMetrics.font)
+            .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .semibold))
             .foregroundStyle(XuvaTheme.background)
-            .padding(.horizontal, XuvaButtonMetrics.horizontalPadding)
-            .frame(height: XuvaButtonMetrics.height)
+            .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
+            .frame(height: h)
             .background(XuvaTheme.text, in: Capsule(style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .xuvaFocused(radius: XuvaButtonMetrics.height / 2)
+            .xuvaFocused(radius: h / 2)
     }
 }
 
 public struct XuvaSecondaryButtonStyle: ButtonStyle {
-    public init() {}
+    let viewport: CGSize
+    public init(viewport: CGSize = XuvaScale.screenSize) {
+        self.viewport = viewport
+    }
 
     public func makeBody(configuration: Configuration) -> some View {
+        let h = XuvaScale.buttonHeight(viewport)
         configuration.label
-            .font(XuvaButtonMetrics.font)
+            .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .medium))
             .foregroundStyle(XuvaTheme.text)
-            .padding(.horizontal, XuvaButtonMetrics.horizontalPadding)
-            .frame(height: XuvaButtonMetrics.height)
+            .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
+            .frame(height: h)
             .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Capsule(style: .continuous))
             .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.15)))
-            .xuvaFocused(radius: XuvaButtonMetrics.height / 2)
+            .xuvaFocused(radius: h / 2)
     }
 }
 
 public struct XuvaIconButtonStyle: ButtonStyle {
-    public init() {}
+    let viewport: CGSize
+    public init(viewport: CGSize = XuvaScale.screenSize) {
+        self.viewport = viewport
+    }
 
     public func makeBody(configuration: Configuration) -> some View {
+        let size = XuvaScale.iconButtonSize(viewport)
         configuration.label
-            .font(XuvaButtonMetrics.font)
+            .font(.system(size: XuvaScale.buttonFontSize(viewport) * 0.95))
             .foregroundStyle(XuvaTheme.text)
-            .frame(width: XuvaButtonMetrics.iconSize, height: XuvaButtonMetrics.iconSize)
+            .frame(width: size, height: size)
             .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Circle())
             .overlay(Circle().stroke(Color.white.opacity(0.10)))
-            .xuvaFocused(radius: XuvaButtonMetrics.iconSize / 2)
+            .xuvaFocused(radius: size / 2)
     }
 }
 
@@ -339,21 +316,23 @@ public struct MediaPill: View {
     let text: String
     let systemImage: String?
     let tint: Color
+    let viewport: CGSize
 
-    public init(text: String, systemImage: String? = nil, tint: Color = XuvaTheme.primaryGlow) {
+    public init(text: String, systemImage: String? = nil, tint: Color = XuvaTheme.primaryGlow, viewport: CGSize = XuvaScale.screenSize) {
         self.text = text
         self.systemImage = systemImage
         self.tint = tint
+        self.viewport = viewport
     }
 
     public var body: some View {
         HStack(spacing: 7) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .bold))
             }
             Text(text)
-                .font(.caption.weight(.bold))
+                .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .bold))
                 .tracking(1.4)
                 .textCase(.uppercase)
                 .lineLimit(1)
