@@ -87,94 +87,144 @@ public struct HomeItem: Codable, Identifiable, Equatable {
     public var title: String?
     public var subtitle: String?
     public var year: Int?
-    public var rating: Double?
+    public var voteAverage: Double?
     public var runtime: String?
+    public var runtimeMinutes: Int?
     public var progress: Double?
     public var posterUrl: String?
     public var backdropUrl: String?
     public var imageUrl: String?
+    public var thumbnailUrl: String?
     public var logoUrl: String?
+    public var bannerUrl: String?
     public var mediaSourceId: String?
-    public var routeLabel: String?
+    public var route: String?
+    public var versionCount: Int?
     public var genres: [String]?
     public var overview: String?
+    public var director: String?
+
+    public var rating: Double? { voteAverage }
+    public var routeLabel: String? { route }
 }
 
 public struct DetailResponse: Codable, Equatable {
+    public var defaultMediaSourceId: String?
+    public var item: DetailItem?
+    public var versions: [MediaVersion]?
+}
+
+public struct DetailItem: Codable, Equatable {
     public var id: String?
     public var kind: String?
     public var title: String?
     public var subtitle: String?
-    public var overview: String?
     public var tagline: String?
+    public var overview: String?
     public var year: Int?
-    public var runtime: String?
     public var runtimeMinutes: Int?
-    public var rating: Double?
-    public var contentRating: String?
-    public var posterUrl: String?
-    public var backdropUrl: String?
-    public var logoUrl: String?
-    public var genres: [String]?
-    public var versions: [MediaVersion]?
-    public var audioTracks: [MediaTrack]?
-    public var subtitleTracks: [MediaTrack]?
-    public var playbackDecision: PlaybackDecision?
-    public var metadata: MetadataEnvelope?
-}
-
-public struct MetadataEnvelope: Codable, Equatable {
-    public var title: String?
-    public var overview: String?
-    public var tagline: String?
-    public var posterUrl: String?
-    public var backdropUrl: String?
-    public var logoUrl: String?
-    public var genres: [String]?
-    public var year: Int?
     public var voteAverage: Double?
-    public var runtime: String?
-    public var runtimeMinutes: Int?
     public var contentRating: String?
-    public var videoKey: String?
-    public var trailerPath: String?
-    public var cast: [MetadataCredit]?
-    public var directors: [String]?
-    public var writers: [String]?
-    public var studios: [String]?
-    public var productionCompanies: [String]?
-    public var networks: [String]?
-    public var collection: MetadataCollection?
-}
-
-public struct MetadataCredit: Codable, Identifiable, Equatable {
-    public var id: String?
-    public var name: String?
-    public var character: String?
-    public var profileUrl: String?
-    public var stableID: String { id ?? name ?? UUID().uuidString }
-}
-
-public struct MetadataCollection: Codable, Equatable {
-    public var id: String?
-    public var name: String?
+    public var genres: [String]?
     public var posterUrl: String?
     public var backdropUrl: String?
+    public var thumbnailUrl: String?
     public var logoUrl: String?
+    public var bannerUrl: String?
+    public var director: String?
+    public var trailerUrl: String?
+    public var videoKey: String?
+    public var versionCount: Int?
 }
 
 public struct MediaVersion: Codable, Identifiable, Equatable {
     public var id: String?
     public var mediaSourceId: String?
-    public var name: String?
     public var qualityLabel: String?
-    public var resolution: String?
-    public var videoCodec: String?
-    public var audioSummary: String?
-    public var bitrate: Int?
-    public var sizeBytes: Int64?
+    public var path: String?
+    public var name: String?
+    public var audioTracks: [MediaTrack]?
+    public var subtitleTracks: [MediaTrack]?
+    public var sidecars: [SubtitleSidecar]?
     public var decision: PlaybackDecision?
-    public var stableID: String { mediaSourceId ?? id ?? name ?? UUID().uuidString }
+    public var source: MediaSource?
+
+    public var stableID: String { mediaSourceId ?? id ?? name ?? path ?? UUID().uuidString }
+
+    public var displayResolution: String? {
+        if let w = source?.width, let h = source?.height, w > 0, h > 0 { return "\(w)×\(h)" }
+        return decision?.selected?["resolution"]
+    }
+
+    public var displayVideoCodec: String? {
+        if let codec = source?.videoCodec, !codec.isEmpty { return codec.uppercased() }
+        return decision?.selected?["videoCodec"]?.uppercased()
+    }
+
+    public var displayAudioSummary: String? {
+        if let track = audioTracks?.first {
+            let lang = track.language?.uppercased() ?? ""
+            let codec = (track.codec ?? "").uppercased()
+            let channels = track.channels.map { "\($0)ch" } ?? ""
+            return [lang, codec, channels].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        return nil
+    }
+
+    public var displayBitrate: String? {
+        guard let bitrate = source?.bitrate, bitrate > 0 else { return nil }
+        let mbps = Double(bitrate) / 1_000_000
+        return String(format: "%.1f Mbps", mbps)
+    }
+
+    public var displayDuration: String? {
+        guard let seconds = source?.durationSeconds, seconds > 0 else { return nil }
+        let total = Int(seconds)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        return "\(minutes)m"
+    }
+
+    public var displaySize: String? {
+        guard let bytes = source?.sizeBytes, bytes > 0 else { return nil }
+        let gb = Double(bytes) / (1024 * 1024 * 1024)
+        return String(format: "%.1f GB", gb)
+    }
+}
+
+public struct MediaSource: Codable, Equatable {
+    public var id: String?
+    public var libraryId: String?
+    public var kind: String?
+    public var path: String?
+    public var relPath: String?
+    public var name: String?
+    public var `extension`: String?
+    public var sizeBytes: Int64?
+    public var container: String?
+    public var durationSeconds: Double?
+    public var bitrate: Int?
+    public var videoCodec: String?
+    public var videoProfile: String?
+    public var videoLevel: String?
+    public var videoBitDepth: Int?
+    public var videoFrameRate: Double?
+    public var pixelFormat: String?
+    public var width: Int?
+    public var height: Int?
+    public var audioStreams: Int?
+    public var probed: Bool?
+}
+
+public struct SubtitleSidecar: Codable, Equatable {
+    public var path: String?
+    public var relPath: String?
+    public var language: String?
+    public var format: String?
+    public var forced: Bool?
+    public var hearingImpaired: Bool?
+    public var requiresVideoBurn: Bool?
 }
 
 public struct MediaTrack: Codable, Identifiable, Equatable {
@@ -209,16 +259,20 @@ public struct PlaybackStartResponse: Codable, Equatable {
     public var heartbeatIntervalMs: Int?
     public var decision: PlaybackDecision?
     public var route: PlaybackRoute?
+    public var mediaSourceId: String?
+    public var defaultSubtitlesEnabled: Bool?
 }
 
 public struct PlaybackRoute: Codable, Equatable {
     public var url: String?
     public var manifestUrl: String?
     public var protocolValue: String?
+    public var route: String?
+    public var status: String?
     public var decision: PlaybackDecision?
 
     enum CodingKeys: String, CodingKey {
-        case url, manifestUrl, decision
+        case url, manifestUrl, decision, route, status
         case protocolValue = "protocol"
     }
 
@@ -233,7 +287,12 @@ public struct PlaybackDecision: Codable, Equatable {
     public var subtitleAction: String?
     public var reasonCode: String?
     public var reasonText: String?
+    public var reason: String?
     public var serverImpact: String?
+    public var estimatedCpuCost: String?
+    public var estimatedGpuCost: String?
+    public var estimatedNetworkBitrate: Int?
+    public var selected: [String: String]?
 }
 
 public struct PlaybackHeartbeat: Codable {
@@ -243,31 +302,51 @@ public struct PlaybackHeartbeat: Codable {
 }
 
 public extension DetailResponse {
-    var displayTitle: String { metadata?.title ?? title ?? "Unknown Title" }
-    var displayOverview: String { metadata?.overview ?? overview ?? "" }
-    var displayPosterURL: String? { metadata?.posterUrl ?? posterUrl }
-    var displayBackdropURL: String? { metadata?.backdropUrl ?? backdropUrl }
-    var displayLogoURL: String? { metadata?.logoUrl ?? logoUrl }
-    var displayGenres: [String] { metadata?.genres ?? genres ?? [] }
-    var displayYear: Int? { metadata?.year ?? year }
-    var displayRating: Double? { metadata?.voteAverage ?? rating }
-    var displayTrailerPath: String? { metadata?.trailerPath }
-    var displayVideoKey: String? { metadata?.videoKey }
-    var displayCast: [MetadataCredit] { metadata?.cast ?? [] }
-    var displayDirectors: [String] { metadata?.directors ?? [] }
-    var displayWriters: [String] { metadata?.writers ?? [] }
-    var displayStudios: [String] {
-        var values: [String] = []
-        values.append(contentsOf: metadata?.studios ?? [])
-        values.append(contentsOf: metadata?.productionCompanies ?? [])
-        values.append(contentsOf: metadata?.networks ?? [])
-        var seen = Set<String>()
-        return values.filter { seen.insert($0).inserted }.prefix(6).map { $0 }
+    var displayTitle: String { item?.title ?? "Unknown Title" }
+    var displayOverview: String { item?.overview ?? "" }
+    var displayPosterURL: String? { item?.posterUrl }
+    var displayBackdropURL: String? { item?.backdropUrl ?? item?.thumbnailUrl }
+    var displayLogoURL: String? { item?.logoUrl }
+    var displayGenres: [String] { item?.genres ?? [] }
+    var displayYear: Int? { item?.year }
+    var displayRating: Double? { item?.voteAverage }
+    var displayTrailerPath: String? { item?.trailerUrl }
+    var displayVideoKey: String? { item?.videoKey }
+    var displayDirectors: [String] {
+        let d = (item?.director ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return d.isEmpty ? [] : [d]
     }
+    var displayContentRating: String? { item?.contentRating }
+    var displayTagline: String? { item?.tagline }
     var displayRuntime: String? {
-        if let runtime = metadata?.runtime ?? runtime { return runtime }
-        guard let minutes = metadata?.runtimeMinutes ?? runtimeMinutes else { return nil }
-        return "\(minutes / 60)h \(minutes % 60)m"
+        guard let minutes = item?.runtimeMinutes, minutes > 0 else { return nil }
+        let h = minutes / 60
+        let m = minutes % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        return "\(m)m"
+    }
+    var kind: String? { item?.kind }
+
+    var audioTracks: [MediaTrack] {
+        versions?.first?.audioTracks ?? []
+    }
+    var subtitleTracks: [MediaTrack] {
+        let embedded = versions?.first?.subtitleTracks ?? []
+        let sidecarTracks: [MediaTrack] = (versions?.first?.sidecars ?? []).enumerated().map { idx, sidecar in
+            MediaTrack(
+                id: sidecar.relPath ?? sidecar.path,
+                index: 100 + idx,
+                kind: "subtitle",
+                language: sidecar.language,
+                title: sidecar.language?.uppercased() ?? "External",
+                codec: sidecar.format,
+                channels: nil,
+                default: false,
+                forced: sidecar.forced ?? false,
+                external: true
+            )
+        }
+        return embedded + sidecarTracks
     }
 }
 
@@ -277,11 +356,12 @@ public extension PlaybackDecision {
         let video = (videoAction ?? "").lowercased()
         let audio = (audioAction ?? "").lowercased()
         let container = (containerAction ?? "").lowercased()
-        if modeText == "adaptive" || modeText == "hls" { return "Adaptive" }
+        if modeText.contains("direct") { return "Direct Play" }
+        if modeText.contains("adaptive") || modeText.contains("hls") { return "Adaptive" }
         if video == "transcode" || video == "encode" { return "Transcoding" }
         if container == "remux" || container == "mux" { return "Remux" }
-        if modeText == "direct" || modeText == "direct_play" || modeText == "directplay" { return "Direct Play" }
         if audio == "transcode" || audio == "encode" { return "Audio Tx" }
-        return "Route"
+        if modeText.contains("deferred") || modeText.contains("probe") { return "Pending" }
+        return mode?.capitalized ?? "Route"
     }
 }

@@ -27,6 +27,8 @@ public struct PlayerScreen: View {
                     .buttonStyle(XuvaSecondaryButtonStyle())
             }
             .padding(40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(XuvaTheme.background)
         }
     }
 }
@@ -43,6 +45,7 @@ struct XuvaVideoPlayer: View {
     @State private var durationSeconds: Double = 0
     @State private var isPlaying = true
     @State private var showInspector = false
+    @State private var didFinish = false
 
     init(url: URL, authToken: String?, playback: PlaybackStartResponse, close: @escaping () -> Void) {
         self.url = url
@@ -66,6 +69,23 @@ struct XuvaVideoPlayer: View {
                     removeTimeObserver()
                 }
 
+            #if !os(tvOS)
+            customChrome
+            #endif
+        }
+        .background(.black)
+        .task {
+            while !Task.isCancelled {
+                let intervalMs = max(playback.heartbeatIntervalMs ?? 10_000, 2_000)
+                try? await Task.sleep(nanoseconds: UInt64(intervalMs) * 1_000_000)
+                await sendHeartbeat()
+            }
+        }
+    }
+
+    #if !os(tvOS)
+    private var customChrome: some View {
+        ZStack(alignment: .bottom) {
             LinearGradient(
                 colors: [.clear, .black.opacity(0.32), .black.opacity(0.82)],
                 startPoint: .top,
@@ -83,27 +103,13 @@ struct XuvaVideoPlayer: View {
                 togglePlay: togglePlay,
                 skipBackward: { skip(by: -10) },
                 skipForward: { skip(by: 30) },
-                close: { Task { await stopAndClose() } },
-                toggleInspector: { showInspector.toggle() }
+                close: { Task { await stopAndClose() } }
             )
-            .padding(.horizontal, 42)
-            .padding(.bottom, 34)
-
-            if showInspector {
-                PlayerInspector(decision: playback.decision ?? playback.route?.decision)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .ignoresSafeArea(edges: .vertical)
-            }
-        }
-        .background(.black)
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(max(playback.heartbeatIntervalMs ?? 10_000, 5_000)) * 1_000_000)
-                await sendHeartbeat()
-            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 28)
         }
     }
+    #endif
 
     private func togglePlay() {
         if isPlaying {
@@ -165,6 +171,7 @@ struct XuvaVideoPlayer: View {
     }
 }
 
+#if !os(tvOS)
 private struct PlayerChrome: View {
     let decision: PlaybackDecision?
     let currentSeconds: Double
@@ -174,11 +181,10 @@ private struct PlayerChrome: View {
     let skipBackward: () -> Void
     let skipForward: () -> Void
     let close: () -> Void
-    let toggleInspector: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
                 Button(action: close) {
                     Image(systemName: "chevron.left")
                 }
@@ -186,13 +192,6 @@ private struct PlayerChrome: View {
 
                 RouteBadge(decision: decision)
                 Spacer()
-                MediaPill(text: "Quality", systemImage: "slider.horizontal.3", tint: XuvaTheme.secondaryText)
-                MediaPill(text: "Audio", systemImage: "speaker.wave.2", tint: XuvaTheme.secondaryText)
-                MediaPill(text: "Subtitles", systemImage: "captions.bubble", tint: XuvaTheme.secondaryText)
-                Button(action: toggleInspector) {
-                    Image(systemName: "info.circle")
-                }
-                .buttonStyle(XuvaIconButtonStyle())
             }
 
             VStack(spacing: 10) {
@@ -231,9 +230,9 @@ private struct PlayerChrome: View {
                 .buttonStyle(XuvaIconButtonStyle())
             }
         }
-        .padding(22)
-        .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.white.opacity(0.10)))
+        .padding(20)
+        .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.10)))
     }
 
     private var progress: CGFloat {
@@ -251,69 +250,4 @@ private struct PlayerChrome: View {
         return "\(minutes):\(String(format: "%02d", secs))"
     }
 }
-
-private struct PlayerInspector: View {
-    let decision: PlaybackDecision?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("INSPECTOR")
-                    .font(.caption.weight(.bold))
-                    .tracking(2.8)
-                    .foregroundStyle(XuvaTheme.muted)
-                Text(decision?.badgeLabel ?? "Playback route")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(XuvaTheme.text)
-            }
-
-            InspectorRow(label: "Container", value: decision?.containerAction)
-            InspectorRow(label: "Video", value: decision?.videoAction)
-            InspectorRow(label: "Audio", value: decision?.audioAction)
-            InspectorRow(label: "Subtitles", value: decision?.subtitleAction)
-
-            if let reason = decision?.reasonText ?? decision?.serverImpact, !reason.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Reason")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.8)
-                        .foregroundStyle(XuvaTheme.muted)
-                    Text(reason)
-                        .font(.callout)
-                        .foregroundStyle(XuvaTheme.secondaryText)
-                        .lineLimit(5)
-                }
-                .padding(.top, 8)
-            }
-            Spacer()
-        }
-        .padding(.top, 76)
-        .padding(.horizontal, 24)
-        .frame(width: 360, alignment: .topLeading)
-        .background(.black.opacity(0.90))
-        .overlay(Rectangle().fill(.white.opacity(0.10)).frame(width: 1), alignment: .leading)
-    }
-}
-
-private struct InspectorRow: View {
-    let label: String
-    let value: String?
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(XuvaTheme.muted)
-            Spacer()
-            Text(displayValue)
-                .font(.callout.monospaced().weight(.semibold))
-                .foregroundStyle(XuvaTheme.text)
-        }
-        .padding(12)
-        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var displayValue: String {
-        guard let value, !value.isEmpty else { return "Auto" }
-        return value.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-}
+#endif
