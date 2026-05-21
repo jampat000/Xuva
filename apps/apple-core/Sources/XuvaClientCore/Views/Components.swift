@@ -4,41 +4,27 @@ public struct XuvaLogo: View {
     public init() {}
 
     public var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(XuvaTheme.action.opacity(0.18))
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.550, green: 0.380, blue: 1.000),
-                                Color(red: 0.720, green: 0.560, blue: 1.000),
-                                Color(red: 0.560, green: 0.700, blue: 1.000)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.4
-                    )
-                    .opacity(0.70)
+                    .stroke(XuvaTheme.action.opacity(0.55), lineWidth: 1.2)
                 XuvaMark()
                     .stroke(
                         LinearGradient(
-                            colors: [
-                                Color(red: 0.550, green: 0.380, blue: 1.000),
-                                Color(red: 0.980, green: 0.976, blue: 1.000)
-                            ],
+                            colors: [XuvaTheme.focus, XuvaTheme.text],
                             startPoint: .leading,
                             endPoint: .trailing
                         ),
-                        style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round)
                     )
                     .padding(8)
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 32, height: 32)
             Text("Xuva")
                 .font(.title3.weight(.semibold))
+                .tracking(0.5)
         }
         .foregroundStyle(XuvaTheme.text)
     }
@@ -75,7 +61,7 @@ struct RemoteImage: View {
                 image.resizable().scaledToFill()
             default:
                 ZStack {
-                    LinearGradient(colors: [XuvaTheme.surface, XuvaTheme.background], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    LinearGradient(colors: [XuvaTheme.elevated, XuvaTheme.background], startPoint: .topLeading, endPoint: .bottomTrailing)
                     Image(systemName: "film")
                         .font(.system(size: 42, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.20))
@@ -86,75 +72,161 @@ struct RemoteImage: View {
     }
 }
 
+struct RemoteLogo: View {
+    let urlString: String?
+    let fallbackTitle: String
+    let maxWidth: CGFloat
+    let maxHeight: CGFloat
+
+    var body: some View {
+        AsyncImage(url: URL(string: urlString ?? "")) { phase in
+            switch phase {
+            case let .success(image):
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .shadow(color: .black.opacity(0.72), radius: 18, y: 8)
+            default:
+                Text(fallbackTitle)
+                    .font(.system(size: fallbackSize, weight: .black, design: .rounded))
+                    .foregroundStyle(XuvaTheme.text)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.54)
+                    .multilineTextAlignment(.leading)
+            }
+        }
+        .frame(maxWidth: maxWidth, maxHeight: maxHeight, alignment: .leading)
+    }
+
+    private var fallbackSize: CGFloat {
+        #if os(tvOS)
+        return maxHeight > 120 ? 72 : 24
+        #else
+        return maxHeight > 100 ? 44 : 18
+        #endif
+    }
+}
+
 struct PosterTile: View {
     let item: HomeItem
     let ranked: Bool
+    let rank: Int?
+    let wide: Bool
     let action: () -> Void
+
+    init(item: HomeItem, ranked: Bool = false, rank: Int? = nil, wide: Bool = false, action: @escaping () -> Void) {
+        self.item = item
+        self.ranked = ranked
+        self.rank = rank
+        self.wide = wide
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .bottomLeading) {
-                RemoteImage(urlString: item.posterUrl ?? item.imageUrl, aspectRatio: 2 / 3)
-                    .frame(width: posterWidth, height: posterHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                VStack(alignment: .leading, spacing: 5) {
-                    if let route = item.routeLabel {
-                        Text(route)
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(XuvaTheme.focus.opacity(0.16), in: Capsule())
-                            .foregroundStyle(XuvaTheme.focus)
-                    }
-                    Text(item.title ?? "Untitled")
-                        .font(.headline)
-                        .lineLimit(2)
-                    Text([item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.68))
-                        .lineLimit(1)
-                    if let progress = item.progress, progress > 0 {
-                        GeometryReader { proxy in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(.white.opacity(0.18))
-                                Capsule().fill(XuvaTheme.action)
-                                    .frame(width: proxy.size.width * min(max(progress, 0), 1))
-                            }
+            VStack(alignment: .leading, spacing: wide ? 12 : 0) {
+                ZStack(alignment: .bottomLeading) {
+                    RemoteImage(urlString: artworkURL, aspectRatio: wide ? 16 / 9 : 2 / 3)
+                        .frame(width: posterWidth, height: posterHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    LinearGradient(colors: [.clear, XuvaTheme.background.opacity(0.90)], startPoint: .center, endPoint: .bottom)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let route = item.routeLabel, !route.isEmpty {
+                            Text(route)
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(XuvaTheme.focus.opacity(0.16), in: Capsule())
+                                .foregroundStyle(XuvaTheme.focus)
                         }
-                        .frame(height: 4)
+                        if wide, let logoURL = item.logoUrl, !logoURL.isEmpty {
+                            RemoteLogo(urlString: logoURL, fallbackTitle: item.title ?? "Untitled", maxWidth: posterWidth * 0.62, maxHeight: 58)
+                        } else {
+                            Text(item.title ?? "Untitled")
+                                .font(tileTitleFont)
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        }
+                        if !wide {
+                            Text([item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.68))
+                                .lineLimit(1)
+                        }
+                        if let progress = item.progress, progress > 0 {
+                            GeometryReader { proxy in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(.white.opacity(0.18))
+                                    Capsule().fill(XuvaTheme.action)
+                                        .frame(width: proxy.size.width * min(max(progress, 0), 1))
+                                }
+                            }
+                            .frame(height: 4)
+                        }
+                    }
+                    .padding(14)
+                    if ranked {
+                        Text(rank.map { "#\($0)" } ?? "#")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.58), in: Capsule())
+                            .padding(12)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 }
-                .padding(14)
-                if ranked {
-                    Text("#")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(.black.opacity(0.58), in: Capsule())
-                        .padding(12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                if wide {
+                    Text(item.title ?? "Untitled")
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(XuvaTheme.text)
+                        .lineLimit(1)
+                    Text(wideSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(XuvaTheme.muted)
+                        .lineLimit(1)
                 }
             }
         }
         .buttonStyle(.plain)
-        .xuvaFocused(radius: 8)
+        .xuvaFocused(radius: 10)
     }
 
     private var posterWidth: CGFloat {
         #if os(tvOS)
-        return 190
+        return wide ? 386 : 205
         #else
-        return 132
+        return wide ? 268 : 132
         #endif
     }
 
     private var posterHeight: CGFloat {
         #if os(tvOS)
-        return 285
+        return wide ? 217 : 308
         #else
-        return 198
+        return wide ? 151 : 198
+        #endif
+    }
+
+    private var artworkURL: String? {
+        wide ? (item.backdropUrl ?? item.imageUrl ?? item.posterUrl) : (item.posterUrl ?? item.imageUrl ?? item.backdropUrl)
+    }
+
+    private var wideSubtitle: String {
+        var parts: [String] = []
+        if let year = item.year { parts.append(String(year)) }
+        if let kind = item.kind, !kind.isEmpty { parts.append(kind.capitalized) }
+        if let progress = item.progress, progress > 0 {
+            parts.append("Resume from \(Int((progress * 100).rounded()))%")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var tileTitleFont: Font {
+        #if os(tvOS)
+        return .system(size: 20, weight: .bold, design: .rounded)
+        #else
+        return .headline
         #endif
     }
 }
@@ -177,19 +249,53 @@ public struct RouteBadge: View {
         .foregroundStyle(color)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(color.opacity(0.16), in: Capsule())
-        .overlay(Capsule().stroke(color.opacity(0.30)))
+        .background(color.opacity(0.14), in: Capsule())
+        .overlay(Capsule().stroke(color.opacity(0.32)))
     }
 
     private var color: Color {
         switch decision?.badgeLabel {
-        case "Direct Play": return XuvaTheme.good
-        case "Remux": return XuvaTheme.accent
+        case "Direct Play": return XuvaTheme.focus
+        case "Remux": return XuvaTheme.action
         case "Adaptive": return XuvaTheme.primaryGlow
         case "Transcoding": return XuvaTheme.danger
         case "Audio Tx": return XuvaTheme.warn
-        default: return .white.opacity(0.46)
+        default: return XuvaTheme.secondaryText
         }
+    }
+}
+
+private enum XuvaButtonMetrics {
+    static var height: CGFloat {
+        #if os(tvOS)
+        return 72
+        #else
+        return 52
+        #endif
+    }
+
+    static var font: Font {
+        #if os(tvOS)
+        return .system(size: 26, weight: .semibold)
+        #else
+        return .system(size: 16, weight: .semibold)
+        #endif
+    }
+
+    static var horizontalPadding: CGFloat {
+        #if os(tvOS)
+        return 34
+        #else
+        return 24
+        #endif
+    }
+
+    static var iconSize: CGFloat {
+        #if os(tvOS)
+        return 60
+        #else
+        return 44
+        #endif
     }
 }
 
@@ -198,23 +304,13 @@ public struct XuvaPrimaryButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 22)
-            .frame(height: 54)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.486, green: 0.361, blue: 1.000),
-                        Color(red: 0.612, green: 0.486, blue: 1.000)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
+            .font(XuvaButtonMetrics.font)
+            .foregroundStyle(XuvaTheme.background)
+            .padding(.horizontal, XuvaButtonMetrics.horizontalPadding)
+            .frame(height: XuvaButtonMetrics.height)
+            .background(XuvaTheme.text, in: Capsule(style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .xuvaFocused(radius: 12)
+            .xuvaFocused(radius: XuvaButtonMetrics.height / 2)
     }
 }
 
@@ -223,13 +319,13 @@ public struct XuvaSecondaryButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
+            .font(XuvaButtonMetrics.font)
             .foregroundStyle(XuvaTheme.text)
-            .padding(.horizontal, 22)
-            .frame(height: 54)
-            .background(XuvaTheme.elevated.opacity(configuration.isPressed ? 1 : 0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(XuvaTheme.hairline))
-            .xuvaFocused(radius: 12)
+            .padding(.horizontal, XuvaButtonMetrics.horizontalPadding)
+            .frame(height: XuvaButtonMetrics.height)
+            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.15)))
+            .xuvaFocused(radius: XuvaButtonMetrics.height / 2)
     }
 }
 
@@ -238,11 +334,42 @@ public struct XuvaIconButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
+            .font(XuvaButtonMetrics.font)
             .foregroundStyle(XuvaTheme.text)
-            .frame(width: 48, height: 48)
-            .background(XuvaTheme.elevated.opacity(configuration.isPressed ? 1 : 0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(XuvaTheme.hairline))
-            .xuvaFocused(radius: 12)
+            .frame(width: XuvaButtonMetrics.iconSize, height: XuvaButtonMetrics.iconSize)
+            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Circle())
+            .overlay(Circle().stroke(Color.white.opacity(0.10)))
+            .xuvaFocused(radius: XuvaButtonMetrics.iconSize / 2)
+    }
+}
+
+public struct MediaPill: View {
+    let text: String
+    let systemImage: String?
+    let tint: Color
+
+    public init(text: String, systemImage: String? = nil, tint: Color = XuvaTheme.primaryGlow) {
+        self.text = text
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    public var body: some View {
+        HStack(spacing: 7) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+            }
+            Text(text)
+                .font(.caption.weight(.bold))
+                .tracking(1.4)
+                .textCase(.uppercase)
+                .lineLimit(1)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(tint.opacity(0.14), in: Capsule())
+        .overlay(Capsule().stroke(tint.opacity(0.28)))
     }
 }

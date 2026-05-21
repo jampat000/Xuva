@@ -20,16 +20,16 @@ public struct PairingScreen: View {
                     AnyLayout(HStackLayout(spacing: 14))
                 }
 
-                VStack(alignment: .leading, spacing: isCompact ? 22 : 28) {
+                VStack(alignment: .leading, spacing: isCompact ? 20 : 24) {
                     XuvaLogo()
-                    Text("Pair this device to your Xuva library")
+                    Text("Connect to Xuva")
                         .font(.system(size: titleSize(for: geometry.size), weight: .bold, design: .rounded))
                         .foregroundStyle(XuvaTheme.text)
-                        .lineLimit(3)
+                        .lineLimit(2)
                         .minimumScaleFactor(0.72)
                         .frame(maxWidth: isCompact ? .infinity : 760, alignment: .leading)
-                    Text("Connect to your local server, approve the device in Xuva, then browse and play from the couch. No admin surfaces live in this app.")
-                        .font(isCompact ? .body : .title3)
+                    Text(introCopy)
+                        .font(isCompact ? .body : .title2.weight(.medium))
                         .foregroundStyle(XuvaTheme.muted)
                         .frame(maxWidth: isCompact ? .infinity : 720, alignment: .leading)
 
@@ -63,7 +63,7 @@ public struct PairingScreen: View {
                     }
                 }
                 .padding(.horizontal, horizontalPadding(for: geometry.size))
-                .padding(.vertical, isCompact ? 48 : 72)
+                .padding(.vertical, isCompact ? 48 : 86)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -77,7 +77,7 @@ public struct PairingScreen: View {
 
     @ViewBuilder
     private var serverURLControl: some View {
-        TextField("Server URL", text: $store.serverText)
+        TextField("Xuva address", text: $store.serverText)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .keyboardType(.URL)
@@ -86,17 +86,17 @@ public struct PairingScreen: View {
             .onSubmit {
                 Task { await store.connect() }
             }
-            .font(.title3)
+            .font(.system(size: tvControlFontSize, weight: .medium))
             .foregroundStyle(XuvaTheme.text)
-            .padding(.horizontal, 18)
-            .frame(height: 58)
-            .background(XuvaTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(XuvaTheme.hairline))
+            .padding(.horizontal, 22)
+            .frame(height: tvControlHeight)
+            .background(Color.white.opacity(0.06), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(XuvaTheme.hairline))
     }
 
     private var pairingCard: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label(store.bootstrap?.server?.name ?? "Xuva server found", systemImage: "checkmark.seal.fill")
+            Label(store.bootstrap?.server?.name ?? "Xuva found", systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(XuvaTheme.good)
 
@@ -104,13 +104,13 @@ public struct PairingScreen: View {
                 Text(code)
                     .font(.system(size: codeSize, weight: .black, design: .rounded))
                     .tracking(8)
-                Text("Approve this code in the Xuva web app, then the client will continue to the media library.")
+                Text("Approve this code in Xuva. The library opens automatically.")
                     .foregroundStyle(XuvaTheme.muted)
-                Text("Waiting for approval...")
+                Text("Waiting for approval")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(XuvaTheme.primaryGlow)
             } else {
-                Text("Create a local pairing code for this device.")
+                Text("Create a pairing code for this Apple TV.")
                     .foregroundStyle(XuvaTheme.muted)
             }
 
@@ -137,7 +137,7 @@ public struct PairingScreen: View {
                 Button {
                     Task { await store.loadHome() }
                 } label: {
-                    buttonLabel(title: "Try home", systemImage: "house.fill")
+                    buttonLabel(title: "Home", systemImage: "house.fill")
                 }
                 .xuvaTVSecondaryActionStyle()
                 .focused($focusedControl, equals: .home)
@@ -154,21 +154,21 @@ public struct PairingScreen: View {
         }
         .padding(28)
         .frame(maxWidth: 760, alignment: .leading)
-        .background(XuvaTheme.surface.opacity(0.86), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(XuvaTheme.hairline))
+        .background(XuvaTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(XuvaTheme.hairline))
     }
 
     @ViewBuilder
     private var connectionHint: some View {
         if store.connectionState == .needsAuthCredential {
             Label(
-                "This server is protected and did not accept the saved native credential. Reset this device and pair again from the Xuva web app.",
+                "Saved access was rejected. Reset this Apple TV and pair again from Xuva.",
                 systemImage: "lock.shield"
             )
             .font(.callout)
             .foregroundStyle(XuvaTheme.warn)
             .padding(16)
-            .background(XuvaTheme.warn.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(XuvaTheme.warn.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .frame(maxWidth: 760, alignment: .leading)
         }
     }
@@ -177,7 +177,7 @@ public struct PairingScreen: View {
         Label(title, systemImage: systemImage)
             .labelStyle(.titleAndIcon)
             .lineLimit(1)
-            .minimumScaleFactor(0.82)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private var codeSize: CGFloat {
@@ -188,9 +188,25 @@ public struct PairingScreen: View {
         #endif
     }
 
+    private var tvControlHeight: CGFloat {
+        #if os(tvOS)
+        return 50
+        #else
+        return 58
+        #endif
+    }
+
+    private var tvControlFontSize: CGFloat {
+        #if os(tvOS)
+        return 28
+        #else
+        return 22
+        #endif
+    }
+
     private func titleSize(for size: CGSize) -> CGFloat {
         #if os(tvOS)
-        return size.width > 900 ? 64 : 46
+        return size.width > 900 ? 54 : 42
         #else
         return size.width > 700 ? 46 : 40
         #endif
@@ -201,6 +217,14 @@ public struct PairingScreen: View {
         return size.width > 900 ? 96 : 44
         #else
         return size.width > 700 ? 44 : 28
+        #endif
+    }
+
+    private var introCopy: String {
+        #if os(tvOS)
+        return "Approve this Apple TV once, then your library opens straight to movies and shows."
+        #else
+        return "Pair this device once, then your library opens straight to movies and shows."
         #endif
     }
 

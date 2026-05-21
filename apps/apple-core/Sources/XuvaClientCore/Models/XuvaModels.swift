@@ -136,6 +136,31 @@ public struct MetadataEnvelope: Codable, Equatable {
     public var runtime: String?
     public var runtimeMinutes: Int?
     public var contentRating: String?
+    public var videoKey: String?
+    public var trailerPath: String?
+    public var cast: [MetadataCredit]?
+    public var directors: [String]?
+    public var writers: [String]?
+    public var studios: [String]?
+    public var productionCompanies: [String]?
+    public var networks: [String]?
+    public var collection: MetadataCollection?
+}
+
+public struct MetadataCredit: Codable, Identifiable, Equatable {
+    public var id: String?
+    public var name: String?
+    public var character: String?
+    public var profileUrl: String?
+    public var stableID: String { id ?? name ?? UUID().uuidString }
+}
+
+public struct MetadataCollection: Codable, Equatable {
+    public var id: String?
+    public var name: String?
+    public var posterUrl: String?
+    public var backdropUrl: String?
+    public var logoUrl: String?
 }
 
 public struct MediaVersion: Codable, Identifiable, Equatable {
@@ -226,6 +251,19 @@ public extension DetailResponse {
     var displayGenres: [String] { metadata?.genres ?? genres ?? [] }
     var displayYear: Int? { metadata?.year ?? year }
     var displayRating: Double? { metadata?.voteAverage ?? rating }
+    var displayTrailerPath: String? { metadata?.trailerPath }
+    var displayVideoKey: String? { metadata?.videoKey }
+    var displayCast: [MetadataCredit] { metadata?.cast ?? [] }
+    var displayDirectors: [String] { metadata?.directors ?? [] }
+    var displayWriters: [String] { metadata?.writers ?? [] }
+    var displayStudios: [String] {
+        var values: [String] = []
+        values.append(contentsOf: metadata?.studios ?? [])
+        values.append(contentsOf: metadata?.productionCompanies ?? [])
+        values.append(contentsOf: metadata?.networks ?? [])
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }.prefix(6).map { $0 }
+    }
     var displayRuntime: String? {
         if let runtime = metadata?.runtime ?? runtime { return runtime }
         guard let minutes = metadata?.runtimeMinutes ?? runtimeMinutes else { return nil }
