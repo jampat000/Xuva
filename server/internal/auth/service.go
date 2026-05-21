@@ -563,6 +563,33 @@ func (s *Service) Authenticate(ctx context.Context, username string, password st
 	return principal, session, token, nil
 }
 
+func (s *Service) IssueSessionForUser(ctx context.Context, userID string, remoteAddr string, userAgent string) (Principal, Session, string, error) {
+	if s.Disabled() {
+		return Principal{}, Session{}, "", ErrUnauthorized
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return Principal{}, Session{}, "", ErrUserNotFound
+	}
+	var principal Principal
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, username, display_name, avatar_url, role
+		FROM users
+		WHERE id = ?
+	`, userID).Scan(&principal.ID, &principal.Username, &principal.DisplayName, &principal.AvatarURL, &principal.Role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Principal{}, Session{}, "", ErrUserNotFound
+	}
+	if err != nil {
+		return Principal{}, Session{}, "", err
+	}
+	session, token, err := s.issueSession(ctx, principal, remoteAddr, userAgent)
+	if err != nil {
+		return Principal{}, Session{}, "", err
+	}
+	return principal, session, token, nil
+}
+
 func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, userAgent string) (ResolvedSession, error) {
 	if s.Disabled() {
 		return ResolvedSession{}, ErrUnauthorized
@@ -929,8 +956,8 @@ func ActiveProfileFromContext(ctx context.Context) (string, bool) {
 // ─── Profile sessions ─────────────────────────────────────────────────────────
 
 var (
-	ErrInvalidPin     = errors.New("incorrect pin")
-	ErrProfileLocked  = errors.New("current profile requires exit pin")
+	ErrInvalidPin    = errors.New("incorrect pin")
+	ErrProfileLocked = errors.New("current profile requires exit pin")
 )
 
 const profileSessionTTL = 24 * time.Hour

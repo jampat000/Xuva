@@ -26,16 +26,23 @@ var (
 )
 
 type Request struct {
-	ID            string    `json:"id"`
-	Code          string    `json:"code,omitempty"`
-	DeviceName    string    `json:"deviceName"`
-	ClientProfile string    `json:"clientProfile"`
-	DeviceID      string    `json:"deviceId,omitempty"`
-	Status        string    `json:"status"`
-	ApprovedBy    string    `json:"approvedBy,omitempty"`
-	ExpiresAt     time.Time `json:"expiresAt"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID            string     `json:"id"`
+	Code          string     `json:"code,omitempty"`
+	DeviceName    string     `json:"deviceName"`
+	ClientProfile string     `json:"clientProfile"`
+	DeviceID      string     `json:"deviceId,omitempty"`
+	Auth          *AuthGrant `json:"auth,omitempty"`
+	Status        string     `json:"status"`
+	ApprovedBy    string     `json:"approvedBy,omitempty"`
+	ExpiresAt     time.Time  `json:"expiresAt"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
+}
+
+type AuthGrant struct {
+	Method       string    `json:"method"`
+	SessionToken string    `json:"sessionToken"`
+	ExpiresAt    time.Time `json:"expiresAt"`
 }
 
 type CreateRequest struct {
@@ -94,7 +101,7 @@ func (s *Service) List() []Request {
 	defer s.mu.RUnlock()
 	output := make([]Request, 0, len(s.byID))
 	for _, item := range s.byID {
-		output = append(output, publicRequest(item))
+		output = append(output, publicRequest(item, false))
 	}
 	sort.Slice(output, func(i, j int) bool { return output[i].CreatedAt.After(output[j].CreatedAt) })
 	return output
@@ -108,7 +115,7 @@ func (s *Service) Get(id string) (Request, bool) {
 	if !ok {
 		return Request{}, false
 	}
-	return publicRequest(item), true
+	return publicRequest(item, true), true
 }
 
 func (s *Service) Approve(id string, approvedBy string) (Request, error) {
@@ -121,6 +128,22 @@ func (s *Service) ApproveWithDeviceID(id string, approvedBy string, deviceID str
 
 func (s *Service) Deny(id string, approvedBy string) (Request, error) {
 	return s.close(id, StatusDenied, approvedBy, "")
+}
+
+func (s *Service) AttachAuthGrant(id string, grant AuthGrant) (Request, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.byID[id]
+	if !ok {
+		return Request{}, ErrNotFound
+	}
+	if item.Status != StatusApproved {
+		return Request{}, ErrClosed
+	}
+	item.Auth = &grant
+	item.UpdatedAt = time.Now().UTC()
+	s.byID[id] = item
+	return publicRequest(item, true), nil
 }
 
 func (s *Service) close(id string, status string, approvedBy string, deviceID string) (Request, error) {
@@ -147,7 +170,7 @@ func (s *Service) close(id string, status string, approvedBy string, deviceID st
 		}
 	}
 	s.byID[id] = item
-	return publicRequest(item), nil
+	return publicRequest(item, true), nil
 }
 
 func (s *Service) expireOld() {
@@ -163,9 +186,12 @@ func (s *Service) expireOld() {
 	}
 }
 
-func publicRequest(item Request) Request {
+func publicRequest(item Request, includeAuth bool) Request {
 	if item.Status != StatusPending {
 		item.Code = ""
+	}
+	if !includeAuth {
+		item.Auth = nil
 	}
 	return item
 }

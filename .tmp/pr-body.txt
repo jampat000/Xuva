@@ -1,0 +1,13 @@
+﻿## Problem
+`watchlistStore.svelte.ts` used a lazy `init()` pattern that mutated `$state` variables (`items`, `initialized`) inside `isInWatchlist()`. Because `isInWatchlist()` is called from a `$derived` expression in `movies/[id]/+page.svelte` and `tv/[id]/+page.svelte`, Svelte 5 threw a fatal **`state_unsafe_mutation`** exception — the movie and TV detail pages were completely blank/unrenderable.
+
+## Fix
+Initialise `items` eagerly at module load using `$state(loadFromStorage())`. The `init()` function and `initialized` flag are removed entirely. `loadFromStorage()` already handles SSR gracefully.
+
+## Test plan
+- [ ] Navigate to any movie detail page — confirms it renders without console exceptions
+- [ ] Click + to add to watchlist — button changes to ✓
+- [ ] Click ✓ to remove — button changes back to +
+- [ ] Reload page — watchlist state is preserved from localStorage
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -13,6 +13,7 @@ import (
 	_ "image/png"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,7 +21,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,34 +69,34 @@ import (
 )
 
 type Deps struct {
-	Config    config.Config
-	StartedAt time.Time
-	Database  *database.Service
-	Auth      *auth.Service
-	Events    *events.Bus
-	Observe   *observability.Service
-	Resources *resources.Manager
-	Jobs      *jobs.Registry
-	Discovery *discovery.Service
-	Libraries *libraries.Service
-	Scanner   *scanner.Service
-	Scans     *scans.Service
-	Catalog   *catalog.Service
-	Media     *media.Service
-	Metadata  *metaprovider.Service
-	Movies    *movies.Service
-	TV        *tv.Service
-	Probe     *probe.Service
-	Probes    *probes.Service
-	Playback  *playback.Service
-	PlayState *playstate.Service
-	Streaming *streaming.Service
-	Transcode *transcode.Service
-	Downloads *downloads.Service
-	Devices   *devices.Service
-	Sessions  *sessions.Service
-	Subtitles *subtitles.Service
-	Pairing   *pairing.Service
+	Config        config.Config
+	StartedAt     time.Time
+	Database      *database.Service
+	Auth          *auth.Service
+	Events        *events.Bus
+	Observe       *observability.Service
+	Resources     *resources.Manager
+	Jobs          *jobs.Registry
+	Discovery     *discovery.Service
+	Libraries     *libraries.Service
+	Scanner       *scanner.Service
+	Scans         *scans.Service
+	Catalog       *catalog.Service
+	Media         *media.Service
+	Metadata      *metaprovider.Service
+	Movies        *movies.Service
+	TV            *tv.Service
+	Probe         *probe.Service
+	Probes        *probes.Service
+	Playback      *playback.Service
+	PlayState     *playstate.Service
+	Streaming     *streaming.Service
+	Transcode     *transcode.Service
+	Downloads     *downloads.Service
+	Devices       *devices.Service
+	Sessions      *sessions.Service
+	Subtitles     *subtitles.Service
+	Pairing       *pairing.Service
 	Migration     *migration.Service
 	Trending      *trending.Service
 	Trailers      *trailers.Service
@@ -2134,15 +2134,15 @@ type clientPlaybackOptions struct {
 }
 
 type clientPlaybackStartRequest struct {
-	MediaSourceID      string              `json:"mediaSourceId"`
-	DeviceID           string              `json:"deviceId"`
-	ClientProfile      string              `json:"clientProfile"`
-	RouteType          string              `json:"routeType"`
-	MaxNetworkBitrate  int64               `json:"maxNetworkBitrate"`
-	AudioTrackIndex    int                 `json:"audioTrackIndex"`
-	SubtitleTrackIndex int                 `json:"subtitleTrackIndex"`
-	SubtitleMode       string              `json:"subtitleMode"`
-	SubtitleActive     bool                `json:"subtitleActive"`
+	MediaSourceID      string `json:"mediaSourceId"`
+	DeviceID           string `json:"deviceId"`
+	ClientProfile      string `json:"clientProfile"`
+	RouteType          string `json:"routeType"`
+	MaxNetworkBitrate  int64  `json:"maxNetworkBitrate"`
+	AudioTrackIndex    int    `json:"audioTrackIndex"`
+	SubtitleTrackIndex int    `json:"subtitleTrackIndex"`
+	SubtitleMode       string `json:"subtitleMode"`
+	SubtitleActive     bool   `json:"subtitleActive"`
 	// ClientCapabilities, when provided, overrides the static device-profile
 	// codec / container / HDR whitelist with values measured by the client
 	// at runtime (e.g. via MediaSource.isTypeSupported / canPlayType).
@@ -3816,16 +3816,16 @@ func metadataSourceCatalogPayload(ctx context.Context, cfg config.Config, servic
 		rows := make([]map[string]any, 0, len(definitions))
 		for _, definition := range definitions {
 			item := map[string]any{
-				"id":             definition.ID,
-				"name":           definition.Name,
-				"description":    definition.Description,
-				"coverage":       definition.Coverage,
-				"note":           definition.Note,
-				"kinds":          definition.Kinds,
-				"local":          definition.Local,
-				"managed":        definition.Managed,
-				"requiresConfig": definition.RequiresConfig,
-				"available":      definition.Available,
+				"id":               definition.ID,
+				"name":             definition.Name,
+				"description":      definition.Description,
+				"coverage":         definition.Coverage,
+				"note":             definition.Note,
+				"kinds":            definition.Kinds,
+				"local":            definition.Local,
+				"managed":          definition.Managed,
+				"requiresConfig":   definition.RequiresConfig,
+				"available":        definition.Available,
 				"supportsMetadata": definition.SupportsMetadata,
 				"supportsArtwork":  definition.SupportsArtwork,
 			}
@@ -4181,9 +4181,9 @@ func metadataSourceSettingsUpdateHandler(deps Deps) http.HandlerFunc {
 		payload := metadataSourcePreferencesPayload(updated)
 		deps.Events.Publish("settings.updated", map[string]any{"metadataSourcePreferences": payload})
 		publishDomainAudit(deps, r, "audit.settings", "settings.metadata_sources.update", "allowed", map[string]any{
-			"movieSources":        payload["movie"],
-			"seriesSources":       payload["series"],
-			"movieArtworkSources": payload["movieArtwork"],
+			"movieSources":         payload["movie"],
+			"seriesSources":        payload["series"],
+			"movieArtworkSources":  payload["movieArtwork"],
 			"seriesArtworkSources": payload["seriesArtwork"],
 		})
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -4406,11 +4406,11 @@ func playbackPolicyFallbacks(policy string, decision playback.Decision) []map[st
 }
 
 type hwTestCache struct {
-	Status    string           `json:"status"`
-	Working   int              `json:"working"`
-	Tested    int              `json:"tested"`
-	Tests     []map[string]any `json:"tests"`
-	TestedAt  string           `json:"testedAt"`
+	Status   string           `json:"status"`
+	Working  int              `json:"working"`
+	Tested   int              `json:"tested"`
+	Tests    []map[string]any `json:"tests"`
+	TestedAt string           `json:"testedAt"`
 }
 
 func hwTestCachePath(dataDir string) string {
@@ -4610,30 +4610,30 @@ func currentConfig(deps Deps) config.Config {
 
 func settingsPayload(cfg config.Config) map[string]any {
 	return map[string]any{
-		"serverName":        configDisplayName(cfg.ServerName),
-		"httpAddr":          cfg.HTTPAddr,
-		"dataDir":           cfg.DataDir,
-		"transcodeDir":      cfg.TranscodeDir,
-		"downloadsDir":      cfg.DownloadsDir,
-		"metadataDir":       cfg.MetadataDir,
-		"cacheDir":          cfg.CacheDir,
-		"tempDir":           cfg.TempDir,
-		"ffmpegPath":        cfg.FFmpegPath,
-		"ffprobePath":       cfg.FFprobePath,
-		"eventBuffer":       cfg.EventBuffer,
-		"scanWorkers":       cfg.ScanWorkers,
-		"probeWorkers":      cfg.ProbeWorkers,
-		"transcodeWorkers":  cfg.TranscodeWorkers,
-		"gpuWorkers":        cfg.GPUWorkers,
-		"hardwareUnlocked":  cfg.HardwareUnlocked,
-		"playbackPolicy":    cfg.PlaybackPolicy,
-		"librarySyncMode":   cfg.LibrarySyncMode,
-		"syncIntervalMins":  cfg.SyncIntervalMins,
-		"watchDebounceSecs": cfg.WatchDebounceSecs,
-		"probeBatchLimit":   cfg.ProbeBatchLimit,
-		"allowedOrigins":    cfg.AllowedOrigins,
-		"country":              cfg.Country,
-		"timezone":             cfg.Timezone,
+		"serverName":             configDisplayName(cfg.ServerName),
+		"httpAddr":               cfg.HTTPAddr,
+		"dataDir":                cfg.DataDir,
+		"transcodeDir":           cfg.TranscodeDir,
+		"downloadsDir":           cfg.DownloadsDir,
+		"metadataDir":            cfg.MetadataDir,
+		"cacheDir":               cfg.CacheDir,
+		"tempDir":                cfg.TempDir,
+		"ffmpegPath":             cfg.FFmpegPath,
+		"ffprobePath":            cfg.FFprobePath,
+		"eventBuffer":            cfg.EventBuffer,
+		"scanWorkers":            cfg.ScanWorkers,
+		"probeWorkers":           cfg.ProbeWorkers,
+		"transcodeWorkers":       cfg.TranscodeWorkers,
+		"gpuWorkers":             cfg.GPUWorkers,
+		"hardwareUnlocked":       cfg.HardwareUnlocked,
+		"playbackPolicy":         cfg.PlaybackPolicy,
+		"librarySyncMode":        cfg.LibrarySyncMode,
+		"syncIntervalMins":       cfg.SyncIntervalMins,
+		"watchDebounceSecs":      cfg.WatchDebounceSecs,
+		"probeBatchLimit":        cfg.ProbeBatchLimit,
+		"allowedOrigins":         cfg.AllowedOrigins,
+		"country":                cfg.Country,
+		"timezone":               cfg.Timezone,
 		"metadataLanguage":       cfg.MetadataLanguage,
 		"preferTextSubtitles":    cfg.PreferTextSubtitles,
 		"originalQualityOnly":    cfg.OriginalQualityOnly,
@@ -6880,6 +6880,23 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 			"clientProfile": item.ClientProfile,
 		})
 	}
+	if approve && deps.Auth != nil && !deps.Auth.Disabled() {
+		_, session, token, sessionErr := deps.Auth.IssueSessionForUser(r.Context(), "local", requestRemoteAddr(r), item.DeviceName)
+		if sessionErr != nil {
+			writeError(w, http.StatusInternalServerError, "native device credential issue failed")
+			return
+		}
+		credentialed, grantErr := deps.Pairing.AttachAuthGrant(item.ID, pairing.AuthGrant{
+			Method:       "header_token",
+			SessionToken: token,
+			ExpiresAt:    session.ExpiresAt,
+		})
+		if grantErr != nil {
+			writeError(w, http.StatusInternalServerError, "pairing credential update failed")
+			return
+		}
+		item = credentialed
+	}
 	publishOperationalEvent(deps, r, "pairing.request."+item.Status, map[string]any{
 		"pairingId":     item.ID,
 		"clientProfile": item.ClientProfile,
@@ -7641,30 +7658,30 @@ func foregroundProbe(ctx context.Context, deps Deps, source catalog.MediaSourceI
 		MaxFALL:         result.MaxFALL,
 		Width:           result.Width,
 		Height:          result.Height,
-		AudioStreams:     result.AudioStreams,
-		SubtitleStreams:  result.SubtitleStreams,
+		AudioStreams:    result.AudioStreams,
+		SubtitleStreams: result.SubtitleStreams,
 		RawJSON:         result.RawJSON,
 	}
 	_ = deps.Catalog.SaveProbe(ctx, source.ID, catalogResult)
 	// Patch the in-memory source so playback decision uses fresh probe data
-	source.Probed          = true
-	source.Container       = result.Container
+	source.Probed = true
+	source.Container = result.Container
 	source.DurationSeconds = result.DurationSeconds
-	source.Bitrate         = result.Bitrate
-	source.VideoCodec      = result.VideoCodec
-	source.VideoProfile    = result.VideoProfile
-	source.VideoLevel      = result.VideoLevel
-	source.VideoBitDepth   = result.VideoBitDepth
-	source.VideoFrameRate  = result.VideoFrameRate
-	source.PixelFormat     = result.PixelFormat
-	source.ColorPrimaries  = result.ColorPrimaries
-	source.ColorTransfer   = result.ColorTransfer
-	source.ColorSpace      = result.ColorSpace
-	source.HDRFormat       = result.HDRFormat
-	source.Width           = result.Width
-	source.Height          = result.Height
-	source.AudioStreams     = result.AudioStreams
-	source.SubtitleStreams  = result.SubtitleStreams
+	source.Bitrate = result.Bitrate
+	source.VideoCodec = result.VideoCodec
+	source.VideoProfile = result.VideoProfile
+	source.VideoLevel = result.VideoLevel
+	source.VideoBitDepth = result.VideoBitDepth
+	source.VideoFrameRate = result.VideoFrameRate
+	source.PixelFormat = result.PixelFormat
+	source.ColorPrimaries = result.ColorPrimaries
+	source.ColorTransfer = result.ColorTransfer
+	source.ColorSpace = result.ColorSpace
+	source.HDRFormat = result.HDRFormat
+	source.Width = result.Width
+	source.Height = result.Height
+	source.AudioStreams = result.AudioStreams
+	source.SubtitleStreams = result.SubtitleStreams
 	return source, nil
 }
 
