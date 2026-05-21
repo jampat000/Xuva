@@ -1,5 +1,37 @@
 import SwiftUI
 
+public enum XuvaBrand {
+    /// Brand gradient — matches `--gradient-primary` in apps/web/svelte
+    /// (135° from oklch(0.55 0.22 285) → oklch(0.65 0.20 280) → oklch(0.72 0.18 265)).
+    public static let gradient = LinearGradient(
+        colors: [
+            Color(red: 0.435, green: 0.259, blue: 0.878),
+            Color(red: 0.529, green: 0.388, blue: 0.941),
+            Color(red: 0.604, green: 0.490, blue: 1.000)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    public static let wordmarkGradient = LinearGradient(
+        colors: [
+            Color(red: 0.486, green: 0.361, blue: 1.000),
+            Color(red: 0.616, green: 0.478, blue: 1.000)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    public static let chevronHighlight = LinearGradient(
+        colors: [
+            Color.white.opacity(0.95),
+            Color.white.opacity(0.55)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+}
+
 public struct XuvaLogo: View {
     let viewport: CGSize
 
@@ -8,50 +40,72 @@ public struct XuvaLogo: View {
     }
 
     public var body: some View {
-        let mark = XuvaScale.clamped(28, viewport.width * 0.022, 56)
-        let textSize = XuvaScale.clamped(16, viewport.width * 0.014, 32)
-        HStack(spacing: mark * 0.30) {
-            ZStack {
-                RoundedRectangle(cornerRadius: mark * 0.28, style: .continuous)
-                    .fill(XuvaTheme.action.opacity(0.18))
-                RoundedRectangle(cornerRadius: mark * 0.31, style: .continuous)
-                    .stroke(XuvaTheme.action.opacity(0.55), lineWidth: mark * 0.04)
-                XuvaMark()
-                    .stroke(
-                        LinearGradient(
-                            colors: [XuvaTheme.focus, XuvaTheme.text],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        style: StrokeStyle(lineWidth: max(2, mark * 0.085), lineCap: .round, lineJoin: .round)
-                    )
-                    .padding(mark * 0.25)
-            }
-            .frame(width: mark, height: mark)
-            Text("Xuva")
-                .font(.system(size: textSize, weight: .semibold))
-                .tracking(0.5)
+        let mark = XuvaScale.clamped(28, viewport.width * 0.024, 64)
+        let textSize = XuvaScale.clamped(17, viewport.width * 0.015, 34)
+        HStack(spacing: mark * 0.32) {
+            XuvaIconMark(size: mark)
+            (
+                Text("X").foregroundStyle(XuvaTheme.text)
+                + Text("uva").foregroundStyle(XuvaBrand.wordmarkGradient)
+            )
+            .font(.system(size: textSize, weight: .semibold).width(.condensed))
+            .tracking(-0.4)
         }
-        .foregroundStyle(XuvaTheme.text)
     }
 }
 
-private struct XuvaMark: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let leftX = rect.minX + rect.width * 0.16
-        let midX = rect.minX + rect.width * 0.50
-        let rightX = rect.minX + rect.width * 0.84
-        let topY = rect.minY + rect.height * 0.16
-        let centerY = rect.midY
-        let bottomY = rect.minY + rect.height * 0.84
+/// The Xuva mark — rounded square with two chevrons (left in brand gradient,
+/// right in white) — matching `apps/web/svelte/src/lib/components/Logo.svelte`.
+public struct XuvaIconMark: View {
+    let size: CGFloat
 
-        path.move(to: CGPoint(x: leftX, y: topY))
-        path.addLine(to: CGPoint(x: midX, y: centerY))
-        path.addLine(to: CGPoint(x: leftX, y: bottomY))
-        path.move(to: CGPoint(x: midX, y: topY))
-        path.addLine(to: CGPoint(x: rightX, y: centerY))
-        path.addLine(to: CGPoint(x: midX, y: bottomY))
+    public init(size: CGFloat) {
+        self.size = size
+    }
+
+    public var body: some View {
+        let stroke = max(2.5, size * 0.105)
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .fill(XuvaBrand.gradient.opacity(0.18))
+            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .strokeBorder(XuvaBrand.gradient.opacity(0.50), lineWidth: max(1, size * 0.022))
+
+            ChevronShape(offsetXFraction: 0.292)
+                .stroke(XuvaBrand.gradient, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+                .blur(radius: size * 0.035)
+                .opacity(0.65)
+
+            ChevronShape(offsetXFraction: 0.292)
+                .stroke(XuvaBrand.gradient, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+
+            ChevronShape(offsetXFraction: 0.458)
+                .stroke(XuvaBrand.chevronHighlight, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// A single right-pointing chevron. `offsetXFraction` is the horizontal start
+/// position in the icon's 48-unit grid (matching the SVG `M14 …` / `M22 …`).
+private struct ChevronShape: Shape {
+    /// Where the chevron's leading vertex starts horizontally, as a fraction of the icon.
+    let offsetXFraction: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        // Web SVG uses a 48-unit viewBox with chevrons spanning 14→28 (x) and 12→36 (y).
+        // We rescale into the available rect's interior.
+        let unit = rect.width
+        let topY = rect.minY + unit * 0.250
+        let midY = rect.midY
+        let bottomY = rect.minY + unit * 0.750
+        let startX = rect.minX + unit * offsetXFraction
+        let tipX = startX + unit * 0.292
+
+        var path = Path()
+        path.move(to: CGPoint(x: startX, y: topY))
+        path.addLine(to: CGPoint(x: tipX, y: midY))
+        path.addLine(to: CGPoint(x: startX, y: bottomY))
         return path
     }
 }
