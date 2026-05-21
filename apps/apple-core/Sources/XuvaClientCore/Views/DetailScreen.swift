@@ -49,7 +49,16 @@ private struct DetailContentView: View {
             }
             .background(XuvaTheme.background)
         }
-        .onAppear { focus = .play }
+        .defaultFocus($focus, .play)
+        .onAppear {
+            focus = .play
+            if UserDefaults.standard.bool(forKey: "xuva.dev.autoPlayOnDetail") {
+                Task {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    await store.play()
+                }
+            }
+        }
     }
 
     @ViewBuilder

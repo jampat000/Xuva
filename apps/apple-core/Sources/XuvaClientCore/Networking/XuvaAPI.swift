@@ -71,6 +71,11 @@ public final class XuvaAPI: @unchecked Sendable {
         return try await send("POST", path: "/api/client/playback/start", body: body)
     }
 
+    public func requestStreamToken(mediaSourceId: String, sessionId: String, deviceId: String) async throws -> StreamTokenResponse {
+        let body = StreamTokenRequest(sessionId: sessionId, deviceId: deviceId)
+        return try await send("POST", path: "/api/media-sources/\(mediaSourceId)/stream-token", body: body)
+    }
+
     public func heartbeat(path: String, positionSeconds: Int, isPaused: Bool) async throws {
         let body = PlaybackHeartbeat(positionSeconds: positionSeconds, isPaused: isPaused, completed: false)
         let _: EmptyResponse = try await send("PATCH", path: path, body: body)

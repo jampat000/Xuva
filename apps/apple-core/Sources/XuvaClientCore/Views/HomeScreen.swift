@@ -119,6 +119,7 @@ struct HeroView: View {
     let viewport: CGSize
     @EnvironmentObject private var store: XuvaClientStore
     @FocusState private var heroFocus: HeroFocusItem?
+    @Namespace private var heroNamespace
 
     var body: some View {
         let isCompact = viewport.width < 700
@@ -147,6 +148,7 @@ struct HeroView: View {
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle())
                 .focused($heroFocus, equals: .play)
+                .prefersDefaultFocus(in: heroNamespace)
 
                 Button {
                     Task { await store.open(item: item) }
@@ -172,6 +174,7 @@ struct HeroView: View {
         .padding(.horizontal, XuvaScale.safeHorizontal)
         .padding(.top, viewport.height * 0.18)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .focusScope(heroNamespace)
     }
 
     private var heroEyebrow: String {
