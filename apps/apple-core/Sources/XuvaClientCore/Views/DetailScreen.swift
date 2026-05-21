@@ -28,10 +28,12 @@ public struct DetailScreen: View {
 
 private struct DetailContentView: View {
     @EnvironmentObject private var store: XuvaClientStore
+    @EnvironmentObject private var watchlist: XuvaWatchlist
     let detail: DetailResponse
     @State private var selectedVersionID: String?
     @State private var selectedAudioID: String?
     @State private var selectedSubtitleID: String?
+    @State private var selectedSeasonNumber: Int?
 
     var body: some View {
         GeometryReader { geometry in
@@ -314,9 +316,17 @@ private struct DetailContentView: View {
             }
 
             Button {
-                // Watchlist placeholder
+                guard let id = detail.item?.id, let kind = detail.kind else { return }
+                _ = watchlist.toggle(
+                    id: id, kind: kind,
+                    title: detail.displayTitle,
+                    year: detail.displayYear,
+                    posterUrl: detail.displayPosterURL,
+                    backdropUrl: detail.displayBackdropURL,
+                    genres: detail.displayGenres
+                )
             } label: {
-                Image(systemName: "plus")
+                Image(systemName: inWatchlist ? "checkmark" : "plus")
             }
             .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
 
@@ -413,27 +423,81 @@ private struct DetailContentView: View {
     @ViewBuilder
     private func sectionBody(viewport: CGSize) -> some View {
         VStack(alignment: .leading, spacing: 36) {
-            if let versions = detail.versions, versions.count > 1 {
-                sectionTitle("Versions", viewport: viewport)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 18) {
-                        ForEach(versions, id: \.stableID) { v in
-                            VersionCard(version: v, viewport: viewport, isSelected: v.stableID == selectedVersion?.stableID) {
-                                selectedVersionID = v.stableID
+            if detail.isSeries, let seasons = detail.seasons, !seasons.isEmpty {
+                episodesSection(seasons: seasons, viewport: viewport)
+            } else {
+                if let versions = detail.versions, versions.count > 1 {
+                    sectionTitle("Versions", viewport: viewport)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 18) {
+                            ForEach(versions, id: \.stableID) { v in
+                                VersionCard(version: v, viewport: viewport, isSelected: v.stableID == selectedVersion?.stableID) {
+                                    selectedVersionID = v.stableID
+                                }
                             }
                         }
+                        .padding(.vertical, 12)
                     }
-                    .padding(.vertical, 12)
                 }
-            }
-            if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
-                sectionTitle("Audio & Subtitles", viewport: viewport)
-                HStack(alignment: .top, spacing: 18) {
-                    TrackStack(title: "Audio", systemImage: "speaker.wave.2", tracks: detail.audioTracks, selectedTrackID: $selectedAudioID, allowsNone: false, viewport: viewport)
-                    TrackStack(title: "Subtitles", systemImage: "captions.bubble", tracks: detail.subtitleTracks, selectedTrackID: $selectedSubtitleID, allowsNone: true, viewport: viewport)
+                if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
+                    sectionTitle("Audio & Subtitles", viewport: viewport)
+                    HStack(alignment: .top, spacing: 18) {
+                        TrackStack(title: "Audio", systemImage: "speaker.wave.2", tracks: detail.audioTracks, selectedTrackID: $selectedAudioID, allowsNone: false, viewport: viewport)
+                        TrackStack(title: "Subtitles", systemImage: "captions.bubble", tracks: detail.subtitleTracks, selectedTrackID: $selectedSubtitleID, allowsNone: true, viewport: viewport)
+                    }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func episodesSection(seasons: [SeasonItem], viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 16) {
+                sectionTitle(currentSeason(seasons)?.displayTitle ?? "Episodes", viewport: viewport)
+                Spacer()
+                if seasons.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(seasons) { season in
+                                SeasonChip(
+                                    season: season,
+                                    viewport: viewport,
+                                    isSelected: season.seasonNumber == effectiveSeasonNumber(seasons)
+                                ) {
+                                    selectedSeasonNumber = season.seasonNumber
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: viewport.width * 0.45)
+                }
+            }
+            let episodes = currentSeason(seasons)?.episodes ?? []
+            if episodes.isEmpty {
+                Text("No episodes available yet.")
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport)))
+                    .foregroundStyle(XuvaTheme.muted)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(episodes) { episode in
+                        EpisodeRow(episode: episode, viewport: viewport) {
+                            Task { await store.playEpisode(episode) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func effectiveSeasonNumber(_ seasons: [SeasonItem]) -> Int? {
+        if let s = selectedSeasonNumber { return s }
+        return seasons.first?.seasonNumber
+    }
+
+    private func currentSeason(_ seasons: [SeasonItem]) -> SeasonItem? {
+        guard let n = effectiveSeasonNumber(seasons) else { return seasons.first }
+        return seasons.first { $0.seasonNumber == n } ?? seasons.first
     }
 
     @ViewBuilder
@@ -447,6 +511,11 @@ private struct DetailContentView: View {
     }
 
     // MARK: – Helpers
+
+    private var inWatchlist: Bool {
+        guard let id = detail.item?.id, let kind = detail.kind else { return false }
+        return watchlist.isIn(id: id, kind: kind)
+    }
 
     private var routeDecision: PlaybackDecision? {
         selectedVersion?.decision ?? detail.versions?.first?.decision
@@ -484,6 +553,85 @@ private struct DetailContentView: View {
             mediaSourceId: nil, deviceId: nil, defaultSubtitlesEnabled: false
         )
         store.screen = .player
+    }
+}
+
+private struct SeasonChip: View {
+    let season: SeasonItem
+    let viewport: CGSize
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(season.displayTitle)
+                .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
+                .foregroundStyle(isSelected ? XuvaTheme.background : XuvaTheme.text)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(isSelected ? XuvaTheme.text : XuvaTheme.surface.opacity(0.6), in: Capsule())
+                .overlay(Capsule().stroke(isSelected ? Color.clear : XuvaTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .xuvaFocused(radius: 22)
+    }
+}
+
+private struct EpisodeRow: View {
+    let episode: EpisodeItem
+    let viewport: CGSize
+    let action: () -> Void
+
+    var body: some View {
+        let thumbW: CGFloat = XuvaScale.clamped(160, viewport.width * 0.14, 260)
+        let thumbH = thumbW * 9 / 16
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 18) {
+                ZStack {
+                    LinearGradient(
+                        colors: [XuvaTheme.surface, XuvaTheme.elevated],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    if let url = episode.thumbnailUrl, !url.isEmpty {
+                        RemoteImage(urlString: url, aspectRatio: 16 / 9)
+                            .frame(width: thumbW, height: thumbH)
+                            .clipped()
+                    } else {
+                        Image(systemName: "tv")
+                            .font(.system(size: thumbW * 0.30))
+                            .foregroundStyle(XuvaTheme.mutedText.opacity(0.40))
+                    }
+                }
+                .frame(width: thumbW, height: thumbH)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Text(episode.displayTitle)
+                            .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .semibold))
+                            .foregroundStyle(XuvaTheme.text)
+                            .lineLimit(1)
+                        if let runtime = episode.displayRuntime {
+                            Text("· \(runtime)")
+                                .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
+                                .foregroundStyle(XuvaTheme.mutedText)
+                        }
+                        Spacer()
+                    }
+                    if let overview = episode.overview, !overview.isEmpty {
+                        Text(overview)
+                            .font(.system(size: XuvaScale.metaFontSize(viewport)))
+                            .foregroundStyle(XuvaTheme.secondaryText)
+                            .lineLimit(3)
+                    }
+                }
+            }
+            .padding(14)
+            .background(XuvaTheme.surface.opacity(0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(XuvaTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .xuvaFocused(radius: 16)
     }
 }
 

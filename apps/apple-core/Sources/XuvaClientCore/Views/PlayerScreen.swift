@@ -79,9 +79,9 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         vc.requiresLinearPlayback = false
         vc.delegate = context.coordinator
         vc.view.backgroundColor = .black
-        context.coordinator.attach(to: player)
+        context.coordinator.attach(to: player, resumeAt: playback.clientStartPositionSeconds)
         player.play()
-        print("[XUVA] AVPlayerViewController created url=\(url.absoluteString)")
+        print("[XUVA] AVPlayerViewController created url=\(url.absoluteString) resume=\(playback.clientStartPositionSeconds ?? 0)")
         return vc
     }
 
@@ -115,7 +115,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             self.stopPlayback = stopPlayback
         }
 
-        func attach(to player: AVPlayer) {
+        func attach(to player: AVPlayer, resumeAt seconds: Int? = nil) {
             self.player = player
             heartbeatTask = Task { [weak self] in
                 while !Task.isCancelled {
@@ -134,8 +134,16 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
                     print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
                 }
             }
-            statusObservation = player.currentItem?.observe(\.status, options: [.new]) { item, _ in
+            statusObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
                 print("[XUVA] AVPlayerItem.status -> \(item.status.rawValue) error=\(String(describing: item.error))")
+                if item.status == .readyToPlay, let s = seconds, s > 0 {
+                    let target = CMTime(seconds: Double(s), preferredTimescale: 600)
+                    item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
+                        print("[XUVA] resume seek to \(s)s done")
+                    }
+                    self?.statusObservation?.invalidate()
+                    self?.statusObservation = nil
+                }
             }
         }
 

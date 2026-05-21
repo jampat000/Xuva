@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct HomeScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
+    @EnvironmentObject private var watchlist: XuvaWatchlist
 
     public init() {}
 
@@ -98,7 +99,9 @@ public struct HomeScreen: View {
         case "TV":
             return populatedRows.filter { rowMatches($0, terms: ["tv", "series", "show", "episode"]) }
         case "Watchlist":
-            return populatedRows.filter { rowMatches($0, terms: ["watchlist", "watch list", "saved"]) }
+            let saved = watchlist.asHomeItems()
+            guard !saved.isEmpty else { return [] }
+            return [HomeRow(id: "watchlist-local", title: "Your Watchlist", subtitle: "\(saved.count) saved", kind: "watchlist", items: saved)]
         default:
             return populatedRows
         }

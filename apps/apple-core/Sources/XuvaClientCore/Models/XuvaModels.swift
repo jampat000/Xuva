@@ -90,6 +90,9 @@ public struct HomeItem: Codable, Identifiable, Equatable {
     public var voteAverage: Double?
     public var runtime: String?
     public var runtimeMinutes: Int?
+    /// 0.0–1.0 watched fraction. Server sends as `progressPercent` for
+    /// Continue Watching rows; we decode either spelling so older payloads
+    /// keep working.
     public var progress: Double?
     public var posterUrl: String?
     public var backdropUrl: String?
@@ -103,19 +106,145 @@ public struct HomeItem: Codable, Identifiable, Equatable {
     public var genres: [String]?
     public var overview: String?
     public var director: String?
+    /// For Continue Watching rows the `id` is the mediaSource id; `parentId`
+    /// + `parentKind` point at the canonical movie/series so detail navigation
+    /// uses the right entity.
+    public var parentId: String?
+    public var parentKind: String?
 
     public var rating: Double? { voteAverage }
     public var routeLabel: String? { route }
+    public var resolvedDetailId: String { parentId ?? id }
+    public var resolvedDetailKind: String { parentKind ?? kind ?? "movie" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, title, subtitle, year, voteAverage, runtime, runtimeMinutes
+        case progress
+        case progressPercent
+        case posterUrl, backdropUrl, imageUrl, thumbnailUrl, logoUrl, bannerUrl
+        case mediaSourceId, route, versionCount, genres, overview, director
+        case parentId, parentKind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        subtitle = try c.decodeIfPresent(String.self, forKey: .subtitle)
+        year = try c.decodeIfPresent(Int.self, forKey: .year)
+        voteAverage = try c.decodeIfPresent(Double.self, forKey: .voteAverage)
+        runtime = try c.decodeIfPresent(String.self, forKey: .runtime)
+        runtimeMinutes = try c.decodeIfPresent(Int.self, forKey: .runtimeMinutes)
+        progress = try c.decodeIfPresent(Double.self, forKey: .progress)
+            ?? c.decodeIfPresent(Double.self, forKey: .progressPercent)
+        posterUrl = try c.decodeIfPresent(String.self, forKey: .posterUrl)
+        backdropUrl = try c.decodeIfPresent(String.self, forKey: .backdropUrl)
+        imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+        thumbnailUrl = try c.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        logoUrl = try c.decodeIfPresent(String.self, forKey: .logoUrl)
+        bannerUrl = try c.decodeIfPresent(String.self, forKey: .bannerUrl)
+        mediaSourceId = try c.decodeIfPresent(String.self, forKey: .mediaSourceId)
+        route = try c.decodeIfPresent(String.self, forKey: .route)
+        versionCount = try c.decodeIfPresent(Int.self, forKey: .versionCount)
+        genres = try c.decodeIfPresent([String].self, forKey: .genres)
+        overview = try c.decodeIfPresent(String.self, forKey: .overview)
+        director = try c.decodeIfPresent(String.self, forKey: .director)
+        parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        parentKind = try c.decodeIfPresent(String.self, forKey: .parentKind)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(kind, forKey: .kind)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encodeIfPresent(subtitle, forKey: .subtitle)
+        try c.encodeIfPresent(year, forKey: .year)
+        try c.encodeIfPresent(voteAverage, forKey: .voteAverage)
+        try c.encodeIfPresent(runtime, forKey: .runtime)
+        try c.encodeIfPresent(runtimeMinutes, forKey: .runtimeMinutes)
+        try c.encodeIfPresent(progress, forKey: .progress)
+        try c.encodeIfPresent(posterUrl, forKey: .posterUrl)
+        try c.encodeIfPresent(backdropUrl, forKey: .backdropUrl)
+        try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try c.encodeIfPresent(thumbnailUrl, forKey: .thumbnailUrl)
+        try c.encodeIfPresent(logoUrl, forKey: .logoUrl)
+        try c.encodeIfPresent(bannerUrl, forKey: .bannerUrl)
+        try c.encodeIfPresent(mediaSourceId, forKey: .mediaSourceId)
+        try c.encodeIfPresent(route, forKey: .route)
+        try c.encodeIfPresent(versionCount, forKey: .versionCount)
+        try c.encodeIfPresent(genres, forKey: .genres)
+        try c.encodeIfPresent(overview, forKey: .overview)
+        try c.encodeIfPresent(director, forKey: .director)
+        try c.encodeIfPresent(parentId, forKey: .parentId)
+        try c.encodeIfPresent(parentKind, forKey: .parentKind)
+    }
+
+    public init(id: String, kind: String? = nil, title: String? = nil, subtitle: String? = nil, year: Int? = nil, genres: [String]? = nil, overview: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.year = year
+        self.genres = genres
+        self.overview = overview
+    }
 }
 
 public struct DetailResponse: Codable, Equatable {
     public var defaultMediaSourceId: String?
     public var item: DetailItem?
     public var versions: [MediaVersion]?
+    /// Present for series detail responses — array of seasons each with their
+    /// own episode list. Movies have versions[]; series have seasons[].
+    public var seasons: [SeasonItem]?
     /// Populated client-side after a follow-up call to `/api/metadata/{kind}/{id}`.
     /// The /api/client/* detail endpoint omits cast / writers / studios; we merge them in
     /// once the metadata records resolve so the UI sees a single object.
     public var enrichedMetadata: MetadataRecord?
+
+    public var isSeries: Bool { (seasons?.isEmpty == false) || item?.kind?.lowercased().contains("series") == true }
+}
+
+public struct SeasonItem: Codable, Equatable, Identifiable {
+    public var seasonNumber: Int?
+    public var name: String?
+    public var airDate: String?
+    public var overview: String?
+    public var posterUrl: String?
+    public var backdropUrl: String?
+    public var episodes: [EpisodeItem]?
+
+    public var id: Int { seasonNumber ?? 0 }
+    public var displayTitle: String { name ?? (seasonNumber.map { "Season \($0)" } ?? "Season") }
+}
+
+public struct EpisodeItem: Codable, Equatable, Identifiable {
+    public var id: String
+    public var seasonNumber: Int?
+    public var episodeNumber: Int?
+    public var title: String?
+    public var overview: String?
+    public var airDate: String?
+    public var runtimeMinutes: Int?
+    public var thumbnailUrl: String?
+    public var versionCount: Int?
+    public var versions: [MediaVersion]?
+
+    public var displayTitle: String {
+        if let n = episodeNumber, let t = title { return "E\(n) · \(t)" }
+        if let n = episodeNumber { return "Episode \(n)" }
+        return title ?? "Episode"
+    }
+    public var displayRuntime: String? {
+        guard let m = runtimeMinutes, m > 0 else { return nil }
+        let h = m / 60
+        let rem = m % 60
+        if h > 0 { return "\(h)h \(rem)m" }
+        return "\(rem)m"
+    }
+    public var defaultMediaSourceId: String? { versions?.first?.mediaSourceId }
 }
 
 public struct DetailItem: Codable, Equatable {
@@ -307,6 +436,9 @@ public struct PlaybackStartResponse: Codable, Equatable {
     public var mediaSourceId: String?
     public var deviceId: String?
     public var defaultSubtitlesEnabled: Bool?
+    /// Filled in by the client (not the server) — the requested resume
+    /// position. AVPlayer seeks to this once the player item is ready.
+    public var clientStartPositionSeconds: Int?
 }
 
 public struct PlaybackRoute: Codable, Equatable {
