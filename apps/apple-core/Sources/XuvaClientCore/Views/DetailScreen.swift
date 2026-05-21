@@ -10,16 +10,18 @@ public struct DetailScreen: View {
             DetailContentView(detail: detail)
                 .transition(.opacity)
         } else {
-            VStack(spacing: 16) {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(.white)
-                Text("Loading title…")
-                    .font(.system(size: XuvaScale.bodyFontSize()))
-                    .foregroundStyle(XuvaTheme.muted)
+            GeometryReader { geometry in
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(.white)
+                    Text("Loading title…")
+                        .font(.system(size: XuvaScale.bodyFontSize(geometry.size)))
+                        .foregroundStyle(XuvaTheme.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(XuvaTheme.background)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(XuvaTheme.background)
         }
     }
 }
@@ -34,17 +36,18 @@ private struct DetailContentView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let viewport = geometry.size
             ZStack(alignment: .top) {
-                backdropLayer(geometry: geometry)
+                backdropLayer(viewport: viewport)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        topBar
-                            .padding(.top, XuvaScale.safeTop)
-                        heroBlock(viewport: geometry.size)
-                        Spacer().frame(height: XuvaScale.sectionSpacing)
-                        bodySections(viewport: geometry.size)
+                        topBar(viewport: viewport)
+                            .padding(.top, XuvaScale.safeTop(viewport))
+                        heroBlock(viewport: viewport)
+                        Spacer().frame(height: XuvaScale.sectionSpacing(viewport))
+                        bodySections(viewport: viewport)
                     }
-                    .padding(.bottom, 120)
+                    .padding(.bottom, viewport.height * 0.12)
                 }
             }
             .background(XuvaTheme.background)
@@ -62,11 +65,11 @@ private struct DetailContentView: View {
     }
 
     @ViewBuilder
-    private func backdropLayer(geometry: GeometryProxy) -> some View {
-        let height = geometry.size.height * XuvaScale.detailBackdropFraction() + 80
+    private func backdropLayer(viewport: CGSize) -> some View {
+        let height = viewport.height * XuvaScale.detailBackdropFraction(viewport) + 80
         ZStack {
             RemoteImage(urlString: detail.displayBackdropURL, aspectRatio: 16 / 9)
-                .frame(width: geometry.size.width, height: height)
+                .frame(width: viewport.width, height: height)
                 .clipped()
                 .opacity(0.5)
             LinearGradient(
@@ -80,37 +83,37 @@ private struct DetailContentView: View {
                 endPoint: .trailing
             )
         }
-        .frame(width: geometry.size.width, height: height)
+        .frame(width: viewport.width, height: height)
         .ignoresSafeArea()
     }
 
-    private var topBar: some View {
+    private func topBar(viewport: CGSize) -> some View {
         HStack(spacing: 16) {
             Button {
                 store.backToHome()
             } label: {
                 Image(systemName: "chevron.left")
             }
-            .buttonStyle(XuvaIconButtonStyle())
+            .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
             .focused($focus, equals: .back)
 
-            XuvaLogo()
+            XuvaLogo(viewport: viewport)
             Spacer()
         }
-        .padding(.horizontal, XuvaScale.safeHorizontal)
-        .frame(height: XuvaScale.navBarHeight())
+        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+        .frame(height: XuvaScale.navBarHeight(viewport))
     }
 
     @ViewBuilder
     private func heroBlock(viewport: CGSize) -> some View {
-        let isCompact = viewport.width < 700
-        VStack(alignment: .leading, spacing: 22) {
+        let isCompact = viewport.width < 600
+        VStack(alignment: .leading, spacing: isCompact ? 14 : 22) {
             HStack(spacing: 14) {
                 Rectangle()
                     .fill(XuvaTheme.text.opacity(0.40))
                     .frame(width: 36, height: 1)
                 Text(eyebrow)
-                    .font(.system(size: XuvaScale.eyebrowFontSize(), weight: .semibold))
+                    .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
                     .tracking(5.6)
                     .foregroundStyle(XuvaTheme.mutedText)
             }
@@ -119,39 +122,39 @@ private struct DetailContentView: View {
                 RemoteLogo(
                     urlString: logo,
                     fallbackTitle: detail.displayTitle,
-                    maxWidth: XuvaScale.heroLogoMaxWidth(viewportWidth: viewport.width),
-                    maxHeight: XuvaScale.heroLogoMaxHeight(viewportWidth: viewport.width)
+                    maxWidth: XuvaScale.heroLogoMaxWidth(viewport),
+                    maxHeight: XuvaScale.heroLogoMaxHeight(viewport)
                 )
             } else {
                 Text(detail.displayTitle)
-                    .font(.system(size: XuvaScale.heroTitleSize(viewportWidth: viewport.width), weight: .bold))
+                    .font(.system(size: XuvaScale.heroTitleSize(viewport), weight: .bold))
                     .foregroundStyle(XuvaTheme.text)
                     .lineLimit(2)
                     .minimumScaleFactor(0.6)
-                    .frame(maxWidth: viewport.width * 0.6, alignment: .leading)
+                    .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
             }
 
-            metaLine
+            metaLine(viewport: viewport)
             if let tagline = detail.displayTagline, !tagline.isEmpty {
                 Text(tagline)
                     .italic()
-                    .font(.system(size: XuvaScale.bodyFontSize() - 2))
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport) - 2))
                     .foregroundStyle(XuvaTheme.mutedText)
             }
             Text(detail.displayOverview)
-                .font(.system(size: XuvaScale.bodyFontSize()))
+                .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                 .foregroundStyle(XuvaTheme.secondaryText)
                 .lineLimit(isCompact ? 6 : 4)
-                .frame(maxWidth: viewport.width * 0.6, alignment: .leading)
-            actionBar
+                .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+            actionBar(viewport: viewport)
         }
-        .padding(.horizontal, XuvaScale.safeHorizontal)
-        .padding(.top, viewport.height * 0.10)
+        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+        .padding(.top, viewport.height * 0.06)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
-    private var actionBar: some View {
+    private func actionBar(viewport: CGSize) -> some View {
         HStack(spacing: 14) {
             Button {
                 Task {
@@ -164,33 +167,32 @@ private struct DetailContentView: View {
             } label: {
                 Label("Play", systemImage: "play.fill")
             }
-            .buttonStyle(XuvaPrimaryButtonStyle())
+            .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
             .focused($focus, equals: .play)
 
             if let trailer = detail.displayTrailerPath, !trailer.isEmpty {
                 Button {
-                    // Trailer playback can route through the same player using a synthetic playback
                     Task { await playTrailer() }
                 } label: {
                     Label("Trailer", systemImage: "film")
                 }
-                .buttonStyle(XuvaSecondaryButtonStyle())
+                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
                 .focused($focus, equals: .trailer)
             }
 
             Button {
-                // Reserved for watchlist; currently no-op
+                // Watchlist placeholder
             } label: {
                 Image(systemName: "plus")
             }
-            .buttonStyle(XuvaIconButtonStyle())
+            .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
             .focused($focus, equals: .add)
 
-            RouteBadge(decision: routeDecision)
+            RouteBadge(decision: routeDecision, viewport: viewport)
         }
     }
 
-    private var metaLine: some View {
+    private func metaLine(viewport: CGSize) -> some View {
         HStack(spacing: 12) {
             ForEach(metaParts, id: \.self) { part in
                 Text(part)
@@ -201,7 +203,7 @@ private struct DetailContentView: View {
                 }
             }
         }
-        .font(.system(size: XuvaScale.metaFontSize(), weight: .semibold))
+        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
         .foregroundStyle(XuvaTheme.secondaryText)
     }
 
@@ -218,26 +220,26 @@ private struct DetailContentView: View {
 
     @ViewBuilder
     private func bodySections(viewport: CGSize) -> some View {
-        VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing) {
+        VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
             if let versions = detail.versions, !versions.isEmpty {
-                versionsSection(versions: versions)
+                versionsSection(versions: versions, viewport: viewport)
             }
             if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
-                tracksSection
+                tracksSection(viewport: viewport)
             }
             if !detail.displayDirectors.isEmpty {
-                creditsSection
+                creditsSection(viewport: viewport)
             }
         }
     }
 
     @ViewBuilder
-    private func versionsSection(versions: [MediaVersion]) -> some View {
-        SectionContainer(title: "Versions", subtitle: "Choose source quality") {
+    private func versionsSection(versions: [MediaVersion], viewport: CGSize) -> some View {
+        SectionContainer(title: "Versions", subtitle: "Choose source quality", viewport: viewport) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 18) {
                     ForEach(versions, id: \.stableID) { version in
-                        VersionCard(version: version, isSelected: version.stableID == selectedVersion?.stableID) {
+                        VersionCard(version: version, viewport: viewport, isSelected: version.stableID == selectedVersion?.stableID) {
                             selectedVersionID = version.stableID
                         }
                     }
@@ -248,33 +250,35 @@ private struct DetailContentView: View {
     }
 
     @ViewBuilder
-    private var tracksSection: some View {
-        SectionContainer(title: "Audio & Subtitles", subtitle: "Language and captions") {
+    private func tracksSection(viewport: CGSize) -> some View {
+        SectionContainer(title: "Audio & Subtitles", subtitle: "Language and captions", viewport: viewport) {
             HStack(alignment: .top, spacing: 18) {
                 TrackStack(
                     title: "Audio",
                     systemImage: "speaker.wave.2",
                     tracks: detail.audioTracks,
                     selectedTrackID: $selectedAudioID,
-                    allowsNone: false
+                    allowsNone: false,
+                    viewport: viewport
                 )
                 TrackStack(
                     title: "Subtitles",
                     systemImage: "captions.bubble",
                     tracks: detail.subtitleTracks,
                     selectedTrackID: $selectedSubtitleID,
-                    allowsNone: true
+                    allowsNone: true,
+                    viewport: viewport
                 )
             }
         }
     }
 
     @ViewBuilder
-    private var creditsSection: some View {
-        SectionContainer(title: "Direction", subtitle: "Credits") {
+    private func creditsSection(viewport: CGSize) -> some View {
+        SectionContainer(title: "Direction", subtitle: "Credits", viewport: viewport) {
             HStack(spacing: 10) {
                 ForEach(detail.displayDirectors.prefix(6), id: \.self) { person in
-                    MediaPill(text: person, systemImage: "person.fill", tint: XuvaTheme.secondaryText)
+                    MediaPill(text: person, systemImage: "person.fill", tint: XuvaTheme.secondaryText, viewport: viewport)
                 }
             }
         }
@@ -314,7 +318,6 @@ private struct DetailContentView: View {
     }
 
     private func playTrailer() async {
-        // Trailer is a server-served MP4 path; route through the same player as a one-off URL
         guard let trailer = detail.displayTrailerPath, !trailer.isEmpty,
               let api = store.api,
               let url = api.resolvedURL(trailer) else { return }
@@ -327,6 +330,7 @@ private struct DetailContentView: View {
             decision: nil,
             route: PlaybackRoute(url: url.absoluteString, manifestUrl: nil, protocolValue: "direct", route: "trailer", status: "ready", decision: nil),
             mediaSourceId: nil,
+            deviceId: nil,
             defaultSubtitlesEnabled: false
         )
         store.screen = .player
@@ -344,11 +348,13 @@ private enum DetailFocus: Hashable {
 private struct SectionContainer<Content: View>: View {
     let title: String
     let subtitle: String
+    let viewport: CGSize
     let content: () -> Content
 
-    init(title: String, subtitle: String, @ViewBuilder content: @escaping () -> Content) {
+    init(title: String, subtitle: String, viewport: CGSize, @ViewBuilder content: @escaping () -> Content) {
         self.title = title
         self.subtitle = subtitle
+        self.viewport = viewport
         self.content = content
     }
 
@@ -356,20 +362,21 @@ private struct SectionContainer<Content: View>: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: XuvaScale.sectionTitleSize(), weight: .bold))
+                    .font(.system(size: XuvaScale.sectionTitleSize(viewport), weight: .bold))
                     .foregroundStyle(XuvaTheme.text)
                 Text(subtitle)
-                    .font(.system(size: XuvaScale.metaFontSize() - 2, weight: .medium))
+                    .font(.system(size: XuvaScale.metaFontSize(viewport) - 2, weight: .medium))
                     .foregroundStyle(XuvaTheme.mutedText)
             }
             content()
         }
-        .padding(.horizontal, XuvaScale.safeHorizontal)
+        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
     }
 }
 
 private struct VersionCard: View {
     let version: MediaVersion
+    let viewport: CGSize
     let isSelected: Bool
     let select: () -> Void
 
@@ -378,27 +385,27 @@ private struct VersionCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
                     Image(systemName: "film.stack")
-                        .font(.system(size: XuvaScale.platform == .tv ? 22 : 16, weight: .semibold))
+                        .font(.system(size: XuvaScale.bodyFontSize(viewport) * 0.9, weight: .semibold))
                         .foregroundStyle(XuvaTheme.action)
                     Spacer()
                     if isSelected {
-                        MediaPill(text: "Selected", systemImage: "checkmark.circle.fill", tint: XuvaTheme.focus)
+                        MediaPill(text: "Selected", systemImage: "checkmark.circle.fill", tint: XuvaTheme.focus, viewport: viewport)
                     } else {
-                        RouteBadge(decision: version.decision)
+                        RouteBadge(decision: version.decision, viewport: viewport)
                     }
                 }
                 Text(qualityTitle)
-                    .font(.system(size: XuvaScale.platform == .tv ? 24 : 17, weight: .bold))
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport) + 2, weight: .bold))
                     .foregroundStyle(XuvaTheme.text)
                     .lineLimit(2)
                 Text(subtitleParts.joined(separator: " · "))
-                    .font(.system(size: XuvaScale.platform == .tv ? 18 : 13))
+                    .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
                     .foregroundStyle(XuvaTheme.muted)
                     .lineLimit(2)
                 Spacer(minLength: 0)
                 if let bitrate = version.displayBitrate {
                     Text(bitrate)
-                        .font(.system(size: XuvaScale.platform == .tv ? 16 : 12, weight: .semibold))
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 4, weight: .semibold))
                         .foregroundStyle(XuvaTheme.mutedText)
                 }
             }
@@ -424,19 +431,11 @@ private struct VersionCard: View {
     }
 
     private var cardWidth: CGFloat {
-        #if os(tvOS)
-        return 460
-        #else
-        return 300
-        #endif
+        XuvaScale.clamped(280, viewport.width * 0.28, 540)
     }
 
     private var cardHeight: CGFloat {
-        #if os(tvOS)
-        return 220
-        #else
-        return 178
-        #endif
+        XuvaScale.clamped(168, viewport.height * 0.20, 240)
     }
 }
 
@@ -446,27 +445,29 @@ private struct TrackStack: View {
     let tracks: [MediaTrack]
     @Binding var selectedTrackID: String?
     let allowsNone: Bool
+    let viewport: CGSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: XuvaScale.platform == .tv ? 24 : 17, weight: .bold))
+                .font(.system(size: XuvaScale.bodyFontSize(viewport) + 2, weight: .bold))
                 .foregroundStyle(XuvaTheme.text)
             if allowsNone {
-                TrackButton(title: "Off", subtitle: "No subtitle track", isSelected: selectedTrackID == nil) {
+                TrackButton(title: "Off", subtitle: "No subtitle track", isSelected: selectedTrackID == nil, viewport: viewport) {
                     selectedTrackID = nil
                 }
             }
             if tracks.isEmpty {
                 Text("No tracks available")
-                    .font(.system(size: XuvaScale.platform == .tv ? 18 : 14))
+                    .font(.system(size: XuvaScale.metaFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
             } else {
                 ForEach(tracks.prefix(6), id: \.stableID) { track in
                     TrackButton(
                         title: track.title ?? track.language?.uppercased() ?? "Track \(track.index ?? 0)",
                         subtitle: [track.codec?.uppercased(), track.channels.map { "\($0)ch" }, track.external == true ? "External" : nil, track.default == true ? "Default" : nil, track.forced == true ? "Forced" : nil].compactMap { $0 }.joined(separator: " · "),
-                        isSelected: selectedTrackID == track.stableID || (!allowsNone && selectedTrackID == nil && track.default == true)
+                        isSelected: selectedTrackID == track.stableID || (!allowsNone && selectedTrackID == nil && track.default == true),
+                        viewport: viewport
                     ) {
                         selectedTrackID = track.stableID
                     }
@@ -484,6 +485,7 @@ private struct TrackButton: View {
     let title: String
     let subtitle: String
     let isSelected: Bool
+    let viewport: CGSize
     let select: () -> Void
 
     var body: some View {
@@ -494,12 +496,12 @@ private struct TrackButton: View {
                     .frame(width: 9, height: 9)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: XuvaScale.platform == .tv ? 20 : 15, weight: .semibold))
+                        .font(.system(size: XuvaScale.bodyFontSize(viewport) - 2, weight: .semibold))
                         .foregroundStyle(XuvaTheme.text)
                         .lineLimit(1)
                     if !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.system(size: XuvaScale.platform == .tv ? 16 : 12))
+                            .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
                             .foregroundStyle(XuvaTheme.muted)
                             .lineLimit(1)
                     }
@@ -507,7 +509,7 @@ private struct TrackButton: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: XuvaScale.platform == .tv ? 18 : 13, weight: .bold))
+                        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .bold))
                         .foregroundStyle(XuvaTheme.focus)
                 }
             }

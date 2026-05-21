@@ -9,17 +9,17 @@ public struct HomeScreen: View {
 
     public var body: some View {
         GeometryReader { geometry in
+            let viewport = geometry.size
             ZStack(alignment: .top) {
-                heroBackdrop(geometry: geometry)
+                heroBackdrop(viewport: viewport)
                 ScrollView {
-                    VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing) {
-                        MediaTopBar(activeSection: $activeSection)
-                            .padding(.top, XuvaScale.safeTop)
-                        HeroView(item: hero, heroes: heroes, selectedIndex: $heroIndex, viewport: geometry.size)
-                            .padding(.top, 8)
-                        rowsSection(geometry: geometry)
+                    VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
+                        MediaTopBar(activeSection: $activeSection, viewport: viewport)
+                            .padding(.top, XuvaScale.safeTop(viewport))
+                        HeroView(item: hero, heroes: heroes, selectedIndex: $heroIndex, viewport: viewport)
+                        rowsSection(viewport: viewport)
                     }
-                    .padding(.bottom, 120)
+                    .padding(.bottom, viewport.height * 0.12)
                 }
             }
             .background(XuvaTheme.background)
@@ -27,11 +27,11 @@ public struct HomeScreen: View {
     }
 
     @ViewBuilder
-    private func heroBackdrop(geometry: GeometryProxy) -> some View {
-        let height = geometry.size.height * XuvaScale.heroVerticalFraction + 80
+    private func heroBackdrop(viewport: CGSize) -> some View {
+        let height = viewport.height * XuvaScale.heroVerticalFraction(viewport) + 80
         ZStack {
             RemoteImage(urlString: hero.backdropUrl ?? hero.imageUrl, aspectRatio: 16 / 9)
-                .frame(width: geometry.size.width, height: height)
+                .frame(width: viewport.width, height: height)
                 .clipped()
                 .opacity(0.55)
             LinearGradient(
@@ -45,19 +45,19 @@ public struct HomeScreen: View {
                 endPoint: .trailing
             )
         }
-        .frame(width: geometry.size.width, height: height)
+        .frame(width: viewport.width, height: height)
         .ignoresSafeArea()
     }
 
     @ViewBuilder
-    private func rowsSection(geometry: GeometryProxy) -> some View {
+    private func rowsSection(viewport: CGSize) -> some View {
         if visibleRows.isEmpty {
-            EmptyLibraryView(section: activeSection)
-                .padding(.horizontal, XuvaScale.safeHorizontal)
+            EmptyLibraryView(section: activeSection, viewport: viewport)
+                .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         } else {
-            VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing) {
+            VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
                 ForEach(visibleRows) { row in
-                    MediaRowView(row: row) { item in
+                    MediaRowView(row: row, viewport: viewport) { item in
                         Task { await store.open(item: item) }
                     }
                 }
@@ -122,40 +122,40 @@ struct HeroView: View {
     @Namespace private var heroNamespace
 
     var body: some View {
-        let isCompact = viewport.width < 700
-        VStack(alignment: .leading, spacing: isCompact ? 16 : 22) {
+        let isCompact = viewport.width < 600
+        VStack(alignment: .leading, spacing: isCompact ? 14 : 22) {
             HStack(spacing: 14) {
                 Rectangle()
                     .fill(XuvaTheme.text.opacity(0.40))
                     .frame(width: 36, height: 1)
                 Text(heroEyebrow)
-                    .font(.system(size: XuvaScale.eyebrowFontSize(), weight: .semibold))
+                    .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
                     .tracking(5.6)
                     .foregroundStyle(XuvaTheme.mutedText)
             }
             HeroTitle(item: item, viewport: viewport)
-            HomeMetaLine(item: item)
+            HomeMetaLine(item: item, viewport: viewport)
             Text(item.overview ?? item.subtitle ?? "")
-                .font(.system(size: XuvaScale.bodyFontSize()))
+                .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                 .foregroundStyle(XuvaTheme.secondaryText)
                 .lineLimit(isCompact ? 4 : 3)
-                .frame(maxWidth: viewport.width * 0.55, alignment: .leading)
+                .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
             HStack(spacing: 14) {
                 Button {
                     Task { await store.open(item: item) }
                 } label: {
                     Label(primaryActionTitle, systemImage: "play.fill")
                 }
-                .buttonStyle(XuvaPrimaryButtonStyle())
+                .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
                 .focused($heroFocus, equals: .play)
-                .prefersDefaultFocus(in: heroNamespace)
+                .modifier(PreferredDefaultFocusModifier(namespace: heroNamespace))
 
                 Button {
                     Task { await store.open(item: item) }
                 } label: {
                     Label("More info", systemImage: "info.circle")
                 }
-                .buttonStyle(XuvaSecondaryButtonStyle())
+                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
                 .focused($heroFocus, equals: .info)
 
                 #if !os(tvOS)
@@ -164,17 +164,17 @@ struct HeroView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .buttonStyle(XuvaIconButtonStyle())
+                .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
                 #endif
             }
             .onAppear { heroFocus = .play }
             heroDots
                 .padding(.top, 8)
         }
-        .padding(.horizontal, XuvaScale.safeHorizontal)
-        .padding(.top, viewport.height * 0.18)
+        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+        .padding(.top, viewport.height * XuvaScale.heroContentTopFraction(viewport))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .focusScope(heroNamespace)
+        .modifier(FocusScopeModifier(namespace: heroNamespace))
     }
 
     private var heroEyebrow: String {
@@ -192,7 +192,7 @@ struct HeroView: View {
         if heroes.count > 1 {
             HStack(spacing: 12) {
                 Text("FEATURED")
-                    .font(.system(size: XuvaScale.eyebrowFontSize() - 2, weight: .semibold))
+                    .font(.system(size: XuvaScale.eyebrowFontSize(viewport) - 2, weight: .semibold))
                     .tracking(2.8)
                     .foregroundStyle(XuvaTheme.mutedText)
                 ForEach(Array(heroes.enumerated()), id: \.element.id) { index, hero in
@@ -220,8 +220,8 @@ private struct HeroTitle: View {
             RemoteLogo(
                 urlString: logo,
                 fallbackTitle: item.title ?? "Your cinema awaits",
-                maxWidth: XuvaScale.heroLogoMaxWidth(viewportWidth: viewport.width),
-                maxHeight: XuvaScale.heroLogoMaxHeight(viewportWidth: viewport.width)
+                maxWidth: XuvaScale.heroLogoMaxWidth(viewport),
+                maxHeight: XuvaScale.heroLogoMaxHeight(viewport)
             )
         } else {
             heroTextTitle
@@ -231,7 +231,7 @@ private struct HeroTitle: View {
     private var heroTextTitle: Text {
         let title = item.title ?? "Your cinema awaits"
         let parts = title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        let size = XuvaScale.heroTitleSize(viewportWidth: viewport.width)
+        let size = XuvaScale.heroTitleSize(viewport)
         guard parts.count > 1, let last = parts.last else {
             return Text(title)
                 .font(.system(size: size, weight: .bold))
@@ -252,34 +252,57 @@ private enum HeroFocusItem: Hashable {
     case info
 }
 
+private struct PreferredDefaultFocusModifier: ViewModifier {
+    let namespace: Namespace.ID
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.prefersDefaultFocus(in: namespace)
+        #else
+        content
+        #endif
+    }
+}
+
+private struct FocusScopeModifier: ViewModifier {
+    let namespace: Namespace.ID
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.focusScope(namespace)
+        #else
+        content
+        #endif
+    }
+}
+
 struct MediaRowView: View {
     let row: HomeRow
+    let viewport: CGSize
     let action: (HomeItem) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: XuvaScale.rowSpacing) {
+        VStack(alignment: .leading, spacing: XuvaScale.rowSpacing(viewport)) {
             VStack(alignment: .leading, spacing: 6) {
                 if let eyebrow = rowEyebrow {
                     Text(eyebrow)
-                        .font(.system(size: XuvaScale.eyebrowFontSize(), weight: .semibold))
+                        .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
                         .tracking(3.6)
                         .foregroundStyle(XuvaTheme.mutedText)
                 }
                 Text(row.title ?? "Library")
-                    .font(.system(size: XuvaScale.sectionTitleSize(), weight: .bold))
+                    .font(.system(size: XuvaScale.sectionTitleSize(viewport), weight: .bold))
                     .foregroundStyle(XuvaTheme.text)
             }
-            .padding(.horizontal, XuvaScale.safeHorizontal)
+            .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: XuvaScale.posterRowSpacing()) {
+                HStack(spacing: XuvaScale.posterRowSpacing(viewport)) {
                     ForEach(Array((row.items ?? []).enumerated()), id: \.element.id) { index, item in
-                        PosterTile(item: item, ranked: isRanked, rank: index + 1, wide: isWideRow) {
+                        PosterTile(item: item, viewport: viewport, ranked: isRanked, rank: index + 1, wide: isWideRow) {
                             action(item)
                         }
                     }
                 }
-                .padding(.horizontal, XuvaScale.safeHorizontal)
+                .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
                 .padding(.vertical, 16)
             }
         }
@@ -310,14 +333,15 @@ struct MediaRowView: View {
 
 struct EmptyLibraryView: View {
     let section: String
+    let viewport: CGSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: "film.stack")
-                .font(.system(size: XuvaScale.bodyFontSize() + 4, weight: .bold))
+                .font(.system(size: XuvaScale.bodyFontSize(viewport) + 4, weight: .bold))
                 .foregroundStyle(XuvaTheme.text)
             Text(message)
-                .font(.system(size: XuvaScale.bodyFontSize()))
+                .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                 .foregroundStyle(XuvaTheme.muted)
         }
         .padding(28)
@@ -345,63 +369,42 @@ struct EmptyLibraryView: View {
 struct MediaTopBar: View {
     @EnvironmentObject private var store: XuvaClientStore
     @Binding var activeSection: String
+    let viewport: CGSize
 
     private var sections: [String] {
-        #if os(tvOS)
-        return ["Home", "Movies", "TV", "Watchlist"]
-        #else
-        return ["Home", "Movies", "TV", "Watchlist"]
-        #endif
+        ["Home", "Movies", "TV", "Watchlist"]
     }
 
     var body: some View {
+        let showInlineNav = viewport.width >= 700
         HStack(spacing: 0) {
-            XuvaLogo()
-                .padding(.trailing, XuvaScale.platform == .tv ? 64 : 24)
-            #if os(tvOS)
-            HStack(spacing: 8) {
-                ForEach(sections, id: \.self) { section in
-                    TopNavPill(title: section, isActive: activeSection == section) {
-                        activeSection = section
-                    }
-                }
-            }
-            #else
-            if compactWidth {
-                EmptyView()
-            } else {
-                HStack(spacing: 4) {
+            XuvaLogo(viewport: viewport)
+                .padding(.trailing, showInlineNav ? viewport.width * 0.04 : 12)
+            if showInlineNav {
+                HStack(spacing: 6) {
                     ForEach(sections, id: \.self) { section in
-                        TopNavPill(title: section, isActive: activeSection == section) {
+                        TopNavPill(title: section, viewport: viewport, isActive: activeSection == section) {
                             activeSection = section
                         }
                     }
                 }
             }
-            #endif
             Spacer()
             Button {
                 Task { await store.loadHome() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .buttonStyle(XuvaIconButtonStyle())
+            .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
         }
-        .padding(.horizontal, XuvaScale.safeHorizontal)
-        .frame(height: XuvaScale.navBarHeight())
-    }
-
-    private var compactWidth: Bool {
-        #if os(tvOS)
-        return false
-        #else
-        return true
-        #endif
+        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+        .frame(height: XuvaScale.navBarHeight(viewport))
     }
 }
 
 struct TopNavPill: View {
     let title: String
+    let viewport: CGSize
     var isActive = false
     var action: (() -> Void)?
 
@@ -410,10 +413,10 @@ struct TopNavPill: View {
             action?()
         } label: {
             Text(title)
-                .font(.system(size: XuvaScale.platform == .tv ? 24 : 15, weight: .medium))
+                .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .medium))
                 .foregroundStyle(isActive ? XuvaTheme.text : XuvaTheme.mutedText)
-                .padding(.horizontal, XuvaScale.platform == .tv ? 26 : 18)
-                .frame(height: XuvaScale.platform == .tv ? 54 : 36)
+                .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport) * 0.75)
+                .frame(height: XuvaScale.buttonHeight(viewport) * 0.7)
                 .background(isActive ? XuvaTheme.focus.opacity(0.10) : Color.clear, in: Capsule())
                 .overlay(Capsule().stroke(isActive ? XuvaTheme.focus.opacity(0.30) : Color.clear))
         }
@@ -423,6 +426,7 @@ struct TopNavPill: View {
 
 private struct HomeMetaLine: View {
     let item: HomeItem
+    let viewport: CGSize
 
     var body: some View {
         HStack(spacing: 12) {
@@ -435,7 +439,7 @@ private struct HomeMetaLine: View {
                 }
             }
         }
-        .font(.system(size: XuvaScale.metaFontSize(), weight: .semibold))
+        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
         .foregroundStyle(XuvaTheme.secondaryText)
     }
 

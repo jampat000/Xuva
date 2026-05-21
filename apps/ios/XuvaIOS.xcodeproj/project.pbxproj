@@ -9,11 +9,13 @@
 /* Begin PBXBuildFile section */
 		IO0000000000000000000010 /* XuvaIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = IO0000000000000000000006 /* XuvaIOSApp.swift */; };
 		IO0000000000000000000011 /* XuvaClientCore in Frameworks */ = {isa = PBXBuildFile; productRef = IO0000000000000000000020 /* XuvaClientCore */; };
+		IO0000000000000000000030 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = IO0000000000000000000031 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		IO0000000000000000000001 /* Xuva iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Xuva iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		IO0000000000000000000006 /* XuvaIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XuvaIOSApp.swift; sourceTree = "<group>"; };
+		IO0000000000000000000031 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,6 +50,7 @@
 			isa = PBXGroup;
 			children = (
 				IO0000000000000000000006 /* XuvaIOSApp.swift */,
+				IO0000000000000000000031 /* Assets.xcassets */,
 			);
 			path = Sources/XuvaIOSApp;
 			sourceTree = "<group>";
@@ -61,6 +64,7 @@
 			buildPhases = (
 				IO0000000000000000000008 /* Sources */,
 				IO0000000000000000000009 /* Frameworks */,
+				IO0000000000000000000032 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -110,6 +114,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		IO0000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				IO0000000000000000000030 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		IO0000000000000000000008 /* Sources */ = {

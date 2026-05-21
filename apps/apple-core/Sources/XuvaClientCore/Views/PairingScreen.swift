@@ -7,63 +7,58 @@ public struct PairingScreen: View {
     public init() {}
 
     public var body: some View {
-        pairingBody
-    }
-
-    private var pairingBody: some View {
         GeometryReader { geometry in
-            ScrollView {
-                let isCompact = geometry.size.width < 700
-                let controls: AnyLayout = if isCompact {
-                    AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
-                } else {
-                    AnyLayout(HStackLayout(spacing: 14))
-                }
+            let viewport = geometry.size
+            let isCompact = viewport.width < 700
+            let controls: AnyLayout = isCompact
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+                : AnyLayout(HStackLayout(spacing: 14))
 
-                VStack(alignment: .leading, spacing: isCompact ? 20 : 24) {
-                    XuvaLogo()
+            ScrollView {
+                VStack(alignment: .leading, spacing: isCompact ? 18 : 28) {
+                    XuvaLogo(viewport: viewport)
                     Text("Connect to Xuva")
-                        .font(.system(size: titleSize(for: geometry.size), weight: .bold, design: .rounded))
+                        .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.55, weight: .bold))
                         .foregroundStyle(XuvaTheme.text)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.72)
-                        .frame(maxWidth: isCompact ? .infinity : 760, alignment: .leading)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
                     Text(introCopy)
-                        .font(isCompact ? .body : .title2.weight(.medium))
+                        .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                         .foregroundStyle(XuvaTheme.muted)
-                        .frame(maxWidth: isCompact ? .infinity : 720, alignment: .leading)
+                        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
 
                     controls {
-                        serverURLControl
+                        serverURLControl(viewport: viewport)
 
                         Button {
                             Task { await store.connect() }
                         } label: {
                             buttonLabel(title: store.isBusy ? "Connecting..." : "Connect", systemImage: store.isBusy ? "hourglass" : "play.fill")
                         }
-                        .xuvaTVPrimaryActionStyle()
+                        .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
                         .focused($focusedControl, equals: .connect)
                         .xuvaDefaultKeyboardAction()
                         .disabled(store.isBusy)
                     }
-                    .frame(maxWidth: isCompact ? .infinity : 1280, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     if store.bootstrap != nil {
-                        pairingCard
+                        pairingCard(viewport: viewport)
                     }
 
-                    connectionHint
+                    connectionHint(viewport: viewport)
 
                     if let error = store.errorMessage {
                         Text(error)
-                            .font(.callout)
+                            .font(.system(size: XuvaScale.metaFontSize(viewport)))
                             .foregroundStyle(XuvaTheme.danger)
                             .padding(16)
                             .background(XuvaTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                 }
-                .padding(.horizontal, horizontalPadding(for: geometry.size))
-                .padding(.vertical, isCompact ? 48 : 86)
+                .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                .padding(.vertical, isCompact ? 36 : viewport.height * 0.10)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -75,8 +70,7 @@ public struct PairingScreen: View {
         }
     }
 
-    @ViewBuilder
-    private var serverURLControl: some View {
+    private func serverURLControl(viewport: CGSize) -> some View {
         TextField("Xuva address", text: $store.serverText)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
@@ -86,31 +80,33 @@ public struct PairingScreen: View {
             .onSubmit {
                 Task { await store.connect() }
             }
-            .font(.system(size: tvControlFontSize, weight: .medium))
+            .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .medium))
             .foregroundStyle(XuvaTheme.text)
             .padding(.horizontal, 22)
-            .frame(height: tvControlHeight)
+            .frame(height: XuvaScale.buttonHeight(viewport))
             .background(Color.white.opacity(0.06), in: Capsule(style: .continuous))
             .overlay(Capsule(style: .continuous).stroke(XuvaTheme.hairline))
     }
 
-    private var pairingCard: some View {
+    private func pairingCard(viewport: CGSize) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             Label(store.bootstrap?.server?.name ?? "Xuva found", systemImage: "checkmark.seal.fill")
-                .font(.headline)
+                .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .bold))
                 .foregroundStyle(XuvaTheme.good)
 
             if let code = store.pairing?.code {
                 Text(code)
-                    .font(.system(size: codeSize, weight: .black, design: .rounded))
+                    .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.78, weight: .black))
                     .tracking(8)
                 Text("Approve this code in Xuva. The library opens automatically.")
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
                 Text("Waiting for approval")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
                     .foregroundStyle(XuvaTheme.primaryGlow)
             } else {
-                Text("Create a pairing code for this Apple TV.")
+                Text("Create a pairing code for this device.")
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
             }
 
@@ -129,7 +125,7 @@ public struct PairingScreen: View {
                         systemImage: store.isBusy ? "hourglass" : "key.fill"
                     )
                 }
-                .xuvaTVPrimaryActionStyle()
+                .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
                 .focused($focusedControl, equals: .pair)
                 .xuvaDefaultKeyboardAction()
                 .disabled(store.isBusy)
@@ -139,7 +135,7 @@ public struct PairingScreen: View {
                 } label: {
                     buttonLabel(title: "Home", systemImage: "house.fill")
                 }
-                .xuvaTVSecondaryActionStyle()
+                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
                 .focused($focusedControl, equals: .home)
                 .disabled(store.isBusy)
 
@@ -148,28 +144,28 @@ public struct PairingScreen: View {
                 } label: {
                     buttonLabel(title: "Reset", systemImage: "arrow.counterclockwise")
                 }
-                .xuvaTVSecondaryActionStyle()
+                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
                 .disabled(store.isBusy)
             }
         }
         .padding(28)
-        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
         .background(XuvaTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(XuvaTheme.hairline))
     }
 
     @ViewBuilder
-    private var connectionHint: some View {
+    private func connectionHint(viewport: CGSize) -> some View {
         if store.connectionState == .needsAuthCredential {
             Label(
-                "Saved access was rejected. Reset this Apple TV and pair again from Xuva.",
+                "Saved access was rejected. Reset this device and pair again from Xuva.",
                 systemImage: "lock.shield"
             )
-            .font(.callout)
+            .font(.system(size: XuvaScale.metaFontSize(viewport)))
             .foregroundStyle(XuvaTheme.warn)
             .padding(16)
             .background(XuvaTheme.warn.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
         }
     }
 
@@ -178,46 +174,6 @@ public struct PairingScreen: View {
             .labelStyle(.titleAndIcon)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private var codeSize: CGFloat {
-        #if os(tvOS)
-        return 72
-        #else
-        return 56
-        #endif
-    }
-
-    private var tvControlHeight: CGFloat {
-        #if os(tvOS)
-        return 50
-        #else
-        return 58
-        #endif
-    }
-
-    private var tvControlFontSize: CGFloat {
-        #if os(tvOS)
-        return 28
-        #else
-        return 22
-        #endif
-    }
-
-    private func titleSize(for size: CGSize) -> CGFloat {
-        #if os(tvOS)
-        return size.width > 900 ? 54 : 42
-        #else
-        return size.width > 700 ? 46 : 40
-        #endif
-    }
-
-    private func horizontalPadding(for size: CGSize) -> CGFloat {
-        #if os(tvOS)
-        return size.width > 900 ? 96 : 44
-        #else
-        return size.width > 700 ? 44 : 28
-        #endif
     }
 
     private var introCopy: String {
@@ -248,16 +204,6 @@ private enum PairingFocus {
 }
 
 private extension View {
-    @ViewBuilder
-    func xuvaTVPrimaryActionStyle() -> some View {
-        self.buttonStyle(XuvaPrimaryButtonStyle())
-    }
-
-    @ViewBuilder
-    func xuvaTVSecondaryActionStyle() -> some View {
-        self.buttonStyle(XuvaSecondaryButtonStyle())
-    }
-
     @ViewBuilder
     func xuvaDefaultKeyboardAction() -> some View {
         #if os(tvOS)
