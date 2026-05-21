@@ -112,6 +112,10 @@ public struct DetailResponse: Codable, Equatable {
     public var defaultMediaSourceId: String?
     public var item: DetailItem?
     public var versions: [MediaVersion]?
+    /// Populated client-side after a follow-up call to `/api/metadata/{kind}/{id}`.
+    /// The /api/client/* detail endpoint omits cast / writers / studios; we merge them in
+    /// once the metadata records resolve so the UI sees a single object.
+    public var enrichedMetadata: MetadataRecord?
 }
 
 public struct DetailItem: Codable, Equatable {
@@ -135,6 +139,47 @@ public struct DetailItem: Codable, Equatable {
     public var trailerUrl: String?
     public var videoKey: String?
     public var versionCount: Int?
+}
+
+public struct MetadataRecord: Codable, Equatable {
+    public var provider: String?
+    public var externalId: String?
+    public var title: String?
+    public var year: Int?
+    public var overview: String?
+    public var tagline: String?
+    public var posterUrl: String?
+    public var backdropUrl: String?
+    public var logoUrl: String?
+    public var thumbnailUrl: String?
+    public var videoKey: String?
+    public var trailerPath: String?
+    public var runtimeMinutes: Int?
+    public var genres: [String]?
+    public var contentRating: String?
+    public var voteAverage: Double?
+    public var cast: [MetadataCredit]?
+    public var directors: [String]?
+    public var writers: [String]?
+    public var studios: [String]?
+    public var productionCompanies: [String]?
+    public var networks: [String]?
+}
+
+public struct MetadataCredit: Codable, Equatable, Identifiable {
+    public var name: String?
+    public var role: String?
+    public var character: String?
+    public var profileUrl: String?
+    public var sortOrder: Int?
+
+    public var id: String { name ?? UUID().uuidString }
+}
+
+public struct MetadataRecordsResponse: Codable, Equatable {
+    public var best: MetadataRecord?
+    public var records: [MetadataRecord]?
+    public var providers: [String]?
 }
 
 public struct MediaVersion: Codable, Identifiable, Equatable {
@@ -316,24 +361,41 @@ public struct StreamTokenResponse: Codable, Equatable {
 }
 
 public extension DetailResponse {
-    var displayTitle: String { item?.title ?? "Unknown Title" }
-    var displayOverview: String { item?.overview ?? "" }
-    var displayPosterURL: String? { item?.posterUrl }
-    var displayBackdropURL: String? { item?.backdropUrl ?? item?.thumbnailUrl }
-    var displayLogoURL: String? { item?.logoUrl }
-    var displayGenres: [String] { item?.genres ?? [] }
-    var displayYear: Int? { item?.year }
-    var displayRating: Double? { item?.voteAverage }
+    var displayTitle: String { enrichedMetadata?.title ?? item?.title ?? "Unknown Title" }
+    var displayOverview: String { enrichedMetadata?.overview ?? item?.overview ?? "" }
+    var displayPosterURL: String? { enrichedMetadata?.posterUrl ?? item?.posterUrl }
+    var displayBackdropURL: String? { enrichedMetadata?.backdropUrl ?? item?.backdropUrl ?? item?.thumbnailUrl }
+    var displayLogoURL: String? { enrichedMetadata?.logoUrl ?? item?.logoUrl }
+    var displayGenres: [String] { enrichedMetadata?.genres ?? item?.genres ?? [] }
+    var displayYear: Int? { enrichedMetadata?.year ?? item?.year }
+    var displayRating: Double? { enrichedMetadata?.voteAverage ?? item?.voteAverage }
     var displayTrailerPath: String? { item?.trailerUrl }
-    var displayVideoKey: String? { item?.videoKey }
+    var displayVideoKey: String? { enrichedMetadata?.videoKey ?? item?.videoKey }
     var displayDirectors: [String] {
+        if let directors = enrichedMetadata?.directors, !directors.isEmpty { return directors }
         let d = (item?.director ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return d.isEmpty ? [] : [d]
     }
-    var displayContentRating: String? { item?.contentRating }
-    var displayTagline: String? { item?.tagline }
+    var displayWriters: [String] { enrichedMetadata?.writers ?? [] }
+    var displayCast: [MetadataCredit] {
+        let cast = enrichedMetadata?.cast ?? []
+        return cast.sorted { ($0.sortOrder ?? Int.max) < ($1.sortOrder ?? Int.max) }
+    }
+    var displayStudios: [String] {
+        var seen = Set<String>()
+        var all: [String] = []
+        all.append(contentsOf: enrichedMetadata?.studios ?? [])
+        all.append(contentsOf: enrichedMetadata?.productionCompanies ?? [])
+        all.append(contentsOf: enrichedMetadata?.networks ?? [])
+        return all
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+    }
+    var displayContentRating: String? { enrichedMetadata?.contentRating ?? item?.contentRating }
+    var displayTagline: String? { enrichedMetadata?.tagline ?? item?.tagline }
     var displayRuntime: String? {
-        guard let minutes = item?.runtimeMinutes, minutes > 0 else { return nil }
+        let minutes = enrichedMetadata?.runtimeMinutes ?? item?.runtimeMinutes ?? 0
+        guard minutes > 0 else { return nil }
         let h = minutes / 60
         let m = minutes % 60
         if h > 0 { return "\(h)h \(m)m" }

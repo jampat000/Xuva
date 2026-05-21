@@ -52,6 +52,11 @@ public final class XuvaAPI: @unchecked Sendable {
         return try await send("GET", path: "/api/client/\(normalized)/\(id)")
     }
 
+    public func metadata(kind: String, id: String) async throws -> MetadataRecordsResponse {
+        let normalized = kind.lowercased().contains("series") || kind.lowercased().contains("show") ? "series" : "movie"
+        return try await send("GET", path: "/api/metadata/\(normalized)/\(id)")
+    }
+
     public func startPlayback(
         mediaSourceId: String,
         positionSeconds: Int = 0,
