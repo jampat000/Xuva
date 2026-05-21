@@ -43,6 +43,11 @@ public final class XuvaAPI: @unchecked Sendable {
         try await send("GET", path: "/api/pairing/requests/\(id)")
     }
 
+    public func cancelPairing(id: String, deviceId: String) async throws {
+        struct Body: Codable { let deviceId: String }
+        let _: EmptyResponse = try await send("DELETE", path: "/api/pairing/requests/\(id)", body: Body(deviceId: deviceId))
+    }
+
     public func home() async throws -> ClientHomeResponse {
         try await send("GET", path: "/api/client/home?clientProfile=\(XuvaClientProfile.current)")
     }

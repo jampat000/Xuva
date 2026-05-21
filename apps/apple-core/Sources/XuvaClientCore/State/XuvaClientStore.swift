@@ -201,6 +201,15 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func resetConnection() {
+        // Best-effort: tell the server to drop the still-pending pairing we
+        // created. Fire-and-forget — if the server's offline, the row will
+        // auto-expire after 10 minutes anyway.
+        if let api,
+           let pairingId = pairing?.stableID, !pairingId.isEmpty,
+           pairing?.status?.lowercased() != "approved" {
+            let dev = deviceId
+            Task { try? await api.cancelPairing(id: pairingId, deviceId: dev) }
+        }
         bootstrap = nil
         pairing = nil
         home = nil
