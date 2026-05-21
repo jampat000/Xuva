@@ -28,5 +28,9 @@ public struct XuvaRootView: View {
         }
         .environmentObject(store)
         .preferredColorScheme(.dark)
+        .task {
+            await store.resumeSessionIfPossible()
+            await store.autoConnectIfPossible()
+        }
     }
 }

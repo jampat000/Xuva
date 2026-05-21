@@ -99,12 +99,17 @@ public final class XuvaClientStore: ObservableObject {
         }
     }
 
-    public func play(version: MediaVersion? = nil) async {
+    public func play(version: MediaVersion? = nil, audioTrack: MediaTrack? = nil, subtitleTrack: MediaTrack? = nil) async {
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
             let mediaSourceId = version?.mediaSourceId ?? selectedDetail?.versions?.first?.mediaSourceId
             guard let mediaSourceId, !mediaSourceId.isEmpty else { throw XuvaAPIError.missingStreamURL }
-            playback = try await api.startPlayback(mediaSourceId: mediaSourceId)
+            playback = try await api.startPlayback(
+                mediaSourceId: mediaSourceId,
+                audioTrackIndex: audioTrack?.index,
+                subtitleTrackIndex: subtitleTrack?.index,
+                subtitleTrackActive: subtitleTrack != nil
+            )
             persistCurrentAuthToken()
             screen = .player
         }
@@ -152,6 +157,27 @@ public final class XuvaClientStore: ObservableObject {
     public func reconnectIfPossible() async {
         guard !isBusy, api == nil, !serverText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         await connect()
+    }
+
+    public func autoConnectIfPossible() async {
+        let trimmed = serverText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isBusy, api == nil, !trimmed.isEmpty else { return }
+        guard !UserDefaults.standard.bool(forKey: Self.pairedDeviceKey) else { return }
+        await connect()
+    }
+
+    public func resumeSessionIfPossible() async {
+        guard !isBusy, api == nil, UserDefaults.standard.bool(forKey: Self.pairedDeviceKey) else { return }
+        await run {
+            guard let url = URL(string: normalizedServerURL()) else { throw XuvaAPIError.invalidURL }
+            let nextAPI = XuvaAPI(baseURL: url, authToken: storedAuthToken())
+            bootstrap = try await nextAPI.bootstrap()
+            api = nextAPI
+            home = try await nextAPI.home()
+            persistCurrentAuthToken()
+            connectionState = .paired
+            screen = .home
+        }
     }
 
     private func run(showBusy: Bool = true, _ operation: () async throws -> Void) async {
