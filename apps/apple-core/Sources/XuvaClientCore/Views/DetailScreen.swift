@@ -36,15 +36,19 @@ private struct DetailContentView: View {
     var body: some View {
         GeometryReader { geometry in
             let viewport = geometry.size
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    hero(viewport: viewport)
-                    if hasBody {
-                        bodySections(viewport: viewport)
-                            .padding(.top, XuvaScale.sectionSpacing(viewport))
+            ZStack(alignment: .top) {
+                backdrop(viewport: viewport)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Spacer().frame(height: viewport.height * 0.42)
+                        backLink(viewport: viewport)
+                            .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                            .padding(.bottom, 24)
+                        twoColumn(viewport: viewport)
+                            .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                            .padding(.bottom, viewport.height * 0.10)
                     }
                 }
-                .padding(.bottom, viewport.height * 0.10)
             }
             .background(XuvaTheme.background)
         }
@@ -58,76 +62,201 @@ private struct DetailContentView: View {
             }
         }
         #if os(tvOS)
-        .onExitCommand {
-            store.backToHome()
-        }
+        .onExitCommand { store.backToHome() }
         #endif
     }
 
-    // MARK: – Hero
-
-    @ViewBuilder
-    private func hero(viewport: CGSize) -> some View {
-        let isCompact = viewport.width < 700
-        ZStack(alignment: .bottomLeading) {
-            backdrop(viewport: viewport)
-            VStack(alignment: .leading, spacing: 0) {
-                Spacer(minLength: 0)
-                heroContent(viewport: viewport, isCompact: isCompact)
-                    .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
-                    .padding(.bottom, isCompact ? 24 : 56)
-            }
-        }
-        .frame(height: viewport.height * (isCompact ? 0.78 : 0.92))
-        .frame(maxWidth: .infinity)
-    }
+    // MARK: – Backdrop (top 60vh with 3 gradients, mirrors web)
 
     @ViewBuilder
     private func backdrop(viewport: CGSize) -> some View {
+        let height = max(viewport.height * 0.60, 480)
         ZStack {
             RemoteImage(urlString: detail.displayBackdropURL, aspectRatio: 16 / 9)
-                .frame(width: viewport.width, height: viewport.height * 0.95)
+                .frame(width: viewport.width, height: height)
                 .clipped()
+            // right→transparent fade (matches `from-background via-background/70 to-transparent`)
             LinearGradient(
-                colors: [.clear, XuvaTheme.background.opacity(0.55), XuvaTheme.background],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            LinearGradient(
-                colors: [XuvaTheme.background.opacity(0.92), XuvaTheme.background.opacity(0.30), .clear],
+                colors: [XuvaTheme.background, XuvaTheme.background.opacity(0.70), .clear],
                 startPoint: .leading,
                 endPoint: .trailing
             )
+            // bottom→clear fade (matches `from-background to-transparent`)
+            LinearGradient(
+                colors: [XuvaTheme.background, .clear],
+                startPoint: .bottom,
+                endPoint: .center
+            )
+            // top edge subtle dark (matches `from-background/80 to-transparent`)
+            LinearGradient(
+                colors: [XuvaTheme.background.opacity(0.80), .clear],
+                startPoint: .top,
+                endPoint: UnitPoint(x: 0.5, y: 0.2)
+            )
+        }
+        .frame(width: viewport.width, height: height)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    // MARK: – Back link
+
+    @ViewBuilder
+    private func backLink(viewport: CGSize) -> some View {
+        Button {
+            store.backToHome()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                Text(backTitle)
+                    .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .medium))
+            }
+            .foregroundStyle(XuvaTheme.mutedText)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var backTitle: String {
+        if let kind = detail.kind?.lowercased(), kind.contains("series") { return "Back to TV" }
+        return "Back to Movies"
+    }
+
+    // MARK: – Two-column hero (poster | content)
+
+    @ViewBuilder
+    private func twoColumn(viewport: CGSize) -> some View {
+        let isCompact = viewport.width < 700
+        let posterW: CGFloat = isCompact ? viewport.width * 0.35 : XuvaScale.clamped(220, viewport.width * 0.175, 360)
+        let posterH = posterW * 1.5
+
+        let layout: AnyLayout = isCompact
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 28))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: viewport.width * 0.035))
+
+        layout {
+            poster(width: posterW, height: posterH)
+            contentColumn(viewport: viewport)
         }
     }
 
     @ViewBuilder
-    private func heroContent(viewport: CGSize, isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: isCompact ? 14 : 22) {
-            HStack(spacing: 14) {
-                Rectangle().fill(XuvaTheme.text.opacity(0.40)).frame(width: 36, height: 1)
-                Text(eyebrow)
-                    .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
-                    .tracking(5.6)
-                    .foregroundStyle(XuvaTheme.mutedText)
-            }
+    private func poster(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.118, green: 0.227, blue: 0.373),
+                    Color(red: 0.059, green: 0.090, blue: 0.165)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            RemoteImage(urlString: detail.displayPosterURL, aspectRatio: 2 / 3)
+                .frame(width: width, height: height)
+                .clipped()
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.50), radius: 38, y: 28)
+    }
+
+    @ViewBuilder
+    private func contentColumn(viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            metaStrip(viewport: viewport)
+                .padding(.bottom, 16)
             heroTitle(viewport: viewport)
-            metaLine(viewport: viewport)
             if let tagline = detail.displayTagline, !tagline.isEmpty {
                 Text(tagline)
                     .italic()
-                    .font(.system(size: XuvaScale.bodyFontSize(viewport) - 2))
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport) - 3))
                     .foregroundStyle(XuvaTheme.mutedText)
+                    .padding(.top, 8)
             }
-            Text(detail.displayOverview)
-                .font(.system(size: XuvaScale.bodyFontSize(viewport)))
-                .foregroundStyle(XuvaTheme.secondaryText)
-                .lineLimit(isCompact ? 6 : 4)
-                .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
-            actionBar(viewport: viewport)
+            if !detail.displayOverview.isEmpty {
+                Text(detail.displayOverview)
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport)))
+                    .foregroundStyle(XuvaTheme.secondaryText)
+                    .lineLimit(6)
+                    .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+                    .padding(.top, 22)
+            }
+            actionRow(viewport: viewport)
+                .padding(.top, 28)
+            creditsRow(viewport: viewport)
+                .padding(.top, 22)
+            sectionBody(viewport: viewport)
+                .padding(.top, 32)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    // MARK: – Meta strip (uppercase, 0.22em tracked)
+
+    @ViewBuilder
+    private func metaStrip(viewport: CGSize) -> some View {
+        let parts = metaParts
+        let size = XuvaScale.eyebrowFontSize(viewport) + 1
+        HStack(alignment: .center, spacing: 10) {
+            ForEach(Array(parts.enumerated()), id: \.offset) { idx, part in
+                Text(part.text)
+                    .font(.system(size: size, weight: .semibold))
+                    .tracking(size * 0.20)
+                    .foregroundStyle(part.tint)
+                    .padding(.horizontal, part.boxed ? 8 : 0)
+                    .padding(.vertical, part.boxed ? 4 : 0)
+                    .overlay {
+                        if part.boxed {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(XuvaTheme.mutedText.opacity(0.55), lineWidth: 1)
+                        }
+                    }
+                    .background(
+                        part.background ?
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(XuvaTheme.action.opacity(0.22))
+                            : nil
+                    )
+                if idx < parts.count - 1, !part.suppressDivider, !parts[idx + 1].suppressDivider {
+                    Circle()
+                        .fill(XuvaTheme.mutedText.opacity(0.32))
+                        .frame(width: 3, height: 3)
+                }
+            }
+        }
+        .textCase(.uppercase)
+    }
+
+    private struct MetaPart {
+        let text: String
+        var tint: Color = XuvaTheme.mutedText
+        var boxed: Bool = false
+        var background: Bool = false
+        var suppressDivider: Bool = false
+    }
+
+    private var metaParts: [MetaPart] {
+        var parts: [MetaPart] = []
+        if let year = detail.displayYear { parts.append(MetaPart(text: String(year))) }
+        for genre in detail.displayGenres.prefix(2) {
+            parts.append(MetaPart(text: genre))
+        }
+        if let runtime = detail.displayRuntime {
+            parts.append(MetaPart(text: runtime))
+        }
+        if let rating = detail.displayRating, rating > 0 {
+            parts.append(MetaPart(text: String(format: "★ %.1f", rating), tint: Color(red: 1.0, green: 0.85, blue: 0.45)))
+        }
+        if let cr = detail.displayContentRating, !cr.isEmpty {
+            parts.append(MetaPart(text: cr, boxed: true))
+        }
+        if let quality = detail.versions?.first?.qualityLabel, !quality.isEmpty {
+            // Shorten "1080p H264 MOV,MP4,..." → "1080p"
+            let short = quality.split(separator: " ").first.map(String.init) ?? quality
+            parts.append(MetaPart(text: short, tint: XuvaTheme.primaryGlow, background: true))
+        }
+        return parts
+    }
+
+    // MARK: – Title (logo OR serif-display equivalent)
 
     @ViewBuilder
     private func heroTitle(viewport: CGSize) -> some View {
@@ -139,10 +268,13 @@ private struct DetailContentView: View {
                 maxHeight: XuvaScale.heroLogoMaxHeight(viewport)
             )
         } else {
-            let titleSize = XuvaScale.heroTitleSize(viewport)
+            // Web uses `font-serif-display` (Geist/Aptos/Inter Display) at
+            // clamp(2rem, 5vw, 4rem) with leading-[0.95] tracking-tight.
+            let titleSize = XuvaScale.clamped(40, viewport.width * 0.055, 96)
             Text(detail.displayTitle)
                 .font(.system(size: titleSize, weight: .semibold, design: .default))
                 .tracking(titleSize * -0.045)
+                .lineSpacing(titleSize * -0.05)
                 .foregroundStyle(XuvaTheme.text)
                 .lineLimit(2)
                 .minimumScaleFactor(0.6)
@@ -150,8 +282,10 @@ private struct DetailContentView: View {
         }
     }
 
+    // MARK: – Action row
+
     @ViewBuilder
-    private func actionBar(viewport: CGSize) -> some View {
+    private func actionRow(viewport: CGSize) -> some View {
         HStack(spacing: 14) {
             Button {
                 Task {
@@ -176,7 +310,7 @@ private struct DetailContentView: View {
             }
 
             Button {
-                // Placeholder for watchlist
+                // Watchlist placeholder
             } label: {
                 Image(systemName: "plus")
             }
@@ -186,105 +320,80 @@ private struct DetailContentView: View {
         }
     }
 
-    private func metaLine(viewport: CGSize) -> some View {
-        HStack(spacing: 12) {
-            ForEach(metaParts, id: \.self) { part in
-                Text(part)
-                if part != metaParts.last {
-                    Circle()
-                        .fill(XuvaTheme.muted.opacity(0.45))
-                        .frame(width: 5, height: 5)
-                }
+    // MARK: – Credits row (DIRECTOR · WRITERS · VERSIONS)
+
+    @ViewBuilder
+    private func creditsRow(viewport: CGSize) -> some View {
+        let directors = detail.displayDirectors
+        let versionCount = detail.versions?.count ?? 0
+        HStack(alignment: .top, spacing: 36) {
+            if !directors.isEmpty {
+                creditGroup(label: directors.count == 1 ? "Director" : "Directors",
+                            values: directors,
+                            viewport: viewport)
+            }
+            if versionCount > 0 {
+                creditGroup(label: "Versions",
+                            values: ["\(versionCount)"],
+                            viewport: viewport)
             }
         }
-        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
-        .foregroundStyle(XuvaTheme.secondaryText)
-    }
-
-    private var metaParts: [String] {
-        var parts: [String] = []
-        if let year = detail.displayYear { parts.append(String(year)) }
-        if let runtime = detail.displayRuntime { parts.append(runtime) }
-        if let rating = detail.displayRating, rating > 0 { parts.append(String(format: "★ %.1f", rating)) }
-        if let cr = detail.displayContentRating, !cr.isEmpty { parts.append(cr) }
-        let genres = detail.displayGenres.prefix(2).joined(separator: " / ")
-        if !genres.isEmpty { parts.append(genres) }
-        return parts
-    }
-
-    // MARK: – Body sections
-
-    private var hasBody: Bool {
-        let hasVersions = (detail.versions?.count ?? 0) > 1
-        let hasTracks = !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty
-        let hasCredits = !detail.displayDirectors.isEmpty
-        return hasVersions || hasTracks || hasCredits
     }
 
     @ViewBuilder
-    private func bodySections(viewport: CGSize) -> some View {
-        VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
+    private func creditGroup(label: String, values: [String], viewport: CGSize) -> some View {
+        let labelSize = XuvaScale.eyebrowFontSize(viewport)
+        let valueSize = XuvaScale.metaFontSize(viewport) - 2
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: labelSize, weight: .semibold))
+                .tracking(labelSize * 0.20)
+                .textCase(.uppercase)
+                .foregroundStyle(XuvaTheme.mutedText)
+            ForEach(values, id: \.self) { v in
+                Text(v)
+                    .font(.system(size: valueSize, weight: .medium))
+                    .foregroundStyle(XuvaTheme.text.opacity(0.82))
+            }
+        }
+    }
+
+    // MARK: – Sections (Versions / Audio & Subs)
+
+    @ViewBuilder
+    private func sectionBody(viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 36) {
             if let versions = detail.versions, versions.count > 1 {
-                versionsSection(versions: versions, viewport: viewport)
-            }
-            if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
-                tracksSection(viewport: viewport)
-            }
-            if !detail.displayDirectors.isEmpty {
-                creditsSection(viewport: viewport)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func versionsSection(versions: [MediaVersion], viewport: CGSize) -> some View {
-        SectionContainer(title: "Versions", subtitle: "Choose source quality", viewport: viewport) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
-                    ForEach(versions, id: \.stableID) { version in
-                        VersionCard(version: version, viewport: viewport, isSelected: version.stableID == selectedVersion?.stableID) {
-                            selectedVersionID = version.stableID
+                sectionTitle("Versions", viewport: viewport)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 18) {
+                        ForEach(versions, id: \.stableID) { v in
+                            VersionCard(version: v, viewport: viewport, isSelected: v.stableID == selectedVersion?.stableID) {
+                                selectedVersionID = v.stableID
+                            }
                         }
                     }
+                    .padding(.vertical, 12)
                 }
-                .padding(.vertical, 12)
+            }
+            if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
+                sectionTitle("Audio & Subtitles", viewport: viewport)
+                HStack(alignment: .top, spacing: 18) {
+                    TrackStack(title: "Audio", systemImage: "speaker.wave.2", tracks: detail.audioTracks, selectedTrackID: $selectedAudioID, allowsNone: false, viewport: viewport)
+                    TrackStack(title: "Subtitles", systemImage: "captions.bubble", tracks: detail.subtitleTracks, selectedTrackID: $selectedSubtitleID, allowsNone: true, viewport: viewport)
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func tracksSection(viewport: CGSize) -> some View {
-        SectionContainer(title: "Audio & Subtitles", subtitle: "Language and captions", viewport: viewport) {
-            HStack(alignment: .top, spacing: 18) {
-                TrackStack(
-                    title: "Audio",
-                    systemImage: "speaker.wave.2",
-                    tracks: detail.audioTracks,
-                    selectedTrackID: $selectedAudioID,
-                    allowsNone: false,
-                    viewport: viewport
-                )
-                TrackStack(
-                    title: "Subtitles",
-                    systemImage: "captions.bubble",
-                    tracks: detail.subtitleTracks,
-                    selectedTrackID: $selectedSubtitleID,
-                    allowsNone: true,
-                    viewport: viewport
-                )
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func creditsSection(viewport: CGSize) -> some View {
-        SectionContainer(title: "Direction", subtitle: "Credits", viewport: viewport) {
-            HStack(spacing: 10) {
-                ForEach(detail.displayDirectors.prefix(6), id: \.self) { person in
-                    MediaPill(text: person, systemImage: "person.fill", tint: XuvaTheme.secondaryText, viewport: viewport)
-                }
-            }
-        }
+    private func sectionTitle(_ title: String, viewport: CGSize) -> some View {
+        let size = XuvaScale.eyebrowFontSize(viewport) + 1
+        Text(title)
+            .font(.system(size: size, weight: .semibold))
+            .tracking(size * 0.22)
+            .textCase(.uppercase)
+            .foregroundStyle(XuvaTheme.mutedText)
     }
 
     // MARK: – Helpers
@@ -295,16 +404,16 @@ private struct DetailContentView: View {
 
     private var selectedVersion: MediaVersion? {
         let versions = detail.versions ?? []
-        if let selectedVersionID, let version = versions.first(where: { $0.stableID == selectedVersionID }) {
-            return version
+        if let selectedVersionID, let v = versions.first(where: { $0.stableID == selectedVersionID }) {
+            return v
         }
         return versions.first
     }
 
     private var selectedAudioTrack: MediaTrack? {
         let tracks = detail.audioTracks
-        if let selectedAudioID, let track = tracks.first(where: { $0.stableID == selectedAudioID }) {
-            return track
+        if let selectedAudioID, let t = tracks.first(where: { $0.stableID == selectedAudioID }) {
+            return t
         }
         return tracks.first(where: { $0.default == true }) ?? tracks.first
     }
@@ -314,60 +423,17 @@ private struct DetailContentView: View {
         return detail.subtitleTracks.first(where: { $0.stableID == selectedSubtitleID })
     }
 
-    private var eyebrow: String {
-        if let kind = detail.kind?.lowercased() {
-            if kind.contains("series") { return "TV SERIES" }
-            if kind.contains("episode") { return "EPISODE" }
-        }
-        return "FEATURE FILM"
-    }
-
     private func playTrailer() async {
         guard let trailer = detail.displayTrailerPath, !trailer.isEmpty,
               let api = store.api,
               let url = api.resolvedURL(trailer) else { return }
         store.playback = PlaybackStartResponse(
-            sessionId: nil,
-            heartbeatUrl: nil,
-            stopUrl: nil,
-            playbackStateUrl: nil,
-            heartbeatIntervalMs: nil,
-            decision: nil,
+            sessionId: nil, heartbeatUrl: nil, stopUrl: nil, playbackStateUrl: nil,
+            heartbeatIntervalMs: nil, decision: nil,
             route: PlaybackRoute(url: url.absoluteString, manifestUrl: nil, protocolValue: "direct", route: "trailer", status: "ready", decision: nil),
-            mediaSourceId: nil,
-            deviceId: nil,
-            defaultSubtitlesEnabled: false
+            mediaSourceId: nil, deviceId: nil, defaultSubtitlesEnabled: false
         )
         store.screen = .player
-    }
-}
-
-private struct SectionContainer<Content: View>: View {
-    let title: String
-    let subtitle: String
-    let viewport: CGSize
-    let content: () -> Content
-
-    init(title: String, subtitle: String, viewport: CGSize, @ViewBuilder content: @escaping () -> Content) {
-        self.title = title
-        self.subtitle = subtitle
-        self.viewport = viewport
-        self.content = content
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: XuvaScale.sectionTitleSize(viewport), weight: .bold))
-                    .foregroundStyle(XuvaTheme.text)
-                Text(subtitle)
-                    .font(.system(size: XuvaScale.metaFontSize(viewport) - 2, weight: .medium))
-                    .foregroundStyle(XuvaTheme.mutedText)
-            }
-            content()
-        }
-        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
     }
 }
 
@@ -416,7 +482,7 @@ private struct VersionCard: View {
     }
 
     private var qualityTitle: String {
-        if let q = version.qualityLabel, !q.isEmpty { return q }
+        if let q = version.qualityLabel, !q.isEmpty { return q.split(separator: " ").first.map(String.init) ?? q }
         if let res = version.displayResolution { return res }
         return version.name ?? "Original"
     }
@@ -427,13 +493,8 @@ private struct VersionCard: View {
             .filter { !$0.isEmpty }
     }
 
-    private var cardWidth: CGFloat {
-        XuvaScale.clamped(280, viewport.width * 0.28, 540)
-    }
-
-    private var cardHeight: CGFloat {
-        XuvaScale.clamped(168, viewport.height * 0.20, 240)
-    }
+    private var cardWidth: CGFloat { XuvaScale.clamped(280, viewport.width * 0.24, 460) }
+    private var cardHeight: CGFloat { XuvaScale.clamped(168, viewport.height * 0.20, 220) }
 }
 
 private struct TrackStack: View {
