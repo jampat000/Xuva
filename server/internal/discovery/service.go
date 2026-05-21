@@ -28,6 +28,8 @@ type Status struct {
 	Running     bool     `json:"running"`
 	ServiceName string   `json:"serviceName,omitempty"`
 	ServiceType string   `json:"serviceType,omitempty"`
+	HostName    string   `json:"hostName,omitempty"`
+	WebURL      string   `json:"webUrl,omitempty"`
 	Port        int      `json:"port,omitempty"`
 	TXTRecords  []string `json:"txtRecords,omitempty"`
 	LastError   string   `json:"lastError,omitempty"`
@@ -66,6 +68,7 @@ func NewService(cfg config.Config) *Service {
 			Enabled:     cfg.DiscoveryEnabled,
 			ServiceName: displayServiceName(cfg.ServerName),
 			ServiceType: fullServiceType(cfg.DiscoveryServiceType),
+			HostName:    networkHostName(),
 		},
 	}
 }
@@ -81,6 +84,7 @@ func (s *Service) Start(ctx context.Context) {
 		Enabled:     s.cfg.DiscoveryEnabled,
 		ServiceName: displayServiceName(s.cfg.ServerName),
 		ServiceType: fullServiceType(s.cfg.DiscoveryServiceType),
+		HostName:    networkHostName(),
 	}
 	if !s.cfg.DiscoveryEnabled {
 		status.Note = "Local discovery is turned off."
@@ -98,6 +102,7 @@ func (s *Service) Start(ctx context.Context) {
 		return
 	}
 	status.Port = port
+	status.WebURL = discoveryWebURL(s.cfg, status.HostName, port)
 
 	if config.HTTPAddrLoopbackOnly(s.cfg.HTTPAddr) {
 		status.Note = "This server is listening only on this device right now."
@@ -119,6 +124,12 @@ func (s *Service) Start(ctx context.Context) {
 		"app=xuva",
 		"api=" + bootstrapAPIPath,
 		"serverName=" + status.ServiceName,
+	}
+	if status.HostName != "" {
+		txtRecords = append(txtRecords, "hostName="+status.HostName)
+	}
+	if status.WebURL != "" {
+		txtRecords = append(txtRecords, "web="+status.WebURL)
 	}
 	sort.Strings(txtRecords)
 	status.TXTRecords = append([]string(nil), txtRecords...)
@@ -204,7 +215,61 @@ func newMDNSAnnouncer(cfg AdvertiseConfig) (announcer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return mdns.NewServer(&mdns.Config{Zone: service})
+	// Pin to the network interface that owns one of cfg.IPs. On Windows hosts
+	// with multiple adapters (Hyper-V virtual switches, WSL, VPN tunnels)
+	// hashicorp/mdns' default "first multicast-capable interface" picks the
+	// wrong one — broadcasts go out on the virtual NIC and never reach the
+	// LAN. Explicitly binding fixes this.
+	pinnedIface := pickInterfaceForIPs(cfg.IPs)
+	if pinnedIface != nil {
+		slog.Info("Local discovery pinned to interface", "name", pinnedIface.Name)
+	}
+	return mdns.NewServer(&mdns.Config{Zone: service, Iface: pinnedIface})
+}
+
+// pickInterfaceForIPs returns the first net.Interface whose unicast addresses
+// include any of the given IPs. Returns nil if no match (then the library
+// falls back to its default multicast interface).
+func pickInterfaceForIPs(ips []net.IP) *net.Interface {
+	if len(ips) == 0 {
+		return nil
+	}
+	wanted := map[string]bool{}
+	for _, ip := range ips {
+		if ip != nil {
+			wanted[ip.String()] = true
+		}
+	}
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for i := range interfaces {
+		iface := interfaces[i]
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if iface.Flags&net.FlagMulticast == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip != nil && wanted[ip.String()] {
+				return &iface
+			}
+		}
+	}
+	return nil
 }
 
 func displayServiceName(value string) string {
@@ -216,11 +281,7 @@ func displayServiceName(value string) string {
 }
 
 func localHostRecord() string {
-	name, err := os.Hostname()
-	if err != nil {
-		return ""
-	}
-	trimmed := strings.TrimSpace(name)
+	trimmed := networkHostName()
 	if trimmed == "" {
 		return ""
 	}
@@ -231,6 +292,24 @@ func localHostRecord() string {
 		return trimmed + "."
 	}
 	return trimmed + ".local."
+}
+
+func networkHostName() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(name)
+}
+
+func discoveryWebURL(cfg config.Config, hostName string, port int) string {
+	if webOrigin, err := config.NormalizeWebOrigin(cfg.CanonicalWebOrigin); err == nil && webOrigin != "" {
+		return webOrigin
+	}
+	if strings.TrimSpace(hostName) == "" || port <= 0 {
+		return ""
+	}
+	return "http://" + hostName + ":" + strconv.Itoa(port)
 }
 
 func normalizedServiceType(value string) string {
