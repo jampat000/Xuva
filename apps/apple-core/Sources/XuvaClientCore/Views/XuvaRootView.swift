@@ -8,7 +8,12 @@ public struct XuvaRootView: View {
 
     public var body: some View {
         ZStack {
+            // Solid background fills the entire screen including overscan area
+            // so there's never a black band peeking through at the edges.
+            XuvaTheme.background
+                .ignoresSafeArea()
             XuvaTheme.backgroundWash
+                .ignoresSafeArea()
             switch store.screen {
             case .connect, .pair:
                 PairingScreen()
@@ -33,6 +38,8 @@ public struct XuvaRootView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
         .environmentObject(store)
         .environmentObject(watchlist)
         .preferredColorScheme(.dark)
