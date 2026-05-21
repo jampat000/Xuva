@@ -183,6 +183,10 @@ private struct DetailContentView: View {
                 .padding(.top, 28)
             creditsRow(viewport: viewport)
                 .padding(.top, 22)
+            studioChips(viewport: viewport)
+                .padding(.top, 14)
+            castStrip(viewport: viewport)
+                .padding(.top, 36)
             sectionBody(viewport: viewport)
                 .padding(.top, 32)
         }
@@ -325,17 +329,63 @@ private struct DetailContentView: View {
     @ViewBuilder
     private func creditsRow(viewport: CGSize) -> some View {
         let directors = detail.displayDirectors
+        let writers = detail.displayWriters
         let versionCount = detail.versions?.count ?? 0
-        HStack(alignment: .top, spacing: 36) {
+        HStack(alignment: .top, spacing: 40) {
             if !directors.isEmpty {
                 creditGroup(label: directors.count == 1 ? "Director" : "Directors",
                             values: directors,
+                            viewport: viewport)
+            }
+            if !writers.isEmpty {
+                creditGroup(label: writers.count == 1 ? "Writer" : "Writers",
+                            values: Array(writers.prefix(3)),
                             viewport: viewport)
             }
             if versionCount > 0 {
                 creditGroup(label: "Versions",
                             values: ["\(versionCount)"],
                             viewport: viewport)
+            }
+        }
+    }
+
+    // MARK: – Studio chips
+
+    @ViewBuilder
+    private func studioChips(viewport: CGSize) -> some View {
+        let studios = detail.displayStudios
+        if !studios.isEmpty {
+            FlowLayout(spacing: 8) {
+                ForEach(studios.prefix(4), id: \.self) { studio in
+                    Text(studio)
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
+                        .foregroundStyle(XuvaTheme.mutedText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(XuvaTheme.surface.opacity(0.40), in: Capsule())
+                        .overlay(Capsule().stroke(XuvaTheme.hairline))
+                }
+            }
+        }
+    }
+
+    // MARK: – Cast strip
+
+    @ViewBuilder
+    private func castStrip(viewport: CGSize) -> some View {
+        let cast = detail.displayCast
+        if !cast.isEmpty {
+            VStack(alignment: .leading, spacing: 18) {
+                sectionTitle("Cast", viewport: viewport)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(cast.prefix(16), id: \.id) { person in
+                            CastCard(person: person, viewport: viewport)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
             }
         }
     }
@@ -434,6 +484,95 @@ private struct DetailContentView: View {
             mediaSourceId: nil, deviceId: nil, defaultSubtitlesEnabled: false
         )
         store.screen = .player
+    }
+}
+
+private struct CastCard: View {
+    let person: MetadataCredit
+    let viewport: CGSize
+
+    var body: some View {
+        let cardW: CGFloat = XuvaScale.clamped(96, viewport.width * 0.075, 156)
+        let cardH = cardW * 1.5
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                LinearGradient(
+                    colors: [XuvaTheme.surface, XuvaTheme.elevated],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                if let url = person.profileUrl, !url.isEmpty {
+                    RemoteImage(urlString: url, aspectRatio: 2 / 3)
+                        .frame(width: cardW, height: cardH)
+                        .clipped()
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: cardW * 0.40, weight: .semibold))
+                        .foregroundStyle(XuvaTheme.mutedText.opacity(0.40))
+                }
+            }
+            .frame(width: cardW, height: cardH)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(XuvaTheme.hairline))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(person.name ?? "")
+                    .font(.system(size: XuvaScale.metaFontSize(viewport) - 3, weight: .semibold))
+                    .foregroundStyle(XuvaTheme.text)
+                    .lineLimit(1)
+                if let character = person.character ?? person.role, !character.isEmpty {
+                    Text(character)
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 4))
+                        .foregroundStyle(XuvaTheme.mutedText)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: cardW, alignment: .leading)
+        }
+        .xuvaFocused(radius: 12)
+    }
+}
+
+/// Simple flow layout for wrapping pill chips. Reproduces what Tailwind's
+/// `flex flex-wrap gap-2` does on the web.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let containerWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var maxWidth: CGFloat = 0
+        for sv in subviews {
+            let size = sv.sizeThatFits(.unspecified)
+            if x + size.width > containerWidth && x > 0 {
+                y += rowHeight + spacing
+                x = 0
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            maxWidth = max(maxWidth, x)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for sv in subviews {
+            let size = sv.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                y += rowHeight + spacing
+                x = bounds.minX
+                rowHeight = 0
+            }
+            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 

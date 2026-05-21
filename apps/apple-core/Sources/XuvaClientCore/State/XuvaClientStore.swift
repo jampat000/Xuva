@@ -107,6 +107,24 @@ public final class XuvaClientStore: ObservableObject {
             persistCurrentAuthToken()
             screen = .detail
         }
+        // Enrich with cast/writers/studios in the background — the detail screen
+        // re-renders once selectedDetail.enrichedMetadata appears.
+        Task { [weak self] in
+            await self?.enrichSelectedDetail(itemKind: item.kind ?? "movie", itemId: item.id)
+        }
+    }
+
+    private func enrichSelectedDetail(itemKind: String, itemId: String) async {
+        guard let api else { return }
+        do {
+            let metadata = try await api.metadata(kind: itemKind, id: itemId)
+            // Don't overwrite if user navigated away
+            guard selectedDetail?.item?.id == itemId else { return }
+            selectedDetail?.enrichedMetadata = metadata.best
+            print("[XUVA] enriched cast=\(metadata.best?.cast?.count ?? 0) directors=\(metadata.best?.directors?.count ?? 0) studios=\(metadata.best?.studios?.count ?? 0)")
+        } catch {
+            print("[XUVA] enrich failed: \(error)")
+        }
     }
 
     public func play(version: MediaVersion? = nil, audioTrack: MediaTrack? = nil, subtitleTrack: MediaTrack? = nil) async {
