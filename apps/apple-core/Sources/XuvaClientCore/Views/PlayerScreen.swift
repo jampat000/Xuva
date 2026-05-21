@@ -13,6 +13,9 @@ public struct PlayerScreen: View {
             XuvaVideoPlayer(url: url, authToken: store.api?.authToken, playback: playback) {
                 store.closePlayer()
             }
+            .ignoresSafeArea()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
             #if os(tvOS)
             .onExitCommand {
                 Task { await store.stopPlayback() }
@@ -55,12 +58,27 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
+        // tvOS plays nicely with a .playback audio session — without this,
+        // background audio routing can cut out when the AVPlayerViewController's
+        // own session interacts with the SwiftUI host scene.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+            try AVAudioSession.sharedInstance().setActive(true, options: [])
+        } catch {
+            print("[XUVA] AVAudioSession setup failed: \(error)")
+        }
+
         let item = makePlayerItem(url: url, authToken: authToken)
         let player = AVPlayer(playerItem: item)
+        player.automaticallyWaitsToMinimizeStalling = true
+
         let vc = AVPlayerViewController()
         vc.player = player
         vc.allowsPictureInPicturePlayback = true
+        vc.showsPlaybackControls = true
+        vc.requiresLinearPlayback = false
         vc.delegate = context.coordinator
+        vc.view.backgroundColor = .black
         context.coordinator.attach(to: player)
         player.play()
         print("[XUVA] AVPlayerViewController created url=\(url.absoluteString)")
