@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct XuvaRootView: View {
     @StateObject private var store = XuvaClientStore()
+    @StateObject private var watchlist = XuvaWatchlist()
 
     public init() {}
 
@@ -33,6 +34,7 @@ public struct XuvaRootView: View {
             }
         }
         .environmentObject(store)
+        .environmentObject(watchlist)
         .preferredColorScheme(.dark)
         .task {
             await store.resumeSessionIfPossible()

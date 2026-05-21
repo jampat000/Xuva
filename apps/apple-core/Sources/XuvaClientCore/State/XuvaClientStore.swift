@@ -19,6 +19,14 @@ public final class XuvaClientStore: ObservableObject {
     @Published public var connectionState: XuvaConnectionState = .idle
     @Published public var activeSection: String = "Home"
     @Published public var heroIndex: Int = 0
+    /// When the user opens a Continue Watching tile, we hold onto the
+    /// progress fraction here so the next play() can resume at the right
+    /// position. Cleared after use.
+    @Published public var pendingResumeFraction: Double?
+    /// For Continue Watching tiles the home item's id is the mediaSource id;
+    /// the detail endpoint needs the parent movie/series id. We open detail
+    /// for the parent but remember which version to actually start.
+    @Published public var pendingResumeMediaSourceId: String?
 
     public private(set) var api: XuvaAPI?
     public let deviceId: String
@@ -108,10 +116,21 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func open(item: HomeItem) async {
-        print("[XUVA] open item id=\(item.id) kind=\(item.kind ?? "-") title=\(item.title ?? "-")")
+        let detailId = item.resolvedDetailId
+        let detailKind = item.resolvedDetailKind
+        print("[XUVA] open item detailId=\(detailId) kind=\(detailKind) title=\(item.title ?? "-") progress=\(item.progress ?? 0)")
+        // If this is a Continue Watching tile, capture the resume context so
+        // the user's next Play press picks the right media source + position.
+        if let progress = item.progress, progress > 0, let msid = item.mediaSourceId, !msid.isEmpty {
+            pendingResumeFraction = progress
+            pendingResumeMediaSourceId = msid
+        } else {
+            pendingResumeFraction = nil
+            pendingResumeMediaSourceId = nil
+        }
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
-            selectedDetail = try await api.detail(kind: item.kind ?? "movie", id: item.id)
+            selectedDetail = try await api.detail(kind: detailKind, id: detailId)
             print("[XUVA] detail loaded versions=\(selectedDetail?.versions?.count ?? 0)")
             persistCurrentAuthToken()
             screen = .detail
@@ -119,7 +138,7 @@ public final class XuvaClientStore: ObservableObject {
         // Enrich with cast/writers/studios in the background — the detail screen
         // re-renders once selectedDetail.enrichedMetadata appears.
         Task { [weak self] in
-            await self?.enrichSelectedDetail(itemKind: item.kind ?? "movie", itemId: item.id)
+            await self?.enrichSelectedDetail(itemKind: detailKind, itemId: detailId)
         }
     }
 
@@ -137,18 +156,35 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func play(version: MediaVersion? = nil, audioTrack: MediaTrack? = nil, subtitleTrack: MediaTrack? = nil) async {
-        print("[XUVA] play() called, hasAPI=\(api != nil)")
+        print("[XUVA] play() called, hasAPI=\(api != nil) pendingResume=\(pendingResumeFraction ?? 0)")
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
-            let mediaSourceId = version?.mediaSourceId ?? selectedDetail?.versions?.first?.mediaSourceId
+            // Pick the right mediaSource: explicit param > resume's source > first version.
+            let mediaSourceId = version?.mediaSourceId
+                ?? pendingResumeMediaSourceId
+                ?? selectedDetail?.versions?.first?.mediaSourceId
             print("[XUVA] play() mediaSourceId=\(mediaSourceId ?? "<none>")")
             guard let mediaSourceId, !mediaSourceId.isEmpty else { throw XuvaAPIError.missingStreamURL }
+            // Compute resume position from progress fraction × that source's duration.
+            var positionSeconds = 0
+            if let fraction = pendingResumeFraction, fraction > 0,
+               let duration = selectedDetail?.versions?.first(where: { $0.mediaSourceId == mediaSourceId })?.source?.durationSeconds, duration > 0 {
+                positionSeconds = Int((fraction * duration).rounded())
+                print("[XUVA] resume positionSeconds=\(positionSeconds) (\(Int(fraction * 100))% of \(Int(duration))s)")
+            }
             var response = try await api.startPlayback(
                 mediaSourceId: mediaSourceId,
+                positionSeconds: positionSeconds,
                 audioTrackIndex: audioTrack?.index,
                 subtitleTrackIndex: subtitleTrack?.index,
                 subtitleTrackActive: subtitleTrack != nil
             )
+            // One-shot — clear so a fresh detail open doesn't carry over.
+            pendingResumeFraction = nil
+            pendingResumeMediaSourceId = nil
+            if positionSeconds > 0 {
+                response.clientStartPositionSeconds = positionSeconds
+            }
             print("[XUVA] startPlayback OK session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>") routeUrl=\(response.route?.url ?? "<none>")")
             if let sessionId = response.sessionId, !sessionId.isEmpty,
                let deviceId = response.deviceId, !deviceId.isEmpty {
@@ -165,6 +201,18 @@ public final class XuvaClientStore: ObservableObject {
             screen = .player
             print("[XUVA] screen=.player, final url=\(response.route?.url ?? "<none>")")
         }
+    }
+
+    public func playEpisode(_ episode: EpisodeItem) async {
+        guard let mediaSourceId = episode.defaultMediaSourceId, !mediaSourceId.isEmpty else {
+            errorMessage = "This episode has no playable source yet."
+            return
+        }
+        // Use first version directly — no resume threading for episodes yet.
+        let version = episode.versions?.first
+        pendingResumeFraction = nil
+        pendingResumeMediaSourceId = nil
+        await play(version: version)
     }
 
     public func closePlayer() {
