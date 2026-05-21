@@ -17,6 +17,8 @@ public final class XuvaClientStore: ObservableObject {
     @Published public var errorMessage: String?
     @Published public var screen: XuvaScreen = .connect
     @Published public var connectionState: XuvaConnectionState = .idle
+    @Published public var activeSection: String = "Home"
+    @Published public var heroIndex: Int = 0
 
     public private(set) var api: XuvaAPI?
     public let deviceId: String
@@ -149,8 +151,17 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func backToHome() {
-        selectedDetail = nil
         screen = .home
+        // Keep selectedDetail cached so re-entering the same title is instant.
+    }
+
+    public func setSection(_ section: String) {
+        activeSection = section
+        heroIndex = 0
+    }
+
+    public func clearError() {
+        errorMessage = nil
     }
 
     public func resetConnection() {

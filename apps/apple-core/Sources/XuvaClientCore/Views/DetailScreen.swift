@@ -126,8 +126,10 @@ private struct DetailContentView: View {
                     maxHeight: XuvaScale.heroLogoMaxHeight(viewport)
                 )
             } else {
+                let titleSize = XuvaScale.heroTitleSize(viewport)
                 Text(detail.displayTitle)
-                    .font(.system(size: XuvaScale.heroTitleSize(viewport), weight: .bold))
+                    .font(.system(size: titleSize, weight: .semibold, design: .default))
+                    .tracking(titleSize * -0.045)
                     .foregroundStyle(XuvaTheme.text)
                     .lineLimit(2)
                     .minimumScaleFactor(0.6)
