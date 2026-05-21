@@ -26,3 +26,27 @@ Notes:
   - `XUVA_SERVER_CMD`
   - `XUVA_SERVER_ARGS`
   - `XUVA_SERVER_CWD`
+
+## Server discovery — when does this app need it?
+
+This Electron shell **spawns the Xuva server itself** and points to
+`http://127.0.0.1:8097`. In the default single-machine install there is
+no other server to discover — the one running on this box is the one
+you want.
+
+When the desktop app gains a multi-machine mode (connect to a Xuva on
+the network instead of launching one locally), implement discovery using
+the same protocol as the other clients:
+
+```js
+// In main process (Node side):
+const { Bonjour } = require('bonjour-service');
+const bonjour = new Bonjour();
+const browser = bonjour.find({ type: 'xuva' }, (service) => {
+  // service.name, service.host, service.port, service.txt.serverName, etc.
+});
+// IPC the list to the renderer for a "connect to remote server" UI.
+```
+
+Wire format documented in `apps/android-tv/README.md`. Same service type
+(`_xuva._tcp`), same TXT records, same auto-pair flow as Apple.
