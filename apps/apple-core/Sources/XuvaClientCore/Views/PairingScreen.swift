@@ -4,6 +4,7 @@ public struct PairingScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
     @StateObject private var discovery = XuvaDiscovery()
     @State private var showManualEntry = false
+    @State private var discoveryTimedOut = false
 
     public init() {}
 
@@ -53,7 +54,16 @@ public struct PairingScreen: View {
         .task(id: store.pairing?.stableID) {
             await pollPairingWhilePending()
         }
-        .onAppear { discovery.start() }
+        .onAppear {
+            discovery.start()
+            Task {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if discovery.servers.isEmpty {
+                    discoveryTimedOut = true
+                    showManualEntry = true
+                }
+            }
+        }
         .onDisappear { discovery.stop() }
     }
 
@@ -131,10 +141,12 @@ public struct PairingScreen: View {
     @ViewBuilder
     private func emptyDiscoveryHint(viewport: CGSize) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Looking for Xuva servers on this network…")
+            Text(discoveryTimedOut ? "Couldn't find Xuva on this network" : "Looking for Xuva servers on this network…")
                 .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                 .foregroundStyle(XuvaTheme.muted)
-            Text("Make sure your Xuva server is running and connected to the same network.")
+            Text(discoveryTimedOut
+                 ? "Your network may block local discovery. Enter your server's address below to continue."
+                 : "Make sure your Xuva server is running and connected to the same network.")
                 .font(.system(size: XuvaScale.metaFontSize(viewport)))
                 .foregroundStyle(XuvaTheme.mutedText)
         }
