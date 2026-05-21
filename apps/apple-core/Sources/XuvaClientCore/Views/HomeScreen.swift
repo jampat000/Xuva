@@ -18,11 +18,14 @@ public struct HomeScreen: View {
                         HeroView(item: hero, heroes: heroes, viewport: viewport)
                         rowsSection(viewport: viewport)
                     }
-                    .padding(.bottom, viewport.height * 0.12)
+                    .padding(.bottom, 60)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(XuvaTheme.background)
         }
+        .ignoresSafeArea()
     }
 
     @ViewBuilder
@@ -379,13 +382,49 @@ struct TopNavPill: View {
         } label: {
             Text(title)
                 .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .medium))
-                .foregroundStyle(isActive ? XuvaTheme.text : XuvaTheme.mutedText)
                 .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport) * 0.75)
                 .frame(height: XuvaScale.buttonHeight(viewport) * 0.7)
-                .background(isActive ? XuvaTheme.focus.opacity(0.10) : Color.clear, in: Capsule())
-                .overlay(Capsule().stroke(isActive ? XuvaTheme.focus.opacity(0.30) : Color.clear))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NavPillButtonStyle(isActive: isActive))
+    }
+}
+
+/// Custom nav pill style — uses our own subtle focus ring instead of the
+/// tvOS default focus card which inflates the pill into a giant white
+/// halo that overlaps neighbouring pills on a real TV.
+private struct NavPillButtonStyle: ButtonStyle {
+    let isActive: Bool
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        NavPillBody(configuration: configuration, isActive: isActive)
+    }
+
+    private struct NavPillBody: View {
+        let configuration: Configuration
+        let isActive: Bool
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(isActive || isFocused ? XuvaTheme.text : XuvaTheme.mutedText)
+                .background(
+                    isFocused
+                        ? XuvaTheme.text.opacity(0.14)
+                        : (isActive ? XuvaTheme.focus.opacity(0.12) : Color.clear),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(
+                        isFocused
+                            ? XuvaTheme.text.opacity(0.55)
+                            : (isActive ? XuvaTheme.focus.opacity(0.30) : Color.clear),
+                        lineWidth: isFocused ? 2 : 1
+                    )
+                )
+                .scaleEffect(isFocused ? 1.04 : 1)
+                .animation(.easeOut(duration: 0.15), value: isFocused)
+        }
     }
 }
 
