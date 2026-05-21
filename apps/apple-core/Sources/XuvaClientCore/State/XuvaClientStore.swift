@@ -99,18 +99,22 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func open(item: HomeItem) async {
+        print("[XUVA] open item id=\(item.id) kind=\(item.kind ?? "-") title=\(item.title ?? "-")")
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
             selectedDetail = try await api.detail(kind: item.kind ?? "movie", id: item.id)
+            print("[XUVA] detail loaded versions=\(selectedDetail?.versions?.count ?? 0)")
             persistCurrentAuthToken()
             screen = .detail
         }
     }
 
     public func play(version: MediaVersion? = nil, audioTrack: MediaTrack? = nil, subtitleTrack: MediaTrack? = nil) async {
+        print("[XUVA] play() called, hasAPI=\(api != nil)")
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
             let mediaSourceId = version?.mediaSourceId ?? selectedDetail?.versions?.first?.mediaSourceId
+            print("[XUVA] play() mediaSourceId=\(mediaSourceId ?? "<none>")")
             guard let mediaSourceId, !mediaSourceId.isEmpty else { throw XuvaAPIError.missingStreamURL }
             var response = try await api.startPlayback(
                 mediaSourceId: mediaSourceId,
@@ -118,16 +122,21 @@ public final class XuvaClientStore: ObservableObject {
                 subtitleTrackIndex: subtitleTrack?.index,
                 subtitleTrackActive: subtitleTrack != nil
             )
+            print("[XUVA] startPlayback OK session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>") routeUrl=\(response.route?.url ?? "<none>")")
             if let sessionId = response.sessionId, !sessionId.isEmpty,
                let deviceId = response.deviceId, !deviceId.isEmpty {
                 let signed = try await api.requestStreamToken(mediaSourceId: mediaSourceId, sessionId: sessionId, deviceId: deviceId)
+                print("[XUVA] streamToken OK signedUrl=\(signed.streamUrl ?? "<none>")")
                 if let signedUrl = signed.streamUrl, !signedUrl.isEmpty {
                     response.route?.url = signedUrl
                 }
+            } else {
+                print("[XUVA] WARN missing sessionId/deviceId — skipping streamToken")
             }
             playback = response
             persistCurrentAuthToken()
             screen = .player
+            print("[XUVA] screen=.player, final url=\(response.route?.url ?? "<none>")")
         }
     }
 
@@ -217,6 +226,7 @@ public final class XuvaClientStore: ObservableObject {
         do {
             try await operation()
         } catch {
+            print("[XUVA] ERR \(error)")
             errorMessage = error.localizedDescription
             if case XuvaAPIError.badStatus(401, _) = error {
                 connectionState = .needsAuthCredential

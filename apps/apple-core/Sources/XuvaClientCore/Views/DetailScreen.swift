@@ -36,21 +36,19 @@ private struct DetailContentView: View {
     var body: some View {
         GeometryReader { geometry in
             let viewport = geometry.size
-            ZStack(alignment: .top) {
-                backdropLayer(viewport: viewport)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        topBar(viewport: viewport)
-                            .padding(.top, XuvaScale.safeTop(viewport))
-                        heroBlock(viewport: viewport)
-                        Spacer().frame(height: XuvaScale.sectionSpacing(viewport))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    hero(viewport: viewport)
+                    if hasBody {
                         bodySections(viewport: viewport)
+                            .padding(.top, XuvaScale.sectionSpacing(viewport))
                     }
-                    .padding(.bottom, viewport.height * 0.12)
                 }
+                .padding(.bottom, viewport.height * 0.10)
             }
             .background(XuvaTheme.background)
         }
+        .ignoresSafeArea(.container, edges: .top)
         .onAppear {
             if UserDefaults.standard.bool(forKey: "xuva.dev.autoPlayOnDetail") {
                 Task {
@@ -59,79 +57,61 @@ private struct DetailContentView: View {
                 }
             }
         }
+        #if os(tvOS)
+        .onExitCommand {
+            store.backToHome()
+        }
+        #endif
+    }
+
+    // MARK: – Hero
+
+    @ViewBuilder
+    private func hero(viewport: CGSize) -> some View {
+        let isCompact = viewport.width < 700
+        ZStack(alignment: .bottomLeading) {
+            backdrop(viewport: viewport)
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer(minLength: 0)
+                heroContent(viewport: viewport, isCompact: isCompact)
+                    .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                    .padding(.bottom, isCompact ? 24 : 56)
+            }
+        }
+        .frame(height: viewport.height * (isCompact ? 0.78 : 0.92))
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
-    private func backdropLayer(viewport: CGSize) -> some View {
-        let height = viewport.height * XuvaScale.detailBackdropFraction(viewport) + 80
+    private func backdrop(viewport: CGSize) -> some View {
         ZStack {
             RemoteImage(urlString: detail.displayBackdropURL, aspectRatio: 16 / 9)
-                .frame(width: viewport.width, height: height)
+                .frame(width: viewport.width, height: viewport.height * 0.95)
                 .clipped()
-                .opacity(0.5)
             LinearGradient(
-                colors: [.clear, XuvaTheme.background.opacity(0.75), XuvaTheme.background],
+                colors: [.clear, XuvaTheme.background.opacity(0.55), XuvaTheme.background],
                 startPoint: .top,
                 endPoint: .bottom
             )
             LinearGradient(
-                colors: [XuvaTheme.background.opacity(0.85), XuvaTheme.background.opacity(0.20), .clear],
+                colors: [XuvaTheme.background.opacity(0.92), XuvaTheme.background.opacity(0.30), .clear],
                 startPoint: .leading,
                 endPoint: .trailing
             )
         }
-        .frame(width: viewport.width, height: height)
-        .ignoresSafeArea()
-    }
-
-    private func topBar(viewport: CGSize) -> some View {
-        HStack(spacing: 16) {
-            Button {
-                store.backToHome()
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
-
-            XuvaLogo(viewport: viewport)
-            Spacer()
-        }
-        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
-        .frame(height: XuvaScale.navBarHeight(viewport))
     }
 
     @ViewBuilder
-    private func heroBlock(viewport: CGSize) -> some View {
-        let isCompact = viewport.width < 600
+    private func heroContent(viewport: CGSize, isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: isCompact ? 14 : 22) {
             HStack(spacing: 14) {
-                Rectangle()
-                    .fill(XuvaTheme.text.opacity(0.40))
-                    .frame(width: 36, height: 1)
+                Rectangle().fill(XuvaTheme.text.opacity(0.40)).frame(width: 36, height: 1)
                 Text(eyebrow)
                     .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
                     .tracking(5.6)
                     .foregroundStyle(XuvaTheme.mutedText)
             }
-
-            if let logo = detail.displayLogoURL, !logo.isEmpty {
-                RemoteLogo(
-                    urlString: logo,
-                    fallbackTitle: detail.displayTitle,
-                    maxWidth: XuvaScale.heroLogoMaxWidth(viewport),
-                    maxHeight: XuvaScale.heroLogoMaxHeight(viewport)
-                )
-            } else {
-                let titleSize = XuvaScale.heroTitleSize(viewport)
-                Text(detail.displayTitle)
-                    .font(.system(size: titleSize, weight: .semibold, design: .default))
-                    .tracking(titleSize * -0.045)
-                    .foregroundStyle(XuvaTheme.text)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.6)
-                    .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
-            }
-
+            heroTitle(viewport: viewport)
             metaLine(viewport: viewport)
             if let tagline = detail.displayTagline, !tagline.isEmpty {
                 Text(tagline)
@@ -146,9 +126,28 @@ private struct DetailContentView: View {
                 .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
             actionBar(viewport: viewport)
         }
-        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
-        .padding(.top, viewport.height * 0.06)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func heroTitle(viewport: CGSize) -> some View {
+        if let logo = detail.displayLogoURL, !logo.isEmpty {
+            RemoteLogo(
+                urlString: logo,
+                fallbackTitle: detail.displayTitle,
+                maxWidth: XuvaScale.heroLogoMaxWidth(viewport),
+                maxHeight: XuvaScale.heroLogoMaxHeight(viewport)
+            )
+        } else {
+            let titleSize = XuvaScale.heroTitleSize(viewport)
+            Text(detail.displayTitle)
+                .font(.system(size: titleSize, weight: .semibold, design: .default))
+                .tracking(titleSize * -0.045)
+                .foregroundStyle(XuvaTheme.text)
+                .lineLimit(2)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+        }
     }
 
     @ViewBuilder
@@ -177,7 +176,7 @@ private struct DetailContentView: View {
             }
 
             Button {
-                // Watchlist placeholder
+                // Placeholder for watchlist
             } label: {
                 Image(systemName: "plus")
             }
@@ -213,10 +212,19 @@ private struct DetailContentView: View {
         return parts
     }
 
+    // MARK: – Body sections
+
+    private var hasBody: Bool {
+        let hasVersions = (detail.versions?.count ?? 0) > 1
+        let hasTracks = !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty
+        let hasCredits = !detail.displayDirectors.isEmpty
+        return hasVersions || hasTracks || hasCredits
+    }
+
     @ViewBuilder
     private func bodySections(viewport: CGSize) -> some View {
         VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
-            if let versions = detail.versions, !versions.isEmpty {
+            if let versions = detail.versions, versions.count > 1 {
                 versionsSection(versions: versions, viewport: viewport)
             }
             if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
@@ -278,6 +286,8 @@ private struct DetailContentView: View {
             }
         }
     }
+
+    // MARK: – Helpers
 
     private var routeDecision: PlaybackDecision? {
         selectedVersion?.decision ?? detail.versions?.first?.decision
