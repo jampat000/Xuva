@@ -260,6 +260,7 @@ public struct PlaybackStartResponse: Codable, Equatable {
     public var decision: PlaybackDecision?
     public var route: PlaybackRoute?
     public var mediaSourceId: String?
+    public var deviceId: String?
     public var defaultSubtitlesEnabled: Bool?
 }
 
@@ -299,6 +300,19 @@ public struct PlaybackHeartbeat: Codable {
     public var positionSeconds: Int
     public var isPaused: Bool?
     public var completed: Bool?
+}
+
+public struct StreamTokenRequest: Codable {
+    public var sessionId: String
+    public var deviceId: String
+}
+
+public struct StreamTokenResponse: Codable, Equatable {
+    public var token: String?
+    public var expiresAt: String?
+    public var streamUrl: String?
+    public var subtitleBaseUrl: String?
+    public var query: String?
 }
 
 public extension DetailResponse {

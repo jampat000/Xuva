@@ -88,6 +88,12 @@ public final class XuvaClientStore: ObservableObject {
             connectionState = .paired
             screen = .home
         }
+        if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
+            if let first = home?.rows?.flatMap({ $0.items ?? [] }).first {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                await open(item: first)
+            }
+        }
     }
 
     public func open(item: HomeItem) async {
@@ -104,12 +110,20 @@ public final class XuvaClientStore: ObservableObject {
             guard let api else { throw XuvaAPIError.invalidURL }
             let mediaSourceId = version?.mediaSourceId ?? selectedDetail?.versions?.first?.mediaSourceId
             guard let mediaSourceId, !mediaSourceId.isEmpty else { throw XuvaAPIError.missingStreamURL }
-            playback = try await api.startPlayback(
+            var response = try await api.startPlayback(
                 mediaSourceId: mediaSourceId,
                 audioTrackIndex: audioTrack?.index,
                 subtitleTrackIndex: subtitleTrack?.index,
                 subtitleTrackActive: subtitleTrack != nil
             )
+            if let sessionId = response.sessionId, !sessionId.isEmpty,
+               let deviceId = response.deviceId, !deviceId.isEmpty {
+                let signed = try await api.requestStreamToken(mediaSourceId: mediaSourceId, sessionId: sessionId, deviceId: deviceId)
+                if let signedUrl = signed.streamUrl, !signedUrl.isEmpty {
+                    response.route?.url = signedUrl
+                }
+            }
+            playback = response
             persistCurrentAuthToken()
             screen = .player
         }
@@ -177,6 +191,12 @@ public final class XuvaClientStore: ObservableObject {
             persistCurrentAuthToken()
             connectionState = .paired
             screen = .home
+        }
+        if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
+            if let first = home?.rows?.flatMap({ $0.items ?? [] }).first {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                await open(item: first)
+            }
         }
     }
 
