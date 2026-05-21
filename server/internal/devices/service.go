@@ -51,6 +51,7 @@ type ApprovedDevice struct {
 	Status        string    `json:"status"`
 	ApprovedAt    time.Time `json:"approvedAt"`
 	ApprovedBy    string    `json:"approvedBy"`
+	AuthSessionID string    `json:"-"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
@@ -158,7 +159,7 @@ func (s *Service) ListApproved(ctx context.Context) ([]ApprovedDevice, error) {
 		return []ApprovedDevice{}, nil
 	}
 	rows, err := s.database.DB().QueryContext(ctx, `
-		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at
+		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, auth_session_id, created_at, updated_at
 		FROM approved_devices
 		WHERE status = ?
 		ORDER BY updated_at DESC, approved_at DESC
@@ -261,6 +262,27 @@ func (s *Service) Approve(ctx context.Context, input ApproveInput) (ApprovedDevi
 	return updated, nil
 }
 
+// AttachSession links an approved device to the auth session that was
+// issued when it was approved, so a later Revoke can invalidate the token
+// rather than leaving it usable. Best-effort: returns nil if the device
+// row no longer exists.
+func (s *Service) AttachSession(ctx context.Context, deviceID string, sessionID string) error {
+	if s == nil || s.database == nil {
+		return ErrRegistryUnavailable
+	}
+	deviceID = strings.TrimSpace(deviceID)
+	sessionID = strings.TrimSpace(sessionID)
+	if deviceID == "" || sessionID == "" {
+		return nil
+	}
+	_, err := s.database.DB().ExecContext(ctx, `
+		UPDATE approved_devices
+		SET auth_session_id = ?, updated_at = ?
+		WHERE device_id = ?
+	`, sessionID, time.Now().UTC().Format(time.RFC3339Nano), deviceID)
+	return err
+}
+
 func (s *Service) Revoke(ctx context.Context, id string) (ApprovedDevice, error) {
 	if s == nil || s.database == nil {
 		return ApprovedDevice{}, ErrRegistryUnavailable
@@ -280,11 +302,13 @@ func (s *Service) Revoke(ctx context.Context, id string) (ApprovedDevice, error)
 	item.UpdatedAt = time.Now().UTC()
 	if _, err := s.database.DB().ExecContext(ctx, `
 		UPDATE approved_devices
-		SET status = ?, updated_at = ?
+		SET status = ?, auth_session_id = '', updated_at = ?
 		WHERE id = ?
 	`, item.Status, item.UpdatedAt.Format(time.RFC3339Nano), item.ID); err != nil {
 		return ApprovedDevice{}, err
 	}
+	// item.AuthSessionID still holds the previous session id so the caller
+	// can hand it to auth.RevokeSessionID before discarding.
 	return item, nil
 }
 
@@ -300,7 +324,7 @@ func (s *Service) findByDeviceID(ctx context.Context, deviceID string) (Approved
 		return ApprovedDevice{}, false, ErrRegistryUnavailable
 	}
 	row := s.database.DB().QueryRowContext(ctx, `
-		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at
+		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, auth_session_id, created_at, updated_at
 		FROM approved_devices
 		WHERE device_id = ?
 		LIMIT 1
@@ -320,7 +344,7 @@ func (s *Service) findByID(ctx context.Context, id string) (ApprovedDevice, bool
 		return ApprovedDevice{}, false, ErrRegistryUnavailable
 	}
 	row := s.database.DB().QueryRowContext(ctx, `
-		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, created_at, updated_at
+		SELECT id, device_id, device_name, client_profile, display_name, status, approved_at, approved_by, auth_session_id, created_at, updated_at
 		FROM approved_devices
 		WHERE id = ?
 		LIMIT 1
@@ -346,7 +370,7 @@ func scanApprovedDevice(scanner approvedDeviceScanner) (ApprovedDevice, error) {
 		createdAtValue  string
 		updatedAtValue  string
 	)
-	if err := scanner.Scan(&item.ID, &item.DeviceID, &item.DeviceName, &item.ClientProfile, &item.DisplayName, &item.Status, &approvedAtValue, &item.ApprovedBy, &createdAtValue, &updatedAtValue); err != nil {
+	if err := scanner.Scan(&item.ID, &item.DeviceID, &item.DeviceName, &item.ClientProfile, &item.DisplayName, &item.Status, &approvedAtValue, &item.ApprovedBy, &item.AuthSessionID, &createdAtValue, &updatedAtValue); err != nil {
 		return ApprovedDevice{}, err
 	}
 	item.ApprovedAt = parseDeviceTime(approvedAtValue)

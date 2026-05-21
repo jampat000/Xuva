@@ -6914,6 +6914,15 @@ func approvedDeviceRevokeHandler(deps Deps) http.HandlerFunc {
 			}
 			return
 		}
+		// Kill the auth session that was issued at pairing time so the
+		// revoked device's cached X-Auth-Token immediately stops working.
+		// Without this the device status flips to revoked but the token
+		// still validates because the auth layer checks the session row.
+		if deps.Auth != nil && !deps.Auth.Disabled() && strings.TrimSpace(item.AuthSessionID) != "" {
+			if err := deps.Auth.RevokeSessionID(r.Context(), item.AuthSessionID); err != nil {
+				slog.Warn("device revoke could not invalidate session", "deviceId", item.DeviceID, "sessionId", item.AuthSessionID, "err", err)
+			}
+		}
 		publishOperationalEvent(deps, r, "device.revoked", map[string]any{
 			"deviceId":      item.DeviceID,
 			"displayName":   item.DisplayName,
@@ -7104,6 +7113,12 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		if grantErr != nil {
 			writeError(w, http.StatusInternalServerError, "pairing credential update failed")
 			return
+		}
+		// Link the freshly-issued session to the approved-device row so a
+		// later Revoke can invalidate the token (not just flip the device
+		// status, which leaves the cached X-Auth-Token still working).
+		if deps.Devices != nil {
+			_ = deps.Devices.AttachSession(r.Context(), item.DeviceID, session.ID)
 		}
 		item = credentialed
 	}
