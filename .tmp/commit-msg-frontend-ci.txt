@@ -1,0 +1,16 @@
+ci(frontend): add svelte-check gate + fix 12 pre-existing errors
+
+Adds a `frontend-typecheck` job to the Security workflow that runs
+`npm run check` (svelte-kit sync + svelte-check) in apps/web/svelte
+on every PR and push to main, blocking future TS/Svelte regressions.
+
+Fixes the 12 pre-existing svelte-check errors so the gate is green
+from day one:
+- Hero.svelte: add explicit `Media` type to filter callback param
+- settings/+page.svelte: tighten null/undefined guard before iterating
+  detected hardware encoders (encoders array possibly undefined)
+- api/home.ts: backfill SeriesDetailSeason and SeriesDetailEpisode
+  with the fields the backend actually returns from
+  clientSeriesDetailPayload (id, title, episodeNumber, seasonNumber,
+  thumbnailUrl, overview, airDate, runtimeMinutes, etc.) — fixes 8
+  "Property does not exist" errors in tv/[id]/+page.svelte

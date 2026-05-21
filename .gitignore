@@ -58,9 +58,15 @@ captures/
 
 # Apple / Xcode
 DerivedData/
+.build/
 *.xcuserstate
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
+
+# Local agent/tooling caches
+.tmp/toolchains/
+.tmp/xuva-movie-detail-page/.git
+.tmp/xuva-movie-detail-page/.workspace/
 
 # Media test artifacts
 fixtures/media-local/

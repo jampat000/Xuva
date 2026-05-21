@@ -1,0 +1,11 @@
+feat(search): broaden library search to people and collections
+
+Adds GET /api/client/search?q=&limit= returning movies, series, people
+(from metadata cast/crew), and collections (from movie metadata
+$.collection) in one shot. Results are scored exact > prefix >
+word-prefix > contains and capped at limit per type (default 8, max 40).
+
+The search store now calls the backend with a 150ms debounce instead of
+loading the full catalogue on prime. Header dropdown and the /search
+page render person avatars and collection posters alongside movies and
+series, linking to /people/{name} and /collections/{id}.

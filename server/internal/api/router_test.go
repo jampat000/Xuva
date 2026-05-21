@@ -1,4 +1,4 @@
-﻿package api
+package api
 
 import (
 	"bytes"
@@ -661,10 +661,24 @@ func TestPairingRequestCreateStatusAndAdminApprove(t *testing.T) {
 	if approved.payload["status"] != "approved" || approved.payload["deviceId"] == "" || approved.payload["code"] != nil {
 		t.Fatalf("expected approved pairing without code, got %#v", approved.payload)
 	}
+	authGrant, _ := approved.payload["auth"].(map[string]any)
+	token, _ := authGrant["sessionToken"].(string)
+	if authGrant["method"] != "header_token" || strings.TrimSpace(token) == "" {
+		t.Fatalf("expected approved pairing to include native header token, got %#v", approved.payload)
+	}
 
 	polled := getJSON(t, router, "/api/pairing/requests/"+pairingID)
-	if polled["status"] != "approved" || polled["deviceId"] == "" || polled["code"] != nil {
-		t.Fatalf("expected approved polling result without code, got %#v", polled)
+	polledAuth, _ := polled["auth"].(map[string]any)
+	if polled["status"] != "approved" || polled["deviceId"] == "" || polled["code"] != nil || strings.TrimSpace(polledAuth["sessionToken"].(string)) == "" {
+		t.Fatalf("expected approved polling result with native token and without code, got %#v", polled)
+	}
+
+	nativeRequest := httptest.NewRequest(http.MethodGet, "http://xuva.test/api/client/home", nil)
+	nativeRequest.Header.Set("X-Auth-Token", token)
+	nativeResponse := httptest.NewRecorder()
+	router.ServeHTTP(nativeResponse, nativeRequest)
+	if nativeResponse.Code != http.StatusOK {
+		t.Fatalf("expected native token to access client home, got %d: %s", nativeResponse.Code, nativeResponse.Body.String())
 	}
 
 	client = newAuthTestClient(t)
@@ -686,6 +700,13 @@ func TestPairingRequestCreateStatusAndAdminApprove(t *testing.T) {
 	}
 	if strings.Contains(devices.body, "token") || strings.Contains(devices.body, "secret") {
 		t.Fatalf("expected approved device payload to avoid auth material, got %s", devices.body)
+	}
+	pending := client.requestJSON(t, router, http.MethodGet, "/api/pairing/requests", nil)
+	if pending.status != http.StatusOK {
+		t.Fatalf("expected pairing list 200, got %d: %s", pending.status, pending.body)
+	}
+	if strings.Contains(pending.body, token) || strings.Contains(pending.body, "sessionToken") {
+		t.Fatalf("expected pairing list to avoid native auth token, got %s", pending.body)
 	}
 }
 
@@ -3502,6 +3523,3 @@ func anyToString(value any) string {
 	}
 	return string(raw)
 }
-
-
-

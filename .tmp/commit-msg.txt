@@ -1,0 +1,9 @@
+feat(nav): add Watchlist to top navigation bar
+
+Adds Watchlist as a first-class nav item alongside Home, Movies, and TV
+so users can reach their saved titles in one click from any page.
+
+Also fixes the wrong icon on the profile dropdown's Watchlist link
+(was User, now Bookmark).
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
