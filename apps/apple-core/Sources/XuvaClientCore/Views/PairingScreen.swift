@@ -2,23 +2,18 @@ import SwiftUI
 
 public struct PairingScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
-    @FocusState private var focusedControl: PairingFocus?
 
     public init() {}
 
     public var body: some View {
         GeometryReader { geometry in
             let viewport = geometry.size
-            let isCompact = viewport.width < 700
-            let controls: AnyLayout = isCompact
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
-                : AnyLayout(HStackLayout(spacing: 14))
-
             ScrollView {
-                VStack(alignment: .leading, spacing: isCompact ? 18 : 28) {
+                VStack(alignment: .leading, spacing: viewport.width < 700 ? 22 : 32) {
                     XuvaLogo(viewport: viewport)
                     Text("Connect to Xuva")
-                        .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.55, weight: .bold))
+                        .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.55, weight: .semibold, design: .default))
+                        .tracking(XuvaScale.heroTitleSize(viewport) * 0.55 * -0.045)
                         .foregroundStyle(XuvaTheme.text)
                         .lineLimit(2)
                         .minimumScaleFactor(0.6)
@@ -28,21 +23,23 @@ public struct PairingScreen: View {
                         .foregroundStyle(XuvaTheme.muted)
                         .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
 
-                    controls {
+                    // Stage 1: server URL + Connect, stacked vertically so swipe-down
+                    // always advances from the field to the button.
+                    VStack(alignment: .leading, spacing: 14) {
                         serverURLControl(viewport: viewport)
+                            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
 
                         Button {
                             Task { await store.connect() }
                         } label: {
-                            buttonLabel(title: store.isBusy ? "Connecting..." : "Connect", systemImage: store.isBusy ? "hourglass" : "play.fill")
+                            buttonLabel(title: store.isBusy ? "Connecting…" : "Connect", systemImage: store.isBusy ? "hourglass" : "play.fill")
                         }
                         .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-                        .focused($focusedControl, equals: .connect)
                         .xuvaDefaultKeyboardAction()
                         .disabled(store.isBusy)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
+                    // Stage 2: pairing card appears below once bootstrap succeeds.
                     if store.bootstrap != nil {
                         pairingCard(viewport: viewport)
                     }
@@ -55,15 +52,13 @@ public struct PairingScreen: View {
                             .foregroundStyle(XuvaTheme.danger)
                             .padding(16)
                             .background(XuvaTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
                     }
                 }
                 .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
-                .padding(.vertical, isCompact ? 36 : viewport.height * 0.10)
+                .padding(.vertical, viewport.width < 700 ? 36 : viewport.height * 0.10)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        .onAppear {
-            focusedControl = .connect
         }
         .task(id: store.pairing?.stableID) {
             await pollPairingWhilePending()
@@ -89,28 +84,30 @@ public struct PairingScreen: View {
     }
 
     private func pairingCard(viewport: CGSize) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             Label(store.bootstrap?.server?.name ?? "Xuva found", systemImage: "checkmark.seal.fill")
                 .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .bold))
                 .foregroundStyle(XuvaTheme.good)
 
             if let code = store.pairing?.code {
                 Text(code)
-                    .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.78, weight: .black))
+                    .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.85, weight: .black, design: .rounded))
                     .tracking(8)
-                Text("Approve this code in Xuva. The library opens automatically.")
+                Text("Approve this code in Xuva (Settings → Devices). The library opens automatically.")
                     .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
-                Text("Waiting for approval")
+                Text("Waiting for approval…")
                     .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
                     .foregroundStyle(XuvaTheme.primaryGlow)
             } else {
-                Text("Create a pairing code for this device.")
+                Text("Tap the button below to generate a 6-digit pairing code.")
                     .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
             }
 
-            HStack(spacing: 12) {
+            // Vertically stacked buttons so down-arrow advances; primary button
+            // is first so the focus engine prefers it as the natural CTA.
+            VStack(alignment: .leading, spacing: 12) {
                 Button {
                     Task {
                         if store.pairing == nil {
@@ -121,37 +118,37 @@ public struct PairingScreen: View {
                     }
                 } label: {
                     buttonLabel(
-                        title: store.isBusy ? "Working..." : (store.pairing == nil ? "Create pairing code" : "Check approval"),
+                        title: store.isBusy ? "Working…" : (store.pairing == nil ? "Create pairing code" : "Check approval"),
                         systemImage: store.isBusy ? "hourglass" : "key.fill"
                     )
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-                .focused($focusedControl, equals: .pair)
                 .xuvaDefaultKeyboardAction()
                 .disabled(store.isBusy)
 
-                Button {
-                    Task { await store.loadHome() }
-                } label: {
-                    buttonLabel(title: "Home", systemImage: "house.fill")
-                }
-                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
-                .focused($focusedControl, equals: .home)
-                .disabled(store.isBusy)
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await store.loadHome() }
+                    } label: {
+                        buttonLabel(title: "Home", systemImage: "house.fill")
+                    }
+                    .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
+                    .disabled(store.isBusy)
 
-                Button {
-                    store.resetConnection()
-                } label: {
-                    buttonLabel(title: "Reset", systemImage: "arrow.counterclockwise")
+                    Button {
+                        store.resetConnection()
+                    } label: {
+                        buttonLabel(title: "Reset", systemImage: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
+                    .disabled(store.isBusy)
                 }
-                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
-                .disabled(store.isBusy)
             }
         }
-        .padding(28)
+        .padding(32)
         .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
-        .background(XuvaTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(XuvaTheme.hairline))
+        .background(XuvaTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(XuvaTheme.hairline))
     }
 
     @ViewBuilder
@@ -195,12 +192,6 @@ public struct PairingScreen: View {
             await store.pollPairingOnce()
         }
     }
-}
-
-private enum PairingFocus {
-    case connect
-    case pair
-    case home
 }
 
 private extension View {
