@@ -33,6 +33,7 @@ public final class XuvaDiscovery: ObservableObject {
 
     public func start() {
         guard browser == nil else { return }
+        print("[XUVA] discovery.start() — looking for _xuva._tcp on .local")
         let params = NWParameters()
         params.includePeerToPeer = true
         let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(type: "_xuva._tcp", domain: nil)
@@ -41,6 +42,7 @@ public final class XuvaDiscovery: ObservableObject {
         isBrowsing = true
 
         nb.stateUpdateHandler = { [weak self] state in
+            print("[XUVA] NWBrowser state -> \(state)")
             Task { @MainActor in
                 guard let self else { return }
                 switch state {
@@ -57,7 +59,11 @@ public final class XuvaDiscovery: ObservableObject {
             }
         }
 
-        nb.browseResultsChangedHandler = { [weak self] results, _ in
+        nb.browseResultsChangedHandler = { [weak self] results, changes in
+            print("[XUVA] NWBrowser results count=\(results.count) changes=\(changes.count)")
+            for r in results {
+                print("[XUVA]   endpoint=\(r.endpoint) metadata=\(r.metadata)")
+            }
             Task { @MainActor in
                 self?.handleResults(Array(results))
             }
