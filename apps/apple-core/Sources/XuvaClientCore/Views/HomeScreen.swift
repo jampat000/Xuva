@@ -2,8 +2,6 @@ import SwiftUI
 
 public struct HomeScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
-    @FocusState private var rootFocus: RootFocus?
-    @Namespace private var rootNamespace
 
     public init() {}
 
@@ -16,28 +14,14 @@ public struct HomeScreen: View {
                     VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
                         MediaTopBar(viewport: viewport)
                             .padding(.top, XuvaScale.safeTop(viewport))
-                        HeroView(item: hero, heroes: heroes, viewport: viewport, parentFocus: $rootFocus)
+                        HeroView(item: hero, heroes: heroes, viewport: viewport)
                         rowsSection(viewport: viewport)
                     }
                     .padding(.bottom, viewport.height * 0.12)
                 }
             }
             .background(XuvaTheme.background)
-            .modifier(FocusScopeModifier(namespace: rootNamespace))
         }
-        .defaultFocus($rootFocus, .heroPlay)
-        .onAppear {
-            // tvOS focus engine sometimes lands on the first focusable view (nav pill)
-            // before defaultFocus resolves. Re-assert focus after layout settles.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                rootFocus = .heroPlay
-            }
-        }
-    }
-
-    enum RootFocus: Hashable {
-        case heroPlay
-        case heroInfo
     }
 
     @ViewBuilder
@@ -130,7 +114,6 @@ struct HeroView: View {
     let item: HomeItem
     let heroes: [HomeItem]
     let viewport: CGSize
-    var parentFocus: FocusState<HomeScreen.RootFocus?>.Binding
     @EnvironmentObject private var store: XuvaClientStore
 
     var body: some View {
@@ -159,7 +142,6 @@ struct HeroView: View {
                     Label(primaryActionTitle, systemImage: "play.fill")
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-                .focused(parentFocus, equals: .heroPlay)
 
                 Button {
                     Task { await store.open(item: item) }
@@ -167,7 +149,6 @@ struct HeroView: View {
                     Label("More info", systemImage: "info.circle")
                 }
                 .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
-                .focused(parentFocus, equals: .heroInfo)
 
                 #if !os(tvOS)
                 Button {
@@ -254,16 +235,6 @@ private struct HeroTitle: View {
     }
 }
 
-private struct FocusScopeModifier: ViewModifier {
-    let namespace: Namespace.ID
-    func body(content: Content) -> some View {
-        #if os(tvOS)
-        content.focusScope(namespace)
-        #else
-        content
-        #endif
-    }
-}
 
 
 struct MediaRowView: View {

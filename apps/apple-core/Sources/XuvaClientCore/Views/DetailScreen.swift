@@ -32,7 +32,6 @@ private struct DetailContentView: View {
     @State private var selectedVersionID: String?
     @State private var selectedAudioID: String?
     @State private var selectedSubtitleID: String?
-    @FocusState private var focus: DetailFocus?
 
     var body: some View {
         GeometryReader { geometry in
@@ -52,9 +51,7 @@ private struct DetailContentView: View {
             }
             .background(XuvaTheme.background)
         }
-        .defaultFocus($focus, .play)
         .onAppear {
-            focus = .play
             if UserDefaults.standard.bool(forKey: "xuva.dev.autoPlayOnDetail") {
                 Task {
                     try? await Task.sleep(nanoseconds: 800_000_000)
@@ -95,7 +92,6 @@ private struct DetailContentView: View {
                 Image(systemName: "chevron.left")
             }
             .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
-            .focused($focus, equals: .back)
 
             XuvaLogo(viewport: viewport)
             Spacer()
@@ -170,7 +166,6 @@ private struct DetailContentView: View {
                 Label("Play", systemImage: "play.fill")
             }
             .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-            .focused($focus, equals: .play)
 
             if let trailer = detail.displayTrailerPath, !trailer.isEmpty {
                 Button {
@@ -179,7 +174,6 @@ private struct DetailContentView: View {
                     Label("Trailer", systemImage: "film")
                 }
                 .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
-                .focused($focus, equals: .trailer)
             }
 
             Button {
@@ -188,7 +182,6 @@ private struct DetailContentView: View {
                 Image(systemName: "plus")
             }
             .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
-            .focused($focus, equals: .add)
 
             RouteBadge(decision: routeDecision, viewport: viewport)
         }
@@ -337,14 +330,6 @@ private struct DetailContentView: View {
         )
         store.screen = .player
     }
-}
-
-private enum DetailFocus: Hashable {
-    case back
-    case play
-    case trailer
-    case add
-    case version(String)
 }
 
 private struct SectionContainer<Content: View>: View {
