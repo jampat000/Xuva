@@ -46,6 +46,8 @@ struct XuvaVideoPlayer: View {
     @State private var isPlaying = true
     @State private var showInspector = false
     @State private var didFinish = false
+    @State private var loadError: String?
+    @State private var observers: [NSObjectProtocol] = []
 
     init(url: URL, authToken: String?, playback: PlaybackStartResponse, close: @escaping () -> Void) {
         self.url = url
@@ -61,16 +63,24 @@ struct XuvaVideoPlayer: View {
                 .ignoresSafeArea()
                 .onAppear {
                     addTimeObserver()
+                    addErrorObservers()
                     player.play()
                     isPlaying = true
                 }
                 .onDisappear {
                     player.pause()
                     removeTimeObserver()
+                    removeErrorObservers()
                 }
 
+            if let err = loadError {
+                ErrorOverlay(message: err, url: url, close: { Task { await stopAndClose() } })
+            }
+
             #if !os(tvOS)
-            customChrome
+            if loadError == nil {
+                customChrome
+            }
             #endif
         }
         .background(.black)
@@ -81,6 +91,26 @@ struct XuvaVideoPlayer: View {
                 await sendHeartbeat()
             }
         }
+    }
+
+    private func addErrorObservers() {
+        let center = NotificationCenter.default
+        // Only treat real "could not play this stream" failures as fatal.
+        // Transient error log entries (network retries, codec warm-up) are not
+        // shown to the user — the player recovers and keeps playing.
+        let failed = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
+            if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
+                loadError = "Playback failed: \(err.localizedDescription) (code \(err.code))"
+            } else {
+                loadError = "Playback failed to reach end of stream."
+            }
+        }
+        observers = [failed]
+    }
+
+    private func removeErrorObservers() {
+        for ob in observers { NotificationCenter.default.removeObserver(ob) }
+        observers.removeAll()
     }
 
     #if !os(tvOS)
@@ -168,6 +198,40 @@ struct XuvaVideoPlayer: View {
             "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
         ])
         return AVPlayerItem(asset: asset)
+    }
+}
+
+struct ErrorOverlay: View {
+    let message: String
+    let url: URL
+    let close: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 60))
+                .foregroundStyle(XuvaTheme.warn)
+            Text("Playback failed")
+                .font(.system(size: 32, weight: .bold))
+                .foregroundStyle(XuvaTheme.text)
+            Text(message)
+                .font(.system(size: 18))
+                .foregroundStyle(XuvaTheme.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 720)
+            Text(url.absoluteString)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(XuvaTheme.mutedText)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .frame(maxWidth: 720)
+            Button("Back to detail") { close() }
+                .buttonStyle(XuvaSecondaryButtonStyle())
+                .padding(.top, 12)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.85))
     }
 }
 

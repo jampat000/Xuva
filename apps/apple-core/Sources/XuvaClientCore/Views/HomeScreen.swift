@@ -2,8 +2,8 @@ import SwiftUI
 
 public struct HomeScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
-    @State private var heroIndex = 0
-    @State private var activeSection = "Home"
+    @FocusState private var rootFocus: RootFocus?
+    @Namespace private var rootNamespace
 
     public init() {}
 
@@ -14,16 +14,30 @@ public struct HomeScreen: View {
                 heroBackdrop(viewport: viewport)
                 ScrollView {
                     VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
-                        MediaTopBar(activeSection: $activeSection, viewport: viewport)
+                        MediaTopBar(viewport: viewport)
                             .padding(.top, XuvaScale.safeTop(viewport))
-                        HeroView(item: hero, heroes: heroes, selectedIndex: $heroIndex, viewport: viewport)
+                        HeroView(item: hero, heroes: heroes, viewport: viewport, parentFocus: $rootFocus)
                         rowsSection(viewport: viewport)
                     }
                     .padding(.bottom, viewport.height * 0.12)
                 }
             }
             .background(XuvaTheme.background)
+            .modifier(FocusScopeModifier(namespace: rootNamespace))
         }
+        .defaultFocus($rootFocus, .heroPlay)
+        .onAppear {
+            // tvOS focus engine sometimes lands on the first focusable view (nav pill)
+            // before defaultFocus resolves. Re-assert focus after layout settles.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                rootFocus = .heroPlay
+            }
+        }
+    }
+
+    enum RootFocus: Hashable {
+        case heroPlay
+        case heroInfo
     }
 
     @ViewBuilder
@@ -52,7 +66,7 @@ public struct HomeScreen: View {
     @ViewBuilder
     private func rowsSection(viewport: CGSize) -> some View {
         if visibleRows.isEmpty {
-            EmptyLibraryView(section: activeSection, viewport: viewport)
+            EmptyLibraryView(section: store.activeSection, viewport: viewport)
                 .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         } else {
             VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
@@ -66,10 +80,10 @@ public struct HomeScreen: View {
     }
 
     private var hero: HomeItem {
-        if activeSection != "Home", let first = visibleRows.flatMap({ $0.items ?? [] }).first {
+        if store.activeSection != "Home", let first = visibleRows.flatMap({ $0.items ?? [] }).first {
             return first
         }
-        if heroIndex < heroes.count { return heroes[heroIndex] }
+        if store.heroIndex < heroes.count { return heroes[store.heroIndex] }
         return store.home?.hero ?? heroes.first ?? rows.flatMap { $0.items ?? [] }.first ?? HomeItem(
             id: "empty",
             kind: "movie",
@@ -94,7 +108,7 @@ public struct HomeScreen: View {
 
     private var visibleRows: [HomeRow] {
         let populatedRows = rows.filter { !($0.items ?? []).isEmpty }
-        switch activeSection {
+        switch store.activeSection {
         case "Movies":
             return populatedRows.filter { rowMatches($0, terms: ["movie"]) }
         case "TV":
@@ -115,11 +129,9 @@ public struct HomeScreen: View {
 struct HeroView: View {
     let item: HomeItem
     let heroes: [HomeItem]
-    @Binding var selectedIndex: Int
     let viewport: CGSize
+    var parentFocus: FocusState<HomeScreen.RootFocus?>.Binding
     @EnvironmentObject private var store: XuvaClientStore
-    @FocusState private var heroFocus: HeroFocusItem?
-    @Namespace private var heroNamespace
 
     var body: some View {
         let isCompact = viewport.width < 600
@@ -147,8 +159,7 @@ struct HeroView: View {
                     Label(primaryActionTitle, systemImage: "play.fill")
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-                .focused($heroFocus, equals: .play)
-                .modifier(PreferredDefaultFocusModifier(namespace: heroNamespace))
+                .focused(parentFocus, equals: .heroPlay)
 
                 Button {
                     Task { await store.open(item: item) }
@@ -156,7 +167,7 @@ struct HeroView: View {
                     Label("More info", systemImage: "info.circle")
                 }
                 .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
-                .focused($heroFocus, equals: .info)
+                .focused(parentFocus, equals: .heroInfo)
 
                 #if !os(tvOS)
                 Button {
@@ -167,14 +178,12 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
                 #endif
             }
-            .onAppear { heroFocus = .play }
             heroDots
                 .padding(.top, 8)
         }
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .padding(.top, viewport.height * XuvaScale.heroContentTopFraction(viewport))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(FocusScopeModifier(namespace: heroNamespace))
     }
 
     private var heroEyebrow: String {
@@ -196,15 +205,10 @@ struct HeroView: View {
                     .tracking(2.8)
                     .foregroundStyle(XuvaTheme.mutedText)
                 ForEach(Array(heroes.enumerated()), id: \.element.id) { index, hero in
-                    Button {
-                        selectedIndex = index
-                    } label: {
-                        Capsule()
-                            .fill(index == selectedIndex ? XuvaTheme.text : XuvaTheme.text.opacity(0.24))
-                            .frame(width: index == selectedIndex ? 56 : 26, height: 3)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Show \(hero.title ?? "featured title")")
+                    Capsule()
+                        .fill(index == store.heroIndex ? XuvaTheme.text : XuvaTheme.text.opacity(0.24))
+                        .frame(width: index == store.heroIndex ? 56 : 26, height: 3)
+                        .accessibilityLabel("Showing \(hero.title ?? "featured title")")
                 }
             }
         }
@@ -234,32 +238,19 @@ private struct HeroTitle: View {
         let size = XuvaScale.heroTitleSize(viewport)
         guard parts.count > 1, let last = parts.last else {
             return Text(title)
-                .font(.system(size: size, weight: .bold))
+                .font(.system(size: size, weight: .semibold, design: .default))
+                .tracking(size * -0.045)
                 .foregroundColor(XuvaTheme.text)
         }
         let leading = parts.dropLast().joined(separator: " ") + " "
         return Text(leading)
-            .font(.system(size: size, weight: .bold))
+            .font(.system(size: size, weight: .semibold, design: .default))
+            .tracking(size * -0.045)
             .foregroundColor(XuvaTheme.text) +
             Text(last)
-                .font(.system(size: size, weight: .bold).italic())
+                .font(.system(size: size, weight: .semibold, design: .default).italic())
+                .tracking(size * -0.045)
                 .foregroundColor(XuvaTheme.text)
-    }
-}
-
-private enum HeroFocusItem: Hashable {
-    case play
-    case info
-}
-
-private struct PreferredDefaultFocusModifier: ViewModifier {
-    let namespace: Namespace.ID
-    func body(content: Content) -> some View {
-        #if os(tvOS)
-        content.prefersDefaultFocus(in: namespace)
-        #else
-        content
-        #endif
     }
 }
 
@@ -273,6 +264,7 @@ private struct FocusScopeModifier: ViewModifier {
         #endif
     }
 }
+
 
 struct MediaRowView: View {
     let row: HomeRow
@@ -368,7 +360,6 @@ struct EmptyLibraryView: View {
 
 struct MediaTopBar: View {
     @EnvironmentObject private var store: XuvaClientStore
-    @Binding var activeSection: String
     let viewport: CGSize
 
     private var sections: [String] {
@@ -383,8 +374,8 @@ struct MediaTopBar: View {
             if showInlineNav {
                 HStack(spacing: 6) {
                     ForEach(sections, id: \.self) { section in
-                        TopNavPill(title: section, viewport: viewport, isActive: activeSection == section) {
-                            activeSection = section
+                        TopNavPill(title: section, viewport: viewport, isActive: store.activeSection == section) {
+                            store.setSection(section)
                         }
                     }
                 }

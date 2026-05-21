@@ -48,8 +48,8 @@ public struct XuvaLogo: View {
                 Text("X").foregroundStyle(XuvaTheme.text)
                 + Text("uva").foregroundStyle(XuvaBrand.wordmarkGradient)
             )
-            .font(.system(size: textSize, weight: .semibold).width(.condensed))
-            .tracking(-0.4)
+            .font(.system(size: textSize, weight: .semibold, design: .default))
+            .tracking(textSize * -0.025)
         }
     }
 }
