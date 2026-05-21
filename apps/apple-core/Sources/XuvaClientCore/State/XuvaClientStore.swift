@@ -71,6 +71,15 @@ public final class XuvaClientStore: ObservableObject {
         }
     }
 
+    /// Select a server discovered via Bonjour and immediately request a
+    /// pairing code. All the admin has to do is approve from the web UI.
+    public func selectDiscoveredServer(_ server: DiscoveredServer) async {
+        serverText = server.baseURL.absoluteString
+        await connect()
+        guard errorMessage == nil else { return }
+        await startPairing()
+    }
+
     public func pollPairingOnce() async {
         guard let api, let id = pairing?.stableID, !id.isEmpty else { return }
         await run(showBusy: false) {

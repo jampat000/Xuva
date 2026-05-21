@@ -260,6 +260,7 @@
 				DEVELOPMENT_TEAM = 8V56XS8759;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Xuva;
+				INFOPLIST_KEY_NSBonjourServices = "_xuva._tcp";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Xuva connects to your local media server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -286,6 +287,7 @@
 				DEVELOPMENT_TEAM = 8V56XS8759;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Xuva;
+				INFOPLIST_KEY_NSBonjourServices = "_xuva._tcp";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Xuva connects to your local media server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
