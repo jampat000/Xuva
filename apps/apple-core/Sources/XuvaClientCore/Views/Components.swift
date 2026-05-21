@@ -193,19 +193,11 @@ struct PosterTile: View {
     }
 
     private var posterWidth: CGFloat {
-        #if os(tvOS)
-        return wide ? 386 : 205
-        #else
-        return wide ? 268 : 132
-        #endif
+        wide ? XuvaScale.widePosterWidth() : XuvaScale.posterWidth()
     }
 
     private var posterHeight: CGFloat {
-        #if os(tvOS)
-        return wide ? 217 : 308
-        #else
-        return wide ? 151 : 198
-        #endif
+        wide ? XuvaScale.widePosterHeight() : XuvaScale.posterHeight()
     }
 
     private var artworkURL: String? {
@@ -224,7 +216,7 @@ struct PosterTile: View {
 
     private var tileTitleFont: Font {
         #if os(tvOS)
-        return .system(size: 20, weight: .bold, design: .rounded)
+        return .system(size: 22, weight: .semibold)
         #else
         return .headline
         #endif
