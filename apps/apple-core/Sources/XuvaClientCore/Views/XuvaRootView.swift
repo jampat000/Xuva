@@ -33,7 +33,11 @@ public struct XuvaRootView: View {
             }
             if let error = store.errorMessage, store.screen != .player {
                 ErrorToast(message: error) { store.clearError() }
+                    #if os(tvOS)
+                    .padding(.top, 120)
+                    #else
                     .padding(.top, 60)
+                    #endif
                     .frame(maxHeight: .infinity, alignment: .top)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -89,7 +93,11 @@ private struct ErrorToast: View {
             } label: {
                 Image(systemName: "xmark")
             }
+            #if os(tvOS)
+            .buttonStyle(.card)
+            #else
             .buttonStyle(.plain)
+            #endif
             .foregroundStyle(XuvaTheme.mutedText)
         }
         .padding(.horizontal, 22)
@@ -97,5 +105,9 @@ private struct ErrorToast: View {
         .background(XuvaTheme.surface.opacity(0.94), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(XuvaTheme.warn.opacity(0.45)))
         .shadow(color: .black.opacity(0.4), radius: 24, y: 12)
+        .task {
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            dismiss()
+        }
     }
 }
