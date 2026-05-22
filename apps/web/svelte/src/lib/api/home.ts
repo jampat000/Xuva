@@ -237,3 +237,56 @@ export function getPersonDetail(
 		`/api/client/people/${encodeURIComponent(name)}`
 	);
 }
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+export interface ServerWatchlistItem {
+	userId: string;
+	mediaId: string;
+	kind: 'movie' | 'series';
+	title: string;
+	year?: number;
+	posterUrl?: string;
+	backdropUrl?: string;
+	genres?: string[];
+	addedAt: string;
+}
+
+export interface WatchlistListResponse {
+	items: ServerWatchlistItem[];
+}
+
+export interface WatchlistAddRequest {
+	mediaId: string;
+	kind: 'movie' | 'series';
+	title: string;
+	year?: number;
+	posterUrl?: string;
+	backdropUrl?: string;
+	genres?: string[];
+}
+
+export function getServerWatchlist(client: ApiClient = apiClient): Promise<WatchlistListResponse> {
+	return client.request<WatchlistListResponse>('/api/client/watchlist');
+}
+
+export function addToServerWatchlist(
+	req: WatchlistAddRequest,
+	client: ApiClient = apiClient
+): Promise<ServerWatchlistItem> {
+	return client.request<ServerWatchlistItem>('/api/client/watchlist', {
+		method: 'POST',
+		body: req
+	});
+}
+
+export function removeFromServerWatchlist(
+	mediaId: string,
+	kind: 'movie' | 'series',
+	client: ApiClient = apiClient
+): Promise<void> {
+	return client.request<void>(
+		`/api/client/watchlist/${encodeURIComponent(mediaId)}?kind=${kind}`,
+		{ method: 'DELETE' }
+	);
+}

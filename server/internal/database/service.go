@@ -487,4 +487,18 @@ var migrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_session ON profile_sessions(session_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_user ON profile_sessions(profile_user_id)`,
+	// issue #174: server-side watchlist sync
+	`CREATE TABLE IF NOT EXISTS watchlist_items (
+		user_id      TEXT NOT NULL,
+		media_id     TEXT NOT NULL,
+		kind         TEXT NOT NULL CHECK(kind IN ('movie','series')),
+		title        TEXT NOT NULL,
+		year         INTEGER,
+		poster_url   TEXT NOT NULL DEFAULT '',
+		backdrop_url TEXT NOT NULL DEFAULT '',
+		genres_json  TEXT NOT NULL DEFAULT '',
+		added_at     TEXT NOT NULL,
+		PRIMARY KEY (user_id, media_id, kind)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist_items(user_id, added_at DESC)`,
 }
