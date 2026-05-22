@@ -290,6 +290,68 @@ func TestRootDoesNotServeRemovedAdminRoute(t *testing.T) {
 	}
 }
 
+func TestUserPreferencesPersistPosterSizePerUser(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	adminClient := newAuthTestClient(t)
+	loginAs(t, adminClient, router, "admin", "test-password-123!")
+
+	updated := adminClient.requestJSON(t, router, http.MethodPatch, "/api/users/me/preferences", map[string]any{
+		"posterSize": "L",
+	})
+	if updated.status != http.StatusOK {
+		t.Fatalf("expected poster preference update 200, got %d: %s", updated.status, updated.body)
+	}
+	if updated.payload["posterSize"] != "L" {
+		t.Fatalf("expected posterSize L, got %#v", updated.payload)
+	}
+
+	updated = adminClient.requestJSON(t, router, http.MethodPatch, "/api/users/me/preferences", map[string]any{
+		"autoSkipIntros": true,
+	})
+	if updated.status != http.StatusOK {
+		t.Fatalf("expected auto-skip preference update 200, got %d: %s", updated.status, updated.body)
+	}
+	if updated.payload["posterSize"] != "L" || updated.payload["autoSkipIntros"] != true {
+		t.Fatalf("expected preference patch to preserve posterSize, got %#v", updated.payload)
+	}
+
+	session := adminClient.requestJSON(t, router, http.MethodGet, "/api/auth/session", nil)
+	preferences := session.payload["preferences"].(map[string]any)
+	if preferences["posterSize"] != "L" || preferences["autoSkipIntros"] != true {
+		t.Fatalf("expected session preferences to include persisted posterSize, got %#v", preferences)
+	}
+
+	createUser := adminClient.requestJSON(t, router, http.MethodPost, "/api/users", map[string]any{
+		"username":    "viewer",
+		"displayName": "Viewer",
+		"password":    "viewer-password-123!",
+		"role":        "standard",
+	})
+	if createUser.status != http.StatusCreated {
+		t.Fatalf("expected viewer creation 201, got %d: %s", createUser.status, createUser.body)
+	}
+	viewerClient := newAuthTestClient(t)
+	loginAs(t, viewerClient, router, "viewer", "viewer-password-123!")
+	viewerSession := viewerClient.requestJSON(t, router, http.MethodGet, "/api/auth/session", nil)
+	viewerPreferences := viewerSession.payload["preferences"].(map[string]any)
+	if viewerPreferences["posterSize"] != nil {
+		t.Fatalf("expected posterSize to be scoped per user, got %#v", viewerPreferences)
+	}
+}
+
+func TestUserPreferencesRejectInvalidPosterSize(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	response := client.requestJSON(t, router, http.MethodPatch, "/api/users/me/preferences", map[string]any{
+		"posterSize": "XL",
+	})
+	if response.status != http.StatusBadRequest {
+		t.Fatalf("expected invalid posterSize 400, got %d: %s", response.status, response.body)
+	}
+}
+
 func TestRootMissingStaticAssetReturnsNotFound(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/missing-asset.js", nil)

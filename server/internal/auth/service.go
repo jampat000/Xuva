@@ -33,6 +33,7 @@ var (
 	ErrBootstrapComplete  = errors.New("bootstrap already complete")
 	ErrUserNotFound       = errors.New("user not found")
 	ErrLastAdmin          = errors.New("cannot remove the last admin account")
+	ErrInvalidPreferences = errors.New("invalid user preferences")
 )
 
 type Principal struct {
@@ -908,7 +909,14 @@ func LockoutUntil(err error) (time.Time, bool) {
 
 // UserPreferences holds per-user settings stored as JSON in the users table.
 type UserPreferences struct {
-	AutoSkipIntros bool `json:"autoSkipIntros,omitempty"`
+	AutoSkipIntros bool   `json:"autoSkipIntros,omitempty"`
+	PosterSize     string `json:"posterSize,omitempty"`
+}
+
+// UserPreferencesPatch is a partial update for per-user settings.
+type UserPreferencesPatch struct {
+	AutoSkipIntros *bool   `json:"autoSkipIntros,omitempty"`
+	PosterSize     *string `json:"posterSize,omitempty"`
 }
 
 // GetUserPreferences returns the stored preferences for the given user ID.
@@ -932,6 +940,7 @@ func (s *Service) GetUserPreferences(ctx context.Context, userID string) (UserPr
 
 // SetUserPreferences persists preferences for the given user ID.
 func (s *Service) SetUserPreferences(ctx context.Context, userID string, prefs UserPreferences) error {
+	prefs.PosterSize = normalizePosterSize(prefs.PosterSize)
 	raw, err := json.Marshal(prefs)
 	if err != nil {
 		return err
@@ -939,6 +948,36 @@ func (s *Service) SetUserPreferences(ctx context.Context, userID string, prefs U
 	_, err = s.db.ExecContext(ctx, `UPDATE users SET preferences_json = ?, updated_at = ? WHERE id = ?`,
 		string(raw), timestamp(time.Now().UTC()), userID)
 	return err
+}
+
+func (s *Service) UpdateUserPreferences(ctx context.Context, userID string, patch UserPreferencesPatch) (UserPreferences, error) {
+	current, err := s.GetUserPreferences(ctx, userID)
+	if err != nil {
+		return UserPreferences{}, err
+	}
+	if patch.AutoSkipIntros != nil {
+		current.AutoSkipIntros = *patch.AutoSkipIntros
+	}
+	if patch.PosterSize != nil {
+		posterSize := normalizePosterSize(*patch.PosterSize)
+		if posterSize == "" && strings.TrimSpace(*patch.PosterSize) != "" {
+			return UserPreferences{}, ErrInvalidPreferences
+		}
+		current.PosterSize = posterSize
+	}
+	if err := s.SetUserPreferences(ctx, userID, current); err != nil {
+		return UserPreferences{}, err
+	}
+	return current, nil
+}
+
+func normalizePosterSize(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "S", "M", "L":
+		return strings.ToUpper(strings.TrimSpace(value))
+	default:
+		return ""
+	}
 }
 
 func ContextWithResolvedSession(ctx context.Context, resolved ResolvedSession) context.Context {
