@@ -88,11 +88,21 @@ private struct DetailContentView: View {
 
     // MARK: – Backdrop (top 60vh with 3 gradients, mirrors web)
 
+    private var activeBackdropURL: String? {
+        // Show the selected season's backdrop when available; fall back to series backdrop.
+        if let seasons = detail.seasons, !seasons.isEmpty,
+           let season = currentSeason(seasons),
+           let url = season.backdropUrl, !url.isEmpty {
+            return url
+        }
+        return detail.displayBackdropURL
+    }
+
     @ViewBuilder
     private func backdrop(viewport: CGSize) -> some View {
         let height = max(viewport.height * 0.60, 480)
         ZStack {
-            RemoteImage(urlString: detail.displayBackdropURL, aspectRatio: 16 / 9)
+            RemoteImage(urlString: activeBackdropURL, aspectRatio: 16 / 9)
                 .frame(width: viewport.width, height: height)
                 .clipped()
             // right→transparent fade (matches `from-background via-background/70 to-transparent`)
@@ -527,7 +537,8 @@ private struct DetailContentView: View {
             } else {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(episodes) { episode in
-                        EpisodeRow(episode: episode, viewport: viewport) {
+                        EpisodeRow(episode: episode, viewport: viewport,
+                                   fallbackThumbnailUrl: currentSeason(seasons)?.backdropUrl ?? detail.displayBackdropURL) {
                             Task { await store.playEpisode(episode) }
                         }
                     }
@@ -627,6 +638,7 @@ private struct SeasonChip: View {
 private struct EpisodeRow: View {
     let episode: EpisodeItem
     let viewport: CGSize
+    let fallbackThumbnailUrl: String?
     let action: () -> Void
 
     var body: some View {
@@ -639,7 +651,7 @@ private struct EpisodeRow: View {
                         colors: [XuvaTheme.surface, XuvaTheme.elevated],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
-                    if let url = episode.thumbnailUrl, !url.isEmpty {
+                    if let url = episode.thumbnailUrl.flatMap({ $0.isEmpty ? nil : $0 }) ?? fallbackThumbnailUrl {
                         RemoteImage(urlString: url, aspectRatio: 16 / 9)
                             .frame(width: thumbW, height: thumbH)
                             .clipped()
