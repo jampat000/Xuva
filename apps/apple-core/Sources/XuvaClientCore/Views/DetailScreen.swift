@@ -423,6 +423,16 @@ private struct DetailContentView: View {
                     .padding(.vertical, 8)
                     .focusSection()
                 }
+                // Overlay-based fade — preserves focus rings on edge cards unlike .mask()
+                .overlay(alignment: .trailing) {
+                    LinearGradient(
+                        colors: [.clear, XuvaTheme.background],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 64)
+                    .allowsHitTesting(false)
+                }
                 .focusSection()
             }
             .focusSection()
