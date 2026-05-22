@@ -165,6 +165,7 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
                 #endif
             }
+            .focusSection()
             heroDots
                 .padding(.top, 8)
         }
@@ -274,7 +275,12 @@ struct MediaRowView: View {
                 .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
                 .padding(.vertical, 16)
             }
+            // focusSection on the scroll view lets the tvOS focus engine exit
+            // it vertically — without this, up/down swipes are absorbed and
+            // you can only navigate left/right within the row.
+            .focusSection()
         }
+        .focusSection()
     }
 
     private var normalizedRowText: String {
@@ -367,6 +373,7 @@ struct MediaTopBar: View {
         }
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .frame(height: XuvaScale.navBarHeight(viewport))
+        .focusSection()
     }
 }
 
