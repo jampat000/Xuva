@@ -346,9 +346,12 @@ public final class XuvaClientStore: ObservableObject {
             connectionState = .paired
             screen = .home
         }
-        // If the resume failed (server unreachable, 401, etc.) drop back to
-        // the connect screen so the user can re-pair or change the server URL.
-        if errorMessage != nil && api == nil {
+        // Only drop back to the connect screen on definitive auth failures
+        // (401/403 → connectionState == .needsAuthCredential). A timeout or
+        // "server unreachable" error just means the server is temporarily
+        // offline — the device is still paired and should stay on the home
+        // screen so the user can retry without going through pairing again.
+        if connectionState == .needsAuthCredential {
             screen = .connect
         }
         if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
