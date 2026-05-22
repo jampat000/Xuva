@@ -328,6 +328,7 @@ var migrations = []string{
 		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		secret_hash TEXT NOT NULL,
 		csrf_token TEXT NOT NULL,
+		device_id TEXT NOT NULL DEFAULT '',
 		remote_addr TEXT NOT NULL DEFAULT '',
 		user_agent TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL,
@@ -335,6 +336,8 @@ var migrations = []string{
 		expires_at TEXT NOT NULL,
 		revoked_at TEXT NOT NULL DEFAULT ''
 	)`,
+	`ALTER TABLE auth_sessions ADD COLUMN device_id TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS idx_auth_sessions_device ON auth_sessions(device_id, expires_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, expires_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS metadata_ratings (
 		kind TEXT NOT NULL,
