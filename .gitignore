@@ -63,10 +63,8 @@ DerivedData/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 
-# Local agent/tooling caches
-.tmp/toolchains/
-.tmp/xuva-movie-detail-page/.git
-.tmp/xuva-movie-detail-page/.workspace/
+# Local agent/tooling caches (entire dir is scratch — never committed)
+.tmp/
 
 # Media test artifacts
 fixtures/media-local/
