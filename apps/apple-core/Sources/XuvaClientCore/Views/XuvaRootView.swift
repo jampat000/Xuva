@@ -40,12 +40,28 @@ public struct XuvaRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
+        // Suppress the system focus halo (the giant white card-lift effect on
+        // tvOS that was ballooning every focused button over its neighbours)
+        // and rely on our own xuvaFocused() ring everywhere instead.
+        .modifier(DisableSystemFocusEffect())
         .environmentObject(store)
         .environmentObject(watchlist)
         .preferredColorScheme(.dark)
         .task {
             await store.resumeSessionIfPossible()
             await store.autoConnectIfPossible()
+        }
+    }
+}
+
+/// Wraps `.focusEffectDisabled()` in a back-compat guard. Available
+/// iOS 17 / tvOS 17 / macOS 14+; on older targets just passes through.
+private struct DisableSystemFocusEffect: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, tvOS 17.0, macOS 14.0, *) {
+            content.focusEffectDisabled(true)
+        } else {
+            content
         }
     }
 }
