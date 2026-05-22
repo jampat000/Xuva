@@ -3,12 +3,14 @@ import SwiftUI
 public enum XuvaBrand {
     /// Brand gradient — matches `--gradient-primary` in apps/web/svelte
     /// (135° from oklch(0.55 0.22 285) → oklch(0.65 0.20 280) → oklch(0.72 0.18 265)).
+    /// Middle stop is explicit at 0.55 to match the web favicon/Logo.svelte source;
+    /// evenly-distributed stops would place it at 0.50, darkening the centre of the mark.
     public static let gradient = LinearGradient(
-        colors: [
-            Color(red: 0.435, green: 0.259, blue: 0.878),
-            Color(red: 0.529, green: 0.388, blue: 0.941),
-            Color(red: 0.604, green: 0.490, blue: 1.000)
-        ],
+        gradient: Gradient(stops: [
+            .init(color: Color(red: 0.435, green: 0.259, blue: 0.878), location: 0.00),
+            .init(color: Color(red: 0.529, green: 0.388, blue: 0.941), location: 0.55),
+            .init(color: Color(red: 0.604, green: 0.490, blue: 1.000), location: 1.00),
+        ]),
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -71,11 +73,19 @@ public struct XuvaIconMark: View {
             RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
                 .strokeBorder(XuvaBrand.gradient.opacity(0.50), lineWidth: max(1, size * 0.022))
 
+            // Glow pass — both chevrons are wrapped in a single filter group in
+            // the web favicon, so both get the blur. Replicate that here.
             ChevronShape(offsetXFraction: 0.292)
                 .stroke(XuvaBrand.gradient, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
-                .blur(radius: size * 0.035)
+                .blur(radius: size * 0.040)
                 .opacity(0.65)
 
+            ChevronShape(offsetXFraction: 0.458)
+                .stroke(XuvaBrand.chevronHighlight, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+                .blur(radius: size * 0.040)
+                .opacity(0.55)
+
+            // Solid pass on top of the glow
             ChevronShape(offsetXFraction: 0.292)
                 .stroke(XuvaBrand.gradient, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
 
