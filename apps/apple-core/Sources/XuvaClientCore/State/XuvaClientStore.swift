@@ -191,9 +191,10 @@ public final class XuvaClientStore: ObservableObject {
                let deviceId = response.deviceId, !deviceId.isEmpty {
                 let signed = try await api.requestStreamToken(mediaSourceId: mediaSourceId, sessionId: sessionId, deviceId: deviceId)
                 print("[XUVA] streamToken OK signedUrl=\(signed.streamUrl ?? "<none>")")
-                if let signedUrl = signed.streamUrl, !signedUrl.isEmpty {
-                    response.route?.url = signedUrl
+                guard let signedUrl = signed.streamUrl, !signedUrl.isEmpty else {
+                    throw XuvaAPIError.missingStreamURL
                 }
+                response.route?.url = signedUrl
             } else {
                 print("[XUVA] WARN missing sessionId/deviceId — skipping streamToken")
             }
