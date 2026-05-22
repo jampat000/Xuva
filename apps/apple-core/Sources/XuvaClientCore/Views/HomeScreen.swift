@@ -173,17 +173,19 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
                 #endif
             }
-            // Full-width so the focus section's geometry covers the full
-            // viewport — without this, "up" from a nav pill that doesn't
-            // horizontally overlap the button cluster has no target to land on.
             .frame(maxWidth: .infinity, alignment: .leading)
-            .focusSection()
             heroDots
                 .padding(.top, 8)
         }
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .padding(.top, viewport.height * XuvaScale.heroContentTopFraction(viewport))
         .frame(maxWidth: .infinity, alignment: .leading)
+        // focusSection on the entire hero body — NOT on the button HStack.
+        // A section on just the HStack means the engine sees More Info as a
+        // "down" target from Play (sibling within the same small section).
+        // A full-width section here forces the engine to exit the section
+        // entirely on DOWN → rows, or UP → nav bar.
+        .focusSection()
     }
 
     private var heroEyebrow: String {
