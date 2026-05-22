@@ -3,7 +3,7 @@
 These rules apply to every Claude Code session in this repo.
 
 ### Branching & commits
-- **All work goes through a PR into `main`.** Never `git push` directly to `main`, even when admin override allows it. The repo has branch protection; respect it.
+- **All work goes through a PR into `main`** under normal circumstances. Direct pushes to `main` are permitted only when the repo owner explicitly instructs it in the chat (admin override). In that case, use `gh pr merge --merge` on the relevant PRs rather than `git push` — this keeps the commit history intact and triggers any post-merge hooks.
 - Create a topic branch named for the work (e.g. `fix/<area>-<short>`, `chore/<area>-<short>`, `feat/<area>-<short>`).
 - Open a PR with `gh pr create` (or the MCP equivalent). Wait for CI to be green before merging. Merge with `--merge` (preserve commit history), not squash.
 - **Commit edits to a branch immediately after applying them.** Don't accumulate `Edit`/`Write` calls across multiple turns hoping to commit later — a silent file revert (by the user, a linter, or restored prior state) between your edit and your commit will lose the work without warning, and you'll only notice when someone says "I thought we shipped that." If a change is part of a larger PR and you can't commit the final state yet, push a WIP commit anyway so the work survives.
