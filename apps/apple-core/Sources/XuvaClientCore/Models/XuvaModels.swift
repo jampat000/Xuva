@@ -231,6 +231,12 @@ public struct EpisodeItem: Codable, Equatable, Identifiable {
     public var thumbnailUrl: String?
     public var versionCount: Int?
     public var versions: [MediaVersion]?
+    /// 0.0–1.0 watched fraction. Populated by the server when the episode
+    /// has playback history. Used to pre-seek on resume.
+    public var progress: Double?
+    /// Absolute resume position in seconds (alternative to fraction).
+    /// Takes precedence over progress × duration when non-nil and > 0.
+    public var positionSeconds: Int?
 
     public var displayTitle: String {
         if let n = episodeNumber, let t = title { return "E\(n) · \(t)" }

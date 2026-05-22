@@ -209,10 +209,23 @@ public final class XuvaClientStore: ObservableObject {
             errorMessage = "This episode has no playable source yet."
             return
         }
-        // Use first version directly — no resume threading for episodes yet.
         let version = episode.versions?.first
-        pendingResumeFraction = nil
-        pendingResumeMediaSourceId = nil
+        // Thread resume position through to play() the same way Continue
+        // Watching tiles do via pendingResumeFraction/pendingResumeMediaSourceId.
+        if let seconds = episode.positionSeconds, seconds > 0 {
+            // Server sent an absolute position — convert to fraction using the
+            // source duration so play() can compute positionSeconds correctly.
+            if let duration = version?.source?.durationSeconds, duration > 0 {
+                pendingResumeFraction = min(1.0, Double(seconds) / duration)
+            } else {
+                pendingResumeFraction = nil
+            }
+        } else if let fraction = episode.progress, fraction > 0 {
+            pendingResumeFraction = fraction
+        } else {
+            pendingResumeFraction = nil
+        }
+        pendingResumeMediaSourceId = pendingResumeFraction != nil ? mediaSourceId : nil
         await play(version: version)
     }
 
