@@ -70,6 +70,7 @@ Public client bootstrap routes:
 | `GET /api/pairing/requests` | pairing | `pairing.list` | admin |
 | `POST /api/pairing/requests/{id}/approve` | pairing | `pairing.approve` | admin |
 | `POST /api/pairing/requests/{id}/deny` | pairing | `pairing.deny` | admin |
+| `POST /api/pairing/qr` | pairing | `pairing.qr.generate` | admin |
 | `GET /api/devices` | devices | `devices.list` | admin |
 | `POST /api/devices/{id}/revoke` | devices | `devices.revoke` | admin |
 | `GET /api/sessions` | sessions | `sessions.list` | admin, standard |

@@ -935,3 +935,20 @@ export function updateUserPreferences(
 		'PATCH'
 	);
 }
+
+// ── QR pair token ─────────────────────────────────────────────────────────────
+
+export interface QRTokenResponse {
+	token: string;
+	claimUrl: string;
+	imageUrl: string;
+	expiresAt: string;
+}
+
+export function generateQRPairToken(client: ApiClient = apiClient): Promise<QRTokenResponse> {
+	return client.send<QRTokenResponse, Record<string, never>>(
+		'/api/pairing/qr',
+		{} as Record<string, never>,
+		'POST'
+	);
+}
