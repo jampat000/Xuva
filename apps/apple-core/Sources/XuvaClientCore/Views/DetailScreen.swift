@@ -525,24 +525,43 @@ private struct DetailContentView: View {
                 sectionTitle(currentSeason(seasons)?.displayTitle ?? "Episodes", viewport: viewport)
                 Spacer()
                 if seasons.count > 1 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(seasons) { season in
-                                SeasonChip(
-                                    season: season,
-                                    viewport: viewport,
-                                    isSelected: season.seasonNumber == effectiveSeasonNumber(seasons)
-                                ) {
-                                    selectedSeasonNumber = season.seasonNumber
+                    // ScrollViewReader lets us scroll the selected chip into view
+                    // whenever the active season changes (e.g. user jumps from S1→S5).
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(seasons) { season in
+                                    SeasonChip(
+                                        season: season,
+                                        viewport: viewport,
+                                        isSelected: season.seasonNumber == effectiveSeasonNumber(seasons)
+                                    ) {
+                                        selectedSeasonNumber = season.seasonNumber
+                                    }
+                                    // ID used by ScrollViewReader.scrollTo(_:anchor:)
+                                    .id(season.seasonNumber)
                                 }
                             }
+                            .padding(.vertical, 4)
+                            .focusSection()
                         }
                         .focusSection()
+                        .frame(maxWidth: viewport.width * 0.45)
+                        // Scroll the newly-selected chip into view when the season changes.
+                        .onChange(of: selectedSeasonNumber) { _, newSeason in
+                            let target = newSeason ?? seasons.first?.seasonNumber
+                            if let n = target {
+                                withAnimation { proxy.scrollTo(n, anchor: .center) }
+                            }
+                        }
                     }
-                    .focusSection()
-                    .frame(maxWidth: viewport.width * 0.45)
                 }
             }
+            // focusSection on the header row so the tvOS focus engine treats the
+            // whole title + chips band as a discrete navigable section.  Without
+            // this the engine skips the right-side chips when approaching from the
+            // cast strip or the episode rows above/below.
+            .focusSection()
             let episodes = currentSeason(seasons)?.episodes ?? []
             if episodes.isEmpty {
                 Text("No episodes available yet.")
