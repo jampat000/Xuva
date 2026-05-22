@@ -83,6 +83,7 @@ type ProfileCard struct {
 type Session struct {
 	ID        string    `json:"id"`
 	UserID    string    `json:"userId"`
+	DeviceID  string    `json:"deviceId,omitempty"`
 	CSRFToken string    `json:"csrfToken,omitempty"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -556,7 +557,7 @@ func (s *Service) Authenticate(ctx context.Context, username string, password st
 	}
 	s.clearUnknownFailure(key)
 	principal := Principal{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, AvatarURL: user.AvatarURL, Role: user.Role}
-	session, token, err := s.issueSession(ctx, principal, remoteAddr, userAgent)
+	session, token, err := s.issueSession(ctx, principal, "", remoteAddr, userAgent)
 	if err != nil {
 		return Principal{}, Session{}, "", err
 	}
@@ -565,6 +566,18 @@ func (s *Service) Authenticate(ctx context.Context, username string, password st
 }
 
 func (s *Service) IssueSessionForUser(ctx context.Context, userID string, remoteAddr string, userAgent string) (Principal, Session, string, error) {
+	return s.issueSessionForUser(ctx, userID, "", remoteAddr, userAgent)
+}
+
+func (s *Service) IssueDeviceSessionForUser(ctx context.Context, userID string, deviceID string, remoteAddr string, userAgent string) (Principal, Session, string, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return Principal{}, Session{}, "", ErrUnauthorized
+	}
+	return s.issueSessionForUser(ctx, userID, deviceID, remoteAddr, userAgent)
+}
+
+func (s *Service) issueSessionForUser(ctx context.Context, userID string, deviceID string, remoteAddr string, userAgent string) (Principal, Session, string, error) {
 	if s.Disabled() {
 		return Principal{}, Session{}, "", ErrUnauthorized
 	}
@@ -584,7 +597,7 @@ func (s *Service) IssueSessionForUser(ctx context.Context, userID string, remote
 	if err != nil {
 		return Principal{}, Session{}, "", err
 	}
-	session, token, err := s.issueSession(ctx, principal, remoteAddr, userAgent)
+	session, token, err := s.issueSession(ctx, principal, deviceID, remoteAddr, userAgent)
 	if err != nil {
 		return Principal{}, Session{}, "", err
 	}
@@ -608,17 +621,18 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 		Role        string
 		SecretHash  string
 		CSRFToken   string
+		DeviceID    string
 		CreatedAt   string
 		LastSeenAt  string
 		ExpiresAt   string
 		RevokedAt   string
 	}{}
 	err = s.db.QueryRowContext(ctx, `
-		SELECT s.id, s.user_id, u.username, u.display_name, u.avatar_url, u.role, s.secret_hash, s.csrf_token, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at
+		SELECT s.id, s.user_id, u.username, u.display_name, u.avatar_url, u.role, s.secret_hash, s.csrf_token, s.device_id, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.id = ?
-	`, id).Scan(&row.SessionID, &row.UserID, &row.Username, &row.DisplayName, &row.AvatarURL, &row.Role, &row.SecretHash, &row.CSRFToken, &row.CreatedAt, &row.LastSeenAt, &row.ExpiresAt, &row.RevokedAt)
+	`, id).Scan(&row.SessionID, &row.UserID, &row.Username, &row.DisplayName, &row.AvatarURL, &row.Role, &row.SecretHash, &row.CSRFToken, &row.DeviceID, &row.CreatedAt, &row.LastSeenAt, &row.ExpiresAt, &row.RevokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ResolvedSession{}, ErrUnauthorized
 	}
@@ -685,6 +699,7 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 		Session: Session{
 			ID:        row.SessionID,
 			UserID:    row.UserID,
+			DeviceID:  row.DeviceID,
 			CSRFToken: nextCSRF,
 			ExpiresAt: nextExpiresAt,
 			CreatedAt: createdAt,
@@ -703,6 +718,22 @@ func (s *Service) Revoke(ctx context.Context, token string) error {
 		return ErrUnauthorized
 	}
 	return s.revokeSessionID(ctx, id)
+}
+
+func (s *Service) RevokeDeviceSessions(ctx context.Context, deviceID string) error {
+	if s.Disabled() {
+		return nil
+	}
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE auth_sessions
+		SET revoked_at = ?, expires_at = ?
+		WHERE device_id = ? AND revoked_at = ''
+	`, timestamp(time.Now().UTC()), timestamp(time.Now().UTC()), deviceID)
+	return err
 }
 
 func (s *Service) ValidateCSRF(session ResolvedSession, cookieToken string, headerToken string) error {
@@ -768,7 +799,7 @@ func (s *Service) clearFailedLogin(ctx context.Context, userID string) error {
 	return err
 }
 
-func (s *Service) issueSession(ctx context.Context, principal Principal, remoteAddr string, userAgent string) (Session, string, error) {
+func (s *Service) issueSession(ctx context.Context, principal Principal, deviceID string, remoteAddr string, userAgent string) (Session, string, error) {
 	now := time.Now().UTC()
 	sessionID := "auth_" + uuid.NewString()
 	secret := randomToken(32)
@@ -776,13 +807,13 @@ func (s *Service) issueSession(ctx context.Context, principal Principal, remoteA
 	token := sessionID + "." + secret
 	expiresAt := now.Add(s.sessionTTL)
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO auth_sessions(id, user_id, secret_hash, csrf_token, remote_addr, user_agent, created_at, last_seen_at, expires_at, revoked_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, '')
-	`, sessionID, principal.ID, hashSecret(secret), csrfToken, remoteAddr, userAgent, timestamp(now), timestamp(now), timestamp(expiresAt))
+		INSERT INTO auth_sessions(id, user_id, secret_hash, csrf_token, device_id, remote_addr, user_agent, created_at, last_seen_at, expires_at, revoked_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+	`, sessionID, principal.ID, hashSecret(secret), csrfToken, strings.TrimSpace(deviceID), remoteAddr, userAgent, timestamp(now), timestamp(now), timestamp(expiresAt))
 	if err != nil {
 		return Session{}, "", err
 	}
-	return Session{ID: sessionID, UserID: principal.ID, CSRFToken: csrfToken, ExpiresAt: expiresAt, CreatedAt: now}, token, nil
+	return Session{ID: sessionID, UserID: principal.ID, DeviceID: strings.TrimSpace(deviceID), CSRFToken: csrfToken, ExpiresAt: expiresAt, CreatedAt: now}, token, nil
 }
 
 // RevokeSessionID is the public form of revokeSessionID for callers that

@@ -6954,6 +6954,11 @@ func approvedDeviceRevokeHandler(deps Deps) http.HandlerFunc {
 				slog.Warn("device revoke could not invalidate session", "deviceId", item.DeviceID, "sessionId", item.AuthSessionID, "err", err)
 			}
 		}
+		if deps.Auth != nil && !deps.Auth.Disabled() {
+			if err := deps.Auth.RevokeDeviceSessions(r.Context(), item.DeviceID); err != nil {
+				slog.Warn("device revoke could not invalidate device sessions", "deviceId", item.DeviceID, "err", err)
+			}
+		}
 		publishOperationalEvent(deps, r, "device.revoked", map[string]any{
 			"deviceId":      item.DeviceID,
 			"displayName":   item.DisplayName,
@@ -7118,7 +7123,7 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		})
 	}
 	if approve && deps.Auth != nil && !deps.Auth.Disabled() {
-		_, session, token, sessionErr := deps.Auth.IssueSessionForUser(r.Context(), "local", requestRemoteAddr(r), item.DeviceName)
+		_, session, token, sessionErr := deps.Auth.IssueDeviceSessionForUser(r.Context(), "local", item.DeviceID, requestRemoteAddr(r), item.DeviceName)
 		if sessionErr != nil {
 			writeError(w, http.StatusInternalServerError, "native device credential issue failed")
 			return

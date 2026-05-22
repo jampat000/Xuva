@@ -1011,6 +1011,11 @@ func TestApprovedDeviceCanBeRevoked(t *testing.T) {
 	if approved.status != http.StatusOK {
 		t.Fatalf("approve pairing: %#v", approved)
 	}
+	authGrant, _ := approved.payload["auth"].(map[string]any)
+	token, _ := authGrant["sessionToken"].(string)
+	if strings.TrimSpace(token) == "" {
+		t.Fatalf("expected native token in approved pairing, got %#v", approved.payload)
+	}
 	devices := client.requestJSON(t, router, http.MethodGet, "/api/devices", nil)
 	list, _ := devices.payload["devices"].([]any)
 	if len(list) != 1 {
@@ -1030,6 +1035,33 @@ func TestApprovedDeviceCanBeRevoked(t *testing.T) {
 	afterList, _ := after.payload["devices"].([]any)
 	if len(afterList) != 0 {
 		t.Fatalf("expected revoked device to disappear from approved list, got %#v", after.payload)
+	}
+
+	nativeRequest := httptest.NewRequest(http.MethodGet, "http://xuva.test/api/client/home", nil)
+	nativeRequest.Header.Set("X-Auth-Token", token)
+	nativeResponse := httptest.NewRecorder()
+	router.ServeHTTP(nativeResponse, nativeRequest)
+	if nativeResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected revoked native device token to be rejected, got %d: %s", nativeResponse.Code, nativeResponse.Body.String())
+	}
+}
+
+func TestLegacyNativeSessionWithoutApprovedDeviceIsRejected(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+
+	_, _, token, err := deps.Auth.IssueSessionForUser(context.Background(), "local", "127.0.0.1", "Legacy Apple TV")
+	if err != nil {
+		t.Fatalf("issue legacy native token: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/api/client/home", nil)
+	request.Header.Set("X-Auth-Token", token)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unlinked legacy native token to be rejected, got %d: %s", response.Code, response.Body.String())
 	}
 }
 
