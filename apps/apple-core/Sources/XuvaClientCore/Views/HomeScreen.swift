@@ -11,14 +11,22 @@ public struct HomeScreen: View {
             let viewport = geometry.size
             ZStack(alignment: .top) {
                 heroBackdrop(viewport: viewport)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
-                        MediaTopBar(viewport: viewport)
-                            .padding(.top, XuvaScale.safeTop(viewport))
-                        HeroView(item: hero, heroes: heroes, viewport: viewport)
-                        rowsSection(viewport: viewport)
+                // MediaTopBar lives OUTSIDE the ScrollView so it stays on-screen
+                // as the user scrolls down into content rows. The tvOS focus engine
+                // can only navigate to views that are currently rendered — if the
+                // nav bar scrolls off-screen, "swipe up" from the rows has nowhere
+                // to land and the user is stuck.
+                VStack(spacing: 0) {
+                    MediaTopBar(viewport: viewport)
+                        .padding(.top, XuvaScale.safeTop(viewport))
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
+                            HeroView(item: hero, heroes: heroes, viewport: viewport)
+                            rowsSection(viewport: viewport)
+                        }
+                        .padding(.bottom, 60)
                     }
-                    .padding(.bottom, 60)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -165,17 +173,19 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
                 #endif
             }
-            // Full-width so the focus section's geometry covers the full
-            // viewport — without this, "up" from a nav pill that doesn't
-            // horizontally overlap the button cluster has no target to land on.
             .frame(maxWidth: .infinity, alignment: .leading)
-            .focusSection()
             heroDots
                 .padding(.top, 8)
         }
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .padding(.top, viewport.height * XuvaScale.heroContentTopFraction(viewport))
         .frame(maxWidth: .infinity, alignment: .leading)
+        // focusSection on the entire hero body — NOT on the button HStack.
+        // A section on just the HStack means the engine sees More Info as a
+        // "down" target from Play (sibling within the same small section).
+        // A full-width section here forces the engine to exit the section
+        // entirely on DOWN → rows, or UP → nav bar.
+        .focusSection()
     }
 
     private var heroEyebrow: String {
