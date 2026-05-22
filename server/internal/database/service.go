@@ -487,6 +487,15 @@ var migrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_session ON profile_sessions(session_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_user ON profile_sessions(profile_user_id)`,
+	// issue #184: QR pair tokens — short-lived pre-approved pairing codes
+	`CREATE TABLE IF NOT EXISTS pair_tokens (
+		token       TEXT PRIMARY KEY,
+		created_by  TEXT NOT NULL DEFAULT '',
+		claimed_by  TEXT NOT NULL DEFAULT '',
+		claimed_at  TEXT NOT NULL DEFAULT '',
+		expires_at  TEXT NOT NULL,
+		created_at  TEXT NOT NULL
+	)`,
 	// issue #174: server-side watchlist sync
 	`CREATE TABLE IF NOT EXISTS watchlist_items (
 		user_id      TEXT NOT NULL,

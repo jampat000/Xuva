@@ -13,6 +13,7 @@ import (
 	_ "image/png"
 	"io"
 	"log/slog"
+	cryptorand "crypto/rand"
 	"math/rand"
 	"net"
 	"net/http"
@@ -27,6 +28,8 @@ import (
 	"time"
 
 	_ "golang.org/x/image/webp"
+
+	"github.com/google/uuid"
 
 	"github.com/jampat000/Xuva/server/internal/adaptive"
 	"github.com/jampat000/Xuva/server/internal/auth"
@@ -67,6 +70,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/watchlist"
 	"github.com/jampat000/Xuva/server/internal/tv"
 	"github.com/jampat000/Xuva/server/internal/webapp"
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 type Deps struct {
@@ -127,6 +131,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))          // first-run admin create
 	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))                  // sign in
 	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))               // first-run wizard gate, no PII
+	mux.HandleFunc("GET /api/pairing/qr/{token}/image.png", pairingQRImageHandler(deps))  // QR PNG — serves to any device pre-auth
+	mux.HandleFunc("POST /api/pairing/qr/{token}/claim", pairingQRClaimHandler(deps))     // device claims QR token
 
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
@@ -238,6 +244,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/pairing/requests", pairingListHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/pairing/requests/{id}/approve", pairingApproveHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/pairing/requests/{id}/deny", pairingDenyHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/pairing/qr", pairingQRGenerateHandler(deps))
 	handleProtected(mux, deps, "GET /api/sessions", sessionsHandler(deps))
 	handleProtected(mux, deps, "GET /api/sessions/{id}/inspector", sessionInspectorHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/sessions", sessionStartHandler(deps))
@@ -7246,6 +7253,180 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+// ── QR pair tokens ────────────────────────────────────────────────────────────
+
+const pairTokenTTL = 90 * time.Second
+
+func pairingQRGenerateHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Database == nil {
+			writeError(w, http.StatusServiceUnavailable, "database not available")
+			return
+		}
+		token, err := randomPairToken()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "token generation failed")
+			return
+		}
+		actor := "local-admin"
+		if resolved, ok := auth.ResolvedSessionFromContext(r.Context()); ok {
+			actor = firstNonEmpty(resolved.Principal.Username, resolved.Principal.ID, actor)
+		}
+		now := time.Now().UTC()
+		expiresAt := now.Add(pairTokenTTL)
+		_, err = deps.Database.DB().ExecContext(r.Context(), `
+			INSERT INTO pair_tokens(token, created_by, expires_at, created_at) VALUES(?, ?, ?, ?)
+		`, token, actor, expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "token storage failed")
+			return
+		}
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		host := r.Host
+		claimURL := scheme + "://" + host + "/api/pairing/qr/" + token + "/claim"
+		writeJSON(w, http.StatusOK, map[string]any{
+			"token":     token,
+			"claimUrl":  claimURL,
+			"imageUrl":  "/api/pairing/qr/" + token + "/image.png",
+			"expiresAt": expiresAt.Format(time.RFC3339),
+		})
+	}
+}
+
+func pairingQRImageHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimSpace(r.PathValue("token"))
+		if token == "" || deps.Database == nil {
+			writeError(w, http.StatusBadRequest, "invalid token")
+			return
+		}
+		// Check token still exists and is not expired (lightweight guard)
+		var expiresAt string
+		err := deps.Database.DB().QueryRowContext(r.Context(), `
+			SELECT expires_at FROM pair_tokens WHERE token = ? AND claimed_at = ''
+		`, token).Scan(&expiresAt)
+		if err != nil {
+			http.Error(w, "token not found or already claimed", http.StatusNotFound)
+			return
+		}
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		host := r.Host
+		content := scheme + "://" + host + "/api/pairing/qr/" + token + "/claim"
+		png, err := qrcode.Encode(content, qrcode.Medium, 256)
+		if err != nil {
+			http.Error(w, "qr generation failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(png)
+	}
+}
+
+type pairingQRClaimRequest struct {
+	DeviceName    string `json:"deviceName"`
+	ClientProfile string `json:"clientProfile"`
+	DeviceID      string `json:"deviceId"`
+}
+
+func pairingQRClaimHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Database == nil {
+			writeError(w, http.StatusServiceUnavailable, "database not available")
+			return
+		}
+		token := strings.TrimSpace(r.PathValue("token"))
+		if token == "" {
+			writeError(w, http.StatusBadRequest, "token is required")
+			return
+		}
+		var req pairingQRClaimRequest
+		decodeJSON(w, r, &req)
+		deviceName := strings.TrimSpace(req.DeviceName)
+		if deviceName == "" {
+			deviceName = "Xuva Device"
+		}
+		clientProfile := strings.TrimSpace(req.ClientProfile)
+		if clientProfile == "" {
+			clientProfile = "apple-tv"
+		}
+		deviceID := strings.TrimSpace(req.DeviceID)
+		if deviceID == "" {
+			deviceID = "qr-" + uuid.NewString()
+		}
+
+		// Atomically claim the token (not expired, not yet claimed)
+		now := time.Now().UTC()
+		result, err := deps.Database.DB().ExecContext(r.Context(), `
+			UPDATE pair_tokens
+			SET claimed_by = ?, claimed_at = ?
+			WHERE token = ? AND claimed_at = '' AND expires_at > ?
+		`, deviceID, now.Format(time.RFC3339), token, now.Format(time.RFC3339))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "token claim failed")
+			return
+		}
+		affected, _ := result.RowsAffected()
+		if affected == 0 {
+			writeError(w, http.StatusGone, "pair token is expired or already used")
+			return
+		}
+
+		// Register the device as approved
+		if deps.Devices != nil {
+			actor := "qr-pair"
+			if _, regErr := deps.Devices.Approve(r.Context(), devices.ApproveInput{
+				DeviceID:      deviceID,
+				DeviceName:    deviceName,
+				ClientProfile: clientProfile,
+				ApprovedBy:    actor,
+			}); regErr != nil {
+				writeError(w, http.StatusInternalServerError, "device registration failed")
+				return
+			}
+		}
+
+		// Issue auth credentials
+		if deps.Auth != nil && !deps.Auth.Disabled() {
+			_, session, authToken, sessErr := deps.Auth.IssueDeviceSessionForUser(r.Context(), "local", deviceID, requestRemoteAddr(r), deviceName)
+			if sessErr != nil {
+				writeError(w, http.StatusInternalServerError, "credential issue failed")
+				return
+			}
+			if deps.Devices != nil {
+				_ = deps.Devices.AttachSession(r.Context(), deviceID, session.ID)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"deviceId":  deviceID,
+				"authToken": authToken,
+				"expiresAt": session.ExpiresAt.Format(time.RFC3339),
+			})
+			return
+		}
+		// Auth disabled — just confirm the claim
+		writeJSON(w, http.StatusOK, map[string]any{"deviceId": deviceID})
+	}
+}
+
+func randomPairToken() (string, error) {
+	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, 8)
+	if _, err := cryptorand.Read(b); err != nil {
+		return "", err
+	}
+	out := make([]byte, 8)
+	for i, v := range b {
+		out[i] = chars[int(v)%len(chars)]
+	}
+	return string(out), nil
 }
 
 func approvedDevicePayload(item devices.ApprovedDevice) map[string]any {
