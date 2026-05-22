@@ -936,6 +936,75 @@ export function updateUserPreferences(
 	);
 }
 
+// ─── Jobs status (GET /api/jobs) ──────────────────────────────────────────────
+
+export interface BackfillStatusSnapshot {
+	running: boolean;
+	provider?: string;
+	kind?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	total: number;
+	refreshed: number;
+	failed: number;
+	remaining: number;
+	lastTitle?: string;
+	lastError?: string;
+}
+
+export interface JobAutoSnapshot {
+	status?: string;       // "idle" | "running" | "paused" | "disabled"
+	enabled?: boolean;
+	intervalMin?: number;
+	lastRunAt?: string;
+	lastRunErr?: string;
+	nextRunAt?: string;
+}
+
+export interface ProbeJobDetail {
+	id?: string;
+	status?: string;
+	limit?: number;
+	total?: number;
+	completed?: number;
+	failed?: number;
+	lastPath?: string;
+	createdAt?: string;
+	startedAt?: string;
+	completedAt?: string;
+	error?: string;
+}
+
+export interface ProbeJobSnapshot extends JobAutoSnapshot {
+	activeJobs?: ProbeJobDetail[];
+}
+
+export interface MetadataJobSnapshot extends JobAutoSnapshot {
+	backfill?: BackfillStatusSnapshot;
+}
+
+export interface JobsStatusResponse {
+	scan?: JobAutoSnapshot;
+	metadata?: MetadataJobSnapshot;
+	probe?: ProbeJobSnapshot;
+}
+
+export function getJobs(client: ApiClient = apiClient): Promise<JobsStatusResponse> {
+	return client.request<JobsStatusResponse>('/api/jobs');
+}
+
+/** POST /api/probes — trigger a bulk probe job. limit=0 probes all unprobed files. */
+export function startProbeJob(
+	limit = 0,
+	client: ApiClient = apiClient
+): Promise<ProbeJobDetail> {
+	return client.send<ProbeJobDetail, { limit: number }>(
+		'/api/probes',
+		{ limit },
+		'POST'
+	);
+}
+
 // ── QR pair token ─────────────────────────────────────────────────────────────
 
 export interface QRTokenResponse {

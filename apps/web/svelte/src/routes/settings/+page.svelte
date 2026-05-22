@@ -1787,6 +1787,37 @@
                 </section>
               {/if}
 
+              <!-- Activity & Jobs shortcut card -->
+              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+                <div>
+                  <h3 class="font-serif-display text-lg tracking-tight">Library jobs</h3>
+                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                    Monitor and control scan, metadata, and probe automation jobs in real time.
+                  </p>
+                </div>
+                <a
+                  href="/settings/activity"
+                  class="hairline group flex items-center gap-5 rounded-2xl bg-surface/40 p-5 transition-colors hover:bg-surface/70"
+                >
+                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-glow/10 text-2xl">
+                    ⚡
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="font-semibold text-sm">Activity &amp; Jobs</div>
+                    <div class="mt-0.5 text-[12px] text-muted-foreground">
+                      {#if catalogSummary?.unprobed && catalogSummary.unprobed > 0}
+                        <span class="text-amber-300">{catalogSummary.unprobed.toLocaleString()} files awaiting analysis</span>
+                      {:else}
+                        Scan · Metadata · Probe — real-time progress
+                      {/if}
+                    </div>
+                  </div>
+                  <svg class="h-4 w-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </a>
+              </section>
+
               <!-- Recent scan activity -->
               <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
                 <div>
