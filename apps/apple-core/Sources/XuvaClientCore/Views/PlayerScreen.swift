@@ -136,14 +136,16 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             }
             statusObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
                 print("[XUVA] AVPlayerItem.status -> \(item.status.rawValue) error=\(String(describing: item.error))")
-                if item.status == .readyToPlay, let s = seconds, s > 0 {
+                guard item.status == .readyToPlay else { return }
+                if let s = seconds, s > 0 {
                     let target = CMTime(seconds: Double(s), preferredTimescale: 600)
                     item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
                         print("[XUVA] resume seek to \(s)s done")
                     }
-                    self?.statusObservation?.invalidate()
-                    self?.statusObservation = nil
                 }
+                self?.applySubtitleSelection(to: item)
+                self?.statusObservation?.invalidate()
+                self?.statusObservation = nil
             }
         }
 
@@ -154,6 +156,36 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             errorObserver = nil
             statusObservation?.invalidate()
             statusObservation = nil
+        }
+
+        private func applySubtitleSelection(to item: AVPlayerItem) {
+            let track = playback.clientSubtitleTrack
+            guard let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
+                print("[XUVA] no legible media selection group — subtitle pre-selection skipped")
+                return
+            }
+            if track == nil {
+                // User chose "Off" — explicitly disable, overriding any auto-select.
+                item.select(nil, in: group)
+                print("[XUVA] subtitle disabled by user selection")
+                return
+            }
+            // Match by language code first, then by display name.
+            let option = group.options.first { opt in
+                if let lang = track?.language, let locale = opt.locale {
+                    return locale.languageCode == lang || locale.identifier.hasPrefix(lang)
+                }
+                return false
+            } ?? group.options.first { opt in
+                guard let title = track?.title, !title.isEmpty else { return false }
+                return opt.displayName.localizedCaseInsensitiveContains(title)
+            }
+            if let option {
+                item.select(option, in: group)
+                print("[XUVA] subtitle pre-selected: \(option.displayName)")
+            } else {
+                print("[XUVA] no matching subtitle option for track \(track?.language ?? "?")/\(track?.title ?? "?")")
+            }
         }
 
         func playerViewControllerDidEndDismissalTransition(_ playerViewController: AVPlayerViewController) {
