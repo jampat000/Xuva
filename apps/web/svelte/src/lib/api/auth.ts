@@ -21,7 +21,7 @@ export interface AuthSessionResponse {
 	csrfToken?: string;
 	sessionToken?: string;
 	error?: string;
-	preferences?: { autoSkipIntros?: boolean };
+	preferences?: { autoSkipIntros?: boolean; posterSize?: 'S' | 'M' | 'L' };
 	[key: string]: unknown;
 }
 
