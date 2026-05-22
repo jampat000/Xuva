@@ -274,7 +274,7 @@ export function addToServerWatchlist(
 	req: WatchlistAddRequest,
 	client: ApiClient = apiClient
 ): Promise<ServerWatchlistItem> {
-	return client.request<ServerWatchlistItem>('/api/client/watchlist', {
+	return client.request<ServerWatchlistItem, WatchlistAddRequest>('/api/client/watchlist', {
 		method: 'POST',
 		body: req
 	});
