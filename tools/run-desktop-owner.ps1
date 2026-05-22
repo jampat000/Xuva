@@ -95,8 +95,12 @@ if (-not $WebDev -and -not $SkipWebBuild) {
 $webDevProcess = $null
 if ($WebDev) {
 	Write-Host "Starting web dev server (Vite) for live UI updates..."
-	$env:XUVA_WEB_DEV_ORIGIN = "http://127.0.0.1:5173"
-	$webDevProcess = Start-Process -FilePath $npmCommand -ArgumentList "run","dev","--","--host","127.0.0.1","--port","5173","--strictPort" -WorkingDirectory (Join-Path $repoRoot "apps/web/svelte") -PassThru -WindowStyle Hidden
+	$webDevPort = if ([string]::IsNullOrWhiteSpace($env:XUVA_WEB_DEV_PORT)) { "5174" } else { $env:XUVA_WEB_DEV_PORT }
+	$httpPort = Get-HttpPort -Address $HttpAddr
+	$apiOrigin = if ([string]::IsNullOrWhiteSpace($env:XUVA_API_ORIGIN)) { "http://127.0.0.1:$httpPort" } else { $env:XUVA_API_ORIGIN }
+	$env:XUVA_WEB_DEV_ORIGIN = "http://127.0.0.1:$webDevPort"
+	$env:XUVA_API_ORIGIN = $apiOrigin
+	$webDevProcess = Start-Process -FilePath $npmCommand -ArgumentList "run","dev","--","--host","127.0.0.1","--port",$webDevPort,"--strictPort" -WorkingDirectory (Join-Path $repoRoot "apps/web/svelte") -PassThru -WindowStyle Hidden
 } else {
 	$env:XUVA_WEB_DEV_ORIGIN = ""
 }

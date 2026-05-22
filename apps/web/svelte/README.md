@@ -29,7 +29,7 @@ npm --prefix apps/web/svelte install
 npm --prefix apps/web/svelte run dev
 ```
 
-Open [http://localhost:5173/](http://localhost:5173/).
+Open [http://localhost:5174/](http://localhost:5174/) when using the repo dev scripts. Set `XUVA_WEB_DEV_PORT` to override the Vite port and `XUVA_API_ORIGIN` to override the Go API proxy target.
 
 ## Type Check
 

@@ -1,3 +1,7 @@
+param(
+    [string]$HttpAddr = "0.0.0.0:8097"
+)
+
 # Xuva dev — starts the Go server (Air hot-reload) and the Vite frontend together.
 # Run from the repo root:  .\dev.ps1
 #
@@ -40,10 +44,15 @@ if (Test-Path $envLocal) {
     }
 }
 
+$webDevPort = if ([string]::IsNullOrWhiteSpace($env:XUVA_WEB_DEV_PORT)) { "5174" } else { $env:XUVA_WEB_DEV_PORT }
+$httpPort = if ($HttpAddr -match ":(\d+)$") { $Matches[1] } else { "8097" }
+$apiOrigin = if ([string]::IsNullOrWhiteSpace($env:XUVA_API_ORIGIN)) { "http://127.0.0.1:$httpPort" } else { $env:XUVA_API_ORIGIN }
+
 Write-Host ""
 Write-Host "  Xuva dev" -ForegroundColor Magenta
-Write-Host "  Go  -> http://127.0.0.1:8097  (Air hot-reload)" -ForegroundColor Cyan
-Write-Host "  Web -> http://localhost:5173   (Vite HMR)" -ForegroundColor Green
+Write-Host "  Go  -> http://$HttpAddr  (Air hot-reload)" -ForegroundColor Cyan
+Write-Host "  Web -> http://localhost:$webDevPort   (Vite HMR)" -ForegroundColor Green
+Write-Host "  API -> $apiOrigin   (Vite proxy target)" -ForegroundColor DarkCyan
 if ($envLoaded.Count -gt 0) {
     Write-Host "  Env -> loaded from .env.local: $($envLoaded -join ', ')" -ForegroundColor DarkGray
 } else {
@@ -65,7 +74,10 @@ foreach ($name in $envLoaded) {
 
 # Always proxy non-API requests to Vite so the Go server never serves the
 # stale embedded SPA during development (see webapp.go devProxyHandler).
-$envExports += "`$env:XUVA_WEB_DEV_ORIGIN = 'http://localhost:5173'; "
+$envExports += "`$env:XUVA_HTTP_ADDR = '$HttpAddr'; "
+$envExports += "`$env:XUVA_WEB_DEV_PORT = '$webDevPort'; "
+$envExports += "`$env:XUVA_WEB_DEV_ORIGIN = 'http://localhost:$webDevPort'; "
+$envExports += "`$env:XUVA_API_ORIGIN = '$apiOrigin'; "
 
 $airJob = Start-Process powershell `
     -ArgumentList "-NoExit", "-Command", "$envExports Set-Location '$serverDir'; air" `
@@ -73,7 +85,7 @@ $airJob = Start-Process powershell `
 
 # Start Vite in its own window
 $viteJob = Start-Process powershell `
-    -ArgumentList "-NoExit", "-Command", "Set-Location '$webDir'; npm run dev" `
+    -ArgumentList "-NoExit", "-Command", "`$env:XUVA_WEB_DEV_PORT = '$webDevPort'; `$env:XUVA_API_ORIGIN = '$apiOrigin'; Set-Location '$webDir'; npm run dev -- --host localhost --port $webDevPort --strictPort" `
     -PassThru
 
 Write-Host "Started Go server (PID $($airJob.Id)) and Vite (PID $($viteJob.Id))." -ForegroundColor DarkGray
