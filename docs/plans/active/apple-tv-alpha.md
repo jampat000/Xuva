@@ -8,7 +8,7 @@ Build the first native playback client path: pair Apple TV to the local server, 
 
 - Apple TV is the lead native client because it can be tested at home.
 - Server remains local-first with no vendor relay.
-- SwiftUI source lives in `apps/apple-tv/Sources`.
+- tvOS app shell lives in `apps/tvos`; shared SwiftUI, API, pairing, browsing, detail, and playback code lives in `apps/apple-core`.
 - Contract details live in `docs/apple-tv-alpha.md`.
 
 ## In Scope
@@ -33,7 +33,7 @@ Build the first native playback client path: pair Apple TV to the local server, 
 - [x] Add local pairing request/approval flow.
 - [x] Add TV home contract.
 - [x] Add SwiftUI starter shell and pairing flow.
-- [ ] Import Swift source into Xcode tvOS target.
+- [x] Import shared Swift source into Xcode tvOS target through local `../apple-core` package.
 - [ ] Fix compile/signing issues on Mac.
 - [ ] Add movie/series detail client contract optimized for TV.
 - [ ] Add playback-start contract for direct/HLS route selection.
@@ -50,7 +50,7 @@ Build the first native playback client path: pair Apple TV to the local server, 
 ## Risks And Rollback
 
 - Pairing currently returns a device ID but no durable credential. Rollback is to keep pairing disabled from bootstrap and use browser auth until credential design lands.
-- Swift source has not compiled on Xcode yet. Keep changes isolated in `apps/apple-tv/Sources` until first Mac validation.
+- Keep reusable Apple client work in `apps/apple-core`; keep target-specific app entry points in `apps/tvos` and `apps/ios`.
 
 ## Decision Log
 

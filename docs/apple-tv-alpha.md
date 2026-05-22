@@ -56,7 +56,7 @@ The first pairing loop is local and cloud-free:
 4. Apple TV polls `GET /api/pairing/requests/{id}` until the status changes.
 5. Approved responses include a `deviceId`; the long-lived authenticated device credential remains a later hardening task.
 
-The SwiftUI starter in `apps/apple-tv/Sources` already implements this first loop against the local API: manual URL, bootstrap, pairing request creation, code display, polling, and transition into the home shell after approval.
+The tvOS app in `apps/tvos` imports shared SwiftUI and API code from `apps/apple-core`. That shared package implements manual URL entry, bootstrap, pairing request creation, code display, polling, and transition into the home shell after approval.
 
 Admin-only routes:
 

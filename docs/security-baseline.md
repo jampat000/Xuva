@@ -43,6 +43,8 @@ Browser requests with an `Origin` header are allowed only when the origin is:
 
 Unknown origins are rejected before reaching API handlers.
 
+Browser UI routes use a canonical web origin so sign-in cookies, CSRF state, and profile selection are not split across `localhost`, `127.0.0.1`, LAN IPs, and hostnames. Configure it with `XUVA_CANONICAL_WEB_ORIGIN` or the saved `canonicalWebOrigin` setting. This network authority is separate from the Xuva Server Name, which is only a friendly display/discovery name. API and media routes are exempt from canonical redirects.
+
 ## Path Safety
 
 Handlers that serve cached files validate each user-controlled path segment before joining paths. Segments containing directory separators, empty values, `.` or `..` are rejected. Joined paths must remain under the intended runtime folder before Xuva reads or writes cache files.

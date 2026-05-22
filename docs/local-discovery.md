@@ -1,28 +1,37 @@
 # Local Discovery
 
-Xuva can advertise itself on the local network with mDNS / Bonjour so nearby client apps can find the server by name.
+Xuva can advertise itself on the local network with mDNS / Bonjour so nearby client apps can find a server instance and connect to its network address.
 
 ## What It Does
 
 - Advertises a custom service on the local network: `_xuva._tcp.local.`
-- Uses the configured **Server Name** as the advertised instance name
+- Uses the configured **Xuva Server Name** as the advertised instance name
 - Advertises the current HTTP port
 - Publishes only safe TXT records:
   - `app=xuva`
   - `api=/api/client/bootstrap`
+  - `hostName=<operating-system hostname>`
   - `serverName=<configured name>`
+  - `web=<canonical or derived web origin>`
 
 Xuva does not advertise secrets, tokens, credentials, filesystem paths, or runtime folder details.
 
-## How Server Name Is Used
+## Server Name Versus Network Name
 
-The saved **Server Name** is used for:
+Xuva has two separate names:
+
+- **Xuva Server Name** is the friendly instance/display name. It appears in browser titles, setup screens, client discovery lists, and `/api/client/bootstrap`.
+- **Network host name / canonical web address** is the routable address clients use to connect. It comes from the operating system, local DNS, mDNS, a reverse proxy, Docker/container networking, or the configured canonical web origin.
+
+The saved **Xuva Server Name** is used for:
 
 - the browser title
 - `/api/client/bootstrap`
 - local discovery instance naming
 
-If you change the Server Name, restart Xuva so discovery can advertise the updated name.
+It is not treated as a DNS name and does not need to resolve on the network.
+
+If you change the Xuva Server Name, restart Xuva so discovery can advertise the updated instance name.
 
 ## Enable Or Disable Discovery
 
