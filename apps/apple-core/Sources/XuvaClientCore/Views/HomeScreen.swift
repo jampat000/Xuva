@@ -11,14 +11,22 @@ public struct HomeScreen: View {
             let viewport = geometry.size
             ZStack(alignment: .top) {
                 heroBackdrop(viewport: viewport)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
-                        MediaTopBar(viewport: viewport)
-                            .padding(.top, XuvaScale.safeTop(viewport))
-                        HeroView(item: hero, heroes: heroes, viewport: viewport)
-                        rowsSection(viewport: viewport)
+                // MediaTopBar lives OUTSIDE the ScrollView so it stays on-screen
+                // as the user scrolls down into content rows. The tvOS focus engine
+                // can only navigate to views that are currently rendered — if the
+                // nav bar scrolls off-screen, "swipe up" from the rows has nowhere
+                // to land and the user is stuck.
+                VStack(spacing: 0) {
+                    MediaTopBar(viewport: viewport)
+                        .padding(.top, XuvaScale.safeTop(viewport))
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
+                            HeroView(item: hero, heroes: heroes, viewport: viewport)
+                            rowsSection(viewport: viewport)
+                        }
+                        .padding(.bottom, 60)
                     }
-                    .padding(.bottom, 60)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
