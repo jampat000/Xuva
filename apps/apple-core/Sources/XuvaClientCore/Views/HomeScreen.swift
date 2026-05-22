@@ -141,6 +141,7 @@ struct HeroView: View {
     let heroes: [HomeItem]
     let viewport: CGSize
     @EnvironmentObject private var store: XuvaClientStore
+    @EnvironmentObject private var watchlist: XuvaWatchlist
     @Namespace private var heroFocusNamespace
 
     var body: some View {
@@ -163,6 +164,7 @@ struct HeroView: View {
                 .lineLimit(isCompact ? 4 : 3)
                 .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
             HStack(spacing: 14) {
+                // Play — navigates to detail screen where playback begins.
                 Button {
                     Task { await store.open(item: item) }
                 } label: {
@@ -171,14 +173,31 @@ struct HeroView: View {
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
                 .prefersDefaultFocus(in: heroFocusNamespace)
 
-                #if !os(tvOS)
+                // More Info — opens the detail screen for this title.
                 Button {
                     Task { await store.open(item: item) }
                 } label: {
-                    Image(systemName: "plus")
+                    Label("More Info", systemImage: "info.circle")
+                }
+                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
+
+                // Watchlist toggle — adds or removes this title.
+                // Icon switches to checkmark when already in the list.
+                Button {
+                    guard let kind = item.kind else { return }
+                    _ = watchlist.toggle(
+                        id: item.id,
+                        kind: kind,
+                        title: item.title ?? "",
+                        year: item.year,
+                        posterUrl: item.posterUrl,
+                        backdropUrl: item.backdropUrl,
+                        genres: item.genres
+                    )
+                } label: {
+                    Image(systemName: inWatchlist ? "checkmark" : "plus")
                 }
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
-                #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             heroDots
@@ -202,6 +221,11 @@ struct HeroView: View {
     private var primaryActionTitle: String {
         if item.progress ?? 0 > 0 { return "Resume" }
         return "Play"
+    }
+
+    private var inWatchlist: Bool {
+        guard let kind = item.kind else { return false }
+        return watchlist.isIn(id: item.id, kind: kind)
     }
 
     @ViewBuilder
