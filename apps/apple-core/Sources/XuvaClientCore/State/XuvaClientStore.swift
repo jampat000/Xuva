@@ -56,6 +56,10 @@ public final class XuvaClientStore: ObservableObject {
 
         if UserDefaults.standard.bool(forKey: Self.pairedDeviceKey) {
             connectionState = .paired
+            // Skip the connect screen entirely — go straight to home and load
+            // data in the background. The spinner overlay covers the empty state
+            // until resumeSessionIfPossible() completes.
+            screen = .home
         }
     }
 
@@ -341,6 +345,11 @@ public final class XuvaClientStore: ObservableObject {
             persistCurrentAuthToken()
             connectionState = .paired
             screen = .home
+        }
+        // If the resume failed (server unreachable, 401, etc.) drop back to
+        // the connect screen so the user can re-pair or change the server URL.
+        if errorMessage != nil && api == nil {
+            screen = .connect
         }
         if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
             if let first = home?.rows?.flatMap({ $0.items ?? [] }).first {
