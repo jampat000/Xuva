@@ -438,6 +438,43 @@ public struct XuvaSecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// A button style for destructive actions (delete, remove). Uses a red tint
+/// with the same shape and focus behaviour as XuvaSecondaryButtonStyle.
+public struct XuvaDestructiveButtonStyle: ButtonStyle {
+    let viewport: CGSize
+    public init(viewport: CGSize = XuvaScale.screenSize) {
+        self.viewport = viewport
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        DestructiveBody(configuration: configuration, viewport: viewport)
+    }
+
+    private struct DestructiveBody: View {
+        let configuration: Configuration
+        let viewport: CGSize
+        @Environment(\.isFocused) private var isFocused
+        private let tint = Color(red: 0.95, green: 0.28, blue: 0.28)
+
+        var body: some View {
+            let h = XuvaScale.buttonHeight(viewport)
+            configuration.label
+                .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .medium))
+                .foregroundStyle(isFocused ? tint : XuvaTheme.mutedText)
+                .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
+                .frame(height: h)
+                .background(tint.opacity(configuration.isPressed ? 0.15 : isFocused ? 0.10 : 0.05), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).stroke(
+                    isFocused ? tint.opacity(0.80) : tint.opacity(0.20),
+                    lineWidth: isFocused ? 2.5 : 1))
+                .scaleEffect(isFocused ? 1.035 : 1)
+                .shadow(color: tint.opacity(isFocused ? 0.35 : 0), radius: isFocused ? 22 : 0, x: 0, y: 10)
+                .focusEffectDisabled()
+                .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+        }
+    }
+}
+
 public struct XuvaIconButtonStyle: ButtonStyle {
     let viewport: CGSize
     public init(viewport: CGSize = XuvaScale.screenSize) {
