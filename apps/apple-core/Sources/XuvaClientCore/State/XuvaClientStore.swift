@@ -332,6 +332,8 @@ public final class XuvaClientStore: ObservableObject {
         guard !isBusy, api == nil, !trimmed.isEmpty else { return }
         guard !UserDefaults.standard.bool(forKey: Self.pairedDeviceKey) else { return }
         await connect()
+        guard errorMessage == nil else { return }
+        await startPairing()
     }
 
     public func resumeSessionIfPossible() async {
