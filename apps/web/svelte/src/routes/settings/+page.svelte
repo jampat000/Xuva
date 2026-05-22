@@ -174,8 +174,9 @@
       return raw ? JSON.parse(raw) : { scrobble: true, ratings: true, watchlist_pull: true };
     } catch { return { scrobble: true, ratings: true, watchlist_pull: true }; }
   }
-  let wlSyncSaved = $state<Record<string, boolean>>(loadWlSync());
-  let wlSyncEdit  = $state<Record<string, boolean>>({ ...wlSyncSaved });
+  const _wlSyncInit = loadWlSync();
+  let wlSyncSaved = $state<Record<string, boolean>>(_wlSyncInit);
+  let wlSyncEdit  = $state<Record<string, boolean>>({ ..._wlSyncInit });
   const wlSyncDirty = $derived(
     Object.keys(wlSyncSaved).some(k => wlSyncEdit[k] !== wlSyncSaved[k])
   );

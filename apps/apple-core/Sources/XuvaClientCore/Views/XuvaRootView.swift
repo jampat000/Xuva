@@ -51,6 +51,11 @@ public struct XuvaRootView: View {
             await store.resumeSessionIfPossible()
             await store.autoConnectIfPossible()
         }
+        .task(id: store.api?.baseURL) {
+            guard let api = store.api else { return }
+            watchlist.api = api
+            await watchlist.syncFromServer()
+        }
     }
 }
 

@@ -1,10 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// Local watchlist mirroring the web's `apps/web/svelte/src/lib/stores/watchlistStore.svelte.ts` —
-/// client-side only, persisted to UserDefaults. When the server gains a real
-/// watchlist API later this can switch to an HTTP-backed implementation
-/// without changing the call sites.
 public struct WatchlistItem: Codable, Identifiable, Equatable {
     public var id: String
     public var kind: String
@@ -21,6 +17,8 @@ public final class XuvaWatchlist: ObservableObject {
     @Published public private(set) var items: [WatchlistItem] = []
 
     private static let storageKey = "xuva.apple.watchlist"
+    private var synced = false
+    weak var api: XuvaAPI?
 
     public init() {
         load()
@@ -34,11 +32,41 @@ public final class XuvaWatchlist: ObservableObject {
         if isIn(id: id, kind: kind) {
             items.removeAll { $0.id == id && $0.kind == kind }
             persist()
+            Task { try? await api?.watchlistRemove(mediaId: id, kind: kind) }
             return false
         } else {
             items.insert(WatchlistItem(id: id, kind: kind, title: title, year: year, posterUrl: posterUrl, backdropUrl: backdropUrl, genres: genres, addedAt: Date()), at: 0)
             persist()
+            Task {
+                let req = WatchlistAddRequest(mediaId: id, kind: kind, title: title, year: year, posterUrl: posterUrl, backdropUrl: backdropUrl, genres: genres)
+                try? await api?.watchlistAdd(req)
+            }
             return true
+        }
+    }
+
+    /// Fetch the authoritative server list once and replace the local cache.
+    public func syncFromServer() async {
+        guard !synced, let api else { return }
+        do {
+            let response = try await api.watchlistList()
+            let formatter = ISO8601DateFormatter()
+            items = response.items.compactMap { i in
+                WatchlistItem(
+                    id: i.mediaId,
+                    kind: i.kind,
+                    title: i.title,
+                    year: i.year,
+                    posterUrl: i.posterUrl,
+                    backdropUrl: i.backdropUrl,
+                    genres: i.genres,
+                    addedAt: formatter.date(from: i.addedAt) ?? Date()
+                )
+            }
+            persist()
+            synced = true
+        } catch {
+            xuvaLog("watchlist sync failed: \(error)")
         }
     }
 
