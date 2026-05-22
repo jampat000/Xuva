@@ -5,6 +5,8 @@
   import { Check, ChevronDown, Play, Plus, RotateCcw, Search, SlidersHorizontal, X } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
+  import { getAuthSession } from '$lib/api/auth';
+  import { updateUserPreferences } from '$lib/api/operator';
 
   let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "" } = $props<{
     eyebrow: string;
@@ -273,7 +275,18 @@
     if (p.get('missing') === '1') onlyMissingMeta = true;
     const seed = parseInt(p.get('seed') ?? '', 10);
     if (!isNaN(seed) && seed > 0) randomSeed = seed;
+
+    // Restore saved poster density from user preferences.
+    getAuthSession().then(s => {
+      const size = s?.preferences?.posterSize;
+      if (size === 'S' || size === 'M' || size === 'L') density = size;
+    }).catch(() => {});
   });
+
+  function setDensity(d: Density) {
+    density = d;
+    updateUserPreferences({ posterSize: d }).catch(() => {});
+  }
 
   // Sync filter state → URL (replaceState, no scroll, no focus loss)
   $effect(() => {
@@ -493,7 +506,7 @@
             <button
               type="button"
               aria-label={option === "S" ? "Small cards" : option === "M" ? "Medium cards" : "Large cards"}
-              onclick={() => (density = option)}
+              onclick={() => setDensity(option)}
               class={`flex h-7 min-w-7 items-center justify-center rounded-full px-2.5 text-[11px] font-semibold tracking-wider transition-colors ${
                 density === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
               }`}

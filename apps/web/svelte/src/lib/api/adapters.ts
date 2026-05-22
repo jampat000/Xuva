@@ -2,6 +2,17 @@ import type { Media } from '$lib/mock-data';
 import type { MovieListItem, SeriesListItem } from './browse';
 import type { ClientHomeItem } from './home';
 
+// Decode HTML entities (e.g. &amp; → &) that TMDb and other metadata sources
+// occasionally return. Svelte renders text nodes verbatim so entities show as
+// literal text. Decode at the API boundary before storing in reactive state.
+function decodeEntities(text: string | undefined): string {
+	if (!text) return '';
+	if (typeof document === 'undefined') return text;
+	const el = document.createElement('textarea');
+	el.innerHTML = text;
+	return el.value;
+}
+
 // ---------------------------------------------------------------------------
 // Runtime string → minutes
 // ---------------------------------------------------------------------------
@@ -95,7 +106,7 @@ export function movieToMedia(item: MovieListItem): Media {
 		rating: (meta?.voteAverage as number | undefined) ?? 0,
 		runtime: runtimeStr,
 		runtimeMins: parseRuntimeMins(runtimeStr),
-		synopsis: item.metadata?.overview ?? '',
+		synopsis: decodeEntities(item.metadata?.overview ?? ''),
 		poster: item.metadata?.posterUrl || undefined,
 		backdrop: item.metadata?.backdropUrl || undefined,
 		contentRating: (meta?.contentRating as string | undefined) || undefined,
@@ -121,7 +132,7 @@ export function seriesToMedia(item: SeriesListItem): Media {
 		rating: (meta?.voteAverage as number | undefined) ?? 0,
 		seasons: item.seasonCount,
 		episodes: item.episodeCount,
-		synopsis: item.metadata?.overview ?? '',
+		synopsis: decodeEntities(item.metadata?.overview ?? ''),
 		poster: item.metadata?.posterUrl || undefined,
 		backdrop: item.metadata?.backdropUrl || undefined,
 		contentRating: (meta?.contentRating as string | undefined) || undefined,
@@ -151,7 +162,7 @@ export function clientHomeItemToMedia(item: ClientHomeItem): Media {
 		rating: (unknownFields.rating as number | undefined) ?? (unknownFields.voteAverage as number | undefined) ?? 0,
 		seasons: (unknownFields.seasonCount as number | undefined) ?? (unknownFields.seasons as number | undefined),
 		episodes: (unknownFields.episodeCount as number | undefined) ?? (unknownFields.episodes as number | undefined),
-		synopsis: item.overview ?? item.description ?? '',
+		synopsis: decodeEntities(item.overview ?? item.description ?? ''),
 		// Normalise empty strings to undefined: the API returns "" for items
 		// without artwork, and `??` fallbacks downstream only catch null/
 		// undefined — leaving "" in place causes <img src=""> to render nothing.

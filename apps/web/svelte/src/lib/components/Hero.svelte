@@ -1,9 +1,10 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { fade } from "svelte/transition";
-  import { Info, Play, Plus, Volume2, VolumeX } from "lucide-svelte";
+  import { Check, Info, Play, Plus, Volume2, VolumeX } from "lucide-svelte";
   import heroImg from "$lib/assets/hero-featured.jpg";
   import type { Media } from "$lib/mock-data";
+  import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
 
   let { slides: rawSlides, trailersEnabled = true } = $props<{ slides: Media[]; trailersEnabled?: boolean }>();
 
@@ -363,10 +364,15 @@
           </a>
           <button
             type="button"
-            aria-label="Add to list"
+            onclick={() => toggleWatchlist({ id: media.id, kind: media.type === 'Series' ? 'series' : 'movie', title: media.title, year: media.year || undefined, posterUrl: media.poster, backdropUrl: media.backdrop, genres: media.genres })}
+            aria-label={isInWatchlist(media.id, media.type === 'Series' ? 'series' : 'movie') ? 'Remove from watchlist' : 'Add to watchlist'}
             class="hairline flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5 text-foreground backdrop-blur-md transition-colors hover:bg-foreground/10"
           >
-            <Plus class="h-5 w-5" />
+            {#if isInWatchlist(media.id, media.type === 'Series' ? 'series' : 'movie')}
+              <Check class="h-5 w-5 text-primary-glow" />
+            {:else}
+              <Plus class="h-5 w-5" />
+            {/if}
           </button>
         </div>
       </div>

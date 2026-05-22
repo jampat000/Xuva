@@ -161,7 +161,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/client/search", clientSearchHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/client/playback/start", clientPlaybackStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "PATCH /api/client/playback/{id}", clientPlaybackHeartbeatHandler(deps))
-	handleProtectedCSRF(mux, deps, "POST /api/client/playback/{id}/stop", clientPlaybackStopHandler(deps))
+	handleProtected(mux, deps, "POST /api/client/playback/{id}/stop", clientPlaybackStopHandler(deps))
 	handleProtected(mux, deps, "GET /api/movies", moviesHandler(deps))
 	handleProtected(mux, deps, "GET /api/movies/{id}", movieDetailHandler(deps))
 	handleProtected(mux, deps, "GET /api/series", seriesHandler(deps))
@@ -2619,7 +2619,7 @@ func tvRecentItems(ctx context.Context, deps Deps, items []playstate.RecentItem)
 			"title":           firstNonEmpty(item.Name, item.RelPath, "Resume playback"),
 			"subtitle":        formatResumeSubtitle(item),
 			"mediaSourceId":   item.MediaSourceID,
-			"progressPercent": item.Percent,
+			"progressPercent": item.Percent * 100,
 			"lastPlayedAt":    item.LastPlayedAt,
 			"route":           "Resume",
 		}
