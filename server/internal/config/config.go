@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,10 +16,11 @@ import (
 const legacyDefaultServerName = "My Server"
 
 type Config struct {
-	ServerName            string   `json:"serverName,omitempty"`
-	HTTPAddr              string   `json:"httpAddr"`
-	DiscoveryEnabled      bool     `json:"-"`
-	DiscoveryServiceType  string   `json:"-"`
+	ServerName           string `json:"serverName,omitempty"`
+	HTTPAddr             string `json:"httpAddr"`
+	CanonicalWebOrigin   string `json:"canonicalWebOrigin,omitempty"`
+	DiscoveryEnabled     bool   `json:"-"`
+	DiscoveryServiceType string `json:"-"`
 	// DataDir is resolved at startup and never persisted in settings.json
 	// (since the file itself lives inside DataDir). Override via XUVA_DATA_DIR.
 	DataDir               string   `json:"-"`
@@ -40,30 +42,30 @@ type Config struct {
 	// env vars then to build-time embedded defaults. End users do not need
 	// to populate these — they exist only as power-user overrides for cases
 	// like hitting the shared rate limit.
-	OMDbAPIKey            string   `json:"omdbApiKey,omitempty"`
-	TMDBAPIKey            string   `json:"tmdbApiKey,omitempty"`
-	FanartTVAPIKey        string   `json:"fanartTvApiKey,omitempty"`
+	OMDbAPIKey     string `json:"omdbApiKey,omitempty"`
+	TMDBAPIKey     string `json:"tmdbApiKey,omitempty"`
+	FanartTVAPIKey string `json:"fanartTvApiKey,omitempty"`
 	// TVDB support has been dropped: their v4 licence requires a per-install
 	// subscription, which is incompatible with embed-and-ship UX. TMDB
 	// supplies full TV data (episodes, seasons, stills, credits, ratings).
 	// The field name is preserved on settings.json to allow forward-clean
 	// migration of any existing user file, but is no longer read.
-	EventBuffer           int      `json:"eventBuffer"`
-	ScanWorkers           int      `json:"scanWorkers"`
-	ProbeWorkers          int      `json:"probeWorkers"`
-	TranscodeWorkers      int      `json:"transcodeWorkers"`
-	GPUWorkers            int      `json:"gpuWorkers"`
-	HardwareUnlocked      bool     `json:"hardwareUnlocked,omitempty"`
-	PlaybackPolicy        string   `json:"playbackPolicy,omitempty"`
-	LibrarySyncMode       string   `json:"librarySyncMode,omitempty"`
-	SyncIntervalMins      int      `json:"syncIntervalMins,omitempty"`
-	WatchDebounceSecs     int      `json:"watchDebounceSecs,omitempty"`
-	ProbeBatchLimit       int      `json:"probeBatchLimit,omitempty"`
-	AllowedOrigins        []string `json:"allowedOrigins,omitempty"`
+	EventBuffer       int      `json:"eventBuffer"`
+	ScanWorkers       int      `json:"scanWorkers"`
+	ProbeWorkers      int      `json:"probeWorkers"`
+	TranscodeWorkers  int      `json:"transcodeWorkers"`
+	GPUWorkers        int      `json:"gpuWorkers"`
+	HardwareUnlocked  bool     `json:"hardwareUnlocked,omitempty"`
+	PlaybackPolicy    string   `json:"playbackPolicy,omitempty"`
+	LibrarySyncMode   string   `json:"librarySyncMode,omitempty"`
+	SyncIntervalMins  int      `json:"syncIntervalMins,omitempty"`
+	WatchDebounceSecs int      `json:"watchDebounceSecs,omitempty"`
+	ProbeBatchLimit   int      `json:"probeBatchLimit,omitempty"`
+	AllowedOrigins    []string `json:"allowedOrigins,omitempty"`
 	// Region / language settings — captured during the setup wizard.
-	Country               string   `json:"country,omitempty"`          // ISO 3166-1 alpha-2, e.g. "AU"
-	Timezone              string   `json:"timezone,omitempty"`         // IANA tz, e.g. "Australia/Sydney"
-	MetadataLanguage      string   `json:"metadataLanguage,omitempty"` // BCP-47 e.g. "en-US", "fr-FR", "de-DE"
+	Country          string `json:"country,omitempty"`          // ISO 3166-1 alpha-2, e.g. "AU"
+	Timezone         string `json:"timezone,omitempty"`         // IANA tz, e.g. "Australia/Sydney"
+	MetadataLanguage string `json:"metadataLanguage,omitempty"` // BCP-47 e.g. "en-US", "fr-FR", "de-DE"
 	// Playback preferences
 	PreferTextSubtitles    bool `json:"preferTextSubtitles,omitempty"`    // prefer SRT/ASS over bitmap subs
 	OriginalQualityOnly    bool `json:"originalQualityOnly,omitempty"`    // refuse to transcode video
@@ -72,16 +74,16 @@ type Config struct {
 	// DisableTrailers suppresses trailer autoplay in the hero carousel. When
 	// true the hero always shows the static backdrop image regardless of whether
 	// trailer data is available. False (default/zero) means trailers are allowed.
-	DisableTrailers        bool `json:"disableTrailers,omitempty"`
-	SetupComplete         bool     `json:"setupComplete,omitempty"`
+	DisableTrailers bool `json:"disableTrailers,omitempty"`
+	SetupComplete   bool `json:"setupComplete,omitempty"`
 	// Trailer downloader settings — self-hosted preview videos.
-	TrailersEnabled       bool     `json:"trailersEnabled,omitempty"`
-	TrailersDir           string   `json:"trailersDir,omitempty"`   // local MP4 cache
-	YTDLPPath             string   `json:"ytdlpPath,omitempty"`     // yt-dlp binary, defaults to PATH lookup
-	TrailerWorkers        int      `json:"trailerWorkers,omitempty"`
-	AuthDisabled          bool     `json:"-"`
-	AdminUsername         string   `json:"-"`
-	AdminPassword         string   `json:"-"`
+	TrailersEnabled bool   `json:"trailersEnabled,omitempty"`
+	TrailersDir     string `json:"trailersDir,omitempty"` // local MP4 cache
+	YTDLPPath       string `json:"ytdlpPath,omitempty"`   // yt-dlp binary, defaults to PATH lookup
+	TrailerWorkers  int    `json:"trailerWorkers,omitempty"`
+	AuthDisabled    bool   `json:"-"`
+	AdminUsername   string `json:"-"`
+	AdminPassword   string `json:"-"`
 }
 
 // defaultDataDir resolves the data directory to a stable absolute path that
@@ -124,6 +126,7 @@ func FromEnv() Config {
 	cfg := Config{
 		ServerName:           envString("XUVA_SERVER_NAME", "Xuva"),
 		HTTPAddr:             envString("XUVA_HTTP_ADDR", "127.0.0.1:8097"),
+		CanonicalWebOrigin:   envString("XUVA_CANONICAL_WEB_ORIGIN", ""),
 		DiscoveryEnabled:     envBool("XUVA_DISCOVERY_ENABLED", true),
 		DiscoveryServiceType: envString("XUVA_DISCOVERY_SERVICE_TYPE", "_xuva._tcp"),
 		DataDir:              dataDir,
@@ -139,40 +142,41 @@ func FromEnv() Config {
 		FpcalcPath:           envString("XUVA_FPCALC_PATH", ""),
 		// Keys default empty here; ResolveProviderKey() in keys.go merges
 		// saved + env + embedded after settings.json is loaded below.
-		OMDbAPIKey:           "",
-		TMDBAPIKey:           "",
-		FanartTVAPIKey:       "",
-		EventBuffer:          envInt("XUVA_EVENT_BUFFER", 128),
-		ScanWorkers:          envInt("XUVA_SCAN_WORKERS", 1),
-		ProbeWorkers:         envInt("XUVA_PROBE_WORKERS", 2),
-		TranscodeWorkers:     envInt("XUVA_TRANSCODE_WORKERS", 1),
-		GPUWorkers:           envInt("XUVA_GPU_WORKERS", 1),
-		HardwareUnlocked:     envBool("XUVA_HARDWARE_UNLOCKED", false),
-		PlaybackPolicy:       envString("XUVA_PLAYBACK_POLICY", "original_only"),
-		LibrarySyncMode:      envString("XUVA_LIBRARY_SYNC_MODE", "daily"),
-		SyncIntervalMins:     envInt("XUVA_SYNC_INTERVAL_MINS", 1440),
-		WatchDebounceSecs:    envInt("XUVA_WATCH_DEBOUNCE_SECS", 30),
-		ProbeBatchLimit:      envInt("XUVA_PROBE_BATCH_LIMIT", 50),
-		Country:              envString("XUVA_COUNTRY", ""),
-		Timezone:             envString("XUVA_TIMEZONE", ""),
+		OMDbAPIKey:             "",
+		TMDBAPIKey:             "",
+		FanartTVAPIKey:         "",
+		EventBuffer:            envInt("XUVA_EVENT_BUFFER", 128),
+		ScanWorkers:            envInt("XUVA_SCAN_WORKERS", 1),
+		ProbeWorkers:           envInt("XUVA_PROBE_WORKERS", 2),
+		TranscodeWorkers:       envInt("XUVA_TRANSCODE_WORKERS", 1),
+		GPUWorkers:             envInt("XUVA_GPU_WORKERS", 1),
+		HardwareUnlocked:       envBool("XUVA_HARDWARE_UNLOCKED", false),
+		PlaybackPolicy:         envString("XUVA_PLAYBACK_POLICY", "original_only"),
+		LibrarySyncMode:        envString("XUVA_LIBRARY_SYNC_MODE", "daily"),
+		SyncIntervalMins:       envInt("XUVA_SYNC_INTERVAL_MINS", 1440),
+		WatchDebounceSecs:      envInt("XUVA_WATCH_DEBOUNCE_SECS", 30),
+		ProbeBatchLimit:        envInt("XUVA_PROBE_BATCH_LIMIT", 50),
+		Country:                envString("XUVA_COUNTRY", ""),
+		Timezone:               envString("XUVA_TIMEZONE", ""),
 		MetadataLanguage:       envString("XUVA_METADATA_LANGUAGE", "en-US"),
 		PreferTextSubtitles:    envBool("XUVA_PREFER_TEXT_SUBTITLES", false),
 		OriginalQualityOnly:    envBool("XUVA_ORIGINAL_QUALITY_ONLY", false),
 		DefaultSubtitlesMovies: envBool("XUVA_DEFAULT_SUBTITLES_MOVIES", false),
 		DefaultSubtitlesTV:     envBool("XUVA_DEFAULT_SUBTITLES_TV", false),
-		TrailersEnabled:      envBool("XUVA_TRAILERS_ENABLED", true),
-		TrailersDir:          envString("XUVA_TRAILERS_DIR", filepath.Join(dataDir, "trailers")),
-		YTDLPPath:            envString("XUVA_YTDLP_PATH", "yt-dlp"),
-		TrailerWorkers:       envInt("XUVA_TRAILER_WORKERS", 1),
-		AllowedOrigins:       envCSV("XUVA_ALLOWED_ORIGINS", nil),
-		AuthDisabled:         envBool("XUVA_AUTH_DISABLED", false),
-		AdminUsername:        envString("XUVA_ADMIN_USERNAME", "admin"),
-		AdminPassword:        envString("XUVA_ADMIN_PASSWORD", ""),
+		TrailersEnabled:        envBool("XUVA_TRAILERS_ENABLED", true),
+		TrailersDir:            envString("XUVA_TRAILERS_DIR", filepath.Join(dataDir, "trailers")),
+		YTDLPPath:              envString("XUVA_YTDLP_PATH", "yt-dlp"),
+		TrailerWorkers:         envInt("XUVA_TRAILER_WORKERS", 1),
+		AllowedOrigins:         envCSV("XUVA_ALLOWED_ORIGINS", nil),
+		AuthDisabled:           envBool("XUVA_AUTH_DISABLED", false),
+		AdminUsername:          envString("XUVA_ADMIN_USERNAME", "admin"),
+		AdminPassword:          envString("XUVA_ADMIN_PASSWORD", ""),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
 	}
 	cfg.HTTPAddr = envString("XUVA_HTTP_ADDR", cfg.HTTPAddr)
+	cfg.CanonicalWebOrigin = envString("XUVA_CANONICAL_WEB_ORIGIN", cfg.CanonicalWebOrigin)
 	cfg.DiscoveryEnabled = envBool("XUVA_DISCOVERY_ENABLED", cfg.DiscoveryEnabled)
 	cfg.DiscoveryServiceType = envString("XUVA_DISCOVERY_SERVICE_TYPE", defaultDiscoveryServiceType(cfg.DiscoveryServiceType))
 	cfg.ServerName = envString("XUVA_SERVER_NAME", defaultServerName(cfg.ServerName))
@@ -269,6 +273,9 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.HTTPAddr != "" {
 		base.HTTPAddr = saved.HTTPAddr
+	}
+	if saved.CanonicalWebOrigin != "" {
+		base.CanonicalWebOrigin = saved.CanonicalWebOrigin
 	}
 	// DataDir is intentionally never merged from saved settings — it's
 	// resolved at startup and json:"-" guarantees saved.DataDir is "".
@@ -477,6 +484,32 @@ func NormalizeServerName(value string) (string, error) {
 		}
 	}
 	return trimmed, nil
+}
+
+func NormalizeWebOrigin(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("canonical web origin must be an absolute http:// or https:// URL")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", errors.New("canonical web origin must start with http:// or https://")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("canonical web origin cannot include username, query, or fragment")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", errors.New("canonical web origin cannot include a path")
+	}
+	parsed.Scheme = scheme
+	parsed.Path = ""
+	parsed.RawPath = ""
+	parsed.ForceQuery = false
+	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
 func defaultInt(value int, fallback int) int {
