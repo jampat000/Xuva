@@ -207,6 +207,11 @@ private struct DetailContentView: View {
             }
             actionRow(viewport: viewport)
                 .padding(.top, 28)
+                // Full-width section so DOWN from Play exits to cast/episodes
+                // below rather than landing on Trailer (same root cause as the
+                // HomeScreen hero buttons — section on the small HStack traps
+                // the focus engine within the button cluster).
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .focusSection()
             creditsRow(viewport: viewport)
                 .padding(.top, 22)
