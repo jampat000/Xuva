@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "xuva.db")
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +45,15 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 		return nil, err
 	}
 	return service, nil
+}
+
+func sqliteDSN(dbPath string) string {
+	q := url.Values{}
+	q.Add("_pragma", "busy_timeout=5000")
+	q.Add("_pragma", "foreign_keys=ON")
+	q.Add("_pragma", "journal_mode=WAL")
+	q.Add("_pragma", "synchronous=NORMAL")
+	return dbPath + "?" + q.Encode()
 }
 
 func (s *Service) DB() *sql.DB {
@@ -230,10 +240,28 @@ var migrations = []string{
 		status TEXT NOT NULL DEFAULT 'approved',
 		approved_at TEXT NOT NULL,
 		approved_by TEXT NOT NULL DEFAULT '',
+		auth_session_id TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`,
+	`ALTER TABLE approved_devices ADD COLUMN auth_session_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS idx_approved_devices_status_updated ON approved_devices(status, updated_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS pairing_requests (
+		id TEXT PRIMARY KEY,
+		code TEXT NOT NULL,
+		device_name TEXT NOT NULL,
+		client_profile TEXT NOT NULL,
+		device_id TEXT NOT NULL DEFAULT '',
+		auth_method TEXT NOT NULL DEFAULT '',
+		auth_session_token TEXT NOT NULL DEFAULT '',
+		auth_expires_at TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		approved_by TEXT NOT NULL DEFAULT '',
+		expires_at TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_pairing_requests_status_created ON pairing_requests(status, created_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS playback_states (
 		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		media_source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,

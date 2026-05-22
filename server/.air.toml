@@ -2,7 +2,7 @@ root = "."
 tmp_dir = ".air"
 
 [build]
-  cmd = "go build -o .air/xuva.exe ./cmd/Xuva/..."
+  cmd = "go build -buildvcs=false -o .air/xuva.exe ./cmd/Xuva/..."
   bin = ".air/xuva.exe"
   full_bin = ".air/xuva.exe"
   include_ext = ["go"]

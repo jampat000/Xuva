@@ -2,12 +2,18 @@ import SwiftUI
 
 public struct XuvaRootView: View {
     @StateObject private var store = XuvaClientStore()
+    @StateObject private var watchlist = XuvaWatchlist()
 
     public init() {}
 
     public var body: some View {
         ZStack {
+            // Solid background fills the entire screen including overscan area
+            // so there's never a black band peeking through at the edges.
+            XuvaTheme.background
+                .ignoresSafeArea()
             XuvaTheme.backgroundWash
+                .ignoresSafeArea()
             switch store.screen {
             case .connect, .pair:
                 PairingScreen()
@@ -25,8 +31,66 @@ public struct XuvaRootView: View {
                     .padding(28)
                     .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
+            if let error = store.errorMessage, store.screen != .player {
+                ErrorToast(message: error) { store.clearError() }
+                    .padding(.top, 60)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+        // Suppress the system focus halo (the giant white card-lift effect on
+        // tvOS that was ballooning every focused button over its neighbours)
+        // and rely on our own xuvaFocused() ring everywhere instead.
+        .modifier(DisableSystemFocusEffect())
         .environmentObject(store)
+        .environmentObject(watchlist)
         .preferredColorScheme(.dark)
+        .task {
+            await store.resumeSessionIfPossible()
+            await store.autoConnectIfPossible()
+        }
+    }
+}
+
+/// Wraps `.focusEffectDisabled()` in a back-compat guard. Available
+/// iOS 17 / tvOS 17 / macOS 14+; on older targets just passes through.
+private struct DisableSystemFocusEffect: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, tvOS 17.0, macOS 14.0, *) {
+            content.focusEffectDisabled(true)
+        } else {
+            content
+        }
+    }
+}
+
+private struct ErrorToast: View {
+    let message: String
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(XuvaTheme.warn)
+            Text(message)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(XuvaTheme.text)
+                .lineLimit(3)
+                .frame(maxWidth: 720, alignment: .leading)
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(XuvaTheme.mutedText)
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
+        .background(XuvaTheme.surface.opacity(0.94), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(XuvaTheme.warn.opacity(0.45)))
+        .shadow(color: .black.opacity(0.4), radius: 24, y: 12)
     }
 }

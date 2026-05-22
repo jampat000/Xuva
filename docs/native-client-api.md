@@ -22,14 +22,20 @@ Out of scope:
 Current discovery protocol:
 - mDNS / Bonjour
 - service type: `_xuva._tcp.local.`
-- service instance name: configured Xuva `Server Name`
+- service instance name: configured Xuva `Server Name` display value
 - service port: active HTTP port
 
 Discovery TXT records:
 - `app=xuva`
-- `version=<build version>`
 - `api=/api/client/bootstrap`
-- `serverName=<configured server name>`
+- `serverName=<configured Xuva display name>`
+- `hostName=<operating-system hostname>`
+- `web=<canonical or derived web origin>`
+
+Naming rule:
+- `serverName` is a friendly Xuva instance name for humans.
+- `hostName`, the resolved mDNS target, manual URL, or `server.webUrl` are the connectivity authorities.
+- Clients must not assume `serverName` is DNS-resolvable.
 
 Manual fallback:
 - clients can always use manual URL entry and call `GET /api/client/bootstrap`.
@@ -48,8 +54,10 @@ Purpose:
 - safe server identity and capability handshake before sign-in or pairing.
 
 Important fields:
-- `server.name`
+- `server.name` / `server.displayName`
+- `server.hostName`
 - `server.baseUrl`
+- `server.webUrl`
 - `server.httpAddr`
 - `auth.required`
 - `auth.bootstrapAllowed`
@@ -63,7 +71,10 @@ Safe example response shape:
 {
   "server": {
     "name": "Xuva",
+    "displayName": "Xuva",
+    "hostName": "media-server",
     "baseUrl": "http://127.0.0.1:8097",
+    "webUrl": "http://media-server.local:8097",
     "httpAddr": "127.0.0.1:8097"
   },
   "auth": {

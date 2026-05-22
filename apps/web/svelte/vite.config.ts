@@ -2,16 +2,30 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+const webDevPort = Number.parseInt(process.env.XUVA_WEB_DEV_PORT ?? '5174', 10);
+const resolvedWebDevPort = Number.isFinite(webDevPort) ? webDevPort : 5174;
+const apiOrigin = process.env.XUVA_API_ORIGIN ?? 'http://127.0.0.1:8097';
+
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	server: {
+		port: resolvedWebDevPort,
+		strictPort: true,
 		proxy: {
-			// Forward all /api calls from the Vite dev server to the Go backend.
-			// This lets you visit http://localhost:5173 with hot reload while the
-			// Go server handles all data — no CORS issues, no dual-origin pain.
+			// Forward /api from Vite to the Go backend so dev uses one browser origin.
 			'/api': {
-				target: 'http://127.0.0.1:8097',
-				changeOrigin: true
+				target: apiOrigin,
+				changeOrigin: true,
+				configure: (proxy) => {
+					proxy.on('error', (_err, _req, res) => {
+						if (!res || ('destroyed' in res && res.destroyed)) return;
+						const response = res as import('http').ServerResponse;
+						if (!response.headersSent) {
+							response.writeHead(502, { 'Content-Type': 'application/json' });
+						}
+						response.end(JSON.stringify({ error: `Xuva API dev proxy could not reach ${apiOrigin}` }));
+					});
+				}
 			}
 		}
 	}

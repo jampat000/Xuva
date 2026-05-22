@@ -12,7 +12,7 @@ It checks the agent map, docs index, execution-plan folders, and protected route
 
 ## Dev Health Check
 
-Check whether Go (`127.0.0.1:8097`) and Vite (`127.0.0.1:5173`) are both reachable in live WebDev mode:
+Check whether Go (`127.0.0.1:8097`) and Vite (`127.0.0.1:5174` by default, or `XUVA_WEB_DEV_PORT`) are both reachable in live WebDev mode:
 
 ```powershell
 ./tools/dev-health.ps1

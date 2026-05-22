@@ -784,6 +784,16 @@ func (s *Service) issueSession(ctx context.Context, principal Principal, remoteA
 	return Session{ID: sessionID, UserID: principal.ID, CSRFToken: csrfToken, ExpiresAt: expiresAt, CreatedAt: now}, token, nil
 }
 
+// RevokeSessionID is the public form of revokeSessionID for callers that
+// already hold the session id (e.g. device revoke wants to drop the
+// token that was issued at pairing time).
+func (s *Service) RevokeSessionID(ctx context.Context, sessionID string) error {
+	if s.Disabled() {
+		return nil
+	}
+	return s.revokeSessionID(ctx, sessionID)
+}
+
 func (s *Service) revokeSessionID(ctx context.Context, sessionID string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE auth_sessions

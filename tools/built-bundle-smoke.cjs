@@ -38,10 +38,13 @@ const skipFrontendBuild = process.argv.includes("--skip-frontend-build");
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xuva-smoke-"));
 const tempDataDir = path.join(tempRoot, "data");
 const tempExePath = path.join(tempRoot, exeName);
-const httpHost = "127.0.0.1";
+// Use localhost rather than 127.0.0.1: the server redirects raw 127.0.0.1
+// requests to localhost (canonical-origin middleware), which would cause every
+// smoke request to 307 before the redirect is followed.
+const httpHost = "localhost";
 // Non-default port (default is 8097) to avoid colliding with a dev server.
 const httpPort = process.env.XUVA_SMOKE_PORT ? Number(process.env.XUVA_SMOKE_PORT) : 18097;
-const httpAddr = `${httpHost}:${httpPort}`;
+const httpAddr = `127.0.0.1:${httpPort}`;
 
 // Known artwork hosts the production app needs to load posters/backdrops from.
 // If CSP doesn't either allow https: globally OR enumerate these, image fetches

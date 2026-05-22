@@ -235,6 +235,8 @@ export interface DiscoveryStatusResponse {
 	running?: boolean;
 	serviceName?: string;
 	serviceType?: string;
+	hostName?: string;
+	webUrl?: string;
 	port?: number;
 	txtRecords?: string[];
 	lastError?: string;
@@ -361,6 +363,7 @@ export interface SettingsResponse {
 	};
 	config?: {
 		serverName?: string;
+		canonicalWebOrigin?: string;
 		dataDir?: string;
 		transcodeDir?: string;
 		downloadsDir?: string;
@@ -397,6 +400,7 @@ export interface SettingsResponse {
 
 export interface UpdateSettingsRequest {
 	serverName?: string;
+	canonicalWebOrigin?: string;
 	dataDir?: string;
 	transcodeDir?: string;
 	downloadsDir?: string;
@@ -564,8 +568,8 @@ export function approvePairingRequest(
 export function denyPairingRequest(
 	id: string,
 	client: ApiClient = apiClient
-): Promise<PairingRequestItem> {
-	return client.send<PairingRequestItem, Record<string, never>>(
+): Promise<void> {
+	return client.send<void, Record<string, never>>(
 		`/api/pairing/requests/${encodeURIComponent(id)}/deny`,
 		{},
 		'POST'
