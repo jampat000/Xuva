@@ -3,6 +3,7 @@ import SwiftUI
 public struct HomeScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
     @EnvironmentObject private var watchlist: XuvaWatchlist
+    @State private var showSettings = false
 
     public init() {}
 
@@ -17,7 +18,7 @@ public struct HomeScreen: View {
                 // nav bar scrolls off-screen, "swipe up" from the rows has nowhere
                 // to land and the user is stuck.
                 VStack(spacing: 0) {
-                    MediaTopBar(viewport: viewport)
+                    MediaTopBar(viewport: viewport, onSettings: { showSettings = true })
                         .padding(.top, XuvaScale.safeTop(viewport))
                     ScrollView {
                         VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
@@ -26,6 +27,10 @@ public struct HomeScreen: View {
                         }
                         .padding(.bottom, 60)
                     }
+                    // focusSection on the ScrollView lets tvOS navigate vertically
+                    // out of it — without this, UP from inside the scroll view has
+                    // nowhere to land and the nav bar above is unreachable.
+                    .focusSection()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -34,6 +39,9 @@ public struct HomeScreen: View {
             .background(XuvaTheme.background)
         }
         .ignoresSafeArea()
+        .fullScreenCover(isPresented: $showSettings) {
+            SettingsScreen { showSettings = false }
+        }
     }
 
     @ViewBuilder
@@ -129,6 +137,7 @@ struct HeroView: View {
     let heroes: [HomeItem]
     let viewport: CGSize
     @EnvironmentObject private var store: XuvaClientStore
+    @Namespace private var heroFocusNamespace
 
     var body: some View {
         let isCompact = viewport.width < 600
@@ -156,6 +165,9 @@ struct HeroView: View {
                     Label(primaryActionTitle, systemImage: "play.fill")
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
+                // prefersDefaultFocus ensures Play always receives focus first
+                // when the tvOS engine enters this focus scope from the nav bar.
+                .prefersDefaultFocus(in: heroFocusNamespace)
 
                 Button {
                     Task { await store.open(item: item) }
@@ -180,11 +192,10 @@ struct HeroView: View {
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .padding(.top, viewport.height * XuvaScale.heroContentTopFraction(viewport))
         .frame(maxWidth: .infinity, alignment: .leading)
-        // focusSection on the entire hero body — NOT on the button HStack.
-        // A section on just the HStack means the engine sees More Info as a
-        // "down" target from Play (sibling within the same small section).
-        // A full-width section here forces the engine to exit the section
-        // entirely on DOWN → rows, or UP → nav bar.
+        // focusScope + focusSection: focusScope owns the namespace so
+        // prefersDefaultFocus(in: heroFocusNamespace) on Play is respected.
+        // focusSection lets the engine exit on UP → nav bar, DOWN → rows.
+        .focusScope(heroFocusNamespace)
         .focusSection()
     }
 
@@ -311,11 +322,11 @@ struct MediaRowView: View {
 
     private var rowEyebrow: String? {
         if normalizedRowText.contains("continue") { return "PICK UP WHERE YOU LEFT OFF" }
-        if normalizedRowText.contains("recent") { return "RECENTLY ADDED" }
+        if normalizedRowText.contains("recent") { return nil }
         if normalizedRowText.contains("trend") { return "TRENDING NOW" }
-        if isRanked { return "TOP IN YOUR LIBRARY" }
-        if normalizedRowText.contains("movie") { return "FROM YOUR LIBRARY" }
-        if normalizedRowText.contains("tv") || normalizedRowText.contains("series") { return "FROM YOUR LIBRARY" }
+        if isRanked { return "FROM YOUR LIBRARY" }
+        if normalizedRowText.contains("movie") { return "FRESH IN YOUR LIBRARY" }
+        if normalizedRowText.contains("tv") || normalizedRowText.contains("series") { return "NEW EPISODES DROPPED" }
         return nil
     }
 }
@@ -358,6 +369,7 @@ struct EmptyLibraryView: View {
 struct MediaTopBar: View {
     @EnvironmentObject private var store: XuvaClientStore
     let viewport: CGSize
+    var onSettings: (() -> Void)? = nil
 
     private var sections: [String] {
         ["Home", "Movies", "TV", "Watchlist"]
@@ -384,6 +396,15 @@ struct MediaTopBar: View {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
+            if let onSettings {
+                Button {
+                    onSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
+                .padding(.leading, 8)
+            }
         }
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .frame(height: XuvaScale.navBarHeight(viewport))
