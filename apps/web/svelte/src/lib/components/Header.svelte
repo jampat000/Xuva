@@ -15,6 +15,7 @@
     { label: "Home", href: "/" },
     { label: "Movies", href: "/movies" },
     { label: "TV", href: "/tv" },
+    { label: "Collections", href: "/collections" },
     { label: "Watchlist", href: "/watchlist" },
   ];
 
@@ -360,7 +361,7 @@
               <a
                 href={`/search?q=${encodeURIComponent(searchQuery.trim())}`}
                 class="flex items-center gap-2 border-t border-border px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-surface/40 hover:text-foreground"
-                onmousedown={() => { searchFocused = false; }}
+                onmousedown={(e) => { e.preventDefault(); searchFocused = false; goto(`/search?q=${encodeURIComponent(searchQuery.trim())}`); }}
               >
                 <Search class="h-3.5 w-3.5" /> See all results for "{searchQuery}"
               </a>

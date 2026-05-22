@@ -156,6 +156,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/client/home", clientHomeHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/movies/{id}", clientMovieDetailHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/series/{id}", clientSeriesDetailHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/collections", clientCollectionsHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/collections/{id}", clientCollectionHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/people/{name}", clientPersonHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/search", clientSearchHandler(deps))
@@ -1856,6 +1857,22 @@ func clientSeriesDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, clientSeriesDetailPayload(r.Context(), deps, r, detail))
+	}
+}
+
+func clientCollectionsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		collections, err := deps.Catalog.ListCollections(r.Context(), 0)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "collections lookup failed")
+			return
+		}
+		if collections == nil {
+			collections = []catalog.CollectionHit{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"collections": collections,
+		})
 	}
 }
 
