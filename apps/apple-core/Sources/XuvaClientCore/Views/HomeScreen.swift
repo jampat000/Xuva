@@ -165,6 +165,10 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
                 #endif
             }
+            // Full-width so the focus section's geometry covers the full
+            // viewport — without this, "up" from a nav pill that doesn't
+            // horizontally overlap the button cluster has no target to land on.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .focusSection()
             heroDots
                 .padding(.top, 8)

@@ -46,6 +46,11 @@ private struct DetailContentView: View {
                         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
                         .padding(.top, topBarPadding(viewport))
                         .padding(.bottom, 24)
+                        // Full-width frame so the focus section's geometry covers
+                        // any button below it (Play, Trailer, +) regardless of
+                        // horizontal position — otherwise "up" from Play has no
+                        // overlap with the back button's narrow label frame.
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .focusSection()
                     twoColumn(viewport: viewport)
                         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
