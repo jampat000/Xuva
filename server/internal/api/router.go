@@ -2292,6 +2292,21 @@ func clientPlaybackStopHandler(deps Deps) http.HandlerFunc {
 			DurationSeconds: session.Duration,
 		})
 		stopped, _ := deps.Sessions.Stop(r.PathValue("id"))
+		// Kill any active transcode for this media source, mirroring the
+		// logic in sessionStopHandler.  Only cancel if no other session is
+		// still streaming the same source — two clients may share a transcode.
+		if deps.Transcode != nil && strings.TrimSpace(stopped.MediaSourceID) != "" {
+			otherSessionActive := false
+			for _, active := range deps.Sessions.List() {
+				if active.MediaSourceID == stopped.MediaSourceID {
+					otherSessionActive = true
+					break
+				}
+			}
+			if !otherSessionActive {
+				deps.Transcode.CancelActiveForMediaSource(stopped.MediaSourceID)
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"session": stopped})
 	}
 }
@@ -2458,7 +2473,7 @@ func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, 
 				"thumbnailUrl": metadataThumbnail(episode.Metadata),
 			}
 			if episode.Metadata != nil {
-				epEntry["overview"] = episode.Metadata.Overview
+				epEntry["overview"] = html.UnescapeString(episode.Metadata.Overview)
 				epEntry["airDate"] = firstNonEmpty(episode.Metadata.AirDate, episode.Metadata.FirstAirDate)
 				if episode.Metadata.RuntimeMinutes > 0 {
 					epEntry["runtimeMinutes"] = episode.Metadata.RuntimeMinutes
@@ -2484,7 +2499,7 @@ func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, 
 		}
 		if season.Metadata != nil {
 			seasonEntry["name"] = season.Metadata.Title
-			seasonEntry["overview"] = season.Metadata.Overview
+			seasonEntry["overview"] = html.UnescapeString(season.Metadata.Overview)
 			seasonEntry["airDate"] = season.Metadata.AirDate
 		}
 		seasons = append(seasons, seasonEntry)
@@ -2688,7 +2703,10 @@ func metadataOverview(record *catalog.MetadataRecord) string {
 	if record == nil {
 		return ""
 	}
-	return record.Overview
+	// Metadata scrapers (TMDB/TVDB) sometimes store HTML entities verbatim
+	// (e.g. "&amp;" instead of "&").  Unescape here so every caller — detail
+	// handlers, hero carousel, episode lists — gets clean plain text.
+	return html.UnescapeString(record.Overview)
 }
 
 func episodeEpisodeLabel(episode catalog.EpisodeBrief) string {
@@ -2875,7 +2893,7 @@ func randomHeroItems(movies []catalog.MovieListItem, series []catalog.SeriesList
 			"route":        "Ready",
 		}
 		if m.Metadata != nil {
-			item["overview"] = m.Metadata.Overview
+			item["overview"] = html.UnescapeString(m.Metadata.Overview)
 			item["genres"] = m.Metadata.Genres
 			item["voteAverage"] = heroRating(m.Metadata.Ratings)
 			if len(m.Metadata.Directors) > 0 {
@@ -2906,7 +2924,7 @@ func randomHeroItems(movies []catalog.MovieListItem, series []catalog.SeriesList
 		}
 		if s.Metadata != nil {
 			item["year"] = s.Metadata.Year
-			item["overview"] = s.Metadata.Overview
+			item["overview"] = html.UnescapeString(s.Metadata.Overview)
 			item["genres"] = s.Metadata.Genres
 			item["voteAverage"] = heroRating(s.Metadata.Ratings)
 		}
