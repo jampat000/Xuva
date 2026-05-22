@@ -583,6 +583,21 @@ private struct DetailContentView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(versions, id: \.stableID) { version in
                         if let sourceId = version.mediaSourceId {
+                            #if !os(tvOS)
+                            // Download is iOS-only — tvOS has no writable file system.
+                            if let baseURL = store.api?.baseURL {
+                                let downloadURL = baseURL.appendingPathComponent("api/media-sources/\(sourceId)/download")
+                                Link(destination: downloadURL) {
+                                    Label(
+                                        versions.count > 1
+                                            ? "Download \(version.qualityLabel ?? version.name ?? "Version")"
+                                            : "Download File",
+                                        systemImage: "arrow.down.circle"
+                                    )
+                                }
+                                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
+                            }
+                            #endif
                             Button {
                                 pendingDeleteVersionID = sourceId
                             } label: {
