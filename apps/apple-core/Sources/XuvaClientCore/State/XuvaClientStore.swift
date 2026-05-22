@@ -56,6 +56,10 @@ public final class XuvaClientStore: ObservableObject {
 
         if UserDefaults.standard.bool(forKey: Self.pairedDeviceKey) {
             connectionState = .paired
+            // Skip the connect screen entirely — go straight to home and load
+            // data in the background. The spinner overlay covers the empty state
+            // until resumeSessionIfPossible() completes.
+            screen = .home
         }
     }
 
@@ -341,6 +345,14 @@ public final class XuvaClientStore: ObservableObject {
             persistCurrentAuthToken()
             connectionState = .paired
             screen = .home
+        }
+        // Only drop back to the connect screen on definitive auth failures
+        // (401/403 → connectionState == .needsAuthCredential). A timeout or
+        // "server unreachable" error just means the server is temporarily
+        // offline — the device is still paired and should stay on the home
+        // screen so the user can retry without going through pairing again.
+        if connectionState == .needsAuthCredential {
+            screen = .connect
         }
         if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
             if let first = home?.rows?.flatMap({ $0.items ?? [] }).first {
