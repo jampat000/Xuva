@@ -92,13 +92,16 @@ private struct QRCaptureView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.previewLayer?.frame = uiView.bounds
+    }
 
     final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         private let onResult: (String) -> Void
         private let onPermissionDenied: () -> Void
         private let session = AVCaptureSession()
         private var fired = false
+        var previewLayer: AVCaptureVideoPreviewLayer?
 
         init(onResult: @escaping (String) -> Void, onPermissionDenied: @escaping () -> Void) {
             self.onResult = onResult
@@ -120,8 +123,8 @@ private struct QRCaptureView: UIViewRepresentable {
             let preview = AVCaptureVideoPreviewLayer(session: session)
             preview.videoGravity = .resizeAspectFill
             preview.frame = view.bounds
-            preview.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
             view.layer.addSublayer(preview)
+            previewLayer = preview
 
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 self?.session.startRunning()
