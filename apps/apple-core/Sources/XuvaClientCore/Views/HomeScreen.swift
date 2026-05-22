@@ -200,6 +200,14 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // focusSection on the button row so the tvOS focus engine treats
+            // it as a discrete section.  Without this, UP from Play exits the
+            // hero focusScope with no declared boundary and the engine uses raw
+            // geometric proximity — which can land on the refresh icon in the
+            // top bar rather than the nav pills.  Same root cause that was
+            // fixed on the DetailScreen action row (see actionRow in
+            // DetailScreen.swift).
+            .focusSection()
             heroDots
                 .padding(.top, 8)
         }
@@ -409,6 +417,13 @@ struct MediaTopBar: View {
                         }
                     }
                 }
+                // Declare the nav pills as a distinct focus sub-section so
+                // that UP from the left-aligned hero Play button enters the
+                // pills cluster rather than the right-side refresh/settings
+                // icons.  The focus engine resolves within a section by
+                // geometric proximity — without this sub-section the whole
+                // top bar is one flat region and refresh can win.
+                .focusSection()
             }
             Spacer()
             Button {
