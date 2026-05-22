@@ -163,7 +163,9 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/setup/complete", setupCompleteHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/home", clientHomeHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/movies/{id}", clientMovieDetailHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/movies/{id}/similar", clientSimilarMoviesHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/series/{id}", clientSeriesDetailHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/series/{id}/similar", clientSimilarSeriesHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/collections", clientCollectionsHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/collections/{id}", clientCollectionHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/people/{name}", clientPersonHandler(deps))
@@ -1888,6 +1890,30 @@ func clientSeriesDetailHandler(deps Deps) http.HandlerFunc {
 			playstates, _ = deps.PlayState.GetBatch(r.Context(), requestUserID(r), sourceIDs)
 		}
 		writeJSON(w, http.StatusOK, clientSeriesDetailPayload(r.Context(), deps, r, detail, playstates))
+	}
+}
+
+func clientSimilarMoviesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		items, err := deps.Catalog.SimilarMovies(r.Context(), id, 20)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "similar movies lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+func clientSimilarSeriesHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		items, err := deps.Catalog.SimilarSeries(r.Context(), id, 20)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "similar series lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	}
 }
 

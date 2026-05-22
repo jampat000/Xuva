@@ -42,7 +42,9 @@ Public client bootstrap routes:
 | `POST /api/migrations/runs/{id}/rollback` | migration | `migration.rollback` | admin |
 | `GET /api/client/home` | client | `client.home` | admin, standard |
 | `GET /api/client/movies/{id}` | client | `client.movie.detail` | admin, standard |
+| `GET /api/client/movies/{id}/similar` | client | `client.movie.similar` | admin, standard |
 | `GET /api/client/series/{id}` | client | `client.series.detail` | admin, standard |
+| `GET /api/client/series/{id}/similar` | client | `client.series.similar` | admin, standard |
 | `POST /api/client/playback/start` | client | `client.playback.start` | admin, standard |
 | `PATCH /api/client/playback/{id}` | client | `client.playback.heartbeat` | admin, standard |
 | `POST /api/client/playback/{id}/stop` | client | `client.playback.stop` | admin, standard |

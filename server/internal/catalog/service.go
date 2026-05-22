@@ -1068,6 +1068,144 @@ func (s *Service) ListItemsByPerson(ctx context.Context, personName string, limi
 	return credits, profile, true, nil
 }
 
+// SimilarItem is a lightweight summary of a library title used in the
+// "More like this" row on detail screens.
+type SimilarItem struct {
+	Kind      string `json:"kind"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Year      int    `json:"year,omitempty"`
+	PosterURL string `json:"posterUrl,omitempty"`
+}
+
+// SimilarMovies returns up to limit movies from the library that share at
+// least one genre with the movie identified by sourceID. Results are ordered
+// by genre-overlap count descending so the closest matches appear first.
+func (s *Service) SimilarMovies(ctx context.Context, sourceID string, limit int) ([]SimilarItem, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	src, ok, err := s.GetBestMetadata(ctx, "movie", sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || len(src.Genres) == 0 {
+		return []SimilarItem{}, nil
+	}
+	genresJSON, err := json.Marshal(src.Genres)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.title, m.year,
+		       COALESCE((SELECT mr2.poster_url FROM metadata_records mr2
+		                 WHERE mr2.kind = 'movie' AND mr2.item_id = m.id
+		                   AND mr2.poster_url != ''
+		                 ORDER BY mr2.confidence DESC, mr2.updated_at DESC
+		                 LIMIT 1), '') AS poster_url,
+		       (SELECT COUNT(*) FROM json_each(
+		           COALESCE((SELECT mr3.details_json FROM metadata_records mr3
+		                     WHERE mr3.kind = 'movie' AND mr3.item_id = m.id
+		                     ORDER BY mr3.confidence DESC LIMIT 1), '{}'),
+		           '$.genres') g
+		        WHERE g.value IN (SELECT value FROM json_each(?))) AS overlap
+		FROM movies m
+		WHERE m.id != ?
+		  AND EXISTS (
+		    SELECT 1 FROM metadata_records mr
+		    WHERE mr.kind = 'movie' AND mr.item_id = m.id
+		      AND EXISTS (
+		        SELECT 1 FROM json_each(mr.details_json, '$.genres') g
+		        WHERE g.value IN (SELECT value FROM json_each(?))
+		      )
+		  )
+		ORDER BY overlap DESC
+		LIMIT ?
+	`, string(genresJSON), sourceID, string(genresJSON), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SimilarItem
+	for rows.Next() {
+		var it SimilarItem
+		var overlap int
+		it.Kind = "movie"
+		if err := rows.Scan(&it.ID, &it.Title, &it.Year, &it.PosterURL, &overlap); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	if out == nil {
+		out = []SimilarItem{}
+	}
+	return out, rows.Err()
+}
+
+// SimilarSeries returns up to limit TV series from the library that share at
+// least one genre with the series identified by sourceID. Results are ordered
+// by genre-overlap count descending.
+func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int) ([]SimilarItem, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	src, ok, err := s.GetBestMetadata(ctx, "series", sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || len(src.Genres) == 0 {
+		return []SimilarItem{}, nil
+	}
+	genresJSON, err := json.Marshal(src.Genres)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.title, s.start_year,
+		       COALESCE((SELECT mr2.poster_url FROM metadata_records mr2
+		                 WHERE mr2.kind = 'series' AND mr2.item_id = s.id
+		                   AND mr2.poster_url != ''
+		                 ORDER BY mr2.confidence DESC, mr2.updated_at DESC
+		                 LIMIT 1), '') AS poster_url,
+		       (SELECT COUNT(*) FROM json_each(
+		           COALESCE((SELECT mr3.details_json FROM metadata_records mr3
+		                     WHERE mr3.kind = 'series' AND mr3.item_id = s.id
+		                     ORDER BY mr3.confidence DESC LIMIT 1), '{}'),
+		           '$.genres') g
+		        WHERE g.value IN (SELECT value FROM json_each(?))) AS overlap
+		FROM tv_series s
+		WHERE s.id != ?
+		  AND EXISTS (
+		    SELECT 1 FROM metadata_records mr
+		    WHERE mr.kind = 'series' AND mr.item_id = s.id
+		      AND EXISTS (
+		        SELECT 1 FROM json_each(mr.details_json, '$.genres') g
+		        WHERE g.value IN (SELECT value FROM json_each(?))
+		      )
+		  )
+		ORDER BY overlap DESC
+		LIMIT ?
+	`, string(genresJSON), sourceID, string(genresJSON), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SimilarItem
+	for rows.Next() {
+		var it SimilarItem
+		var overlap int
+		it.Kind = "series"
+		if err := rows.Scan(&it.ID, &it.Title, &it.Year, &it.PosterURL, &overlap); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	if out == nil {
+		out = []SimilarItem{}
+	}
+	return out, rows.Err()
+}
+
 // PersonHit is one search hit for a person discovered in metadata cast/crew.
 // CreditCount is the number of library items that reference this person.
 type PersonHit struct {
