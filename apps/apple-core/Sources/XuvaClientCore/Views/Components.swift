@@ -201,18 +201,11 @@ struct PosterTile: View {
                         if wide, let logoURL = item.logoUrl, !logoURL.isEmpty {
                             RemoteLogo(urlString: logoURL, fallbackTitle: item.title ?? "Untitled", maxWidth: posterWidth * 0.62, maxHeight: posterHeight * 0.35)
                         } else {
+                            // Title lives on the poster only — not repeated below.
                             Text(item.title ?? "Untitled")
-                                // poster-proportional, not viewport-proportional —
-                                // viewport sizes (28pt) overflow the card on tvOS
                                 .font(.system(size: overlayTitleSize, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .lineLimit(2)
-                        }
-                        if !wide {
-                            Text([item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · "))
-                                .font(.system(size: overlaySubSize))
-                                .foregroundStyle(.white.opacity(0.68))
-                                .lineLimit(1)
                         }
                         if let progress = item.progress, progress > 0 {
                             GeometryReader { proxy in
@@ -236,26 +229,16 @@ struct PosterTile: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 }
-                if wide {
-                    Text(item.title ?? "Untitled")
-                        .font(.system(size: XuvaScale.metaFontSize(viewport) + 1, weight: .bold))
-                        .foregroundStyle(XuvaTheme.text)
-                        .lineLimit(1)
-                    Text(wideSubtitle)
-                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
+                // Below the card: supplementary metadata only — title is already
+                // on the poster so we never repeat it here.
+                let meta = wide ? wideSubtitle : posterMeta
+                if !meta.isEmpty {
+                    Text(meta)
+                        .font(.system(size: overlaySubSize))
                         .foregroundStyle(XuvaTheme.muted)
-                        .lineLimit(1)
-                } else {
-                    // Subtitle below portrait card — runtime or season count,
-                    // matching the web's small truncated text below each poster.
-                    let sub = [item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · ")
-                    if !sub.isEmpty {
-                        Text(sub)
-                            .font(.system(size: overlaySubSize))
-                            .foregroundStyle(XuvaTheme.muted)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: posterWidth, alignment: .leading)
                 }
             }
         }
@@ -284,14 +267,31 @@ struct PosterTile: View {
         wide ? (item.backdropUrl ?? item.imageUrl ?? item.posterUrl) : (item.posterUrl ?? item.imageUrl ?? item.backdropUrl)
     }
 
+    // Metadata line below portrait posters: ★ rating · year · runtime
+    private var posterMeta: String {
+        var parts: [String] = []
+        if let rating = item.rating, rating > 0 {
+            parts.append(String(format: "★ %.1f", rating))
+        }
+        if let year = item.year { parts.append(String(year)) }
+        if let minutes = item.runtimeMinutes, minutes > 0 {
+            let h = minutes / 60; let m = minutes % 60
+            parts.append(h > 0 ? "\(h)h \(m)m" : "\(m)m")
+        } else if let runtime = item.runtime, !runtime.isEmpty {
+            parts.append(runtime)
+        }
+        return parts.joined(separator: "  ·  ")
+    }
+
+    // Metadata line below wide (Continue Watching) cards: year · kind · progress
     private var wideSubtitle: String {
         var parts: [String] = []
         if let year = item.year { parts.append(String(year)) }
         if let kind = item.kind, !kind.isEmpty { parts.append(kind.capitalized) }
         if let progress = item.progress, progress > 0 {
-            parts.append("Resume from \(Int((progress * 100).rounded()))%")
+            parts.append("Resume \(Int((progress * 100).rounded()))%")
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: "  ·  ")
     }
 }
 
@@ -452,16 +452,17 @@ struct PosterTileButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .scaleEffect(isFocused ? 1.06 : 1)
+                .scaleEffect(isFocused ? 1.08 : 1)
                 .shadow(
-                    color: XuvaTheme.focus.opacity(isFocused ? 0.55 : 0),
-                    radius: isFocused ? 32 : 0, x: 0, y: 18
+                    color: XuvaTheme.focus.opacity(isFocused ? 0.65 : 0),
+                    radius: isFocused ? 38 : 0, x: 0, y: 22
                 )
-                // Ring is pinned to the top of the tile so it frames the artwork
-                // only, not the subtitle text that sits below the card.
+                // White ring with a dark shadow — universally visible against
+                // both dark and light poster artwork.
                 .overlay(alignment: .top) {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(XuvaTheme.focus.opacity(isFocused ? 0.92 : 0), lineWidth: 3.5)
+                        .stroke(Color.white.opacity(isFocused ? 0.95 : 0), lineWidth: 4)
+                        .shadow(color: .black.opacity(isFocused ? 0.55 : 0), radius: 6)
                         .frame(width: cardWidth, height: cardHeight)
                 }
                 .animation(.spring(response: 0.22, dampingFraction: 0.76), value: isFocused)
