@@ -237,13 +237,17 @@ func (s *Service) Stop(id string) (Session, bool) {
 	return session, true
 }
 
-func (s *Service) Cleanup(ctx context.Context, ttl time.Duration, terminalRetention time.Duration) (int, error) {
+// Cleanup expires sessions whose heartbeat has not been updated within ttl,
+// marks them "stale", removes them from the in-memory map, and returns the
+// full list of sessions that were expired so callers can tear down any
+// associated work (e.g. active transcode jobs).
+func (s *Service) Cleanup(ctx context.Context, ttl time.Duration, terminalRetention time.Duration) ([]Session, error) {
 	if ttl <= 0 {
 		ttl = 15 * time.Minute
 	}
 	now := time.Now().UTC()
 	cutoff := now.Add(-ttl)
-	var stale int
+	var expired []Session
 	s.mu.Lock()
 	for id, session := range s.items {
 		if session.UpdatedAt.Before(cutoff) {
@@ -252,7 +256,7 @@ func (s *Service) Cleanup(ctx context.Context, ttl time.Duration, terminalRetent
 			session.ReasonText = "Playback heartbeat expired before the server saw a clean stop."
 			session.UpdatedAt = now
 			delete(s.items, id)
-			stale++
+			expired = append(expired, session)
 			_ = s.persist(ctx, session)
 			s.publish("session.stale", session)
 		}
@@ -260,9 +264,9 @@ func (s *Service) Cleanup(ctx context.Context, ttl time.Duration, terminalRetent
 	s.mu.Unlock()
 	if terminalRetention > 0 {
 		_, err := s.store.CleanupTerminal(ctx, "session", now.Add(-terminalRetention), "stopped", "stale")
-		return stale, err
+		return expired, err
 	}
-	return stale, nil
+	return expired, nil
 }
 
 func (s *Service) List() []Session {
