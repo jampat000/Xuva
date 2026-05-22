@@ -350,6 +350,30 @@ public final class XuvaClientStore: ObservableObject {
         #endif
     }
 
+    /// Claim a QR pair token that was generated in the web admin.
+    /// The claim endpoint auto-approves the device and returns an authToken.
+    public func claimQRToken(_ token: String) async {
+        await run {
+            guard let api else { throw XuvaAPIError.invalidURL }
+            let response = try await api.claimQRToken(
+                token: token,
+                deviceName: deviceName(),
+                clientProfile: clientProfile(),
+                deviceId: deviceId
+            )
+            markPaired(with: response.authToken)
+            await loadHome()
+        }
+    }
+
+    private func clientProfile() -> String {
+        #if os(tvOS)
+        return "apple-tv"
+        #else
+        return "apple-ios"
+        #endif
+    }
+
     private func markPaired(with token: String?) {
         if let token = token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             api?.authToken = token

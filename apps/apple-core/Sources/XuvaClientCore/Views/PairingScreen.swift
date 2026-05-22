@@ -6,6 +6,11 @@ public struct PairingScreen: View {
     @State private var showManualEntry = false
     @State private var discoveryTimedOut = false
     @State private var showDiagLog = false
+    @State private var showQREntry = false
+    @State private var qrCodeText = ""
+    #if !os(tvOS)
+    @State private var showQRScanner = false
+    #endif
 
     public init() {}
 
@@ -30,6 +35,7 @@ public struct PairingScreen: View {
                     if store.bootstrap == nil && store.pairing == nil {
                         // Stage 1: pick a discovered server or fall back to manual URL.
                         discoverySection(viewport: viewport)
+                        qrSection(viewport: viewport)
                         manualSection(viewport: viewport)
                     } else {
                         // Stage 2: pairing card with code.
@@ -56,6 +62,14 @@ public struct PairingScreen: View {
             }
         }
         .sheet(isPresented: $showDiagLog) { DiagnosticLogView() }
+        #if !os(tvOS)
+        .sheet(isPresented: $showQRScanner) {
+            QRScannerSheet { scanned in
+                handleScannedURL(scanned)
+                showQRScanner = false
+            }
+        }
+        #endif
         .task(id: store.pairing?.stableID) {
             await pollPairingWhilePending()
         }
@@ -298,6 +312,88 @@ public struct PairingScreen: View {
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
     }
+
+    // MARK: – QR / code entry
+
+    @ViewBuilder
+    private func qrSection(viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                showQREntry.toggle()
+                if !showQREntry { qrCodeText = "" }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: showQREntry ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(showQREntry ? "Hide QR / code pairing" : "Use QR code or pair code")
+                        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .medium))
+                }
+                .foregroundStyle(XuvaTheme.mutedText)
+            }
+            .buttonStyle(.plain)
+
+            if showQREntry {
+                VStack(alignment: .leading, spacing: 12) {
+                    #if !os(tvOS)
+                    Button {
+                        showQRScanner = true
+                    } label: {
+                        buttonLabel(title: "Scan QR code", systemImage: "qrcode.viewfinder")
+                    }
+                    .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
+                    #endif
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Or enter the 8-character pair code")
+                            .font(.system(size: XuvaScale.metaFontSize(viewport)))
+                            .foregroundStyle(XuvaTheme.muted)
+                        HStack(spacing: 10) {
+                            TextField("XXXXXXXX", text: $qrCodeText)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.characters)
+                                .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .medium, design: .monospaced))
+                                .foregroundStyle(XuvaTheme.text)
+                                .padding(.horizontal, 22)
+                                .frame(height: XuvaScale.buttonHeight(viewport))
+                                .background(Color.white.opacity(0.06), in: Capsule(style: .continuous))
+                                .overlay(Capsule(style: .continuous).stroke(XuvaTheme.hairline))
+                            Button {
+                                Task { await store.claimQRToken(qrCodeText.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                            } label: {
+                                buttonLabel(title: store.isBusy ? "Pairing…" : "Pair", systemImage: store.isBusy ? "hourglass" : "link")
+                            }
+                            .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
+                            .disabled(qrCodeText.trimmingCharacters(in: .whitespacesAndNewlines).count < 6 || store.isBusy)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+    }
+
+    #if !os(tvOS)
+    private func handleScannedURL(_ urlString: String) {
+        // Expected format: http[s]://host/api/pairing/qr/{TOKEN}/claim
+        guard let url = URL(string: urlString),
+              let host = url.host,
+              url.path.contains("/api/pairing/qr/") else { return }
+        let components = url.path.components(separatedBy: "/")
+        guard let tokenIdx = components.firstIndex(of: "qr"), tokenIdx + 1 < components.count else { return }
+        let token = components[tokenIdx + 1]
+        guard !token.isEmpty else { return }
+        // Set the server URL from the scanned QR first, then claim
+        let scheme = url.scheme ?? "http"
+        let port = url.port.map { ":\($0)" } ?? ""
+        store.serverText = "\(scheme)://\(host)\(port)"
+        Task {
+            await store.connect()
+            guard store.errorMessage == nil else { return }
+            await store.claimQRToken(token)
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func versionLabel(viewport: CGSize) -> some View {

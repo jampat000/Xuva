@@ -19,6 +19,7 @@
     LogOut,
     Play,
     Plus,
+    QrCode,
     RefreshCw,
     ScanSearch,
     Search,
@@ -81,6 +82,8 @@
     type HardwareTestResponse,
     type DeviceProfile,
     type BackupImportResponse,
+    generateQRPairToken,
+    type QRTokenResponse,
   } from '$lib/api/operator';
   import {
     getBackfillStatus,
@@ -747,6 +750,32 @@
     pairingActionId = id;
     try { await denyPairingRequest(id); pairingRequests = pairingRequests.filter(r => r.id !== id); }
     catch { /* ignore */ } finally { pairingActionId = null; }
+  }
+
+  // ─── QR pair token state ──────────────────────────────────────────────────
+  let qrToken = $state<QRTokenResponse | null>(null);
+  let qrGenerating = $state(false);
+  let qrSecondsLeft = $state(0);
+  let qrTimerInterval = $state<ReturnType<typeof setInterval> | null>(null);
+
+  async function generateQR() {
+    qrGenerating = true;
+    try {
+      const resp = await generateQRPairToken();
+      qrToken = resp;
+      const expiresMs = new Date(resp.expiresAt).getTime() - Date.now();
+      qrSecondsLeft = Math.max(0, Math.round(expiresMs / 1000));
+      if (qrTimerInterval) clearInterval(qrTimerInterval);
+      qrTimerInterval = setInterval(() => {
+        qrSecondsLeft = Math.max(0, qrSecondsLeft - 1);
+        if (qrSecondsLeft === 0) { clearInterval(qrTimerInterval!); qrToken = null; }
+      }, 1000);
+    } catch { /* ignore */ } finally { qrGenerating = false; }
+  }
+
+  function dismissQR() {
+    if (qrTimerInterval) clearInterval(qrTimerInterval);
+    qrToken = null;
   }
 
   // ─── Approved devices state ───────────────────────────────────────────────
@@ -3041,6 +3070,45 @@
 
         {:else if active === "pending-approvals"}
           <div class="space-y-6">
+
+            <!-- QR pair token -->
+            {#if qrToken}
+              <div class="hairline rounded-2xl bg-surface/50 p-6">
+                <div class="flex flex-wrap items-start gap-6">
+                  <img src={qrToken.imageUrl} alt="Pairing QR code" class="h-40 w-40 shrink-0 rounded-xl bg-white object-contain p-1" />
+                  <div class="flex min-w-0 flex-1 flex-col gap-3">
+                    <div>
+                      <p class="text-sm font-semibold">Scan to pair instantly</p>
+                      <p class="mt-1 text-xs text-muted-foreground">Point your phone camera at this QR code. On Apple TV, type the code below.</p>
+                    </div>
+                    <div class="font-mono text-2xl font-black tracking-[0.25em] text-primary-glow">{qrToken.token}</div>
+                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span class="inline-block h-2 w-2 rounded-full {qrSecondsLeft > 15 ? 'bg-emerald-400' : 'bg-amber-400'} animate-pulse"></span>
+                      Expires in {qrSecondsLeft}s
+                    </div>
+                    <button type="button" onclick={dismissQR}
+                      class="hairline mt-auto inline-flex w-fit items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground">
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {:else}
+              <div class="hairline rounded-2xl bg-surface/30 p-5">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <p class="text-sm font-semibold">QR code pairing</p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">Generate a one-time QR code. Scan with iPhone or enter the code on Apple TV — no approval step needed.</p>
+                  </div>
+                  <button type="button" onclick={generateQR} disabled={qrGenerating}
+                    class="inline-flex shrink-0 items-center gap-2 rounded-full bg-primary-glow/10 px-4 py-2 text-xs font-semibold text-primary-glow transition-colors hover:bg-primary-glow/20 disabled:opacity-40">
+                    {#if qrGenerating}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}<QrCode class="h-3.5 w-3.5" />{/if}
+                    Generate QR
+                  </button>
+                </div>
+              </div>
+            {/if}
+
             <div class="flex items-center justify-between">
               <p class="text-sm text-muted-foreground">
                 {pairingRequests.length === 0 && !pairingLoading ? 'No pending requests.' : `${pairingRequests.length} pending`}

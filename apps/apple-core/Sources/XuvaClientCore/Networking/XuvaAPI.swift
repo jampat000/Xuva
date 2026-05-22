@@ -96,6 +96,13 @@ public final class XuvaAPI: @unchecked Sendable {
         let _: EmptyResponse = try await send("POST", path: path, body: body)
     }
 
+    // MARK: – QR pair token
+
+    public func claimQRToken(token: String, deviceName: String, clientProfile: String, deviceId: String) async throws -> QRClaimResponse {
+        let body = QRClaimBody(deviceName: deviceName, clientProfile: clientProfile, deviceId: deviceId)
+        return try await send("POST", path: "/api/pairing/qr/\(token)/claim", body: body)
+    }
+
     // MARK: – Watchlist
 
     public func watchlistList() async throws -> WatchlistListResponse {
@@ -155,6 +162,18 @@ public final class XuvaAPI: @unchecked Sendable {
 
 public struct EmptyResponse: Codable {
     public init() {}
+}
+
+public struct QRClaimBody: Codable {
+    public let deviceName: String
+    public let clientProfile: String
+    public let deviceId: String
+}
+
+public struct QRClaimResponse: Codable {
+    public let deviceId: String
+    public let authToken: String?
+    public let expiresAt: String?
 }
 
 public struct WatchlistServerItem: Codable {
