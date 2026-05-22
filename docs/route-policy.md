@@ -125,6 +125,7 @@ Public client bootstrap routes:
 | `GET /api/playback/state/{id}` | playback | `playback.state.read` | admin, standard |
 | `GET /api/playback/decision` | playback | `playback.decision` | admin, standard |
 | `GET /api/playback/route` | playback | `playback.route` | admin, standard |
+| `GET /api/client/collections` | client | `client.collections.list` | admin, standard |
 | `GET /api/client/collections/{id}` | client | `client.collection.detail` | admin, standard |
 | `GET /api/client/people/{name}` | client | `client.person.detail` | admin, standard |
 | `GET /api/client/search` | client | `client.search` | admin, standard |
