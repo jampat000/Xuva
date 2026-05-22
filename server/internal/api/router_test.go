@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -169,15 +170,33 @@ func TestRootAllowsSignInAndAssetsWhenSignedOut(t *testing.T) {
 	}
 }
 
-func TestRootAllowsSetupWizardWhenBootstrapPendingAndSignedOut(t *testing.T) {
+func TestRootRedirectsToSetupWhenBootstrapPendingAndSignedOut(t *testing.T) {
+	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
+	paths := []string{"/", "/signin", "/movies", "/settings", "/collections"}
+
+	for _, routePath := range paths {
+		request := httptest.NewRequest(http.MethodGet, "http://xuva.test"+routePath, nil)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("expected %s to redirect to setup with 307, got %d", routePath, response.Code)
+		}
+		if location := response.Header().Get("Location"); location != "/setup" {
+			t.Fatalf("expected %s redirect location /setup, got %q", routePath, location)
+		}
+	}
+}
+
+func TestRootAllowsSetupWhenBootstrapPendingAndSignedOut(t *testing.T) {
 	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
 
-	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/setup-wizard", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/setup", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
-		t.Fatalf("expected /setup-wizard 200 while bootstrap is pending, got %d", response.Code)
+		t.Fatalf("expected /setup 200 while bootstrap is pending, got %d", response.Code)
 	}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -185,6 +204,21 @@ func TestRootAllowsSetupWizardWhenBootstrapPendingAndSignedOut(t *testing.T) {
 	}
 	if !bytes.Contains(body, []byte("__sveltekit_")) {
 		t.Fatalf("expected setup wizard route to return svelte shell while bootstrap is pending")
+	}
+}
+
+func TestRootRedirectsLegacySetupWizardToSetupWhenBootstrapPending(t *testing.T) {
+	router := NewRouter(testDepsWithAuthNoBootstrap(t, time.Now()))
+
+	request := httptest.NewRequest(http.MethodGet, "http://xuva.test/setup-wizard", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected /setup-wizard to redirect while bootstrap is pending, got %d", response.Code)
+	}
+	if location := response.Header().Get("Location"); location != "/setup" {
+		t.Fatalf("expected /setup-wizard redirect location /setup, got %q", location)
 	}
 }
 
@@ -280,6 +314,37 @@ func TestRootAssetCacheHeadersAreImmutable(t *testing.T) {
 	}
 	if cacheControl := response.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "immutable") {
 		t.Fatalf("expected immutable cache control for static asset, got %q", cacheControl)
+	}
+}
+
+func TestRootAssetAllowsSameOriginMachineHost(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	deps.Config.HTTPAddr = "0.0.0.0:8097"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://DESKTOP-7UV0925:8097/favicon.svg", nil)
+	request.Header.Set("Origin", "http://DESKTOP-7UV0925:8097")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected same-origin machine-host asset 200, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestViteDevAssetsBypassHistoryAuthRedirects(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	paths := []string{"/@vite/client", "/@fs/Z:/Projects/Xuva/apps/web/svelte/src/app.css", "/src/routes/+layout.svelte"}
+	for _, path := range paths {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+
+		router.ServeHTTP(response, request)
+
+		if response.Code == http.StatusTemporaryRedirect {
+			t.Fatalf("expected Vite dev asset %s to bypass auth history redirect, got redirect to %q", path, response.Header().Get("Location"))
+		}
 	}
 }
 
@@ -523,6 +588,101 @@ func TestClientBootstrapKeepsConfiguredServerName(t *testing.T) {
 	}
 }
 
+func TestLoopbackWebRequestsCanonicalizeToLocalhost(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/signin?next=%2Fsettings", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected redirect, got %d: %s", response.Code, response.Body.String())
+	}
+	if location := response.Header().Get("Location"); location != "http://localhost:8097/signin?next=%2Fsettings" {
+		t.Fatalf("expected localhost redirect, got %q", location)
+	}
+}
+
+func TestLoopbackCanonicalizationDoesNotAffectAPI(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8097/api/health", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected API request to stay on 127.0.0.1, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestConfiguredCanonicalWebOriginRedirectsLANBrowserRequests(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	deps.Config.CanonicalWebOrigin = "http://media-server.local:8097"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://10.1.1.99:8097/settings", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected redirect, got %d: %s", response.Code, response.Body.String())
+	}
+	if location := response.Header().Get("Location"); location != "http://media-server.local:8097/settings" {
+		t.Fatalf("expected configured canonical web origin redirect, got %q", location)
+	}
+}
+
+func TestLANBoundServerCanonicalizesRawIPToMachineHost(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	deps.Config.HTTPAddr = "0.0.0.0:8097"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://10.1.1.99:8097/", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	host := osHostnameForURL()
+	if host == "" {
+		t.Skip("host name unavailable")
+	}
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected redirect, got %d: %s", response.Code, response.Body.String())
+	}
+	expected := "http://" + net.JoinHostPort(host, "8097") + "/"
+	if location := response.Header().Get("Location"); location != expected {
+		t.Fatalf("expected machine-host redirect %q, got %q", expected, location)
+	}
+}
+
+func TestClientBootstrapReportsCanonicalWebURL(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	deps.Config.ServerName = "Family Room"
+	deps.Config.CanonicalWebOrigin = "http://media-server.local:8097"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://10.1.1.99:8097/api/client/bootstrap", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bootstrap 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+	server := payload["server"].(map[string]any)
+	if server["name"] != "Family Room" || server["displayName"] != "Family Room" {
+		t.Fatalf("expected Xuva display name in bootstrap, got %#v", server)
+	}
+	if server["hostName"] == "" || server["hostName"] == "Family Room" {
+		t.Fatalf("expected network host name to stay separate from display name, got %#v", server)
+	}
+	if server["webUrl"] != "http://media-server.local:8097" || server["canonicalWebOrigin"] != "http://media-server.local:8097" {
+		t.Fatalf("expected canonical web URL in bootstrap, got %#v", server)
+	}
+}
+
 func TestDiscoveryStatusReturnsSafeFields(t *testing.T) {
 	deps := testDeps(t, time.Now())
 	deps.Config.ServerName = "Family Library"
@@ -549,6 +709,12 @@ func TestDiscoveryStatusReturnsSafeFields(t *testing.T) {
 	}
 	if payload["serviceType"] != "_xuva._tcp.local." {
 		t.Fatalf("expected discovery service type, got %#v", payload)
+	}
+	if payload["hostName"] == "" || payload["hostName"] == "Family Library" {
+		t.Fatalf("expected discovery network host name to stay separate from display name, got %#v", payload)
+	}
+	if payload["webUrl"] == "" {
+		t.Fatalf("expected discovery web URL, got %#v", payload)
 	}
 	if _, ok := payload["txtRecords"]; !ok {
 		t.Fatalf("expected txtRecords field, got %#v", payload)
@@ -725,8 +891,8 @@ func TestPairingDenyDoesNotCreateApprovedDevice(t *testing.T) {
 	client := newAuthTestClient(t)
 	loginAs(t, client, router, "admin", "test-password-123!")
 	denied := client.requestJSON(t, router, http.MethodPost, "/api/pairing/requests/"+pairingID+"/deny", map[string]any{})
-	if denied.status != http.StatusOK || denied.payload["status"] != "denied" {
-		t.Fatalf("expected denied pairing request, got %#v", denied)
+	if denied.status != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content from deny, got %#v", denied)
 	}
 	devices := client.requestJSON(t, router, http.MethodGet, "/api/devices", nil)
 	list, _ := devices.payload["devices"].([]any)

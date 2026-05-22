@@ -6982,23 +6982,7 @@ func pairingListHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusServiceUnavailable, "pairing is not available")
 			return
 		}
-		// Hide expired and denied by default — the admin Devices page only cares
-		// about pending requests + approved devices. Pass ?include=all to see
-		// everything (useful for diagnostics).
-		all := deps.Pairing.List()
-		includeAll := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("include")), "all")
-		if includeAll {
-			writeJSON(w, http.StatusOK, map[string]any{"requests": all})
-			return
-		}
-		filtered := all[:0]
-		for _, req := range all {
-			if req.Status == pairing.StatusExpired || req.Status == pairing.StatusDenied {
-				continue
-			}
-			filtered = append(filtered, req)
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"requests": filtered})
+		writeJSON(w, http.StatusOK, map[string]any{"requests": deps.Pairing.List()})
 	}
 }
 
@@ -7074,8 +7058,6 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		switch err {
 		case pairing.ErrNotFound:
 			writeError(w, http.StatusNotFound, "pairing request not found")
-		case pairing.ErrExpired:
-			writeError(w, http.StatusGone, "pairing request expired")
 		case pairing.ErrClosed:
 			writeError(w, http.StatusConflict, "pairing request is already closed")
 		default:
@@ -7122,12 +7104,20 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		}
 		item = credentialed
 	}
-	publishOperationalEvent(deps, r, "pairing.request."+item.Status, map[string]any{
+	eventStatus := item.Status
+	if !approve {
+		eventStatus = "denied"
+	}
+	publishOperationalEvent(deps, r, "pairing.request."+eventStatus, map[string]any{
 		"pairingId":     item.ID,
 		"clientProfile": item.ClientProfile,
 		"deviceName":    item.DeviceName,
 		"deviceId":      item.DeviceID,
 	})
+	if !approve {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	writeJSON(w, http.StatusOK, item)
 }
 

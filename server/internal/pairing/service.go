@@ -17,13 +17,10 @@ import (
 const (
 	StatusPending  = "pending"
 	StatusApproved = "approved"
-	StatusExpired  = "expired"
-	StatusDenied   = "denied"
 )
 
 var (
 	ErrNotFound = errors.New("pairing request not found")
-	ErrExpired  = errors.New("pairing request expired")
 	ErrClosed   = errors.New("pairing request is no longer pending")
 )
 
@@ -173,8 +170,33 @@ func (s *Service) ApproveWithDeviceID(id string, approvedBy string, deviceID str
 	return s.close(id, StatusApproved, approvedBy, deviceID)
 }
 
-func (s *Service) Deny(id string, approvedBy string) (Request, error) {
-	return s.close(id, StatusDenied, approvedBy, "")
+func (s *Service) Deny(id string, _ string) (Request, error) {
+	id = strings.TrimSpace(id)
+	if s.database != nil {
+		item, ok := s.getPersistent(id)
+		if !ok {
+			return Request{}, ErrNotFound
+		}
+		if item.Status != StatusPending {
+			return Request{}, ErrClosed
+		}
+		_, err := s.database.DB().Exec(`DELETE FROM pairing_requests WHERE id = ?`, id)
+		if err != nil {
+			return Request{}, err
+		}
+		return publicRequest(item, false), nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.byID[id]
+	if !ok {
+		return Request{}, ErrNotFound
+	}
+	if item.Status != StatusPending {
+		return Request{}, ErrClosed
+	}
+	delete(s.byID, id)
+	return publicRequest(item, false), nil
 }
 
 func (s *Service) AttachAuthGrant(id string, grant AuthGrant) (Request, error) {
@@ -226,9 +248,6 @@ func (s *Service) close(id string, status string, approvedBy string, deviceID st
 		if !ok {
 			return Request{}, ErrNotFound
 		}
-		if item.Status == StatusExpired {
-			return Request{}, ErrExpired
-		}
 		if item.Status != StatusPending {
 			return Request{}, ErrClosed
 		}
@@ -257,9 +276,6 @@ func (s *Service) close(id string, status string, approvedBy string, deviceID st
 	if !ok {
 		return Request{}, ErrNotFound
 	}
-	if item.Status == StatusExpired {
-		return Request{}, ErrExpired
-	}
 	if item.Status != StatusPending {
 		return Request{}, ErrClosed
 	}
@@ -280,36 +296,29 @@ func (s *Service) expireOld() {
 	now := time.Now().UTC()
 	if s.database != nil {
 		_, _ = s.database.DB().Exec(`
-			UPDATE pairing_requests
-			SET status = ?, updated_at = ?
-			WHERE status = ? AND expires_at < ?
-		`, StatusExpired, formatTime(now), StatusPending, formatTime(now))
+			DELETE FROM pairing_requests WHERE status = ? AND expires_at < ?
+		`, StatusPending, formatTime(now))
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, item := range s.byID {
 		if item.Status == StatusPending && now.After(item.ExpiresAt) {
-			item.Status = StatusExpired
-			item.UpdatedAt = now
-			s.byID[id] = item
+			delete(s.byID, id)
 		}
 	}
 }
 
-// Purge removes terminal (expired/denied) pairing rows older than the given
-// retention window. Approved rows are kept indefinitely since they represent
-// real device sessions. Returns the number of rows removed.
-func (s *Service) Purge(retain time.Duration) (int, error) {
-	if retain <= 0 {
-		retain = 24 * time.Hour
-	}
-	cutoff := time.Now().UTC().Add(-retain)
+// Purge is a belt-and-suspenders cleanup that removes any pending rows whose
+// expiry has long since passed. In normal operation expireOld (called on every
+// List/Get) handles deletion immediately, so Purge should rarely find anything.
+// retain is ignored; any pending row past its expires_at is eligible.
+func (s *Service) Purge(_ time.Duration) (int, error) {
+	now := time.Now().UTC()
 	if s.database != nil {
 		res, err := s.database.DB().Exec(`
-			DELETE FROM pairing_requests
-			WHERE status IN (?, ?) AND updated_at < ?
-		`, StatusExpired, StatusDenied, formatTime(cutoff))
+			DELETE FROM pairing_requests WHERE status = ? AND expires_at < ?
+		`, StatusPending, formatTime(now))
 		if err != nil {
 			return 0, err
 		}
@@ -320,7 +329,7 @@ func (s *Service) Purge(retain time.Duration) (int, error) {
 	defer s.mu.Unlock()
 	removed := 0
 	for id, item := range s.byID {
-		if (item.Status == StatusExpired || item.Status == StatusDenied) && item.UpdatedAt.Before(cutoff) {
+		if item.Status == StatusPending && now.After(item.ExpiresAt) {
 			delete(s.byID, id)
 			removed++
 		}
