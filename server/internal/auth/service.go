@@ -645,6 +645,21 @@ func (s *Service) Resolve(ctx context.Context, token string, remoteAddr string, 
 	if subtle.ConstantTimeCompare([]byte(row.SecretHash), []byte(hashSecret(secret))) != 1 {
 		return ResolvedSession{}, ErrUnauthorized
 	}
+	// Belt-and-braces: reject if the linked device has been revoked even when the
+	// session's own revoked_at was not set (e.g. pre-migration devices with empty
+	// auth_session_id that RevokeDeviceSessions couldn't reach).
+	if deviceID := strings.TrimSpace(row.DeviceID); deviceID != "" {
+		var deviceStatus string
+		devErr := s.db.QueryRowContext(ctx, `
+			SELECT status FROM approved_devices WHERE device_id = ?
+		`, deviceID).Scan(&deviceStatus)
+		if devErr != nil && !errors.Is(devErr, sql.ErrNoRows) {
+			return ResolvedSession{}, devErr
+		}
+		if deviceStatus == "revoked" {
+			return ResolvedSession{}, ErrUnauthorized
+		}
+	}
 	now := time.Now().UTC()
 	expiresAt, ok := parseTimestamp(row.ExpiresAt)
 	if !ok || now.After(expiresAt) {
