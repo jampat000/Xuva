@@ -3,7 +3,6 @@
   import "../app.css";
   import { appState } from '$lib/stores/appState.svelte';
   import { profileStore } from '$lib/stores/profileStore.svelte';
-  import { readProfileToken } from '$lib/api/profile-token-store';
   import { listProfiles } from '$lib/api/profiles';
   import WhoIsWatching from '$lib/components/WhoIsWatching.svelte';
   import type { ProfileCard } from '$lib/api/profiles';
@@ -12,6 +11,10 @@
 
   /** Whether the Who's Watching picker should show. */
   let showPicker = $derived(profileStore.showPicker);
+
+  // sessionStorage key: persists across hard navigations within the same tab
+  // but resets when the tab is closed — correct "who's watching" semantics.
+  const PROFILE_SESSION_KEY = 'xuva-profile-card';
 
   onMount(async () => {
     if (typeof window === 'undefined') return;
@@ -38,36 +41,33 @@
       // Server unreachable — stay on current page.
     }
 
-    // Restore the active profile from the stored token if we have one.
-    // If auth is disabled or the session has a single user, profiles may not
-    // exist — we silently skip and show content without a profile.
-    const token = readProfileToken();
-    if (token) {
-      try {
-        const profiles = await listProfiles();
-        // The server validates the token; if valid it will include activeProfile
-        // in /api/auth/session. For now re-fetch profiles and trust the first
-        // match (the token is validated server-side on every request anyway).
-        // We can't decode the token client-side — show the picker instead.
+    // If a profile was already selected this browser tab session, restore it
+    // silently without showing the picker again.
+    try {
+      const stored = sessionStorage.getItem(PROFILE_SESSION_KEY);
+      if (stored) {
+        const card = JSON.parse(stored) as ProfileCard;
+        profileStore.setActiveProfile(card);
+        return;
+      }
+    } catch {
+      try { sessionStorage.removeItem(PROFILE_SESSION_KEY); } catch { /* ignore */ }
+    }
+
+    // First visit in this tab — show picker if profiles exist and auth is on.
+    try {
+      const profiles = await listProfiles();
+      if (profiles.length > 0) {
         profileStore.openPicker();
-      } catch {
-        // Profiles endpoint unavailable (auth disabled) — skip picker.
       }
-    } else {
-      // No token — show the picker if profiles exist and auth is enabled.
-      try {
-        const profiles = await listProfiles();
-        if (profiles.length > 0) {
-          profileStore.openPicker();
-        }
-      } catch {
-        // Profiles unavailable (auth disabled or single-user) — skip.
-      }
+    } catch {
+      // Profiles endpoint unavailable (auth disabled or single-user) — skip.
     }
   });
 
   function handleProfileSelected(profile: ProfileCard) {
     profileStore.setActiveProfile(profile);
+    try { sessionStorage.setItem(PROFILE_SESSION_KEY, JSON.stringify(profile)); } catch { /* ignore */ }
   }
 </script>
 
