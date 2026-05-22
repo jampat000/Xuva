@@ -439,6 +439,10 @@ public struct PlaybackStartResponse: Codable, Equatable {
     /// Filled in by the client (not the server) — the requested resume
     /// position. AVPlayer seeks to this once the player item is ready.
     public var clientStartPositionSeconds: Int?
+    /// Filled in by the client — the subtitle track the user picked in the
+    /// detail screen. XuvaVideoPlayer selects the matching AVMediaSelectionOption
+    /// when the player item is ready.
+    public var clientSubtitleTrack: MediaTrack?
 }
 
 public struct PlaybackRoute: Codable, Equatable {

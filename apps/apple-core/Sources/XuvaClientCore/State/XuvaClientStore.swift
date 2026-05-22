@@ -185,6 +185,7 @@ public final class XuvaClientStore: ObservableObject {
             if positionSeconds > 0 {
                 response.clientStartPositionSeconds = positionSeconds
             }
+            response.clientSubtitleTrack = subtitleTrack
             print("[XUVA] startPlayback OK session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>") routeUrl=\(response.route?.url ?? "<none>")")
             if let sessionId = response.sessionId, !sessionId.isEmpty,
                let deviceId = response.deviceId, !deviceId.isEmpty {
