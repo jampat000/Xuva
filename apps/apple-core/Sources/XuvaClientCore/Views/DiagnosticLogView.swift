@@ -32,9 +32,7 @@ public struct DiagnosticLogView: View {
                 }
             }
             .navigationTitle("Diagnostic Log (\(lines.count) lines)")
-            #if os(tvOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #else
+            #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
