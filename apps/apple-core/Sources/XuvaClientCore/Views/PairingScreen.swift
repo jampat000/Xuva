@@ -5,6 +5,7 @@ public struct PairingScreen: View {
     @StateObject private var discovery = XuvaDiscovery()
     @State private var showManualEntry = false
     @State private var discoveryTimedOut = false
+    @State private var showDiagLog = false
 
     public init() {}
 
@@ -45,12 +46,16 @@ public struct PairingScreen: View {
                             .background(XuvaTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
                     }
+
+                    // Version label — long-press (2 s on tvOS) to open the diagnostic log.
+                    versionLabel(viewport: viewport)
                 }
                 .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
                 .padding(.vertical, viewport.width < 700 ? 36 : viewport.height * 0.08)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .sheet(isPresented: $showDiagLog) { DiagnosticLogView() }
         .task(id: store.pairing?.stableID) {
             await pollPairingWhilePending()
         }
@@ -292,6 +297,21 @@ public struct PairingScreen: View {
             .labelStyle(.titleAndIcon)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private func versionLabel(viewport: CGSize) -> some View {
+        let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
+        let buildNum   = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?"
+        Text("Xuva \(appVersion) (\(buildNum))")
+            .font(.system(size: XuvaScale.metaFontSize(viewport)))
+            .foregroundStyle(XuvaTheme.mutedText.opacity(0.45))
+            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+            #if os(tvOS)
+            .onLongPressGesture(minimumDuration: 2) { showDiagLog = true }
+            #else
+            .onLongPressGesture { showDiagLog = true }
+            #endif
     }
 
     private var introCopy: String {
