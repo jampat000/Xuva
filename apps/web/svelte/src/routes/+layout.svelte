@@ -3,6 +3,7 @@
   import "../app.css";
   import { appState } from '$lib/stores/appState.svelte';
   import { profileStore } from '$lib/stores/profileStore.svelte';
+  import { syncWatchlistFromServer } from '$lib/stores/watchlistStore.svelte';
   import { listProfiles } from '$lib/api/profiles';
   import WhoIsWatching from '$lib/components/WhoIsWatching.svelte';
   import type { ProfileCard } from '$lib/api/profiles';
@@ -36,6 +37,8 @@
         const data = await bootstrapResp.json() as { server?: { name?: string }; features?: { trailers?: boolean } };
         if (data.server?.name) appState.serverName = data.server.name;
         if (data.features?.trailers === false) appState.trailersEnabled = false;
+        // Sync watchlist from server after bootstrap succeeds
+        syncWatchlistFromServer();
       }
     } catch {
       // Server unreachable — stay on current page.

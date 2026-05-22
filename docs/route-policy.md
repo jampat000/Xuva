@@ -129,6 +129,9 @@ Public client bootstrap routes:
 | `GET /api/client/collections/{id}` | client | `client.collection.detail` | admin, standard |
 | `GET /api/client/people/{name}` | client | `client.person.detail` | admin, standard |
 | `GET /api/client/search` | client | `client.search` | admin, standard |
+| `GET /api/client/watchlist` | client | `client.watchlist.list` | admin, standard |
+| `POST /api/client/watchlist` | client | `client.watchlist.add` | admin, standard |
+| `DELETE /api/client/watchlist/{id}` | client | `client.watchlist.remove` | admin, standard |
 | `POST /api/setup/complete` | setup | `setup.complete` | admin |
 | `GET /api/backup/export` | backup | `backup.export` | admin |
 | `POST /api/backup/import` | backup | `backup.import` | admin |
