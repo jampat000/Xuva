@@ -902,6 +902,7 @@ export interface ChaptersResponse {
 
 export interface UserPreferences {
 	autoSkipIntros?: boolean;
+	posterSize?: 'S' | 'M' | 'L';
 }
 
 export function getChapters(

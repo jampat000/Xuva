@@ -861,6 +861,7 @@
         activeSessions = sessionsRes.value.sessions ?? [];
       if (settingsRes.status === 'fulfilled') {
         settingsData = settingsRes.value;
+        seedEditConfig(settingsRes.value);
         if (libraries.length === 0)
           libraries = (settingsRes.value.libraries ?? []).map((l) => ({ ...l }));
       }
