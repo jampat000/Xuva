@@ -64,6 +64,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/trailers"
 	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/trending"
+	"github.com/jampat000/Xuva/server/internal/watchlist"
 	"github.com/jampat000/Xuva/server/internal/tv"
 	"github.com/jampat000/Xuva/server/internal/webapp"
 )
@@ -103,6 +104,7 @@ type Deps struct {
 	Thumbnails    *thumbnails.Service
 	Notifications *notifications.Service
 	Chapters      *chapters.Service
+	Watchlist     *watchlist.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -160,6 +162,9 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/client/collections/{id}", clientCollectionHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/people/{name}", clientPersonHandler(deps))
 	handleProtected(mux, deps, "GET /api/client/search", clientSearchHandler(deps))
+	handleProtected(mux, deps, "GET /api/client/watchlist", clientWatchlistListHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/client/watchlist", clientWatchlistAddHandler(deps))
+	handleProtectedCSRF(mux, deps, "DELETE /api/client/watchlist/{id}", clientWatchlistRemoveHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/client/playback/start", clientPlaybackStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "PATCH /api/client/playback/{id}", clientPlaybackHeartbeatHandler(deps))
 	handleProtected(mux, deps, "POST /api/client/playback/{id}/stop", clientPlaybackStopHandler(deps))
@@ -2089,6 +2094,48 @@ func clientSearchHandler(deps Deps) http.HandlerFunc {
 			"people":      peopleItems,
 			"collections": collectionItems,
 		})
+	}
+}
+
+func clientWatchlistListHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := deps.Watchlist.List(r.Context(), requestUserID(r))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "watchlist lookup failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+func clientWatchlistAddHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req watchlist.AddRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		item, err := deps.Watchlist.Add(r.Context(), requestUserID(r), req)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, item)
+	}
+}
+
+func clientWatchlistRemoveHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mediaID := r.PathValue("id")
+		kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+		if mediaID == "" || (kind != "movie" && kind != "series") {
+			writeError(w, http.StatusBadRequest, "id path parameter and kind=movie|series query parameter are required")
+			return
+		}
+		if err := deps.Watchlist.Remove(r.Context(), requestUserID(r), mediaID, kind); err != nil {
+			writeError(w, http.StatusInternalServerError, "watchlist remove failed")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

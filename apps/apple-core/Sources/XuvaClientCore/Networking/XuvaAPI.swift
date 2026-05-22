@@ -96,6 +96,23 @@ public final class XuvaAPI: @unchecked Sendable {
         let _: EmptyResponse = try await send("POST", path: path, body: body)
     }
 
+    // MARK: – Watchlist
+
+    public func watchlistList() async throws -> WatchlistListResponse {
+        try await send("GET", path: "/api/client/watchlist")
+    }
+
+    public func watchlistAdd(_ req: WatchlistAddRequest) async throws -> WatchlistServerItem {
+        try await send("POST", path: "/api/client/watchlist", body: req)
+    }
+
+    public func watchlistRemove(mediaId: String, kind: String) async throws {
+        guard var comps = URLComponents(string: "/api/client/watchlist/\(mediaId)") else { return }
+        comps.queryItems = [URLQueryItem(name: "kind", value: kind)]
+        let path = comps.url?.absoluteString ?? "/api/client/watchlist/\(mediaId)?kind=\(kind)"
+        let _: EmptyResponse = try await send("DELETE", path: path)
+    }
+
     public func resolvedURL(_ pathOrURL: String) -> URL? {
         if let url = URL(string: pathOrURL), url.scheme != nil { return url }
         guard pathOrURL.hasPrefix("/") else { return nil }
@@ -138,4 +155,40 @@ public final class XuvaAPI: @unchecked Sendable {
 
 public struct EmptyResponse: Codable {
     public init() {}
+}
+
+public struct WatchlistServerItem: Codable {
+    public let userId: String
+    public let mediaId: String
+    public let kind: String
+    public let title: String
+    public let year: Int?
+    public let posterUrl: String?
+    public let backdropUrl: String?
+    public let genres: [String]?
+    public let addedAt: String
+}
+
+public struct WatchlistListResponse: Codable {
+    public let items: [WatchlistServerItem]
+}
+
+public struct WatchlistAddRequest: Codable {
+    public let mediaId: String
+    public let kind: String
+    public let title: String
+    public let year: Int?
+    public let posterUrl: String?
+    public let backdropUrl: String?
+    public let genres: [String]?
+
+    public init(mediaId: String, kind: String, title: String, year: Int?, posterUrl: String?, backdropUrl: String?, genres: [String]?) {
+        self.mediaId = mediaId
+        self.kind = kind
+        self.title = title
+        self.year = year
+        self.posterUrl = posterUrl
+        self.backdropUrl = backdropUrl
+        self.genres = genres
+    }
 }

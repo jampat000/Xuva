@@ -44,6 +44,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/trending"
 	"github.com/jampat000/Xuva/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/watchlist"
 )
 
 type Application struct {
@@ -83,6 +84,7 @@ type Application struct {
 	Thumbnails    *thumbnails.Service
 	Notifications *notifications.Service
 	Chapters      *chapters.Service
+	Watchlist     *watchlist.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -280,6 +282,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	notifService.Start(appCtx)
 
 	chaptersService := chapters.NewService(databaseService.DB(), cfg.FFmpegPath, cfg.FpcalcPath)
+	watchlistService := watchlist.NewService(databaseService)
 
 	return &Application{
 		Config:        cfg,
@@ -317,6 +320,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Thumbnails:    thumbnails.New(cfg.CacheDir, cfg.FFmpegPath, cfg.FFprobePath),
 		Notifications: notifService,
 		Chapters:      chaptersService,
+		Watchlist:     watchlistService,
 	}, nil
 }
 
@@ -477,6 +481,7 @@ func (a *Application) Router() http.Handler {
 		Migration:     a.Migration,
 		Notifications: a.Notifications,
 		Chapters:      a.Chapters,
+		Watchlist:     a.Watchlist,
 	})
 }
 
