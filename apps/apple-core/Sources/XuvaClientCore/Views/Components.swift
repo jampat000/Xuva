@@ -544,9 +544,14 @@ public struct MediaPill: View {
 /// A completely transparent button style. tvOS only applies its card-lift
 /// focus halo to its own built-in styles (.plain, .card); a custom type gets
 /// no platform focus decoration, so xuvaFocused() is the sole visual.
+/// A pass-through button style that strips all system decoration.
+/// `.focusEffectDisabled()` suppresses the tvOS default blue halo so that
+/// each call site's `.xuvaFocused(radius:)` modifier is the sole focus
+/// indicator — consistent with every other Xuva button style.
 struct XuvaNakedButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .focusEffectDisabled()
     }
 }
 
