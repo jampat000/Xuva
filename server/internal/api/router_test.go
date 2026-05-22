@@ -1672,7 +1672,7 @@ func TestClientHomeIncludesUnknownDurationProgressInContinueWatching(t *testing.
 	}
 }
 
-func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing.T) {
+func TestClientPlaybackStartAuthenticatedClientCanStartAdaptiveRoute(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
 
@@ -1703,6 +1703,9 @@ func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing
 		t.Fatalf("save probe: %v", err)
 	}
 
+	// Authenticated clients must always be able to start playback for
+	// non-direct-play routes — the old guard that blocked these with 409 was wrong.
+	// For a high-bitrate remote route, the server picks adaptive HLS.
 	started := client.requestJSON(t, router, http.MethodPost, "/api/client/playback/start", map[string]any{
 		"mediaSourceId":     sourceID,
 		"deviceId":          "apple-tv-living-room",
@@ -1710,11 +1713,16 @@ func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing
 		"routeType":         "remote",
 		"maxNetworkBitrate": 8_000_000,
 	})
-	if started.status != http.StatusConflict {
-		t.Fatalf("expected protected native playback to block until device auth exists, got %d: %#v", started.status, started.payload)
+	if started.status != http.StatusOK {
+		t.Fatalf("expected authenticated client to start playback, got %d: %s", started.status, started.body)
 	}
-	if !strings.Contains(started.body, "persistent device authentication") {
-		t.Fatalf("expected clear device auth blocker, got %s", started.body)
+	route, _ := started.payload["route"].(map[string]any)
+	if route == nil {
+		t.Fatalf("expected route in response, got %#v", started.payload)
+	}
+	manifestURL, _ := route["manifestUrl"].(string)
+	if manifestURL == "" {
+		t.Fatalf("expected adaptive manifestUrl in route, got %#v", route)
 	}
 }
 

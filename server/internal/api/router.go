@@ -2577,9 +2577,6 @@ func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.Media
 			"fallbackOptions": playbackPolicyFallbacks(deps.Config.PlaybackPolicy, decision),
 		}, http.StatusOK, nil
 	}
-	if deps.Auth != nil && !deps.Auth.Disabled() {
-		return nil, http.StatusConflict, fmt.Errorf("native client playback requires persistent device authentication before protected stream URLs can be issued")
-	}
 	if decision.Mode == playback.AdaptiveStream {
 		plan := adaptivePlanForSource(deps, source, payload.ClientProfile, firstNonEmpty(payload.RouteType, "remote"), payload.MaxNetworkBitrate)
 		if plan.Enabled {

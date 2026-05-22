@@ -186,22 +186,53 @@ public final class XuvaClientStore: ObservableObject {
                 response.clientStartPositionSeconds = positionSeconds
             }
             response.clientSubtitleTrack = subtitleTrack
-            print("[XUVA] startPlayback OK session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>") routeUrl=\(response.route?.url ?? "<none>")")
-            if let sessionId = response.sessionId, !sessionId.isEmpty,
-               let deviceId = response.deviceId, !deviceId.isEmpty {
-                let signed = try await api.requestStreamToken(mediaSourceId: mediaSourceId, sessionId: sessionId, deviceId: deviceId)
-                print("[XUVA] streamToken OK signedUrl=\(signed.streamUrl ?? "<none>")")
-                guard let signedUrl = signed.streamUrl, !signedUrl.isEmpty else {
-                    throw XuvaAPIError.missingStreamURL
+            let routeType = response.route?.route ?? ""
+            print("[XUVA] startPlayback OK routeType=\(routeType) status=\(response.route?.status ?? "<none>") session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>")")
+            if routeType == "direct" || routeType == "" {
+                // Direct play: sign the stream URL so AVPlayer can fetch it without a
+                // persistent auth header (token in query string survives redirects).
+                if let sessionId = response.sessionId, !sessionId.isEmpty,
+                   let deviceId = response.deviceId, !deviceId.isEmpty {
+                    let signed = try await api.requestStreamToken(mediaSourceId: mediaSourceId, sessionId: sessionId, deviceId: deviceId)
+                    print("[XUVA] streamToken OK signedUrl=\(signed.streamUrl ?? "<none>")")
+                    guard let signedUrl = signed.streamUrl, !signedUrl.isEmpty else {
+                        throw XuvaAPIError.missingStreamURL
+                    }
+                    response.route?.url = signedUrl
+                } else {
+                    print("[XUVA] WARN missing sessionId/deviceId — skipping streamToken")
                 }
-                response.route?.url = signedUrl
+            } else if routeType == "adaptive" {
+                // Adaptive HLS: the manifestUrl is used directly.
+                // AVURLAsset passes X-Auth-Token on every sub-request, so no extra token needed.
+                guard response.route?.manifestUrl != nil else { throw XuvaAPIError.missingStreamURL }
             } else {
-                print("[XUVA] WARN missing sessionId/deviceId — skipping streamToken")
+                // Remux / transcode: the server starts a background job and returns the work file
+                // URL once complete. Poll until ready (up to 90 s for a typical remux).
+                // AVURLAsset's X-Auth-Token header handles auth for /api/work/{id}/file.
+                if response.route?.url == nil {
+                    let inProgress: Set<String> = ["queued", "running"]
+                    for _ in 0..<30 {
+                        guard let status = response.route?.status, inProgress.contains(status) else { break }
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
+                        let next = try await api.startPlayback(
+                            mediaSourceId: mediaSourceId,
+                            positionSeconds: positionSeconds,
+                            audioTrackIndex: audioTrack?.index,
+                            subtitleTrackIndex: subtitleTrack?.index,
+                            subtitleTrackActive: subtitleTrack != nil
+                        )
+                        response = next
+                        if next.route?.url != nil { break }
+                    }
+                    guard response.route?.url != nil else { throw XuvaAPIError.missingStreamURL }
+                }
+                // Work file URL auth is via X-Auth-Token header in AVURLAsset — no stream token.
             }
             playback = response
             persistCurrentAuthToken()
             screen = .player
-            print("[XUVA] screen=.player, final url=\(response.route?.url ?? "<none>")")
+            print("[XUVA] screen=.player, final url=\(response.route?.url ?? response.route?.manifestUrl ?? "<none>")")
         }
     }
 
