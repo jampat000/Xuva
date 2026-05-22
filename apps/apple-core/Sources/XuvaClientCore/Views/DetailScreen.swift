@@ -556,7 +556,11 @@ private struct DetailContentView: View {
                             }
                         }
                         .padding(.vertical, 12)
+                        // focusSection on the inner HStack so the tvOS focus engine
+                        // can route D-pad navigation into the version cards.
+                        .focusSection()
                     }
+                    .focusSection()
                 } else {
                     // Single version — show dedicated file info so the user can
                     // see codec/resolution/bitrate without needing to open playback.
@@ -568,6 +572,9 @@ private struct DetailContentView: View {
                         TrackStack(title: "Audio", systemImage: "speaker.wave.2", tracks: detail.audioTracks, selectedTrackID: $selectedAudioID, allowsNone: false, viewport: viewport)
                         TrackStack(title: "Subtitles", systemImage: "captions.bubble", tracks: detail.subtitleTracks, selectedTrackID: $selectedSubtitleID, allowsNone: true, viewport: viewport)
                     }
+                    // focusSection lets the focus engine route INTO the track buttons
+                    // from adjacent sections (version cards above, manage below).
+                    .focusSection()
                 }
                 manageFilesSection(viewport: viewport)
             }
@@ -1084,6 +1091,9 @@ private struct TrackStack: View {
                 }
             }
         }
+        // focusSection ensures the tvOS focus engine can navigate into the
+        // track buttons from the surrounding section context.
+        .focusSection()
         .padding(24)
         .frame(maxWidth: 520, minHeight: 180, alignment: .topLeading)
         .background(XuvaTheme.elevated.opacity(0.62), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
