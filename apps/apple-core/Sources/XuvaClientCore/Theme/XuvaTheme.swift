@@ -47,7 +47,10 @@ public struct XuvaFocusModifier: ViewModifier {
     let radius: CGFloat
 
     public func body(content: Content) -> some View {
-        content
+        // Suppress the system card-lift halo locally — parent-level
+        // focusEffectDisabled doesn't propagate through ScrollView boundaries
+        // on tvOS, so every xuvaFocused site needs it applied directly.
+        suppressSystemHalo(content)
             .scaleEffect(isFocused ? 1.035 : 1)
             .shadow(color: XuvaTheme.focus.opacity(isFocused ? 0.42 : 0), radius: isFocused ? 26 : 0, x: 0, y: 14)
             .overlay(
@@ -55,6 +58,15 @@ public struct XuvaFocusModifier: ViewModifier {
                     .stroke(isFocused ? XuvaTheme.focus.opacity(0.95) : Color.clear, lineWidth: 3)
             )
             .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+    }
+
+    @ViewBuilder
+    private func suppressSystemHalo(_ content: Content) -> some View {
+        if #available(iOS 17.0, tvOS 17.0, macOS 14.0, *) {
+            content.focusEffectDisabled(true)
+        } else {
+            content
+        }
     }
 }
 
