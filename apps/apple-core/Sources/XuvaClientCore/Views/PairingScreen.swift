@@ -197,7 +197,10 @@ public struct PairingScreen: View {
                 VStack(alignment: .leading, spacing: 12) {
                     serverURLControl(viewport: viewport)
                     Button {
-                        Task { await store.connect() }
+                        Task {
+                            await store.connect()
+                            if store.errorMessage == nil { await store.startPairing() }
+                        }
                     } label: {
                         buttonLabel(title: store.isBusy ? "Connecting…" : "Connect", systemImage: store.isBusy ? "hourglass" : "play.fill")
                     }
@@ -219,7 +222,10 @@ public struct PairingScreen: View {
             .textContentType(.URL)
             .submitLabel(.go)
             .onSubmit {
-                Task { await store.connect() }
+                Task {
+                    await store.connect()
+                    if store.errorMessage == nil { await store.startPairing() }
+                }
             }
             .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .medium))
             .foregroundStyle(XuvaTheme.text)
