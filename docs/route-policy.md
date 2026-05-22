@@ -55,6 +55,7 @@ Public client bootstrap routes:
 | `POST /api/remote/wan` | remote | `remote.wan.lookup` | admin |
 | `GET /api/settings/folders/browse` | settings | `settings.folders.browse` | admin |
 | `GET /api/media-sources/{id}/stream` | media | `media.stream` | admin, standard |
+| `GET /api/media-sources/{id}/download` | media | `media.download` | admin, standard |
 | `GET /api/media-sources/{id}/adaptive/master.m3u8` | media | `media.adaptive.master` | admin, standard |
 | `GET /api/media-sources/{id}/adaptive/{variant}` | media | `media.adaptive.variant` | admin, standard |
 | `POST /api/media-sources/{id}/adaptive/session` | media | `media.adaptive.session` | admin, standard |
