@@ -155,6 +155,7 @@ var routePolicies = map[string]routePolicy{
 	"GET /api/versions":                     route("GET /api/versions", "catalog", "versions.read", roleAdmin, roleStandard),
 	"GET /api/media-sources":                route("GET /api/media-sources", "media", "media.list", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}":           route("GET /api/media-sources/{id}", "media", "media.read", roleAdmin, roleStandard),
+	"DELETE /api/media-sources/{id}":        route("DELETE /api/media-sources/{id}", "media", "media.delete", roleAdmin),
 	"GET /api/media-sources/{id}/tracks":    route("GET /api/media-sources/{id}/tracks", "media", "media.tracks", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}/subtitles": route("GET /api/media-sources/{id}/subtitles", "media", "media.subtitles", roleAdmin, roleStandard),
 	"GET /api/devices/profiles":             route("GET /api/devices/profiles", "devices", "devices.profiles", roleAdmin, roleStandard),

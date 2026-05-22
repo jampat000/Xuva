@@ -293,6 +293,18 @@ public final class XuvaClientStore: ObservableObject {
         // Keep selectedDetail cached so re-entering the same title is instant.
     }
 
+    /// Permanently deletes the media source file from the server, then navigates
+    /// back to the home screen so the stale detail view is not left showing.
+    public func deleteMediaSource(id: String) async {
+        await run {
+            guard let api else { throw XuvaAPIError.invalidURL }
+            try await api.deleteMediaSource(id: id)
+            // Navigate away; the item no longer exists.
+            screen = .home
+            selectedDetail = nil
+        }
+    }
+
     public func setSection(_ section: String) {
         activeSection = section
         heroIndex = 0

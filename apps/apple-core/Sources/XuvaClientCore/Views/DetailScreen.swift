@@ -34,6 +34,7 @@ private struct DetailContentView: View {
     @State private var selectedAudioID: String?
     @State private var selectedSubtitleID: String?
     @State private var selectedSeasonNumber: Int?
+    @State private var pendingDeleteVersionID: String?
     #if os(tvOS)
     @FocusState private var playButtonFocused: Bool
     #endif
@@ -75,6 +76,22 @@ private struct DetailContentView: View {
                     await store.play()
                 }
             }
+        }
+        // Confirmation before permanently deleting a file from the server.
+        .alert("Delete File?", isPresented: Binding(
+            get: { pendingDeleteVersionID != nil },
+            set: { if !$0 { pendingDeleteVersionID = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                let id = pendingDeleteVersionID
+                pendingDeleteVersionID = nil
+                if let id {
+                    Task { await store.deleteMediaSource(id: id) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteVersionID = nil }
+        } message: {
+            Text("This will permanently delete the file from your server. This cannot be undone.")
         }
         #if os(tvOS)
         // Route initial focus to the Play button rather than backLink.
@@ -550,6 +567,34 @@ private struct DetailContentView: View {
                     HStack(alignment: .top, spacing: 18) {
                         TrackStack(title: "Audio", systemImage: "speaker.wave.2", tracks: detail.audioTracks, selectedTrackID: $selectedAudioID, allowsNone: false, viewport: viewport)
                         TrackStack(title: "Subtitles", systemImage: "captions.bubble", tracks: detail.subtitleTracks, selectedTrackID: $selectedSubtitleID, allowsNone: true, viewport: viewport)
+                    }
+                }
+                manageFilesSection(viewport: viewport)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func manageFilesSection(viewport: CGSize) -> some View {
+        let versions = detail.versions ?? []
+        if !versions.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionTitle("Manage", viewport: viewport)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(versions, id: \.stableID) { version in
+                        if let sourceId = version.mediaSourceId {
+                            Button {
+                                pendingDeleteVersionID = sourceId
+                            } label: {
+                                Label(
+                                    versions.count > 1
+                                        ? "Delete \(version.qualityLabel ?? version.name ?? "Version")"
+                                        : "Delete File",
+                                    systemImage: "trash"
+                                )
+                            }
+                            .buttonStyle(XuvaDestructiveButtonStyle(viewport: viewport))
+                        }
                     }
                 }
             }
