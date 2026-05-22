@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/jampat000/Xuva/server/internal/config"
@@ -74,6 +75,42 @@ func TestServiceCapturesExpectedAdvertiseConfig(t *testing.T) {
 	}
 	if len(captured.TXTRecords) == 0 {
 		t.Fatalf("expected safe txt records, got %#v", captured)
+	}
+	if !hasTXTRecord(captured.TXTRecords, "serverName=Family Room") {
+		t.Fatalf("expected Xuva display name in TXT records, got %#v", captured.TXTRecords)
+	}
+	if !hasTXTPrefix(captured.TXTRecords, "hostName=") {
+		t.Fatalf("expected network host name in TXT records, got %#v", captured.TXTRecords)
+	}
+	if !hasTXTPrefix(captured.TXTRecords, "web=http://") {
+		t.Fatalf("expected derived web origin in TXT records, got %#v", captured.TXTRecords)
+	}
+	if status.HostName == "" || status.WebURL == "" {
+		t.Fatalf("expected network fields in status, got %#v", status)
+	}
+}
+
+func TestServiceUsesConfiguredCanonicalWebOrigin(t *testing.T) {
+	var captured AdvertiseConfig
+	service := NewServiceForTest(config.Config{
+		ServerName:           "Family Room",
+		HTTPAddr:             "192.168.1.20:8097",
+		CanonicalWebOrigin:   "http://media.example.test:8097",
+		DiscoveryEnabled:     true,
+		DiscoveryServiceType: DefaultServiceType,
+	}, func(cfg AdvertiseConfig) (announcer, error) {
+		captured = cfg
+		return &testAnnouncer{}, nil
+	})
+
+	service.Start(context.Background())
+	status := service.Status()
+
+	if status.WebURL != "http://media.example.test:8097" {
+		t.Fatalf("expected configured canonical web origin in status, got %#v", status)
+	}
+	if !hasTXTRecord(captured.TXTRecords, "web=http://media.example.test:8097") {
+		t.Fatalf("expected configured canonical web origin in TXT records, got %#v", captured.TXTRecords)
 	}
 }
 
@@ -146,4 +183,22 @@ func TestServiceDoesNotAdvertiseLoopbackOnlyBind(t *testing.T) {
 	if status.Note == "" {
 		t.Fatalf("expected explanatory note for loopback-only bind, got %#v", status)
 	}
+}
+
+func hasTXTRecord(records []string, expected string) bool {
+	for _, record := range records {
+		if record == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTXTPrefix(records []string, prefix string) bool {
+	for _, record := range records {
+		if strings.HasPrefix(record, prefix) {
+			return true
+		}
+	}
+	return false
 }

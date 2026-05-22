@@ -116,11 +116,13 @@ func (s *Service) Create(request CreateRequest) (Request, error) {
 func (s *Service) List() []Request {
 	s.expireOld()
 	if s.database != nil {
+		now := time.Now().UTC()
 		rows, err := s.database.DB().Query(`
 			SELECT id, code, device_name, client_profile, device_id, auth_method, auth_session_token, auth_expires_at, status, approved_by, expires_at, created_at, updated_at
 			FROM pairing_requests
+			WHERE status = ? AND expires_at >= ?
 			ORDER BY created_at DESC
-		`)
+		`, StatusPending, formatTime(now))
 		if err != nil {
 			return []Request{}
 		}
@@ -138,6 +140,9 @@ func (s *Service) List() []Request {
 	defer s.mu.RUnlock()
 	output := make([]Request, 0, len(s.byID))
 	for _, item := range s.byID {
+		if item.Status != StatusPending {
+			continue
+		}
 		output = append(output, publicRequest(item, false))
 	}
 	sort.Slice(output, func(i, j int) bool { return output[i].CreatedAt.After(output[j].CreatedAt) })
@@ -309,27 +314,43 @@ func (s *Service) expireOld() {
 	}
 }
 
-// Purge is a belt-and-suspenders cleanup that removes any pending rows whose
-// expiry has long since passed. In normal operation expireOld (called on every
-// List/Get) handles deletion immediately, so Purge should rarely find anything.
-// retain is ignored; any pending row past its expires_at is eligible.
-func (s *Service) Purge(_ time.Duration) (int, error) {
+// Purge removes expired pending rows immediately and terminal rows after the
+// retention window. Approved rows are kept briefly so native clients can poll
+// the approval result and receive their credential after the owner clicks
+// approve, but they must not remain visible as pending approval work.
+func (s *Service) Purge(retain time.Duration) (int, error) {
 	now := time.Now().UTC()
+	if retain <= 0 {
+		retain = 24 * time.Hour
+	}
+	cutoff := now.Add(-retain)
 	if s.database != nil {
-		res, err := s.database.DB().Exec(`
+		pending, err := s.database.DB().Exec(`
 			DELETE FROM pairing_requests WHERE status = ? AND expires_at < ?
 		`, StatusPending, formatTime(now))
 		if err != nil {
 			return 0, err
 		}
-		n, _ := res.RowsAffected()
-		return int(n), nil
+		terminal, err := s.database.DB().Exec(`
+			DELETE FROM pairing_requests WHERE status <> ? AND updated_at < ?
+		`, StatusPending, formatTime(cutoff))
+		if err != nil {
+			return 0, err
+		}
+		pendingCount, _ := pending.RowsAffected()
+		terminalCount, _ := terminal.RowsAffected()
+		return int(pendingCount + terminalCount), nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removed := 0
 	for id, item := range s.byID {
 		if item.Status == StatusPending && now.After(item.ExpiresAt) {
+			delete(s.byID, id)
+			removed++
+			continue
+		}
+		if item.Status != StatusPending && item.UpdatedAt.Before(cutoff) {
 			delete(s.byID, id)
 			removed++
 		}
