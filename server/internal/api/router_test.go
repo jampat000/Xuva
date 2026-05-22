@@ -871,6 +871,10 @@ func TestPairingRequestCreateStatusAndAdminApprove(t *testing.T) {
 	if pending.status != http.StatusOK {
 		t.Fatalf("expected pairing list 200, got %d: %s", pending.status, pending.body)
 	}
+	pendingList, _ := pending.payload["requests"].([]any)
+	if len(pendingList) != 0 {
+		t.Fatalf("expected approved pairing to disappear from pending approvals, got %#v", pending.payload)
+	}
 	if strings.Contains(pending.body, token) || strings.Contains(pending.body, "sessionToken") {
 		t.Fatalf("expected pairing list to avoid native auth token, got %s", pending.body)
 	}
@@ -2347,6 +2351,35 @@ func TestAuthLoginAndProtectedRouteAccess(t *testing.T) {
 	}
 	if session.payload["csrfToken"] == "" {
 		t.Fatalf("expected csrf token in session payload, got %#v", session.payload)
+	}
+}
+
+func TestAuthSwitchProfileIssuesProfileToken(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+	client := newAuthTestClient(t)
+	loginAs(t, client, router, "admin", "test-password-123!")
+
+	profiles := client.requestJSON(t, router, http.MethodGet, "/api/profiles", nil)
+	if profiles.status != http.StatusOK {
+		t.Fatalf("expected profiles 200, got %d: %s", profiles.status, profiles.body)
+	}
+	profileList, ok := profiles.payload["profiles"].([]any)
+	if !ok || len(profileList) == 0 {
+		t.Fatalf("expected at least one profile, got %#v", profiles.payload)
+	}
+	adminProfile, ok := profileList[0].(map[string]any)
+	if !ok || adminProfile["id"] == "" {
+		t.Fatalf("expected profile id, got %#v", profileList[0])
+	}
+
+	switched := client.requestJSON(t, router, http.MethodPost, "/api/auth/switch-profile", map[string]any{
+		"profileUserId": adminProfile["id"],
+	})
+	if switched.status != http.StatusOK {
+		t.Fatalf("expected switch-profile 200, got %d: %s", switched.status, switched.body)
+	}
+	if switched.payload["profileToken"] == "" {
+		t.Fatalf("expected profile token, got %#v", switched.payload)
 	}
 }
 
