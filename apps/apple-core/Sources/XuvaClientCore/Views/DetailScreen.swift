@@ -418,7 +418,9 @@ private struct DetailContentView: View {
                     .padding(.vertical, 8)
                     .focusSection()
                 }
+                .focusSection()
             }
+            .focusSection()
         }
     }
 
@@ -491,7 +493,9 @@ private struct DetailContentView: View {
                                 }
                             }
                         }
+                        .focusSection()
                     }
+                    .focusSection()
                     .frame(maxWidth: viewport.width * 0.45)
                 }
             }
@@ -595,7 +599,7 @@ private struct SeasonChip: View {
                 .background(isSelected ? XuvaTheme.text : XuvaTheme.surface.opacity(0.6), in: Capsule())
                 .overlay(Capsule().stroke(isSelected ? Color.clear : XuvaTheme.hairline))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(XuvaNakedButtonStyle())
         .xuvaFocused(radius: 22)
     }
 }
@@ -653,7 +657,7 @@ private struct EpisodeRow: View {
             .background(XuvaTheme.surface.opacity(0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(XuvaTheme.hairline))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(XuvaNakedButtonStyle())
         .xuvaFocused(radius: 16)
     }
 }
@@ -787,7 +791,7 @@ private struct VersionCard: View {
             .background(isSelected ? XuvaTheme.focus.opacity(0.12) : XuvaTheme.elevated.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isSelected ? XuvaTheme.focus.opacity(0.42) : XuvaTheme.hairline))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(XuvaNakedButtonStyle())
         .xuvaFocused(radius: 18)
     }
 
@@ -886,7 +890,7 @@ private struct TrackButton: View {
             .background(isSelected ? XuvaTheme.focus.opacity(0.10) : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isSelected ? XuvaTheme.focus.opacity(0.34) : Color.clear))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(XuvaNakedButtonStyle())
         .xuvaFocused(radius: 12)
     }
 }
