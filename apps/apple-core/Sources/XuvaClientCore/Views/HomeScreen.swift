@@ -326,7 +326,9 @@ struct MediaRowView: View {
             .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: XuvaScale.posterRowSpacing(viewport)) {
+                // alignment: .top pins every card's image to the same Y so rows
+                // look even even when one card's meta text is empty (no runtime).
+                HStack(alignment: .top, spacing: XuvaScale.posterRowSpacing(viewport)) {
                     ForEach(Array((row.items ?? []).enumerated()), id: \.element.id) { index, item in
                         PosterTile(item: item, viewport: viewport, ranked: isRanked, rank: index + 1, wide: isWideRow) {
                             action(item)
