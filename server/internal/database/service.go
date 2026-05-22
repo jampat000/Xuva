@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "xuva.db")
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +45,15 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 		return nil, err
 	}
 	return service, nil
+}
+
+func sqliteDSN(dbPath string) string {
+	q := url.Values{}
+	q.Add("_pragma", "busy_timeout=5000")
+	q.Add("_pragma", "foreign_keys=ON")
+	q.Add("_pragma", "journal_mode=WAL")
+	q.Add("_pragma", "synchronous=NORMAL")
+	return dbPath + "?" + q.Encode()
 }
 
 func (s *Service) DB() *sql.DB {
