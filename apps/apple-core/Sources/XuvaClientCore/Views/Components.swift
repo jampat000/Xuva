@@ -3,23 +3,36 @@ import SwiftUI
 public enum XuvaBrand {
     /// Brand gradient — matches `--gradient-primary` in apps/web/svelte
     /// (135° from oklch(0.55 0.22 285) → oklch(0.65 0.20 280) → oklch(0.72 0.18 265)).
-    /// Middle stop is explicit at 0.55 to match the web favicon/Logo.svelte source;
-    /// evenly-distributed stops would place it at 0.50, darkening the centre of the mark.
+    ///
+    /// Colors are expressed in Display P3 for accurate hue on wide-gamut Apple TV
+    /// displays. The original sRGB conversions were computed with a broken tool and
+    /// had incorrect green values; stops 1 and 2 also exceed the sRGB gamut (P3
+    /// stop 2 is still boundary-clipped but is far closer to the intended hue).
+    /// Middle stop is explicit at 0.55 to match the web favicon/Logo.svelte source.
+    ///
+    /// Reference conversions (python oklch → linear-sRGB → XYZ-D65 → linear-P3 → γ):
+    ///   oklch(0.55 0.22 285) → P3 (0.406, 0.316, 0.882)   [sRGB in-gamut]
+    ///   oklch(0.65 0.20 280) → P3 (0.483, 0.476, 0.987)   [sRGB slightly OOG]
+    ///   oklch(0.72 0.18 265) → P3 (0.467, 0.615, 1.000)   [P3 boundary-clipped]
     public static let gradient = LinearGradient(
         gradient: Gradient(stops: [
-            .init(color: Color(red: 0.435, green: 0.259, blue: 0.878), location: 0.00),
-            .init(color: Color(red: 0.529, green: 0.388, blue: 0.941), location: 0.55),
-            .init(color: Color(red: 0.604, green: 0.490, blue: 1.000), location: 1.00),
+            .init(color: Color(.displayP3, red: 0.406, green: 0.316, blue: 0.882), location: 0.00),
+            .init(color: Color(.displayP3, red: 0.483, green: 0.476, blue: 0.987), location: 0.55),
+            .init(color: Color(.displayP3, red: 0.467, green: 0.615, blue: 1.000), location: 1.00),
         ]),
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
+    /// Wordmark gradient — matches `--gradient-primary` (2-stop variant used for
+    /// the "uva" text in the logo lockup, 135° diagonal).
+    ///   oklch(0.58 0.22 285) → P3 (0.438, 0.356, 0.922)   [sRGB in-gamut]
+    ///   oklch(0.70 0.18 265) → P3 (0.444, 0.590, 1.000)   [P3 boundary-clipped]
     public static let wordmarkGradient = LinearGradient(
-        colors: [
-            Color(red: 0.486, green: 0.361, blue: 1.000),
-            Color(red: 0.616, green: 0.478, blue: 1.000)
-        ],
+        gradient: Gradient(stops: [
+            .init(color: Color(.displayP3, red: 0.438, green: 0.356, blue: 0.922), location: 0.00),
+            .init(color: Color(.displayP3, red: 0.444, green: 0.590, blue: 1.000), location: 1.00),
+        ]),
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
