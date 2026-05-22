@@ -34,6 +34,9 @@ private struct DetailContentView: View {
     @State private var selectedAudioID: String?
     @State private var selectedSubtitleID: String?
     @State private var selectedSeasonNumber: Int?
+    #if os(tvOS)
+    @FocusState private var playButtonFocused: Bool
+    #endif
 
     var body: some View {
         GeometryReader { geometry in
@@ -74,6 +77,14 @@ private struct DetailContentView: View {
             }
         }
         #if os(tvOS)
+        // Route initial focus to the Play button rather than backLink.
+        // prefersDefaultFocus isn't reliable when focusSections are present.
+        // We delay 200 ms so the focus engine finishes its own initialization
+        // (which defaults to backLink) before we programmatically override it.
+        .task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            playButtonFocused = true
+        }
         .onExitCommand { store.backToHome() }
         #endif
     }
@@ -346,6 +357,9 @@ private struct DetailContentView: View {
                 Label("Play", systemImage: "play.fill")
             }
             .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
+            #if os(tvOS)
+            .focused($playButtonFocused)
+            #endif
 
             if let trailer = detail.displayTrailerPath, !trailer.isEmpty {
                 Button {
