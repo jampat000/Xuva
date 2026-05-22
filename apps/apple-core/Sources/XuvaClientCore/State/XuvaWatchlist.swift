@@ -72,7 +72,7 @@ public final class XuvaWatchlist: ObservableObject {
 
     public func asHomeItems() -> [HomeItem] {
         items.map { entry in
-            HomeItem(
+            var item = HomeItem(
                 id: entry.id,
                 kind: entry.kind,
                 title: entry.title,
@@ -81,6 +81,9 @@ public final class XuvaWatchlist: ObservableObject {
                 genres: entry.genres,
                 overview: nil
             )
+            item.posterUrl = entry.posterUrl
+            item.backdropUrl = entry.backdropUrl
+            return item
         }
     }
 
