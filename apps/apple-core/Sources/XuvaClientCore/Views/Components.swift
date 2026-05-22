@@ -251,15 +251,16 @@ struct PosterTile: View {
                 }
                 // Below the card: supplementary metadata only — title is already
                 // on the poster so we never repeat it here.
+                // Always reserve at least one line height so all tiles in a row
+                // bottom-align consistently, even when a particular card has no
+                // runtime / subtitle to display.
                 let meta = wide ? wideSubtitle : posterMeta
-                if !meta.isEmpty {
-                    Text(meta)
-                        .font(.system(size: overlaySubSize))
-                        .foregroundStyle(XuvaTheme.muted)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: posterWidth, alignment: .leading)
-                }
+                Text(meta)
+                    .font(.system(size: overlaySubSize))
+                    .foregroundStyle(XuvaTheme.muted)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(minWidth: posterWidth, maxWidth: posterWidth, minHeight: overlaySubSize * 1.4, alignment: .topLeading)
             }
         }
         // PosterTileButtonStyle reads isFocused from inside makeBody — the only
@@ -352,15 +353,31 @@ public struct XuvaPrimaryButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        let h = XuvaScale.buttonHeight(viewport)
-        configuration.label
-            .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .semibold))
-            .foregroundStyle(XuvaTheme.background)
-            .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
-            .frame(height: h)
-            .background(XuvaTheme.text, in: Capsule(style: .continuous))
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .xuvaFocused(radius: h / 2)
+        PrimaryBody(configuration: configuration, viewport: viewport)
+    }
+
+    // Inner View struct so @Environment(\.isFocused) reads the button's own
+    // focus state, not the parent container's (ButtonStyle.makeBody has no
+    // direct environment access — it must delegate to a proper View type).
+    private struct PrimaryBody: View {
+        let configuration: Configuration
+        let viewport: CGSize
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            let h = XuvaScale.buttonHeight(viewport)
+            configuration.label
+                .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .semibold))
+                .foregroundStyle(XuvaTheme.background)
+                .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
+                .frame(height: h)
+                .background(XuvaTheme.text, in: Capsule(style: .continuous))
+                .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.035 : 1))
+                .shadow(color: XuvaTheme.focus.opacity(isFocused ? 0.42 : 0), radius: isFocused ? 26 : 0, x: 0, y: 14)
+                .overlay(Capsule(style: .continuous).stroke(XuvaTheme.focus.opacity(isFocused ? 0.95 : 0), lineWidth: 3))
+                .focusEffectDisabled()
+                .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+        }
     }
 }
 
@@ -371,15 +388,30 @@ public struct XuvaSecondaryButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        let h = XuvaScale.buttonHeight(viewport)
-        configuration.label
-            .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .medium))
-            .foregroundStyle(XuvaTheme.text)
-            .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
-            .frame(height: h)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.15)))
-            .xuvaFocused(radius: h / 2)
+        SecondaryBody(configuration: configuration, viewport: viewport)
+    }
+
+    private struct SecondaryBody: View {
+        let configuration: Configuration
+        let viewport: CGSize
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            let h = XuvaScale.buttonHeight(viewport)
+            configuration.label
+                .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .medium))
+                .foregroundStyle(XuvaTheme.text)
+                .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
+                .frame(height: h)
+                .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).stroke(
+                    isFocused ? XuvaTheme.focus.opacity(0.95) : Color.white.opacity(0.15),
+                    lineWidth: isFocused ? 3 : 1))
+                .scaleEffect(isFocused ? 1.035 : 1)
+                .shadow(color: XuvaTheme.focus.opacity(isFocused ? 0.42 : 0), radius: isFocused ? 26 : 0, x: 0, y: 14)
+                .focusEffectDisabled()
+                .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+        }
     }
 }
 
@@ -390,14 +422,29 @@ public struct XuvaIconButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        let size = XuvaScale.iconButtonSize(viewport)
-        configuration.label
-            .font(.system(size: XuvaScale.buttonFontSize(viewport) * 0.95))
-            .foregroundStyle(XuvaTheme.text)
-            .frame(width: size, height: size)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Circle())
-            .overlay(Circle().stroke(Color.white.opacity(0.10)))
-            .xuvaFocused(radius: size / 2)
+        IconBody(configuration: configuration, viewport: viewport)
+    }
+
+    private struct IconBody: View {
+        let configuration: Configuration
+        let viewport: CGSize
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            let size = XuvaScale.iconButtonSize(viewport)
+            configuration.label
+                .font(.system(size: XuvaScale.buttonFontSize(viewport) * 0.95))
+                .foregroundStyle(XuvaTheme.text)
+                .frame(width: size, height: size)
+                .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Circle())
+                .overlay(Circle().stroke(
+                    isFocused ? XuvaTheme.focus.opacity(0.95) : Color.white.opacity(0.10),
+                    lineWidth: isFocused ? 3 : 1))
+                .scaleEffect(isFocused ? 1.035 : 1)
+                .shadow(color: XuvaTheme.focus.opacity(isFocused ? 0.42 : 0), radius: isFocused ? 26 : 0, x: 0, y: 14)
+                .focusEffectDisabled()
+                .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+        }
     }
 }
 
