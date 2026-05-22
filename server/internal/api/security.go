@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+
+	"github.com/jampat000/Xuva/server/internal/config"
 )
 
 func withSecurity(deps Deps, next http.Handler) http.Handler {
@@ -37,7 +39,7 @@ func applyCORS(deps Deps, w http.ResponseWriter, r *http.Request) bool {
 	if origin == "" {
 		return true
 	}
-	if !originAllowed(deps, origin) {
+	if !originAllowed(deps, r, origin) {
 		return false
 	}
 	w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -48,10 +50,18 @@ func applyCORS(deps Deps, w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func originAllowed(deps Deps, origin string) bool {
+func originAllowed(deps Deps, r *http.Request, origin string) bool {
 	parsed, err := url.Parse(origin)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return false
+	}
+	if sameOrigin(*parsed, requestOrigin(r)) {
+		return true
+	}
+	if canonical, err := config.NormalizeWebOrigin(deps.Config.CanonicalWebOrigin); err == nil && canonical != "" {
+		if strings.EqualFold(canonical, origin) {
+			return true
+		}
 	}
 	for _, allowed := range deps.Config.AllowedOrigins {
 		if strings.EqualFold(strings.TrimSpace(allowed), origin) {

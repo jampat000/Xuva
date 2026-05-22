@@ -39,9 +39,9 @@ import (
 	"github.com/jampat000/Xuva/server/internal/sessions"
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
-	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/thumbnails"
 	"github.com/jampat000/Xuva/server/internal/trailers"
+	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/trending"
 	"github.com/jampat000/Xuva/server/internal/tv"
 )
@@ -59,24 +59,24 @@ type Application struct {
 	Jobs      *jobs.Registry
 	Discovery *discovery.Service
 
-	Libraries *libraries.Service
-	Scanner   *scanner.Service
-	Scans     *scans.Service
-	Probe     *probe.Service
-	Probes    *probes.Service
-	Media     *media.Service
-	Metadata  *metadata.Service
-	Movies    *movies.Service
-	TV        *tv.Service
-	Playback  *playback.Service
-	PlayState *playstate.Service
-	Streaming *streaming.Service
-	Transcode *transcode.Service
-	Subtitles *subtitles.Service
-	Devices   *devices.Service
-	Sessions  *sessions.Service
-	Downloads *downloads.Service
-	Pairing   *pairing.Service
+	Libraries     *libraries.Service
+	Scanner       *scanner.Service
+	Scans         *scans.Service
+	Probe         *probe.Service
+	Probes        *probes.Service
+	Media         *media.Service
+	Metadata      *metadata.Service
+	Movies        *movies.Service
+	TV            *tv.Service
+	Playback      *playback.Service
+	PlayState     *playstate.Service
+	Streaming     *streaming.Service
+	Transcode     *transcode.Service
+	Subtitles     *subtitles.Service
+	Devices       *devices.Service
+	Sessions      *sessions.Service
+	Downloads     *downloads.Service
+	Pairing       *pairing.Service
 	Migration     *migration.Service
 	Trending      *trending.Service
 	Trailers      *trailers.Service
@@ -195,7 +195,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	startRuntimeMaintenance(appCtx, sessionService, transcodeService, probesService, downloadService)
+	pairingService := pairing.NewPersistentService(databaseService)
+	startRuntimeMaintenance(appCtx, sessionService, transcodeService, probesService, downloadService, pairingService)
 	// Start background library automation after sessionService is ready so the
 	// playback-priority coordinator can check for active sessions before each run.
 	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService, sessionService)
@@ -281,35 +282,35 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	chaptersService := chapters.NewService(databaseService.DB(), cfg.FFmpegPath, cfg.FpcalcPath)
 
 	return &Application{
-		Config:    cfg,
-		StartedAt: time.Now().UTC(),
-		cancel:    cancel,
-		Database:  databaseService,
-		Catalog:   catalogService,
-		Auth:      authService,
-		Events:    bus,
-		Observe:   observe,
-		Resources: manager,
-		Jobs:      jobRegistry,
-		Discovery: discoveryService,
-		Libraries: libraryService,
-		Scanner:   scannerService,
-		Scans:     scanService,
-		Probe:     probeService,
-		Probes:    probesService,
-		Media:     media.NewService(),
-		Metadata:  metadataService,
-		Movies:    movieService,
-		TV:        tvService,
-		Playback:  playback.NewService(),
-		PlayState: playStateService,
-		Streaming: streaming.NewService(),
-		Transcode: transcodeService,
-		Subtitles: subtitles.NewService(),
-		Devices:   devices.NewPersistentService(databaseService),
-		Sessions:  sessionService,
-		Downloads: downloadService,
-		Pairing:   pairing.NewService(),
+		Config:        cfg,
+		StartedAt:     time.Now().UTC(),
+		cancel:        cancel,
+		Database:      databaseService,
+		Catalog:       catalogService,
+		Auth:          authService,
+		Events:        bus,
+		Observe:       observe,
+		Resources:     manager,
+		Jobs:          jobRegistry,
+		Discovery:     discoveryService,
+		Libraries:     libraryService,
+		Scanner:       scannerService,
+		Scans:         scanService,
+		Probe:         probeService,
+		Probes:        probesService,
+		Media:         media.NewService(),
+		Metadata:      metadataService,
+		Movies:        movieService,
+		TV:            tvService,
+		Playback:      playback.NewService(),
+		PlayState:     playStateService,
+		Streaming:     streaming.NewService(),
+		Transcode:     transcodeService,
+		Subtitles:     subtitles.NewService(),
+		Devices:       devices.NewPersistentService(databaseService),
+		Sessions:      sessionService,
+		Downloads:     downloadService,
+		Pairing:       pairingService,
 		Migration:     migration.NewService(databaseService, bus),
 		Trending:      trendingService,
 		Trailers:      trailersService,
@@ -319,8 +320,8 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	}, nil
 }
 
-func startRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service) {
-	runRuntimeMaintenance(ctx, sessionService, transcodeService, probesService, downloadService)
+func startRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service, pairingService *pairing.Service) {
+	runRuntimeMaintenance(ctx, sessionService, transcodeService, probesService, downloadService, pairingService)
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
@@ -329,19 +330,22 @@ func startRuntimeMaintenance(ctx context.Context, sessionService *sessions.Servi
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				runRuntimeMaintenance(ctx, sessionService, transcodeService, probesService, downloadService)
+				runRuntimeMaintenance(ctx, sessionService, transcodeService, probesService, downloadService, pairingService)
 			}
 		}
 	}()
 }
 
-func runRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service) {
+func runRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service, pairingService *pairing.Service) {
 	const sessionTTL = 15 * time.Minute
 	const terminalRetention = 24 * time.Hour
 	_, _ = sessionService.Cleanup(ctx, sessionTTL, terminalRetention)
 	_, _ = transcodeService.Cleanup(ctx, terminalRetention)
 	_, _ = probesService.Cleanup(ctx, terminalRetention)
 	_, _ = downloadService.Cleanup(ctx, terminalRetention)
+	if pairingService != nil {
+		_, _ = pairingService.Purge(terminalRetention)
+	}
 }
 
 func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, sessionService *sessions.Service) {
@@ -439,34 +443,34 @@ func ensureRuntimeDirs(cfg config.Config) error {
 
 func (a *Application) Router() http.Handler {
 	return api.NewRouter(api.Deps{
-		Config:    a.Config,
-		StartedAt: a.StartedAt,
-		Database:  a.Database,
-		Auth:      a.Auth,
-		Events:    a.Events,
-		Observe:   a.Observe,
-		Resources: a.Resources,
-		Jobs:      a.Jobs,
-		Discovery: a.Discovery,
-		Libraries: a.Libraries,
-		Scanner:   a.Scanner,
-		Scans:     a.Scans,
-		Catalog:   a.Catalog,
-		Media:     a.Media,
-		Metadata:  a.Metadata,
-		Movies:    a.Movies,
-		TV:        a.TV,
-		Probe:     a.Probe,
-		Probes:    a.Probes,
-		Playback:  a.Playback,
-		PlayState: a.PlayState,
-		Streaming: a.Streaming,
-		Transcode: a.Transcode,
-		Downloads: a.Downloads,
-		Devices:   a.Devices,
-		Sessions:  a.Sessions,
-		Subtitles: a.Subtitles,
-		Pairing:   a.Pairing,
+		Config:        a.Config,
+		StartedAt:     a.StartedAt,
+		Database:      a.Database,
+		Auth:          a.Auth,
+		Events:        a.Events,
+		Observe:       a.Observe,
+		Resources:     a.Resources,
+		Jobs:          a.Jobs,
+		Discovery:     a.Discovery,
+		Libraries:     a.Libraries,
+		Scanner:       a.Scanner,
+		Scans:         a.Scans,
+		Catalog:       a.Catalog,
+		Media:         a.Media,
+		Metadata:      a.Metadata,
+		Movies:        a.Movies,
+		TV:            a.TV,
+		Probe:         a.Probe,
+		Probes:        a.Probes,
+		Playback:      a.Playback,
+		PlayState:     a.PlayState,
+		Streaming:     a.Streaming,
+		Transcode:     a.Transcode,
+		Downloads:     a.Downloads,
+		Devices:       a.Devices,
+		Sessions:      a.Sessions,
+		Subtitles:     a.Subtitles,
+		Pairing:       a.Pairing,
 		Trending:      a.Trending,
 		Trailers:      a.Trailers,
 		Thumbnails:    a.Thumbnails,

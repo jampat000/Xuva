@@ -2,82 +2,198 @@ import SwiftUI
 
 public struct PairingScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
-    @FocusState private var focusedControl: PairingFocus?
+    @StateObject private var discovery = XuvaDiscovery()
+    @State private var showManualEntry = false
+    @State private var discoveryTimedOut = false
 
     public init() {}
 
     public var body: some View {
-        pairingBody
-    }
-
-    private var pairingBody: some View {
         GeometryReader { geometry in
+            let viewport = geometry.size
             ScrollView {
-                let isCompact = geometry.size.width < 700
-                let controls: AnyLayout = if isCompact {
-                    AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
-                } else {
-                    AnyLayout(HStackLayout(spacing: 14))
-                }
-
-                VStack(alignment: .leading, spacing: isCompact ? 22 : 28) {
-                    XuvaLogo()
-                    Text("Pair this device to your Xuva library")
-                        .font(.system(size: titleSize(for: geometry.size), weight: .bold, design: .rounded))
+                VStack(alignment: .leading, spacing: viewport.width < 700 ? 22 : 32) {
+                    XuvaLogo(viewport: viewport)
+                    Text("Connect to Xuva")
+                        .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.55, weight: .semibold, design: .default))
+                        .tracking(XuvaScale.heroTitleSize(viewport) * 0.55 * -0.045)
                         .foregroundStyle(XuvaTheme.text)
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.72)
-                        .frame(maxWidth: isCompact ? .infinity : 760, alignment: .leading)
-                    Text("Connect to your local server, approve the device in Xuva, then browse and play from the couch. No admin surfaces live in this app.")
-                        .font(isCompact ? .body : .title3)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+                    Text(introCopy)
+                        .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                         .foregroundStyle(XuvaTheme.muted)
-                        .frame(maxWidth: isCompact ? .infinity : 720, alignment: .leading)
+                        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
 
-                    controls {
-                        serverURLControl
-
-                        Button {
-                            Task { await store.connect() }
-                        } label: {
-                            buttonLabel(title: store.isBusy ? "Connecting..." : "Connect", systemImage: store.isBusy ? "hourglass" : "play.fill")
-                        }
-                        .xuvaTVPrimaryActionStyle()
-                        .focused($focusedControl, equals: .connect)
-                        .xuvaDefaultKeyboardAction()
-                        .disabled(store.isBusy)
-                    }
-                    .frame(maxWidth: isCompact ? .infinity : 1280, alignment: .leading)
-
-                    if store.bootstrap != nil {
-                        pairingCard
+                    if store.bootstrap == nil && store.pairing == nil {
+                        // Stage 1: pick a discovered server or fall back to manual URL.
+                        discoverySection(viewport: viewport)
+                        manualSection(viewport: viewport)
+                    } else {
+                        // Stage 2: pairing card with code.
+                        pairingCard(viewport: viewport)
                     }
 
-                    connectionHint
+                    connectionHint(viewport: viewport)
 
                     if let error = store.errorMessage {
                         Text(error)
-                            .font(.callout)
+                            .font(.system(size: XuvaScale.metaFontSize(viewport)))
                             .foregroundStyle(XuvaTheme.danger)
                             .padding(16)
                             .background(XuvaTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
                     }
                 }
-                .padding(.horizontal, horizontalPadding(for: geometry.size))
-                .padding(.vertical, isCompact ? 48 : 72)
+                .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                .padding(.vertical, viewport.width < 700 ? 36 : viewport.height * 0.08)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        .onAppear {
-            focusedControl = .connect
         }
         .task(id: store.pairing?.stableID) {
             await pollPairingWhilePending()
         }
+        .onAppear {
+            discovery.start()
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if discovery.servers.isEmpty {
+                    discoveryTimedOut = true
+                    showManualEntry = true
+                }
+            }
+        }
+        .onDisappear { discovery.stop() }
+    }
+
+    // MARK: – Discovery
+
+    @ViewBuilder
+    private func discoverySection(viewport: CGSize) -> some View {
+        let labelSize = XuvaScale.eyebrowFontSize(viewport) + 1
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .foregroundStyle(XuvaTheme.primaryGlow)
+                Text("Servers on your network")
+                    .font(.system(size: labelSize, weight: .semibold))
+                    .tracking(labelSize * 0.20)
+                    .textCase(.uppercase)
+                    .foregroundStyle(XuvaTheme.mutedText)
+                if discovery.isBrowsing && discovery.servers.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(XuvaTheme.mutedText)
+                }
+                Spacer()
+            }
+            if discovery.servers.isEmpty {
+                emptyDiscoveryHint(viewport: viewport)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(discovery.servers) { server in
+                        discoveryRow(server: server, viewport: viewport)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
     }
 
     @ViewBuilder
-    private var serverURLControl: some View {
-        TextField("Server URL", text: $store.serverText)
+    private func discoveryRow(server: DiscoveredServer, viewport: CGSize) -> some View {
+        Button {
+            Task { await store.selectDiscoveredServer(server) }
+        } label: {
+            HStack(spacing: 16) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(XuvaTheme.action.opacity(0.18))
+                    Image(systemName: "tv.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(XuvaTheme.focus)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(server.name)
+                        .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .semibold))
+                        .foregroundStyle(XuvaTheme.text)
+                    Text(server.baseURL.absoluteString)
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 2, design: .monospaced))
+                        .foregroundStyle(XuvaTheme.mutedText)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(XuvaTheme.mutedText)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(XuvaTheme.surface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(XuvaTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .xuvaFocused(radius: 18)
+    }
+
+    @ViewBuilder
+    private func emptyDiscoveryHint(viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(discoveryTimedOut ? "Couldn't find Xuva on this network" : "Looking for Xuva servers on this network…")
+                .font(.system(size: XuvaScale.bodyFontSize(viewport)))
+                .foregroundStyle(XuvaTheme.muted)
+            Text(discoveryTimedOut
+                 ? "Your network may block local discovery. Enter your server's address below to continue."
+                 : "Make sure your Xuva server is running and connected to the same network.")
+                .font(.system(size: XuvaScale.metaFontSize(viewport)))
+                .foregroundStyle(XuvaTheme.mutedText)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(XuvaTheme.surface.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(XuvaTheme.hairline))
+    }
+
+    // MARK: – Manual URL (collapsed by default)
+
+    @ViewBuilder
+    private func manualSection(viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                showManualEntry.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: showManualEntry ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(showManualEntry ? "Hide manual address" : "Enter address manually")
+                        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .medium))
+                }
+                .foregroundStyle(XuvaTheme.mutedText)
+            }
+            .buttonStyle(.plain)
+
+            if showManualEntry {
+                VStack(alignment: .leading, spacing: 12) {
+                    serverURLControl(viewport: viewport)
+                    Button {
+                        Task { await store.connect() }
+                    } label: {
+                        buttonLabel(title: store.isBusy ? "Connecting…" : "Connect", systemImage: store.isBusy ? "hourglass" : "play.fill")
+                    }
+                    .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
+                    .xuvaDefaultKeyboardAction()
+                    .disabled(store.isBusy)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+    }
+
+    private func serverURLControl(viewport: CGSize) -> some View {
+        TextField("http://10.0.0.x:8097", text: $store.serverText)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .keyboardType(.URL)
@@ -86,90 +202,88 @@ public struct PairingScreen: View {
             .onSubmit {
                 Task { await store.connect() }
             }
-            .font(.title3)
+            .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .medium))
             .foregroundStyle(XuvaTheme.text)
-            .padding(.horizontal, 18)
-            .frame(height: 58)
-            .background(XuvaTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(XuvaTheme.hairline))
+            .padding(.horizontal, 22)
+            .frame(height: XuvaScale.buttonHeight(viewport))
+            .background(Color.white.opacity(0.06), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(XuvaTheme.hairline))
     }
 
-    private var pairingCard: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Label(store.bootstrap?.server?.name ?? "Xuva server found", systemImage: "checkmark.seal.fill")
-                .font(.headline)
+    // MARK: – Pairing card
+
+    private func pairingCard(viewport: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Label(store.bootstrap?.server?.name ?? "Xuva connected", systemImage: "checkmark.seal.fill")
+                .font(.system(size: XuvaScale.bodyFontSize(viewport), weight: .bold))
                 .foregroundStyle(XuvaTheme.good)
 
             if let code = store.pairing?.code {
-                Text(code)
-                    .font(.system(size: codeSize, weight: .black, design: .rounded))
-                    .tracking(8)
-                Text("Approve this code in the Xuva web app, then the client will continue to the media library.")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pairing code")
+                        .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
+                        .tracking(XuvaScale.eyebrowFontSize(viewport) * 0.20)
+                        .textCase(.uppercase)
+                        .foregroundStyle(XuvaTheme.mutedText)
+                    Text(code)
+                        .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.85, weight: .black, design: .rounded))
+                        .tracking(10)
+                        .foregroundStyle(XuvaTheme.text)
+                }
+                Text("Open Xuva on your computer → Settings → Devices → Approve.")
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
-                Text("Waiting for approval...")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(XuvaTheme.primaryGlow)
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(XuvaTheme.primaryGlow)
+                    Text("Waiting for approval…")
+                        .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))
+                        .foregroundStyle(XuvaTheme.primaryGlow)
+                }
             } else {
-                Text("Create a local pairing code for this device.")
+                Text("Generating pairing code…")
+                    .font(.system(size: XuvaScale.bodyFontSize(viewport)))
                     .foregroundStyle(XuvaTheme.muted)
             }
 
             HStack(spacing: 12) {
-                Button {
-                    Task {
-                        if store.pairing == nil {
-                            await store.startPairing()
-                        } else {
-                            await store.pollPairingOnce()
-                        }
+                if store.pairing != nil {
+                    Button {
+                        Task { await store.pollPairingOnce() }
+                    } label: {
+                        buttonLabel(title: "Check approval", systemImage: "arrow.clockwise")
                     }
-                } label: {
-                    buttonLabel(
-                        title: store.isBusy ? "Working..." : (store.pairing == nil ? "Create pairing code" : "Check approval"),
-                        systemImage: store.isBusy ? "hourglass" : "key.fill"
-                    )
+                    .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
+                    .disabled(store.isBusy)
                 }
-                .xuvaTVPrimaryActionStyle()
-                .focused($focusedControl, equals: .pair)
-                .xuvaDefaultKeyboardAction()
-                .disabled(store.isBusy)
-
-                Button {
-                    Task { await store.loadHome() }
-                } label: {
-                    buttonLabel(title: "Try home", systemImage: "house.fill")
-                }
-                .xuvaTVSecondaryActionStyle()
-                .focused($focusedControl, equals: .home)
-                .disabled(store.isBusy)
-
                 Button {
                     store.resetConnection()
                 } label: {
-                    buttonLabel(title: "Reset", systemImage: "arrow.counterclockwise")
+                    buttonLabel(title: "Pick a different server", systemImage: "arrow.counterclockwise")
                 }
-                .xuvaTVSecondaryActionStyle()
+                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
                 .disabled(store.isBusy)
             }
         }
-        .padding(28)
-        .frame(maxWidth: 760, alignment: .leading)
-        .background(XuvaTheme.surface.opacity(0.86), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(XuvaTheme.hairline))
+        .padding(32)
+        .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+        .background(XuvaTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(XuvaTheme.hairline))
     }
 
     @ViewBuilder
-    private var connectionHint: some View {
+    private func connectionHint(viewport: CGSize) -> some View {
         if store.connectionState == .needsAuthCredential {
             Label(
-                "This server is protected and did not accept the saved native credential. Reset this device and pair again from the Xuva web app.",
+                "Saved access was rejected. Reset and pair again.",
                 systemImage: "lock.shield"
             )
-            .font(.callout)
+            .font(.system(size: XuvaScale.metaFontSize(viewport)))
             .foregroundStyle(XuvaTheme.warn)
             .padding(16)
-            .background(XuvaTheme.warn.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(maxWidth: 760, alignment: .leading)
+            .background(XuvaTheme.warn.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
         }
     }
 
@@ -177,30 +291,14 @@ public struct PairingScreen: View {
         Label(title, systemImage: systemImage)
             .labelStyle(.titleAndIcon)
             .lineLimit(1)
-            .minimumScaleFactor(0.82)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
-    private var codeSize: CGFloat {
+    private var introCopy: String {
         #if os(tvOS)
-        return 72
+        return "Pick your Xuva server below — we'll auto-request a pairing code. Approve it once from your computer and the library opens straight to movies and shows."
         #else
-        return 56
-        #endif
-    }
-
-    private func titleSize(for size: CGSize) -> CGFloat {
-        #if os(tvOS)
-        return size.width > 900 ? 64 : 46
-        #else
-        return size.width > 700 ? 46 : 40
-        #endif
-    }
-
-    private func horizontalPadding(for size: CGSize) -> CGFloat {
-        #if os(tvOS)
-        return size.width > 900 ? 96 : 44
-        #else
-        return size.width > 700 ? 44 : 28
+        return "Pick your Xuva server below — we'll auto-request a pairing code. Approve it once from your computer and the library opens straight to movies and shows."
         #endif
     }
 
@@ -217,23 +315,7 @@ public struct PairingScreen: View {
     }
 }
 
-private enum PairingFocus {
-    case connect
-    case pair
-    case home
-}
-
 private extension View {
-    @ViewBuilder
-    func xuvaTVPrimaryActionStyle() -> some View {
-        self.buttonStyle(XuvaPrimaryButtonStyle())
-    }
-
-    @ViewBuilder
-    func xuvaTVSecondaryActionStyle() -> some View {
-        self.buttonStyle(XuvaSecondaryButtonStyle())
-    }
-
     @ViewBuilder
     func xuvaDefaultKeyboardAction() -> some View {
         #if os(tvOS)

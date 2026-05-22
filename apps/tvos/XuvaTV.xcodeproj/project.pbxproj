@@ -9,11 +9,13 @@
 /* Begin PBXBuildFile section */
 		TV0000000000000000000010 /* XuvaTVApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV0000000000000000000006 /* XuvaTVApp.swift */; };
 		TV0000000000000000000011 /* XuvaClientCore in Frameworks */ = {isa = PBXBuildFile; productRef = TV0000000000000000000020 /* XuvaClientCore */; };
+		TV0000000000000000000030 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TV0000000000000000000031 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		TV0000000000000000000001 /* Xuva TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Xuva TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		TV0000000000000000000006 /* XuvaTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XuvaTVApp.swift; sourceTree = "<group>"; };
+		TV0000000000000000000031 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,6 +50,7 @@
 			isa = PBXGroup;
 			children = (
 				TV0000000000000000000006 /* XuvaTVApp.swift */,
+				TV0000000000000000000031 /* Assets.xcassets */,
 			);
 			path = Sources/XuvaTVApp;
 			sourceTree = "<group>";
@@ -61,6 +64,7 @@
 			buildPhases = (
 				TV0000000000000000000008 /* Sources */,
 				TV0000000000000000000009 /* Frameworks */,
+				TV0000000000000000000032 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -110,6 +114,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		TV0000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TV0000000000000000000030 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		TV0000000000000000000008 /* Sources */ = {
@@ -244,6 +259,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 8V56XS8759;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Sources/XuvaTVApp/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Xuva;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Xuva connects to your local media server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -269,6 +286,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 8V56XS8759;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Sources/XuvaTVApp/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Xuva;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Xuva connects to your local media server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

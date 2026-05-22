@@ -119,8 +119,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                     // readiness probe, no PII
 	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))    // pre-login server identity
 	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))    // mDNS / local discovery info
-	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps)) // unpaired clients poll their own request
-	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))     // unpaired clients submit a request
+	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))       // unpaired clients poll their own request
+	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))           // unpaired clients submit a request
+	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps))    // client withdraws its own pending request
 	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))       // first-run admin create
 	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))               // sign in
 	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))            // first-run wizard gate, no PII
@@ -249,7 +250,34 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/playback/route", playbackRouteHandler(deps))
 	handleProtected(mux, deps, "GET /play/{id}", playerHandler(deps))
 	mux.Handle("GET /", webRootHandler(deps))
-	return withObservability(deps, withSecurity(deps, withResolvedSession(deps, mux)))
+	return withObservability(deps, withCanonicalWebOrigin(deps, withSecurity(deps, withResolvedSession(deps, mux))))
+}
+
+func withCanonicalWebOrigin(deps Deps, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !isHistoryRoutePath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin, ok := canonicalWebOriginForRequest(r, currentConfig(deps))
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		currentOrigin := requestOrigin(r)
+		if sameOrigin(currentOrigin, origin) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		target := *r.URL
+		target.Scheme = origin.Scheme
+		target.Host = origin.Host
+		http.Redirect(w, r, target.String(), http.StatusTemporaryRedirect)
+	})
 }
 
 func webRootHandler(deps Deps) http.Handler {
@@ -270,16 +298,27 @@ func webRootHandler(deps Deps) http.Handler {
 		isAdmin := role == "admin"
 
 		if !isSignedIn {
+			needsBootstrap := false
+			if deps.Auth != nil {
+				if required, err := deps.Auth.RequiresBootstrap(r.Context()); err == nil {
+					needsBootstrap = required
+				}
+			}
+			if needsBootstrap {
+				if normalizedPath == "/setup" {
+					root.ServeHTTP(w, r)
+					return
+				}
+				http.Redirect(w, r, "/setup", http.StatusTemporaryRedirect)
+				return
+			}
 			if normalizedPath == "/signin" {
 				root.ServeHTTP(w, r)
 				return
 			}
-			if normalizedPath == "/setup-wizard" {
-				needsBootstrap, err := deps.Auth.RequiresBootstrap(r.Context())
-				if err == nil && needsBootstrap {
-					root.ServeHTTP(w, r)
-					return
-				}
+			if normalizedPath == "/setup" || normalizedPath == "/setup-wizard" {
+				http.Redirect(w, r, "/signin", http.StatusTemporaryRedirect)
+				return
 			}
 			http.Redirect(w, r, "/signin", http.StatusTemporaryRedirect)
 			return
@@ -306,6 +345,10 @@ func isHistoryRoutePath(requestPath string) bool {
 	}
 	if strings.HasPrefix(requestPath, "/api/") ||
 		strings.HasPrefix(requestPath, "/_app/") ||
+		strings.HasPrefix(requestPath, "/@vite/") ||
+		strings.HasPrefix(requestPath, "/@fs/") ||
+		strings.HasPrefix(requestPath, "/src/") ||
+		strings.HasPrefix(requestPath, "/node_modules/") ||
 		strings.HasPrefix(requestPath, "/legacy/") ||
 		strings.HasPrefix(requestPath, "/next/") {
 		return false
@@ -1027,6 +1070,91 @@ func requestSecure(r *http.Request) bool {
 	return r.TLS != nil
 }
 
+func requestOrigin(r *http.Request) url.URL {
+	return url.URL{Scheme: requestScheme(r), Host: strings.TrimSpace(r.Host)}
+}
+
+func requestScheme(r *http.Request) string {
+	if requestSecure(r) {
+		return "https"
+	}
+	return "http"
+}
+
+func canonicalWebOriginForRequest(r *http.Request, cfg config.Config) (url.URL, bool) {
+	if explicit, err := config.NormalizeWebOrigin(cfg.CanonicalWebOrigin); err == nil && explicit != "" {
+		parsed, err := url.Parse(explicit)
+		if err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			return *parsed, true
+		}
+	}
+
+	host, port := splitRequestHost(r.Host)
+	if port == "" {
+		_, port, _ = net.SplitHostPort(strings.TrimSpace(cfg.HTTPAddr))
+	}
+	if port == "" {
+		port = "8097"
+	}
+
+	ip := net.ParseIP(host)
+	if !config.HTTPAddrLoopbackOnly(cfg.HTTPAddr) && (ip != nil || host == "localhost") {
+		name := osHostnameForURL()
+		if name == "" {
+			return url.URL{}, false
+		}
+		return url.URL{Scheme: requestScheme(r), Host: net.JoinHostPort(name, port)}, true
+	}
+
+	if host == "127.0.0.1" || host == "::1" {
+		return url.URL{Scheme: requestScheme(r), Host: net.JoinHostPort("localhost", port)}, true
+	}
+
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
+		return url.URL{}, false
+	}
+	name := osHostnameForURL()
+	if name == "" {
+		return url.URL{}, false
+	}
+	return url.URL{Scheme: requestScheme(r), Host: net.JoinHostPort(name, port)}, true
+}
+
+func canonicalWebOriginString(r *http.Request, cfg config.Config) string {
+	origin, ok := canonicalWebOriginForRequest(r, cfg)
+	if !ok {
+		return requestBaseURL(r, cfg.HTTPAddr)
+	}
+	return origin.String()
+}
+
+func sameOrigin(a url.URL, b url.URL) bool {
+	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
+}
+
+func osHostnameForURL() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	name = strings.TrimSpace(strings.TrimSuffix(name, "."))
+	if name == "" || strings.ContainsAny(name, "/\\:?#[]@") {
+		return ""
+	}
+	return name
+}
+
+func splitRequestHost(hostport string) (string, string) {
+	host := strings.TrimSpace(hostport)
+	if host == "" {
+		return "", ""
+	}
+	if parsedHost, port, err := net.SplitHostPort(host); err == nil {
+		return strings.ToLower(strings.Trim(strings.TrimSpace(parsedHost), "[]")), port
+	}
+	return strings.ToLower(strings.Trim(strings.TrimSpace(host), "[]")), ""
+}
+
 func hasHeaderAuthToken(r *http.Request) bool {
 	if strings.TrimSpace(r.Header.Get("X-Auth-Token")) != "" {
 		return true
@@ -1171,12 +1299,16 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"server": map[string]any{
-				"product":      "xuva",
-				"name":         configDisplayName(cfg.ServerName),
-				"baseUrl":      requestBaseURL(r, cfg.HTTPAddr),
-				"httpAddr":     cfg.HTTPAddr,
-				"lanAddresses": lanAddresses(cfg.HTTPAddr),
-				"startedAt":    startedAt.UTC().Format(time.RFC3339),
+				"product":            "xuva",
+				"name":               configDisplayName(cfg.ServerName),
+				"displayName":        configDisplayName(cfg.ServerName),
+				"hostName":           osHostnameForURL(),
+				"baseUrl":            requestBaseURL(r, cfg.HTTPAddr),
+				"webUrl":             canonicalWebOriginString(r, cfg),
+				"canonicalWebOrigin": cfg.CanonicalWebOrigin,
+				"httpAddr":           cfg.HTTPAddr,
+				"lanAddresses":       lanAddresses(cfg.HTTPAddr),
+				"startedAt":          startedAt.UTC().Format(time.RFC3339),
 			},
 			"auth": map[string]any{
 				"required":          authRequired,
@@ -1234,16 +1366,26 @@ func discoveryStatusHandler(deps Deps) http.HandlerFunc {
 			Enabled:     cfg.DiscoveryEnabled,
 			ServiceName: configDisplayName(cfg.ServerName),
 			ServiceType: "_xuva._tcp.local.",
+			HostName:    osHostnameForURL(),
+			WebURL:      canonicalWebOriginString(r, cfg),
 			Note:        "Local discovery is not running.",
 		}
 		if deps.Discovery != nil {
 			status = deps.Discovery.Status()
+			if status.HostName == "" {
+				status.HostName = osHostnameForURL()
+			}
+			if status.WebURL == "" {
+				status.WebURL = canonicalWebOriginString(r, cfg)
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"enabled":     status.Enabled,
 			"running":     status.Running,
 			"serviceName": status.ServiceName,
 			"serviceType": status.ServiceType,
+			"hostName":    status.HostName,
+			"webUrl":      status.WebURL,
 			"port":        status.Port,
 			"txtRecords":  status.TXTRecords,
 			"lastError":   status.LastError,
@@ -3970,6 +4112,19 @@ func settingsUpdateHandler(deps Deps) http.HandlerFunc {
 			}
 			updated.ServerName = normalized
 		}
+		if value, ok := fields["canonicalWebOrigin"]; ok {
+			var origin string
+			if err := json.Unmarshal(value, &origin); err != nil {
+				writeError(w, http.StatusBadRequest, "canonical web origin must be text")
+				return
+			}
+			normalized, err := config.NormalizeWebOrigin(origin)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			updated.CanonicalWebOrigin = normalized
+		}
 		mergeString(&updated.HTTPAddr, request.HTTPAddr)
 		mergeString(&updated.DataDir, request.DataDir)
 		mergeString(&updated.TranscodeDir, request.TranscodeDir)
@@ -4612,6 +4767,7 @@ func settingsPayload(cfg config.Config) map[string]any {
 	return map[string]any{
 		"serverName":             configDisplayName(cfg.ServerName),
 		"httpAddr":               cfg.HTTPAddr,
+		"canonicalWebOrigin":     cfg.CanonicalWebOrigin,
 		"dataDir":                cfg.DataDir,
 		"transcodeDir":           cfg.TranscodeDir,
 		"downloadsDir":           cfg.DownloadsDir,
@@ -6758,6 +6914,15 @@ func approvedDeviceRevokeHandler(deps Deps) http.HandlerFunc {
 			}
 			return
 		}
+		// Kill the auth session that was issued at pairing time so the
+		// revoked device's cached X-Auth-Token immediately stops working.
+		// Without this the device status flips to revoked but the token
+		// still validates because the auth layer checks the session row.
+		if deps.Auth != nil && !deps.Auth.Disabled() && strings.TrimSpace(item.AuthSessionID) != "" {
+			if err := deps.Auth.RevokeSessionID(r.Context(), item.AuthSessionID); err != nil {
+				slog.Warn("device revoke could not invalidate session", "deviceId", item.DeviceID, "sessionId", item.AuthSessionID, "err", err)
+			}
+		}
 		publishOperationalEvent(deps, r, "device.revoked", map[string]any{
 			"deviceId":      item.DeviceID,
 			"displayName":   item.DisplayName,
@@ -6821,6 +6986,44 @@ func pairingListHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+// pairingCancelHandler lets an unpaired client withdraw its own pending
+// pairing request when the user resets the flow. Authorization is by
+// device identity (the deviceId from the original Create) — no admin
+// session required because the client legitimately owns the row.
+func pairingCancelHandler(deps Deps) http.HandlerFunc {
+	type request struct {
+		DeviceID string `json:"deviceId"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Pairing == nil {
+			writeError(w, http.StatusServiceUnavailable, "pairing is not available")
+			return
+		}
+		id := r.PathValue("id")
+		// Accept deviceId from either JSON body or query parameter so AVPlayer-
+		// style clients without a body can still call it.
+		var payload request
+		_ = decodeJSON(w, r, &payload)
+		deviceID := strings.TrimSpace(firstNonEmpty(payload.DeviceID, r.URL.Query().Get("deviceId")))
+		if deviceID == "" {
+			writeError(w, http.StatusBadRequest, "deviceId required")
+			return
+		}
+		if err := deps.Pairing.Cancel(id, deviceID); err != nil {
+			switch err {
+			case pairing.ErrNotFound:
+				writeError(w, http.StatusNotFound, "pairing request not found")
+			case pairing.ErrClosed:
+				writeError(w, http.StatusConflict, "pairing request is already approved")
+			default:
+				writeError(w, http.StatusInternalServerError, "cancel failed")
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func pairingApproveHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		closePairingRequest(w, r, deps, true)
@@ -6855,8 +7058,6 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		switch err {
 		case pairing.ErrNotFound:
 			writeError(w, http.StatusNotFound, "pairing request not found")
-		case pairing.ErrExpired:
-			writeError(w, http.StatusGone, "pairing request expired")
 		case pairing.ErrClosed:
 			writeError(w, http.StatusConflict, "pairing request is already closed")
 		default:
@@ -6895,14 +7096,28 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 			writeError(w, http.StatusInternalServerError, "pairing credential update failed")
 			return
 		}
+		// Link the freshly-issued session to the approved-device row so a
+		// later Revoke can invalidate the token (not just flip the device
+		// status, which leaves the cached X-Auth-Token still working).
+		if deps.Devices != nil {
+			_ = deps.Devices.AttachSession(r.Context(), item.DeviceID, session.ID)
+		}
 		item = credentialed
 	}
-	publishOperationalEvent(deps, r, "pairing.request."+item.Status, map[string]any{
+	eventStatus := item.Status
+	if !approve {
+		eventStatus = "denied"
+	}
+	publishOperationalEvent(deps, r, "pairing.request."+eventStatus, map[string]any{
 		"pairingId":     item.ID,
 		"clientProfile": item.ClientProfile,
 		"deviceName":    item.DeviceName,
 		"deviceId":      item.DeviceID,
 	})
+	if !approve {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	writeJSON(w, http.StatusOK, item)
 }
 

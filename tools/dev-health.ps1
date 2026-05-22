@@ -11,14 +11,15 @@ function Test-UrlUp {
 	}
 }
 
+$webDevPort = if ([string]::IsNullOrWhiteSpace($env:XUVA_WEB_DEV_PORT)) { "5174" } else { $env:XUVA_WEB_DEV_PORT }
 $goUp = Test-UrlUp "http://127.0.0.1:8097/"
-$viteUp = Test-UrlUp "http://127.0.0.1:5173/"
+$viteUp = Test-UrlUp "http://127.0.0.1:$webDevPort/"
 
 $goState = if ($goUp) { "UP" } else { "DOWN" }
 $viteState = if ($viteUp) { "UP" } else { "DOWN" }
 
 Write-Host "Go server (8097): $goState"
-Write-Host "Vite dev (5173): $viteState"
+Write-Host "Vite dev ($webDevPort): $viteState"
 
 if ($goUp -and $viteUp) {
 	Write-Host "Dev mode status: HEALTHY (WebDev live proxy likely active)"

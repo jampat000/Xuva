@@ -35,7 +35,9 @@ Playback preference order:
 ```text
 apps/
   android-tv/        Native Android TV client.
-  apple-tv/          Native Apple TV client.
+  apple-core/        Shared SwiftUI client code for Apple platforms.
+  ios/               Native iPhone/iPad client.
+  tvos/              Native Apple TV client.
   web/               Web admin and browser player.
 docs/                Product, architecture, and business planning.
 packages/

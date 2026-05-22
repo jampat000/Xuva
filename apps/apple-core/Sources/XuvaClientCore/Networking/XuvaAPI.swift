@@ -8,11 +8,11 @@ public enum XuvaAPIError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "The Xuva server URL is not valid."
+            return "The Xuva address is not valid."
         case let .badStatus(code, body):
-            return body.isEmpty ? "Server returned HTTP \(code)." : "Server returned HTTP \(code): \(body)"
+            return body.isEmpty ? "Connection returned HTTP \(code)." : "Connection returned HTTP \(code): \(body)"
         case .missingStreamURL:
-            return "The server did not return a playable stream URL."
+            return "Xuva could not prepare a playable stream URL."
         }
     }
 }
@@ -43,6 +43,11 @@ public final class XuvaAPI: @unchecked Sendable {
         try await send("GET", path: "/api/pairing/requests/\(id)")
     }
 
+    public func cancelPairing(id: String, deviceId: String) async throws {
+        struct Body: Codable { let deviceId: String }
+        let _: EmptyResponse = try await send("DELETE", path: "/api/pairing/requests/\(id)", body: Body(deviceId: deviceId))
+    }
+
     public func home() async throws -> ClientHomeResponse {
         try await send("GET", path: "/api/client/home?clientProfile=\(XuvaClientProfile.current)")
     }
@@ -52,17 +57,33 @@ public final class XuvaAPI: @unchecked Sendable {
         return try await send("GET", path: "/api/client/\(normalized)/\(id)")
     }
 
-    public func startPlayback(mediaSourceId: String, positionSeconds: Int = 0) async throws -> PlaybackStartResponse {
+    public func metadata(kind: String, id: String) async throws -> MetadataRecordsResponse {
+        let normalized = kind.lowercased().contains("series") || kind.lowercased().contains("show") ? "series" : "movie"
+        return try await send("GET", path: "/api/metadata/\(normalized)/\(id)")
+    }
+
+    public func startPlayback(
+        mediaSourceId: String,
+        positionSeconds: Int = 0,
+        audioTrackIndex: Int? = nil,
+        subtitleTrackIndex: Int? = nil,
+        subtitleTrackActive: Bool? = nil
+    ) async throws -> PlaybackStartResponse {
         let body = PlaybackStartRequest(
             mediaSourceId: mediaSourceId,
             clientProfile: XuvaClientProfile.current,
             positionSeconds: positionSeconds,
-            audioTrackIndex: nil,
-            subtitleTrackIndex: nil,
-            subtitleTrackActive: nil,
+            audioTrackIndex: audioTrackIndex,
+            subtitleTrackIndex: subtitleTrackIndex,
+            subtitleTrackActive: subtitleTrackActive,
             supportsAdaptive: true
         )
         return try await send("POST", path: "/api/client/playback/start", body: body)
+    }
+
+    public func requestStreamToken(mediaSourceId: String, sessionId: String, deviceId: String) async throws -> StreamTokenResponse {
+        let body = StreamTokenRequest(sessionId: sessionId, deviceId: deviceId)
+        return try await send("POST", path: "/api/media-sources/\(mediaSourceId)/stream-token", body: body)
     }
 
     public func heartbeat(path: String, positionSeconds: Int, isPaused: Bool) async throws {
