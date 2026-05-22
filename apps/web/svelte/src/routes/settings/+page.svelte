@@ -303,6 +303,7 @@
   // ─── Editable config snapshot ─────────────────────────────────────────────
   let editConfig = $state({
     serverName: '',
+    canonicalWebOrigin: '',
     country: '',
     timezone: '',
     metadataLanguage: 'en-US',
@@ -327,6 +328,7 @@
     const c = s.config ?? {};
     editConfig = {
       serverName: c.serverName ?? '',
+      canonicalWebOrigin: c.canonicalWebOrigin ?? '',
       country: c.country ?? '',
       timezone: c.timezone ?? '',
       metadataLanguage: c.metadataLanguage ?? 'en-US',
@@ -353,6 +355,7 @@
   // ─── Per-section dirty checks ──────────────────────────────────────────────
   const generalDirty = $derived(
     editConfig.serverName        !== (settingsData?.config?.serverName        ?? '') ||
+    editConfig.canonicalWebOrigin !== (settingsData?.config?.canonicalWebOrigin ?? '') ||
     editConfig.country           !== (settingsData?.config?.country           ?? '') ||
     editConfig.timezone          !== (settingsData?.config?.timezone          ?? '') ||
     editConfig.metadataLanguage  !== (settingsData?.config?.metadataLanguage  ?? 'en-US')
@@ -484,6 +487,7 @@
     switch (active) {
       case 'general':
         editConfig.serverName       = c.serverName       ?? '';
+        editConfig.canonicalWebOrigin = c.canonicalWebOrigin ?? '';
         editConfig.country          = c.country          ?? '';
         editConfig.timezone         = c.timezone         ?? '';
         editConfig.metadataLanguage = c.metadataLanguage ?? 'en-US';
@@ -520,6 +524,7 @@
         generalSaving = true;
         const r = await updateSettings({
           serverName:       editConfig.serverName,
+          canonicalWebOrigin: editConfig.canonicalWebOrigin || '',
           country:          editConfig.country          || '',
           timezone:         editConfig.timezone         || '',
           metadataLanguage: editConfig.metadataLanguage || 'en-US',
@@ -2576,7 +2581,7 @@
               <div>
                 <h3 class="font-serif-display text-lg tracking-tight">mDNS discovery</h3>
                 <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                  Xuva advertises itself on your local network so nearby clients can find it automatically.
+                  Xuva advertises a friendly instance name plus the network address clients should use to connect.
                 </p>
               </div>
               <div class="space-y-4">
@@ -2598,6 +2603,18 @@
                       <div class="flex items-center justify-between text-sm">
                         <span class="text-muted-foreground">Service name</span>
                         <span class="font-mono text-foreground/80">{discoveryStatus.serviceName}</span>
+                      </div>
+                    {/if}
+                    {#if discoveryStatus.hostName}
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Network host name</span>
+                        <span class="font-mono text-foreground/80">{discoveryStatus.hostName}</span>
+                      </div>
+                    {/if}
+                    {#if discoveryStatus.webUrl}
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Web address</span>
+                        <span class="font-mono text-foreground/80">{discoveryStatus.webUrl}</span>
                       </div>
                     {/if}
                     {#if discoveryStatus.serviceType}
@@ -3143,13 +3160,13 @@
               <div>
                 <h3 class="font-serif-display text-lg tracking-tight">Server identity</h3>
                 <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                  The name your clients and devices see when they connect to this Xuva server.
+                  Separate the friendly Xuva name from the network address browsers and native clients use to connect.
                 </p>
               </div>
               <div class="space-y-5">
                 <div>
                   <label for="server-name" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-                    Server name
+                    Xuva display name
                   </label>
                   <input
                     id="server-name"
@@ -3158,6 +3175,24 @@
                     placeholder="Xuva"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
+                  <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    This is a human-readable instance name for titles, setup, and discovery lists. It is not a DNS name and does not need to resolve on your network.
+                  </p>
+                </div>
+                <div>
+                  <label for="canonical-web-origin" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+                    Canonical network web address
+                  </label>
+                  <input
+                    id="canonical-web-origin"
+                    type="url"
+                    bind:value={editConfig.canonicalWebOrigin}
+                    placeholder="http://DESKTOP-7UV0925:8097"
+                    class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
+                  />
+                  <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    This must be a real address for the machine, DNS name, mDNS name, reverse proxy, or container host that clients can reach. Browser visits through IP addresses redirect here so cookies, profile choice, and sign-in state stay consistent. Leave blank to use the operating-system hostname automatically when the server listens on the LAN.
+                  </p>
                 </div>
                 <div>
                   <label for="interface-lang" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
