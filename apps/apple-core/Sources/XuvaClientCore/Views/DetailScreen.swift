@@ -540,12 +540,44 @@ private struct DetailContentView: View {
                         }
                         .padding(.vertical, 12)
                     }
+                } else {
+                    // Single version — show dedicated file info so the user can
+                    // see codec/resolution/bitrate without needing to open playback.
+                    fileInfoSection(viewport: viewport)
                 }
                 if !detail.audioTracks.isEmpty || !detail.subtitleTracks.isEmpty {
                     sectionTitle("Audio & Subtitles", viewport: viewport)
                     HStack(alignment: .top, spacing: 18) {
                         TrackStack(title: "Audio", systemImage: "speaker.wave.2", tracks: detail.audioTracks, selectedTrackID: $selectedAudioID, allowsNone: false, viewport: viewport)
                         TrackStack(title: "Subtitles", systemImage: "captions.bubble", tracks: detail.subtitleTracks, selectedTrackID: $selectedSubtitleID, allowsNone: true, viewport: viewport)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fileInfoSection(viewport: CGSize) -> some View {
+        let version = selectedVersion
+        let src = version?.source
+        // Collect the pills we want to show, skipping nils/empties.
+        let pills: [(String, String?)] = [
+            ("video.fill",       version?.displayResolution),
+            ("film",             version?.displayVideoCodec),
+            ("hifispeaker.fill", version?.displayAudioSummary),
+            ("doc.fill",         src?.container.map { $0.uppercased() }),
+            ("gauge.medium",     version?.displayBitrate),
+        ]
+        let filtered = pills.compactMap { (icon, val) -> (String, String)? in
+            guard let val, !val.isEmpty else { return nil }
+            return (icon, val)
+        }
+        if !filtered.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionTitle("File Info", viewport: viewport)
+                FlowLayout(spacing: 10) {
+                    ForEach(Array(filtered.enumerated()), id: \.offset) { _, pair in
+                        MediaPill(text: pair.1, systemImage: pair.0, tint: XuvaTheme.mutedText, viewport: viewport)
                     }
                 }
             }
