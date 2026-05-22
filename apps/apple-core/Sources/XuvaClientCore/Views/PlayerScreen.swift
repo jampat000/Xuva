@@ -160,31 +160,36 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
 
         private func applySubtitleSelection(to item: AVPlayerItem) {
             let track = playback.clientSubtitleTrack
-            guard let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
-                print("[XUVA] no legible media selection group — subtitle pre-selection skipped")
-                return
-            }
-            if track == nil {
-                // User chose "Off" — explicitly disable, overriding any auto-select.
-                item.select(nil, in: group)
-                print("[XUVA] subtitle disabled by user selection")
-                return
-            }
-            // Match by language code first, then by display name.
-            let option = group.options.first { opt in
-                if let lang = track?.language, let locale = opt.locale {
-                    return locale.languageCode == lang || locale.identifier.hasPrefix(lang)
+            // Use the async API so the asset's track metadata is guaranteed loaded.
+            Task { @MainActor in
+                do {
+                    guard let group = try await item.asset.loadMediaSelectionGroup(for: .legible) else {
+                        print("[XUVA] no legible media selection group — subtitle pre-selection skipped")
+                        return
+                    }
+                    if track == nil {
+                        item.select(nil, in: group)
+                        print("[XUVA] subtitle disabled by user selection")
+                        return
+                    }
+                    let option = group.options.first { opt in
+                        if let lang = track?.language, let locale = opt.locale {
+                            return locale.languageCode == lang || locale.identifier.hasPrefix(lang)
+                        }
+                        return false
+                    } ?? group.options.first { opt in
+                        guard let title = track?.title, !title.isEmpty else { return false }
+                        return opt.displayName.localizedCaseInsensitiveContains(title)
+                    }
+                    if let option {
+                        item.select(option, in: group)
+                        print("[XUVA] subtitle pre-selected: \(option.displayName)")
+                    } else {
+                        print("[XUVA] no matching subtitle option for track \(track?.language ?? "?")/\(track?.title ?? "?")")
+                    }
+                } catch {
+                    print("[XUVA] failed to load legible media selection group: \(error)")
                 }
-                return false
-            } ?? group.options.first { opt in
-                guard let title = track?.title, !title.isEmpty else { return false }
-                return opt.displayName.localizedCaseInsensitiveContains(title)
-            }
-            if let option {
-                item.select(option, in: group)
-                print("[XUVA] subtitle pre-selected: \(option.displayName)")
-            } else {
-                print("[XUVA] no matching subtitle option for track \(track?.language ?? "?")/\(track?.title ?? "?")")
             }
         }
 
