@@ -207,6 +207,26 @@ struct PosterTile: View {
                                 .foregroundStyle(.white)
                                 .lineLimit(2)
                         }
+                        // Year + rating on the poster (matching web/desktop layout).
+                        let hasYear = item.year != nil
+                        let hasRating = (item.rating ?? 0) > 0
+                        if hasYear || hasRating {
+                            HStack(spacing: 4) {
+                                if let year = item.year {
+                                    Text(String(year))
+                                }
+                                if hasYear && hasRating {
+                                    Circle().fill(.white.opacity(0.45)).frame(width: 3, height: 3)
+                                }
+                                if let rating = item.rating, rating > 0 {
+                                    Image(systemName: "star.fill")
+                                        .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.35))
+                                    Text(String(format: "%.1f", rating))
+                                }
+                            }
+                            .font(.system(size: overlaySubSize * 0.85, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.78))
+                        }
                         if let progress = item.progress, progress > 0 {
                             GeometryReader { proxy in
                                 ZStack(alignment: .leading) {
@@ -267,20 +287,13 @@ struct PosterTile: View {
         wide ? (item.backdropUrl ?? item.imageUrl ?? item.posterUrl) : (item.posterUrl ?? item.imageUrl ?? item.backdropUrl)
     }
 
-    // Metadata line below portrait posters: ★ rating · year · runtime
+    // Runtime below the portrait poster — year/rating are shown on the poster itself.
     private var posterMeta: String {
-        var parts: [String] = []
-        if let rating = item.rating, rating > 0 {
-            parts.append(String(format: "★ %.1f", rating))
-        }
-        if let year = item.year { parts.append(String(year)) }
         if let minutes = item.runtimeMinutes, minutes > 0 {
             let h = minutes / 60; let m = minutes % 60
-            parts.append(h > 0 ? "\(h)h \(m)m" : "\(m)m")
-        } else if let runtime = item.runtime, !runtime.isEmpty {
-            parts.append(runtime)
+            return h > 0 ? "\(h)h \(m)m" : "\(m)m"
         }
-        return parts.joined(separator: "  ·  ")
+        return item.runtime ?? ""
     }
 
     // Metadata line below wide (Continue Watching) cards: year · kind · progress
