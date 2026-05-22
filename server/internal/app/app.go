@@ -343,7 +343,20 @@ func startRuntimeMaintenance(ctx context.Context, sessionService *sessions.Servi
 func runRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service, pairingService *pairing.Service) {
 	const sessionTTL = 15 * time.Minute
 	const terminalRetention = 24 * time.Hour
-	_, _ = sessionService.Cleanup(ctx, sessionTTL, terminalRetention)
+	expired, _ := sessionService.Cleanup(ctx, sessionTTL, terminalRetention)
+	// Cancel any active ffmpeg/transcode job whose session just expired.
+	// This covers the case where a client disconnects without sending a stop
+	// request (app killed, network lost, Apple TV standby) — the heartbeat TTL
+	// fires here every 5 minutes and cleans up orphaned processes.
+	// The explicit stop handler (clientPlaybackStopHandler) already handles the
+	// clean-exit path; this is the safety-net for the crash/suspend path.
+	if transcodeService != nil {
+		for _, s := range expired {
+			if s.MediaSourceID != "" {
+				transcodeService.CancelActiveForMediaSource(s.MediaSourceID)
+			}
+		}
+	}
 	_, _ = transcodeService.Cleanup(ctx, terminalRetention)
 	_, _ = probesService.Cleanup(ctx, terminalRetention)
 	_, _ = downloadService.Cleanup(ctx, terminalRetention)
