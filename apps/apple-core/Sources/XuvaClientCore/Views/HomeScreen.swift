@@ -169,16 +169,7 @@ struct HeroView: View {
                     Label(primaryActionTitle, systemImage: "play.fill")
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-                // prefersDefaultFocus ensures Play always receives focus first
-                // when the tvOS engine enters this focus scope from the nav bar.
                 .prefersDefaultFocus(in: heroFocusNamespace)
-
-                Button {
-                    Task { await store.open(item: item) }
-                } label: {
-                    Label("More info", systemImage: "info.circle")
-                }
-                .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
 
                 #if !os(tvOS)
                 Button {
