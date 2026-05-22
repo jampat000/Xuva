@@ -1796,15 +1796,10 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 				inProgress = append(inProgress, item)
 			}
 		}
-		rows := []map[string]any{
-			{"id": "continue", "title": "Continue Watching", "items": tvRecentItems(r.Context(), deps, inProgress)},
-			{"id": "movies", "title": "Movies", "items": tvMovieItems(movieItems)},
-			{"id": "tv", "title": "TV Shows", "items": tvSeriesItems(seriesItems)},
-			{"id": "recently-added", "title": "Recently Added", "items": tvRecentlyAddedItems(movieItems, seriesItems, limit)},
-		}
-		// Trending row: use TMDB regional trending cross-referenced against the
-		// local library when available; fall back to a random spotlight of catalog
-		// titles so the row always has content.
+		// Trending row: built first so it can be inserted before the TV/Movies
+		// rows.  Desired order: Trending > New Episodes Dropped > Fresh in Library
+		// (issue #222).  Use TMDB regional trending cross-referenced against the
+		// local library when available; fall back to a random spotlight.
 		var topItems []map[string]any
 		if cfg := currentConfig(deps); deps.Trending != nil && cfg.Country != "" {
 			if trendingItems, err := deps.Trending.Trending(r.Context(), cfg.Country, 10); err == nil {
@@ -1813,6 +1808,10 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 		}
 		if len(topItems) == 0 {
 			topItems = tvSpotlightItems(movieItems, seriesItems, 10)
+		}
+
+		rows := []map[string]any{
+			{"id": "continue", "title": "Continue Watching", "items": tvRecentItems(r.Context(), deps, inProgress)},
 		}
 		if len(topItems) > 0 {
 			title := "Highest rated"
@@ -1829,6 +1828,11 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 				"items":   topItems,
 			})
 		}
+		rows = append(rows,
+			map[string]any{"id": "tv",             "title": "TV Shows",       "items": tvSeriesItems(seriesItems)},
+			map[string]any{"id": "movies",         "title": "Movies",         "items": tvMovieItems(movieItems)},
+			map[string]any{"id": "recently-added", "title": "Recently Added", "items": tvRecentlyAddedItems(movieItems, seriesItems, limit)},
+		)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"profile": firstNonEmpty(r.URL.Query().Get("clientProfile"), "apple-tv"),
 			"heroes":  randomHeroItems(movieItems, seriesItems, 5),

@@ -103,6 +103,7 @@ func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, 
 	if err := s.getJSON(ctx, detailURL, &detail); err != nil {
 		return err
 	}
+	backdropPath := tmdbBestBackdropPath(detail.Images.Backdrops, detail.BackdropPath)
 	record := catalog.MetadataRecord{
 		Kind:                request.Kind,
 		ItemID:              request.ID,
@@ -123,10 +124,10 @@ func (s *Service) refreshTMDBMovie(ctx context.Context, request RefreshRequest, 
 		Studios:             tmdbCompanyNames(detail.ProductionCompanies),
 		ProductionCompanies: tmdbCompanyNames(detail.ProductionCompanies),
 		PosterURL:           tmdbBestPoster(detail.Images.Posters, detail.PosterPath),
-		BackdropURL:         tmdbImageURL(detail.BackdropPath, "original"),
+		BackdropURL:         tmdbImageURL(backdropPath, "original"),
 		LogoURL:             tmdbLogoURL(detail.Images.Logos),
 		BannerURL:           "",
-		ThumbnailURL:        tmdbImageURL(detail.BackdropPath, "w780"),
+		ThumbnailURL:        tmdbImageURL(backdropPath, "w780"),
 		VideoKey:            trailers.PickBestTrailer(videosToCandidates(detail.Videos.Results)),
 		Collection:          tmdbCollectionRecord(detail.BelongsToCollection),
 		Confidence:          sourceConfidence(order, "tmdb", 0.9),
@@ -165,6 +166,7 @@ func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest,
 	if err := s.getJSON(ctx, detailURL, &detail); err != nil {
 		return err
 	}
+	backdropPath := tmdbBestBackdropPath(detail.Images.Backdrops, detail.BackdropPath)
 	record := catalog.MetadataRecord{
 		Kind:                request.Kind,
 		ItemID:              request.ID,
@@ -187,9 +189,9 @@ func (s *Service) refreshTMDBSeries(ctx context.Context, request RefreshRequest,
 		StatusText:          detail.Status,
 		EpisodeCount:        detail.NumberOfEpisodes,
 		PosterURL:           tmdbBestPoster(detail.Images.Posters, detail.PosterPath),
-		BackdropURL:         tmdbImageURL(detail.BackdropPath, "original"),
+		BackdropURL:         tmdbImageURL(backdropPath, "original"),
 		LogoURL:             tmdbLogoURL(detail.Images.Logos),
-		ThumbnailURL:        tmdbImageURL(detail.BackdropPath, "w780"),
+		ThumbnailURL:        tmdbImageURL(backdropPath, "w780"),
 		VideoKey:            trailers.PickBestTrailer(videosToCandidates(detail.Videos.Results)),
 		Confidence:          sourceConfidence(order, "tmdb", 0.9),
 		RawJSON:             mustJSON(detail),
@@ -544,6 +546,24 @@ func tmdbBestPoster(items []tmdbImageAsset, fallbackPath string) string {
 	return ""
 }
 
+// tmdbBestBackdropPath returns the file_path of the best backdrop image,
+// using the same English → language-neutral → raw fallback priority as
+// tmdbBestPoster.  Returns the path (not a full URL) so callers can
+// generate different size variants (original, w780, etc.).
+func tmdbBestBackdropPath(items []tmdbImageAsset, fallbackPath string) string {
+	for _, item := range items {
+		if strings.EqualFold(item.ISO6391, "en") && strings.TrimSpace(item.FilePath) != "" {
+			return item.FilePath
+		}
+	}
+	for _, item := range items {
+		if item.ISO6391 == "" && strings.TrimSpace(item.FilePath) != "" {
+			return item.FilePath
+		}
+	}
+	return fallbackPath
+}
+
 func tmdbCollectionRecord(item *tmdbCollection) *catalog.MetadataCollection {
 	if item == nil || item.ID == 0 {
 		return nil
@@ -579,8 +599,9 @@ type tmdbMovieDetail struct {
 		Results []tmdbMovieReleaseCountry `json:"results"`
 	} `json:"release_dates"`
 	Images struct {
-		Posters []tmdbImageAsset `json:"posters"`
-		Logos   []tmdbImageAsset `json:"logos"`
+		Posters   []tmdbImageAsset `json:"posters"`
+		Logos     []tmdbImageAsset `json:"logos"`
+		Backdrops []tmdbImageAsset `json:"backdrops"`
 	} `json:"images"`
 	Videos struct {
 		Results []tmdbVideoAsset `json:"results"`
@@ -612,8 +633,9 @@ type tmdbTVDetail struct {
 		Crew []tmdbCredit         `json:"crew"`
 	} `json:"aggregate_credits"`
 	Images struct {
-		Posters []tmdbImageAsset `json:"posters"`
-		Logos   []tmdbImageAsset `json:"logos"`
+		Posters   []tmdbImageAsset `json:"posters"`
+		Logos     []tmdbImageAsset `json:"logos"`
+		Backdrops []tmdbImageAsset `json:"backdrops"`
 	} `json:"images"`
 	Videos struct {
 		Results []tmdbVideoAsset `json:"results"`
