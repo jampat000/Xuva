@@ -259,10 +259,10 @@ struct PosterTile: View {
                 }
             }
         }
-        // Custom bare style — tvOS doesn't apply the card-lift focus halo to
-        // custom ButtonStyle types, only to .plain and .card inside scroll views.
-        .buttonStyle(XuvaNakedButtonStyle())
-        .xuvaFocused(radius: 12)
+        // PosterTileButtonStyle reads isFocused from inside makeBody — the only
+        // correct way to detect button focus from a modifier. .xuvaFocused()
+        // applied outside a Button reads the parent's isFocused, always false.
+        .buttonStyle(PosterTileButtonStyle(cardWidth: posterWidth, cardHeight: posterHeight))
     }
 
     private var posterWidth: CGFloat {
@@ -427,5 +427,44 @@ public struct MediaPill: View {
 struct XuvaNakedButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+    }
+}
+
+/// Focus-aware button style for poster tile cards. Applies scale, glow, and
+/// a ring *inside* makeBody so @Environment(\.isFocused) correctly reads the
+/// button's own focus state rather than the parent container's.
+///
+/// cardWidth/cardHeight define the image card rectangle so the ring is
+/// positioned over just the artwork, not the subtitle text below it.
+struct PosterTileButtonStyle: ButtonStyle {
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        PosterTileBody(configuration: configuration, cardWidth: cardWidth, cardHeight: cardHeight)
+    }
+
+    private struct PosterTileBody: View {
+        let configuration: Configuration
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(isFocused ? 1.06 : 1)
+                .shadow(
+                    color: XuvaTheme.focus.opacity(isFocused ? 0.55 : 0),
+                    radius: isFocused ? 32 : 0, x: 0, y: 18
+                )
+                // Ring is pinned to the top of the tile so it frames the artwork
+                // only, not the subtitle text that sits below the card.
+                .overlay(alignment: .top) {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(XuvaTheme.focus.opacity(isFocused ? 0.92 : 0), lineWidth: 3.5)
+                        .frame(width: cardWidth, height: cardHeight)
+                }
+                .animation(.spring(response: 0.22, dampingFraction: 0.76), value: isFocused)
+        }
     }
 }
