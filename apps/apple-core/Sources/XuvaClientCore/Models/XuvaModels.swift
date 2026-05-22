@@ -204,6 +204,8 @@ public struct DetailResponse: Codable, Equatable {
     /// The /api/client/* detail endpoint omits cast / writers / studios; we merge them in
     /// once the metadata records resolve so the UI sees a single object.
     public var enrichedMetadata: MetadataRecord?
+    /// Populated client-side from `GET /api/client/{kind}/{id}/similar`.
+    public var relatedTitles: [SimilarItem]?
 
     public var isSeries: Bool { (seasons?.isEmpty == false) || item?.kind?.lowercased().contains("series") == true }
 }
@@ -316,6 +318,26 @@ public struct MetadataRecordsResponse: Codable, Equatable {
     public var best: MetadataRecord?
     public var records: [MetadataRecord]?
     public var providers: [String]?
+}
+
+/// A lightweight title stub used in the "More like this" similar-titles row.
+public struct SimilarItem: Codable, Equatable, Identifiable {
+    public var itemId: String?
+    public var kind: String?
+    public var title: String?
+    public var year: Int?
+    public var posterUrl: String?
+
+    public var id: String { itemId ?? title ?? UUID().uuidString }
+
+    private enum CodingKeys: String, CodingKey {
+        case itemId = "id"
+        case kind, title, year, posterUrl
+    }
+}
+
+public struct SimilarResponse: Codable, Equatable {
+    public var items: [SimilarItem]?
 }
 
 public struct MediaVersion: Codable, Identifiable, Equatable {

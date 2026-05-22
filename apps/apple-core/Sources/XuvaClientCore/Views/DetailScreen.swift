@@ -240,6 +240,8 @@ private struct DetailContentView: View {
                 .padding(.top, 14)
             castStrip(viewport: viewport)
                 .padding(.top, 36)
+            similarStrip(viewport: viewport)
+                .padding(.top, 36)
             sectionBody(viewport: viewport)
                 .padding(.top, 32)
                 .focusSection()
@@ -453,6 +455,38 @@ private struct DetailContentView: View {
                     .focusSection()
                 }
                 // Overlay-based fade — preserves focus rings on edge cards unlike .mask()
+                .overlay(alignment: .trailing) {
+                    LinearGradient(
+                        colors: [.clear, XuvaTheme.background],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 64)
+                    .allowsHitTesting(false)
+                }
+                .focusSection()
+            }
+            .focusSection()
+        }
+    }
+
+    // MARK: – Similar titles strip
+
+    @ViewBuilder
+    private func similarStrip(viewport: CGSize) -> some View {
+        let items = detail.relatedTitles ?? []
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 18) {
+                sectionTitle("More Like This", viewport: viewport)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(items.prefix(20)) { item in
+                            SimilarCard(item: item, viewport: viewport)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .focusSection()
+                }
                 .overlay(alignment: .trailing) {
                     LinearGradient(
                         colors: [.clear, XuvaTheme.background],
@@ -770,6 +804,53 @@ private struct CastCard: View {
             .frame(width: cardW, alignment: .leading)
         }
         .xuvaFocused(radius: 12)
+    }
+}
+
+/// A poster card for the "More like this" row. Tapping navigates to that title's
+/// detail screen (navigation is owned by the parent coordinator, not here).
+private struct SimilarCard: View {
+    let item: SimilarItem
+    let viewport: CGSize
+
+    var body: some View {
+        let cardW: CGFloat = XuvaScale.clamped(88, viewport.width * 0.068, 140)
+        let cardH = cardW * 1.5
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                LinearGradient(
+                    colors: [XuvaTheme.surface, XuvaTheme.elevated],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                if let url = item.posterUrl, !url.isEmpty {
+                    RemoteImage(urlString: url, aspectRatio: 2 / 3)
+                        .frame(width: cardW, height: cardH)
+                        .clipped()
+                } else {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.system(size: cardW * 0.35, weight: .semibold))
+                        .foregroundStyle(XuvaTheme.mutedText.opacity(0.35))
+                }
+            }
+            .frame(width: cardW, height: cardH)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(XuvaTheme.hairline))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title ?? "")
+                    .font(.system(size: XuvaScale.metaFontSize(viewport) - 3, weight: .semibold))
+                    .foregroundStyle(XuvaTheme.text)
+                    .lineLimit(2)
+                if let year = item.year, year > 0 {
+                    Text(String(year))
+                        .font(.system(size: XuvaScale.metaFontSize(viewport) - 4))
+                        .foregroundStyle(XuvaTheme.mutedText)
+                }
+            }
+            .frame(width: cardW, alignment: .leading)
+        }
+        .xuvaFocused(radius: 10)
     }
 }
 
