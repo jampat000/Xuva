@@ -111,7 +111,11 @@ public struct HomeScreen: View {
     }
 
     private var visibleRows: [HomeRow] {
-        let populatedRows = rows.filter { !($0.items ?? []).isEmpty }
+        // "recently-added" is excluded — movies and series already appear in
+        // their own dedicated rows (matches web behaviour exactly).
+        let populatedRows = rows
+            .filter { !($0.items ?? []).isEmpty }
+            .filter { !$0.id.lowercased().contains("recent") }
         switch store.activeSection {
         case "Movies":
             return populatedRows.filter { rowMatches($0, terms: ["movie"]) }
@@ -321,12 +325,14 @@ struct MediaRowView: View {
     }
 
     private var rowEyebrow: String? {
-        if normalizedRowText.contains("continue") { return "PICK UP WHERE YOU LEFT OFF" }
-        if normalizedRowText.contains("recent") { return nil }
-        if normalizedRowText.contains("trend") { return "TRENDING NOW" }
-        if isRanked { return "FROM YOUR LIBRARY" }
-        if normalizedRowText.contains("movie") { return "FRESH IN YOUR LIBRARY" }
-        if normalizedRowText.contains("tv") || normalizedRowText.contains("series") { return "NEW EPISODES DROPPED" }
+        // Server-provided eyebrow wins (e.g. "From your library", "Your region · AU").
+        if let serverEyebrow = row.eyebrow, !serverEyebrow.isEmpty { return serverEyebrow }
+        // Fallback labels match the web page's hardcoded eyebrows exactly.
+        if normalizedRowText.contains("continue") { return "Pick up where you left off" }
+        if normalizedRowText.contains("trend") { return "Trending now" }
+        if isRanked { return "From your library" }
+        if normalizedRowText.contains("movie") { return "Fresh in your library" }
+        if normalizedRowText.contains("tv") || normalizedRowText.contains("series") { return "New episodes dropped" }
         return nil
     }
 }
