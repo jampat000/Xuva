@@ -216,6 +216,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/adaptive/{variant}", adaptiveVariantHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/adaptive/session", adaptiveSessionHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/download", mediaSourceDownloadHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/stream-token", mediaSourceStreamTokenHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/subtitles", mediaSourceSubtitlesHandler(deps))
@@ -5318,6 +5319,38 @@ func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "media file is unavailable from the configured library path")
 			return
 		}
+		http.ServeFile(w, r, item.Path)
+	}
+}
+
+// mediaSourceDownloadHandler serves the media file as a download attachment.
+// It sets Content-Disposition: attachment so browsers and iOS save-to-files
+// flows treat the response as a file download rather than a stream.
+func mediaSourceDownloadHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		release, ok := authorizeStreamRequest(deps, w, r, r.PathValue("id"))
+		if !ok {
+			return
+		}
+		defer release()
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		if err := ensureMediaFileAccessible(item.Path); err != nil {
+			writeError(w, http.StatusNotFound, "media file is unavailable from the configured library path")
+			return
+		}
+		filename := item.Name
+		if item.Extension != "" {
+			filename = item.Name + "." + item.Extension
+		}
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, strings.ReplaceAll(filename, `"`, `\"`)))
 		http.ServeFile(w, r, item.Path)
 	}
 }
