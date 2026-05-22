@@ -142,7 +142,14 @@ struct HeroView: View {
     let viewport: CGSize
     @EnvironmentObject private var store: XuvaClientStore
     @EnvironmentObject private var watchlist: XuvaWatchlist
-    @Namespace private var heroFocusNamespace
+    // @FocusState gives reliable programmatic routing to Play on every entry.
+    // prefersDefaultFocus(in:) only applies on the FIRST scope entry; after that
+    // the engine restores the last-focused item (often More Info if the user
+    // tapped it), so DOWN from nav pills lands on More Info instead of Play.
+    // A FocusState bool + task-delayed activation picks Play consistently.
+    #if os(tvOS)
+    @FocusState private var playFocused: Bool
+    #endif
 
     var body: some View {
         let isCompact = viewport.width < 600
@@ -171,7 +178,9 @@ struct HeroView: View {
                     Label(primaryActionTitle, systemImage: "play.fill")
                 }
                 .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
-                .prefersDefaultFocus(in: heroFocusNamespace)
+                #if os(tvOS)
+                .focused($playFocused)
+                #endif
 
                 // More Info — opens the detail screen for this title.
                 Button {
@@ -182,7 +191,6 @@ struct HeroView: View {
                 .buttonStyle(XuvaSecondaryButtonStyle(viewport: viewport))
 
                 // Watchlist toggle — adds or removes this title.
-                // Icon switches to checkmark when already in the list.
                 Button {
                     guard let kind = item.kind else { return }
                     _ = watchlist.toggle(
@@ -200,13 +208,8 @@ struct HeroView: View {
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // focusSection on the button row so the tvOS focus engine treats
-            // it as a discrete section.  Without this, UP from Play exits the
-            // hero focusScope with no declared boundary and the engine uses raw
-            // geometric proximity — which can land on the refresh icon in the
-            // top bar rather than the nav pills.  Same root cause that was
-            // fixed on the DetailScreen action row (see actionRow in
-            // DetailScreen.swift).
+            // focusSection declares the button row as a discrete region so UP
+            // from Play exits cleanly toward the nav bar section above.
             .focusSection()
             heroDots
                 .padding(.top, 8)
@@ -214,11 +217,17 @@ struct HeroView: View {
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .padding(.top, viewport.height * XuvaScale.heroContentTopFraction(viewport))
         .frame(maxWidth: .infinity, alignment: .leading)
-        // focusScope + focusSection: focusScope owns the namespace so
-        // prefersDefaultFocus(in: heroFocusNamespace) on Play is respected.
-        // focusSection lets the engine exit on UP → nav bar, DOWN → rows.
-        .focusScope(heroFocusNamespace)
         .focusSection()
+        #if os(tvOS)
+        // Route focus to Play on initial appearance and whenever the featured
+        // hero title changes (auto-advance or manual dot tap).  The 150 ms
+        // delay gives the focus engine time to settle after the view tree
+        // re-renders before we override it.
+        .task(id: item.id) {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            playFocused = true
+        }
+        #endif
     }
 
     private var heroEyebrow: String {
@@ -426,21 +435,30 @@ struct MediaTopBar: View {
                 .focusSection()
             }
             Spacer()
-            Button {
-                Task { await store.loadHome() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
-            if let onSettings {
+            // Wrap refresh + settings in their own sub-section so they are
+            // treated as a discrete focus cluster on the RIGHT side of the
+            // bar.  The nav pills already have their own .focusSection() on
+            // the LEFT.  When focus travels UP from the hero Play button
+            // (which is left-aligned), the engine resolves the nearest
+            // sub-section by geometric proximity and lands on the pills
+            // cluster rather than the refresh icon on the far right.
+            HStack(spacing: 8) {
                 Button {
-                    onSettings()
+                    Task { await store.loadHome() }
                 } label: {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
-                .padding(.leading, 8)
+                if let onSettings {
+                    Button {
+                        onSettings()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(XuvaIconButtonStyle(viewport: viewport))
+                }
             }
+            .focusSection()
         }
         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
         .frame(height: XuvaScale.navBarHeight(viewport))
@@ -502,6 +520,9 @@ private struct NavPillButtonStyle: ButtonStyle {
                 )
                 .scaleEffect(isFocused ? 1.04 : 1)
                 .animation(.easeOut(duration: 0.15), value: isFocused)
+                // Suppress the tvOS system blue halo — the custom ring
+                // drawn above via isFocused / overlay is our focus indicator.
+                .focusEffectDisabled()
         }
     }
 }
