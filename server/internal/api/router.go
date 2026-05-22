@@ -115,16 +115,16 @@ func NewRouter(deps Deps) http.Handler {
 	// anonymous. The rationale for each one is documented inline; do not
 	// expand this list without a security review.
 	//
-	mux.HandleFunc("GET /api/health", healthHandler(deps))                       // liveness probe, no PII
-	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                     // readiness probe, no PII
-	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))    // pre-login server identity
-	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))    // mDNS / local discovery info
-	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))       // unpaired clients poll their own request
-	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))           // unpaired clients submit a request
-	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps))    // client withdraws its own pending request
-	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))       // first-run admin create
-	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))               // sign in
-	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))            // first-run wizard gate, no PII
+	mux.HandleFunc("GET /api/health", healthHandler(deps))                          // liveness probe, no PII
+	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                        // readiness probe, no PII
+	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))       // pre-login server identity
+	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))       // mDNS / local discovery info
+	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))    // unpaired clients poll their own request
+	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))        // unpaired clients submit a request
+	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps)) // client withdraws its own pending request
+	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))          // first-run admin create
+	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))                  // sign in
+	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))               // first-run wizard gate, no PII
 
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
@@ -6923,6 +6923,11 @@ func approvedDeviceRevokeHandler(deps Deps) http.HandlerFunc {
 				slog.Warn("device revoke could not invalidate session", "deviceId", item.DeviceID, "sessionId", item.AuthSessionID, "err", err)
 			}
 		}
+		if deps.Auth != nil && !deps.Auth.Disabled() {
+			if err := deps.Auth.RevokeDeviceSessions(r.Context(), item.DeviceID); err != nil {
+				slog.Warn("device revoke could not invalidate device sessions", "deviceId", item.DeviceID, "err", err)
+			}
+		}
 		publishOperationalEvent(deps, r, "device.revoked", map[string]any{
 			"deviceId":      item.DeviceID,
 			"displayName":   item.DisplayName,
@@ -7082,7 +7087,7 @@ func closePairingRequest(w http.ResponseWriter, r *http.Request, deps Deps, appr
 		})
 	}
 	if approve && deps.Auth != nil && !deps.Auth.Disabled() {
-		_, session, token, sessionErr := deps.Auth.IssueSessionForUser(r.Context(), "local", requestRemoteAddr(r), item.DeviceName)
+		_, session, token, sessionErr := deps.Auth.IssueDeviceSessionForUser(r.Context(), "local", item.DeviceID, requestRemoteAddr(r), item.DeviceName)
 		if sessionErr != nil {
 			writeError(w, http.StatusInternalServerError, "native device credential issue failed")
 			return
