@@ -67,6 +67,11 @@ public final class XuvaAPI: @unchecked Sendable {
         return try await send("GET", path: "/api/client/\(segment)/\(id)/similar")
     }
 
+    /// Permanently deletes the media source file from the server (admin only).
+    public func deleteMediaSource(id: String) async throws {
+        let _: EmptyResponse = try await send("DELETE", path: "/api/media-sources/\(id)")
+    }
+
     public func startPlayback(
         mediaSourceId: String,
         positionSeconds: Int = 0,

@@ -211,6 +211,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/remote/wan", wanAddressHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources", mediaSourcesHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}", mediaSourceDetailHandler(deps))
+	handleProtectedCSRF(mux, deps, "DELETE /api/media-sources/{id}", mediaSourceDeleteHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/adaptive/master.m3u8", adaptiveMasterHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/adaptive/{variant}", adaptiveVariantHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/adaptive/session", adaptiveSessionHandler(deps))
@@ -5077,6 +5078,21 @@ func mediaSourceDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, item)
+	}
+}
+
+func mediaSourceDeleteHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if err := deps.Catalog.DeleteMediaSource(r.Context(), id); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				writeError(w, http.StatusNotFound, "media source not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "delete failed: "+err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

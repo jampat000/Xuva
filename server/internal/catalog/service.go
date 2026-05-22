@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -2984,6 +2986,33 @@ func (s *Service) GetMediaSource(ctx context.Context, id string) (MediaSourceIte
 		return MediaSourceItem{}, false, nil
 	}
 	return items[0], true, nil
+}
+
+// DeleteMediaSource removes a media source from the catalog and deletes the
+// underlying file from disk. The DB deletion cascades to movie_versions,
+// episode_versions, media_probes, and playback_states. If the DB deletion
+// succeeds but the file removal fails (e.g. permissions), the error is
+// returned so the caller can surface it, but the catalog entry is already gone.
+func (s *Service) DeleteMediaSource(ctx context.Context, id string) error {
+	// Fetch the path before we delete so we know what to remove from disk.
+	source, ok, err := s.GetMediaSource(ctx, id)
+	if err != nil {
+		return fmt.Errorf("lookup media source %q: %w", id, err)
+	}
+	if !ok {
+		return fmt.Errorf("media source %q not found", id)
+	}
+	// Delete from the catalog (foreign-key cascades clean up versions, probes, states).
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM media_sources WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete catalog record for %q: %w", id, err)
+	}
+	// Remove the file from disk. Non-fatal if already gone.
+	if source.Path != "" {
+		if removeErr := os.Remove(source.Path); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("delete file %q from disk: %w", source.Path, removeErr)
+		}
+	}
+	return nil
 }
 
 func (s *Service) GetMediaSourceDisplay(ctx context.Context, id string) (MediaSourceDisplay, bool, error) {
