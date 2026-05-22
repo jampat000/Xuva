@@ -1499,6 +1499,55 @@ func TestClientPlaybackStartHeartbeatAndStop(t *testing.T) {
 	}
 }
 
+func TestClientHomeIncludesUnknownDurationProgressInContinueWatching(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	sources := getJSON(t, router, "/api/media-sources")
+	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+
+	started := postJSON(t, router, "/api/client/playback/start", map[string]any{
+		"mediaSourceId": sourceID,
+		"deviceId":      "apple-tv-living-room",
+		"clientProfile": "apple-tv",
+		"routeType":     "lan",
+	})
+	sessionID := started["sessionId"].(string)
+	requestJSON(t, router, http.MethodPatch, "/api/client/playback/"+sessionID, map[string]any{
+		"progressSeconds": 48,
+		"durationSeconds": 0,
+		"status":          "playing",
+	})
+
+	home := getJSON(t, router, "/api/client/home?clientProfile=apple-tv")
+	rows := home["rows"].([]any)
+	var continueRow map[string]any
+	for _, row := range rows {
+		candidate := row.(map[string]any)
+		if candidate["id"] == "continue" {
+			continueRow = candidate
+			break
+		}
+	}
+	if continueRow == nil {
+		t.Fatalf("expected continue row, got %#v", rows)
+	}
+	items := continueRow["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected unknown-duration progress in continue row, got %#v", items)
+	}
+	item := items[0].(map[string]any)
+	if item["mediaSourceId"] != sourceID {
+		t.Fatalf("expected continue item for %q, got %#v", sourceID, item)
+	}
+	if item["subtitle"] != "Resume from 48s" {
+		t.Fatalf("expected progress-based subtitle for unknown duration, got %#v", item)
+	}
+}
+
 func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))

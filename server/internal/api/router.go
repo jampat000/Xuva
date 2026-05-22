@@ -115,16 +115,16 @@ func NewRouter(deps Deps) http.Handler {
 	// anonymous. The rationale for each one is documented inline; do not
 	// expand this list without a security review.
 	//
-	mux.HandleFunc("GET /api/health", healthHandler(deps))                       // liveness probe, no PII
-	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                     // readiness probe, no PII
-	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))    // pre-login server identity
-	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))    // mDNS / local discovery info
-	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))       // unpaired clients poll their own request
-	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))           // unpaired clients submit a request
-	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps))    // client withdraws its own pending request
-	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))       // first-run admin create
-	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))               // sign in
-	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))            // first-run wizard gate, no PII
+	mux.HandleFunc("GET /api/health", healthHandler(deps))                          // liveness probe, no PII
+	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                        // readiness probe, no PII
+	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))       // pre-login server identity
+	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))       // mDNS / local discovery info
+	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))    // unpaired clients poll their own request
+	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))        // unpaired clients submit a request
+	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps)) // client withdraws its own pending request
+	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))          // first-run admin create
+	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))                  // sign in
+	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))               // first-run wizard gate, no PII
 
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
@@ -1779,7 +1779,7 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 		// Keep only in-progress items for the continue-watching row.
 		var inProgress []playstate.RecentItem
 		for _, item := range recent {
-			if !item.Watched && item.Percent > 0 {
+			if !item.Watched && item.ProgressSeconds > 0 {
 				inProgress = append(inProgress, item)
 			}
 		}
@@ -2617,7 +2617,7 @@ func tvRecentItems(ctx context.Context, deps Deps, items []playstate.RecentItem)
 			"id":              item.MediaSourceID,
 			"kind":            item.Kind,
 			"title":           firstNonEmpty(item.Name, item.RelPath, "Resume playback"),
-			"subtitle":        "Resume from " + formatProgress(item.Percent),
+			"subtitle":        formatResumeSubtitle(item),
 			"mediaSourceId":   item.MediaSourceID,
 			"progressPercent": item.Percent,
 			"lastPlayedAt":    item.LastPlayedAt,
@@ -3023,6 +3023,37 @@ func formatProgress(value float64) string {
 		value = 1
 	}
 	return fmt.Sprintf("%.0f%%", value*100)
+}
+
+func formatResumeSubtitle(item playstate.RecentItem) string {
+	if item.Percent > 0 {
+		return "Resume from " + formatProgress(item.Percent)
+	}
+	if item.ProgressSeconds > 0 {
+		return "Resume from " + formatSeconds(item.ProgressSeconds)
+	}
+	return "Resume from the beginning"
+}
+
+func formatSeconds(value float64) string {
+	seconds := int(value + 0.5)
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	remainingSeconds := seconds % 60
+	if minutes < 60 {
+		if remainingSeconds == 0 {
+			return fmt.Sprintf("%dm", minutes)
+		}
+		return fmt.Sprintf("%dm %02ds", minutes, remainingSeconds)
+	}
+	hours := minutes / 60
+	remainingMinutes := minutes % 60
+	if remainingMinutes == 0 {
+		return fmt.Sprintf("%dh", hours)
+	}
+	return fmt.Sprintf("%dh %02dm", hours, remainingMinutes)
 }
 
 func plural(value int) string {
