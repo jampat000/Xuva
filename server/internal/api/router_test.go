@@ -47,6 +47,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/subtitles"
 	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/watchlist"
 )
 
 func TestHealthUsesStableStartedAt(t *testing.T) {
@@ -1572,6 +1573,87 @@ func TestClientPlaybackStartRequiresPersistentDeviceAuthWhenProtected(t *testing
 	}
 	if !strings.Contains(started.body, "persistent device authentication") {
 		t.Fatalf("expected clear device auth blocker, got %s", started.body)
+	}
+}
+
+func TestWatchlistPersistsCatalogItems(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
+	waitForScan(t, router, payload["id"].(string))
+	movies := getJSON(t, router, "/api/movies")
+	movieID := movies["movies"].([]any)[0].(map[string]any)["id"].(string)
+
+	created := postJSON(t, router, "/api/watchlist", map[string]any{"kind": "movie", "id": movieID})
+	item := created["item"].(map[string]any)
+	if item["id"] != "movie:"+movieID || item["itemId"] != movieID || item["title"] != "Arrival" {
+		t.Fatalf("expected enriched watchlist movie item, got %#v", item)
+	}
+
+	postJSON(t, router, "/api/watchlist", map[string]any{"kind": "movie", "id": movieID})
+	listed := getJSON(t, router, "/api/watchlist")
+	items := listed["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected duplicate add to stay idempotent, got %#v", items)
+	}
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/watchlist/"+url.PathEscape(item["id"].(string)), nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected watchlist delete 204, got %d: %s", response.Code, response.Body.String())
+	}
+	listed = getJSON(t, router, "/api/watchlist")
+	if items := listed["items"].([]any); len(items) != 0 {
+		t.Fatalf("expected empty watchlist after delete, got %#v", items)
+	}
+}
+
+func TestWatchlistIsScopedToAuthenticatedUser(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
+
+	deps := testDepsWithAuth(t, time.Now())
+	router := NewRouter(deps)
+	adminClient := newAuthTestClient(t)
+	loginAs(t, adminClient, router, "admin", "test-password-123!")
+	createUser := adminClient.requestJSON(t, router, http.MethodPost, "/api/users", map[string]any{
+		"username":    "viewer",
+		"displayName": "Viewer",
+		"password":    "viewer-password-123!",
+		"role":        "standard",
+	})
+	if createUser.status != http.StatusCreated {
+		t.Fatalf("expected viewer creation 201, got %d: %s", createUser.status, createUser.body)
+	}
+
+	scan := adminClient.requestJSON(t, router, http.MethodPost, "/api/libraries/movies/scan", map[string]any{"path": root})
+	if scan.status != http.StatusAccepted {
+		t.Fatalf("expected scan accepted, got %d: %s", scan.status, scan.body)
+	}
+	waitForScanAs(t, router, scan.payload["id"].(string), adminClient)
+	movies := adminClient.requestJSON(t, router, http.MethodGet, "/api/movies", nil)
+	movieID := movies.payload["movies"].([]any)[0].(map[string]any)["id"].(string)
+
+	added := adminClient.requestJSON(t, router, http.MethodPost, "/api/watchlist", map[string]any{"kind": "movie", "id": movieID})
+	if added.status != http.StatusOK {
+		t.Fatalf("expected admin watchlist add 200, got %d: %s", added.status, added.body)
+	}
+	adminList := adminClient.requestJSON(t, router, http.MethodGet, "/api/watchlist", nil)
+	if len(adminList.payload["items"].([]any)) != 1 {
+		t.Fatalf("expected admin watchlist item, got %#v", adminList.payload)
+	}
+
+	viewerClient := newAuthTestClient(t)
+	loginAs(t, viewerClient, router, "viewer", "viewer-password-123!")
+	viewerList := viewerClient.requestJSON(t, router, http.MethodGet, "/api/watchlist", nil)
+	if viewerList.status != http.StatusOK {
+		t.Fatalf("expected viewer watchlist list 200, got %d: %s", viewerList.status, viewerList.body)
+	}
+	if len(viewerList.payload["items"].([]any)) != 0 {
+		t.Fatalf("expected viewer watchlist to be isolated, got %#v", viewerList.payload)
 	}
 }
 
@@ -3484,6 +3566,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 		Subtitles: subtitles.NewService(),
 		Pairing:   pairing.NewService(),
 		Migration: migration.NewService(db, eventBus),
+		Watchlist: watchlist.NewService(db),
 	}
 }
 
@@ -3509,6 +3592,7 @@ func testDepsWithAuth(t *testing.T, startedAt time.Time) Deps {
 	deps.Migration = migration.NewService(db, deps.Events)
 	deps.Auth = auth.NewService(db, false)
 	deps.Devices = devices.NewPersistentService(db)
+	deps.Watchlist = watchlist.NewService(db)
 	if err := deps.Auth.Bootstrap(context.Background(), auth.BootstrapOptions{
 		Username: "admin",
 		Password: "test-password-123!",
@@ -3540,6 +3624,7 @@ func testDepsWithAuthNoBootstrap(t *testing.T, startedAt time.Time) Deps {
 	deps.Migration = migration.NewService(db, deps.Events)
 	deps.Auth = auth.NewService(db, false)
 	deps.Devices = devices.NewPersistentService(db)
+	deps.Watchlist = watchlist.NewService(db)
 	return deps
 }
 

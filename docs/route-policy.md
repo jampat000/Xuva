@@ -134,6 +134,9 @@ Public client bootstrap routes:
 | `GET /api/notifications` | notifications | `notifications.list` | admin, standard |
 | `POST /api/notifications/{id}/dismiss` | notifications | `notifications.dismiss` | admin, standard |
 | `POST /api/notifications/dismiss-all` | notifications | `notifications.dismiss_all` | admin, standard |
+| `GET /api/watchlist` | watchlist | `watchlist.list` | admin, standard |
+| `POST /api/watchlist` | watchlist | `watchlist.add` | admin, standard |
+| `DELETE /api/watchlist/{id}` | watchlist | `watchlist.remove` | admin, standard |
 | `GET /api/media-sources/{id}/chapters` | chapters | `chapters.read` | admin, standard |
 | `POST /api/media-sources/{id}/chapters/analyze` | chapters | `chapters.analyze` | admin |
 | `PATCH /api/users/me/preferences` | auth | `user.preferences.update` | admin, standard |

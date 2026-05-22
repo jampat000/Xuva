@@ -484,4 +484,13 @@ var migrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_session ON profile_sessions(session_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_profile_sessions_user ON profile_sessions(profile_user_id)`,
+	`CREATE TABLE IF NOT EXISTS watchlist_items (
+		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind TEXT NOT NULL,
+		item_id TEXT NOT NULL,
+		added_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(user_id, kind, item_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_watchlist_items_user_added ON watchlist_items(user_id, added_at DESC)`,
 }

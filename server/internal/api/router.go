@@ -65,6 +65,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/trending"
 	"github.com/jampat000/Xuva/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/watchlist"
 	"github.com/jampat000/Xuva/server/internal/webapp"
 )
 
@@ -103,6 +104,7 @@ type Deps struct {
 	Thumbnails    *thumbnails.Service
 	Notifications *notifications.Service
 	Chapters      *chapters.Service
+	Watchlist     *watchlist.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -191,6 +193,9 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/notifications", notificationsListHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/notifications/{id}/dismiss", notificationsDismissHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/notifications/dismiss-all", notificationsDismissAllHandler(deps))
+	handleProtected(mux, deps, "GET /api/watchlist", watchlistListHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/watchlist", watchlistAddHandler(deps))
+	handleProtectedCSRF(mux, deps, "DELETE /api/watchlist/{id}", watchlistRemoveHandler(deps))
 	handleProtected(mux, deps, "GET /api/system/status", systemStatusHandler(deps))
 	handleProtected(mux, deps, "GET /api/remote/access", remoteAccessHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/remote/diagnostics", remoteDiagnosticsHandler(deps))
