@@ -56,11 +56,15 @@ public enum XuvaScale {
     }
 
     public static func sectionSpacing(_ size: CGSize) -> CGFloat {
-        return clamped(24, size.height * 0.055, 72)
+        // Reduced from 0.055/72 — 59pt gaps between rows felt cavernous on tvOS.
+        // Web equivalent is ~32px between rows; 0.038/48 gives ~41pt on 1080p TV.
+        return clamped(20, size.height * 0.038, 48)
     }
 
     public static func rowSpacing(_ size: CGSize) -> CGFloat {
-        return clamped(12, size.height * 0.025, 32)
+        // Gap between section title and poster rail. Web uses ~20px; 0.018/24
+        // gives ~19pt on tvOS vs the old 27pt.
+        return clamped(10, size.height * 0.018, 24)
     }
 
     public static func posterRowSpacing(_ size: CGSize) -> CGFloat {

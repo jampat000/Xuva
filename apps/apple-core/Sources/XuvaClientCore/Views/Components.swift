@@ -182,19 +182,19 @@ struct PosterTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: wide ? 10 : 0) {
+            VStack(alignment: .leading, spacing: wide ? 10 : 6) {
                 ZStack(alignment: .bottomLeading) {
                     RemoteImage(urlString: artworkURL, aspectRatio: wide ? 16 / 9 : 2 / 3)
                         .frame(width: posterWidth, height: posterHeight)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     LinearGradient(colors: [.clear, XuvaTheme.background.opacity(0.90)], startPoint: .center, endPoint: .bottom)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         if let route = item.routeLabel, !route.isEmpty {
                             Text(route)
-                                .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .bold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .font(.system(size: overlayEyebrowSize, weight: .bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
                                 .background(XuvaTheme.focus.opacity(0.16), in: Capsule())
                                 .foregroundStyle(XuvaTheme.focus)
                         }
@@ -202,13 +202,15 @@ struct PosterTile: View {
                             RemoteLogo(urlString: logoURL, fallbackTitle: item.title ?? "Untitled", maxWidth: posterWidth * 0.62, maxHeight: posterHeight * 0.35)
                         } else {
                             Text(item.title ?? "Untitled")
-                                .font(.system(size: XuvaScale.metaFontSize(viewport) + 2, weight: .semibold))
+                                // poster-proportional, not viewport-proportional —
+                                // viewport sizes (28pt) overflow the card on tvOS
+                                .font(.system(size: overlayTitleSize, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .lineLimit(2)
                         }
                         if !wide {
                             Text([item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · "))
-                                .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
+                                .font(.system(size: overlaySubSize))
                                 .foregroundStyle(.white.opacity(0.68))
                                 .lineLimit(1)
                         }
@@ -220,17 +222,17 @@ struct PosterTile: View {
                                         .frame(width: proxy.size.width * min(max(progress, 0), 1))
                                 }
                             }
-                            .frame(height: 4)
+                            .frame(height: 3)
                         }
                     }
-                    .padding(14)
+                    .padding(overlayPad)
                     if ranked {
                         Text(rank.map { "#\($0)" } ?? "#")
-                            .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .bold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
+                            .font(.system(size: overlaySubSize, weight: .bold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
                             .background(.black.opacity(0.58), in: Capsule())
-                            .padding(12)
+                            .padding(10)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 }
@@ -243,16 +245,36 @@ struct PosterTile: View {
                         .font(.system(size: XuvaScale.metaFontSize(viewport) - 2))
                         .foregroundStyle(XuvaTheme.muted)
                         .lineLimit(1)
+                } else {
+                    // Subtitle below portrait card — runtime or season count,
+                    // matching the web's small truncated text below each poster.
+                    let sub = [item.year.map(String.init), item.subtitle].compactMap { $0 }.joined(separator: " · ")
+                    if !sub.isEmpty {
+                        Text(sub)
+                            .font(.system(size: overlaySubSize))
+                            .foregroundStyle(XuvaTheme.muted)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
             }
         }
-        .buttonStyle(.plain)
+        // Custom bare style — tvOS doesn't apply the card-lift focus halo to
+        // custom ButtonStyle types, only to .plain and .card inside scroll views.
+        .buttonStyle(XuvaNakedButtonStyle())
         .xuvaFocused(radius: 12)
     }
 
     private var posterWidth: CGFloat {
         wide ? XuvaScale.widePosterWidth(viewport) : XuvaScale.posterWidth(viewport)
     }
+
+    // Overlay sizes derived from card width so they scale with the card,
+    // not with the full viewport (which produces 28pt text in a 220pt card on tvOS).
+    private var overlayPad: CGFloat       { max(8,  posterWidth * 0.058) }
+    private var overlayTitleSize: CGFloat { max(13, posterWidth * 0.083) }
+    private var overlaySubSize: CGFloat   { max(10, posterWidth * 0.063) }
+    private var overlayEyebrowSize: CGFloat { max(8, posterWidth * 0.050) }
 
     private var posterHeight: CGFloat {
         wide ? XuvaScale.widePosterHeight(viewport) : XuvaScale.posterHeight(viewport)
@@ -396,5 +418,14 @@ public struct MediaPill: View {
         .padding(.vertical, 8)
         .background(tint.opacity(0.14), in: Capsule())
         .overlay(Capsule().stroke(tint.opacity(0.28)))
+    }
+}
+
+/// A completely transparent button style. tvOS only applies its card-lift
+/// focus halo to its own built-in styles (.plain, .card); a custom type gets
+/// no platform focus decoration, so xuvaFocused() is the sole visual.
+struct XuvaNakedButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
