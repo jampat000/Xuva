@@ -905,6 +905,53 @@ func (s *Service) ListMoviesByCollection(ctx context.Context, collectionID strin
 	return output, header, true, nil
 }
 
+// ListCollections returns all TMDB collections referenced by movies in the
+// library, ordered alphabetically. Each entry includes the movie count.
+// limit <= 0 means no limit (up to 1000).
+func (s *Service) ListCollections(ctx context.Context, limit int) ([]CollectionHit, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			json_extract(mr.details_json, '$.collection.id')          AS coll_id,
+			json_extract(mr.details_json, '$.collection.name')        AS coll_name,
+			json_extract(mr.details_json, '$.collection.posterUrl')   AS poster,
+			json_extract(mr.details_json, '$.collection.backdropUrl') AS backdrop,
+			COUNT(*)                                                    AS movie_count
+		FROM metadata_records mr
+		WHERE mr.kind = 'movie'
+		  AND json_extract(mr.details_json, '$.collection.id') IS NOT NULL
+		  AND TRIM(json_extract(mr.details_json, '$.collection.id')) != ''
+		GROUP BY coll_id
+		ORDER BY LOWER(coll_name)
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CollectionHit
+	for rows.Next() {
+		var id, name, poster, backdrop sql.NullString
+		var count int
+		if err := rows.Scan(&id, &name, &poster, &backdrop, &count); err != nil {
+			return nil, err
+		}
+		if !id.Valid || strings.TrimSpace(id.String) == "" {
+			continue
+		}
+		out = append(out, CollectionHit{
+			ID:          id.String,
+			Name:        strings.TrimSpace(name.String),
+			PosterURL:   poster.String,
+			BackdropURL: backdrop.String,
+			MovieCount:  count,
+		})
+	}
+	return out, rows.Err()
+}
+
 // ListItemsByPerson returns all library movies and series in which the named
 // person appears as cast or crew. Results are ordered by year desc, then title.
 // Returns (nil, PersonProfile{}, false, nil) when the person is not found.

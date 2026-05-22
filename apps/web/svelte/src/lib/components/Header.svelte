@@ -15,6 +15,7 @@
     { label: "Home", href: "/" },
     { label: "Movies", href: "/movies" },
     { label: "TV", href: "/tv" },
+    { label: "Collections", href: "/collections" },
     { label: "Watchlist", href: "/watchlist" },
   ];
 

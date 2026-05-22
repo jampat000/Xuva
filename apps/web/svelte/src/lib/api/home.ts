@@ -186,6 +186,24 @@ export function getCollectionDetail(
 	);
 }
 
+export interface CollectionListItem {
+	id: string;
+	name: string;
+	posterUrl?: string;
+	backdropUrl?: string;
+	movieCount: number;
+}
+
+export interface CollectionsListResponse {
+	collections?: CollectionListItem[];
+}
+
+export function getCollections(
+	client: ApiClient = apiClient
+): Promise<CollectionsListResponse> {
+	return client.request<CollectionsListResponse>('/api/client/collections');
+}
+
 // ── People ───────────────────────────────────────────────────────────────────
 
 export interface PersonCreditItem {
