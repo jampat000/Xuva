@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Xuva — Choose Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e8eaf0;
+      --muted: #8b90a0;
+      --accent: #6c7ef7;
+      --accent-hover: #8491fa;
+      --success: #4caf88;
+      --warn: #f5a623;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; }
+    body { display: flex; flex-direction: column; height: 100%; padding: 28px 32px; gap: 20px; overflow: hidden; user-select: none; }
+    .header { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; flex-shrink: 0; }
+    h1 { font-size: 18px; font-weight: 600; }
+    .subtitle { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+    .card-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px; }
+    .server-list { display: flex; flex-direction: column; gap: 6px; min-height: 52px; }
+    .server-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; transition: background 0.12s, border-color 0.12s; }
+    .server-item:hover { background: rgba(108,126,247,0.12); border-color: var(--border); }
+    .server-item.selected { background: rgba(108,126,247,0.18); border-color: var(--accent); }
+    .server-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+    .server-info { flex: 1; min-width: 0; }
+    .server-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .server-url { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .empty { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .input-row { display: flex; gap: 8px; }
+    input[type="text"] { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; color: var(--text); font-size: 13px; outline: none; transition: border-color 0.12s; }
+    input[type="text"]::placeholder { color: var(--muted); }
+    input[type="text"]:focus { border-color: var(--accent); }
+    .btn { padding: 9px 16px; border-radius: 6px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.12s; white-space: nowrap; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.45; cursor: default; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
+    .local-btn { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; background: none; border: none; cursor: pointer; padding: 0; transition: color 0.12s; }
+    .local-btn:hover { color: var(--text); }
+    .local-icon { font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">X</div>
+    <div>
+      <h1>Choose your Xuva server</h1>
+      <div class="subtitle">Connect to a server on your network, or run one on this machine.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Discovered on your network</div>
+    <div class="server-list" id="serverList">
+      <div class="empty"><div class="spinner"></div><span>Scanning for Xuva servers…</span></div>
+    </div>
+  </div>
+
+  <div class="divider">or enter URL manually</div>
+
+  <div class="card">
+    <div class="card-title">Manual address</div>
+    <div class="input-row">
+      <input type="text" id="manualUrl" placeholder="http://192.168.1.x:8097" spellcheck="false" autocomplete="off" />
+      <button class="btn btn-primary" id="connectBtn" disabled>Connect</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="local-btn" id="localBtn">
+      <span class="local-icon">🖥</span>
+      <span>Use this computer as the server</span>
+    </button>
+  </div>
+
+  <script>
+    const serverList = document.getElementById("serverList");
+    const manualUrl = document.getElementById("manualUrl");
+    const connectBtn = document.getElementById("connectBtn");
+    const localBtn = document.getElementById("localBtn");
+
+    let selected = null;
+    let servers = [];
+
+    function renderServers(list) {
+      servers = list;
+      if (list.length === 0) {
+        serverList.innerHTML = '<div class="empty"><div class="spinner"></div><span>Scanning for Xuva servers…</span></div>';
+        return;
+      }
+      serverList.innerHTML = "";
+      list.forEach((s) => {
+        const item = document.createElement("div");
+        item.className = "server-item" + (selected === s.id ? " selected" : "");
+        item.innerHTML = `
+          <div class="server-dot"></div>
+          <div class="server-info">
+            <div class="server-name">${escapeHtml(s.name)}</div>
+            <div class="server-url">${escapeHtml(s.baseURL)}</div>
+          </div>
+        `;
+        item.addEventListener("click", () => {
+          selected = s.id;
+          manualUrl.value = s.baseURL;
+          connectBtn.disabled = false;
+          renderServers(servers);
+        });
+        serverList.appendChild(item);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Load initial servers
+    window.xuvaDesktop.getDiscoveredServers().then(renderServers);
+
+    // Live updates
+    window.xuvaDesktop.onServersUpdated(renderServers);
+
+    // Manual URL validation
+    manualUrl.addEventListener("input", () => {
+      const v = manualUrl.value.trim();
+      connectBtn.disabled = !v.startsWith("http");
+      if (v) selected = null;
+      renderServers(servers);
+    });
+
+    manualUrl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !connectBtn.disabled) connectBtn.click();
+    });
+
+    connectBtn.addEventListener("click", async () => {
+      const url = manualUrl.value.trim();
+      if (!url) return;
+      connectBtn.disabled = true;
+      connectBtn.textContent = "Connecting…";
+      await window.xuvaDesktop.saveSettings({ mode: "remote", remoteUrl: url });
+    });
+
+    localBtn.addEventListener("click", async () => {
+      localBtn.disabled = true;
+      await window.xuvaDesktop.saveSettings({ mode: "local" });
+    });
+
+    // Pre-fill if settings already exist
+    window.xuvaDesktop.getSettings().then((s) => {
+      if (s && s.mode === "remote" && s.remoteUrl) {
+        manualUrl.value = s.remoteUrl;
+        connectBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
