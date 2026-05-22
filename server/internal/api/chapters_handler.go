@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/jampat000/Xuva/server/internal/auth"
@@ -80,7 +81,7 @@ func userPreferencesUpdateHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "not authenticated")
 			return
 		}
-		var body auth.UserPreferences
+		var body auth.UserPreferencesPatch
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -89,10 +90,15 @@ func userPreferencesUpdateHandler(deps Deps) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, body)
 			return
 		}
-		if err := deps.Auth.SetUserPreferences(r.Context(), resolved.Principal.ID, body); err != nil {
+		preferences, err := deps.Auth.UpdateUserPreferences(r.Context(), resolved.Principal.ID, body)
+		if err != nil {
+			if errors.Is(err, auth.ErrInvalidPreferences) {
+				writeError(w, http.StatusBadRequest, "posterSize must be S, M, or L")
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "failed to save preferences")
 			return
 		}
-		writeJSON(w, http.StatusOK, body)
+		writeJSON(w, http.StatusOK, preferences)
 	}
 }
