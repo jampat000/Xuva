@@ -38,20 +38,24 @@ private struct DetailContentView: View {
     var body: some View {
         GeometryReader { geometry in
             let viewport = geometry.size
-            ZStack(alignment: .top) {
-                backdrop(viewport: viewport)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Spacer().frame(height: viewport.height * 0.42)
-                        backLink(viewport: viewport)
-                            .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
-                            .padding(.bottom, 24)
-                        twoColumn(viewport: viewport)
-                            .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
-                            .padding(.bottom, viewport.height * 0.10)
-                    }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Back button is first focusable item — no spacer so tvOS
+                    // focus engine can reach it immediately on load.
+                    backLink(viewport: viewport)
+                        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                        .padding(.top, topBarPadding(viewport))
+                        .padding(.bottom, 24)
+                        .focusSection()
+                    twoColumn(viewport: viewport)
+                        .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
+                        .padding(.bottom, viewport.height * 0.10)
                 }
             }
+            // Backdrop is a fixed (non-scrolling) background layer aligned to
+            // the top — visually identical to the old ZStack approach but the
+            // focus engine now sees only the ScrollView, not a nested ZStack.
+            .background(alignment: .top) { backdrop(viewport: viewport) }
             .background(XuvaTheme.background)
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -65,6 +69,14 @@ private struct DetailContentView: View {
         }
         #if os(tvOS)
         .onExitCommand { store.backToHome() }
+        #endif
+    }
+
+    private func topBarPadding(_ viewport: CGSize) -> CGFloat {
+        #if os(tvOS)
+        return max(viewport.height * 0.07, 64)
+        #else
+        return 60
         #endif
     }
 
@@ -183,6 +195,7 @@ private struct DetailContentView: View {
             }
             actionRow(viewport: viewport)
                 .padding(.top, 28)
+                .focusSection()
             creditsRow(viewport: viewport)
                 .padding(.top, 22)
             studioChips(viewport: viewport)
@@ -191,6 +204,7 @@ private struct DetailContentView: View {
                 .padding(.top, 36)
             sectionBody(viewport: viewport)
                 .padding(.top, 32)
+                .focusSection()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -395,6 +409,7 @@ private struct DetailContentView: View {
                         }
                     }
                     .padding(.vertical, 8)
+                    .focusSection()
                 }
             }
         }
@@ -486,6 +501,7 @@ private struct DetailContentView: View {
                         }
                     }
                 }
+                .focusSection()
             }
         }
     }
