@@ -77,6 +77,7 @@ public struct HomeRow: Codable, Identifiable, Equatable {
     public var id: String
     public var title: String?
     public var subtitle: String?
+    public var eyebrow: String?
     public var kind: String?
     public var items: [HomeItem]?
 }
