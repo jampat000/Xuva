@@ -24,22 +24,22 @@ const (
 )
 
 type Profile struct {
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	Containers          []string `json:"containers"`
-	VideoCodecs         []string `json:"videoCodecs"`
-	AudioCodecs         []string `json:"audioCodecs"`
-	SubtitleCodecs      []string `json:"subtitleCodecs"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Containers     []string `json:"containers"`
+	VideoCodecs    []string `json:"videoCodecs"`
+	AudioCodecs    []string `json:"audioCodecs"`
+	SubtitleCodecs []string `json:"subtitleCodecs"`
 	// MaxVideoBitDepth is the highest luma bit depth this profile can decode
 	// in hardware. 0 means "unspecified" (treated as 8 in the decision tree).
 	// Values: 8 (SDR-only / older clients), 10 (Main10 / HDR-capable), 12 (rare).
-	MaxVideoBitDepth    int      `json:"maxVideoBitDepth,omitempty"`
+	MaxVideoBitDepth int `json:"maxVideoBitDepth,omitempty"`
 	// MaxVideoFrameRate caps direct-play frame rate. 0 means "unspecified"
 	// (no cap applied). Sources above this are routed to transcode.
-	MaxVideoFrameRate   float64  `json:"maxVideoFrameRate,omitempty"`
-	SupportsHDR         bool     `json:"supportsHdr"`
-	SupportsToneMapping bool     `json:"supportsToneMapping"`
-	SupportsHLS         bool     `json:"supportsHls"`
+	MaxVideoFrameRate   float64 `json:"maxVideoFrameRate,omitempty"`
+	SupportsHDR         bool    `json:"supportsHdr"`
+	SupportsToneMapping bool    `json:"supportsToneMapping"`
+	SupportsHLS         bool    `json:"supportsHls"`
 }
 
 type ApprovedDevice struct {
@@ -180,6 +180,18 @@ func (s *Service) ListApproved(ctx context.Context) ([]ApprovedDevice, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+func (s *Service) IsApproved(ctx context.Context, deviceID string) (bool, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return false, nil
+	}
+	item, found, err := s.findByDeviceID(ctx, deviceID)
+	if err != nil {
+		return false, err
+	}
+	return found && item.Status == StatusApproved, nil
 }
 
 func (s *Service) Approve(ctx context.Context, input ApproveInput) (ApprovedDevice, error) {
