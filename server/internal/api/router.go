@@ -115,16 +115,16 @@ func NewRouter(deps Deps) http.Handler {
 	// anonymous. The rationale for each one is documented inline; do not
 	// expand this list without a security review.
 	//
-	mux.HandleFunc("GET /api/health", healthHandler(deps))                       // liveness probe, no PII
-	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                     // readiness probe, no PII
-	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))    // pre-login server identity
-	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))    // mDNS / local discovery info
-	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))       // unpaired clients poll their own request
-	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))           // unpaired clients submit a request
-	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps))    // client withdraws its own pending request
-	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))       // first-run admin create
-	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))               // sign in
-	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))            // first-run wizard gate, no PII
+	mux.HandleFunc("GET /api/health", healthHandler(deps))                          // liveness probe, no PII
+	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                        // readiness probe, no PII
+	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))       // pre-login server identity
+	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))       // mDNS / local discovery info
+	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))    // unpaired clients poll their own request
+	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))        // unpaired clients submit a request
+	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps)) // client withdraws its own pending request
+	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))          // first-run admin create
+	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))                  // sign in
+	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))               // first-run wizard gate, no PII
 
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
@@ -6942,12 +6942,17 @@ func pairingCreateHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		if _, ok := deps.Devices.GetProfile(firstNonEmpty(request.ClientProfile, "apple-tv")); !ok {
-			writeError(w, http.StatusBadRequest, "unknown client profile")
-			return
+		clientProfile := firstNonEmpty(request.ClientProfile, "apple-tv")
+		request.ClientProfile = clientProfile
+		if deps.Devices != nil {
+			if _, ok := deps.Devices.GetProfile(clientProfile); !ok {
+				writeError(w, http.StatusBadRequest, "unknown client profile")
+				return
+			}
 		}
 		item, err := deps.Pairing.Create(request)
 		if err != nil {
+			slog.Warn("pairing request create failed", "clientProfile", request.ClientProfile, "deviceName", request.DeviceName, "err", err)
 			writeError(w, http.StatusInternalServerError, "pairing request failed")
 			return
 		}
