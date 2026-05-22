@@ -116,6 +116,7 @@ Public client bootstrap routes:
 | `GET /api/versions` | catalog | `versions.read` | admin, standard |
 | `GET /api/media-sources` | media | `media.list` | admin, standard |
 | `GET /api/media-sources/{id}` | media | `media.read` | admin, standard |
+| `DELETE /api/media-sources/{id}` | media | `media.delete` | admin |
 | `GET /api/media-sources/{id}/tracks` | media | `media.tracks` | admin, standard |
 | `GET /api/media-sources/{id}/subtitles` | media | `media.subtitles` | admin, standard |
 | `GET /api/media-sources/{id}/thumbnails/status` | media | `media.thumbnails.status` | admin, standard |
