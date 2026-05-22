@@ -942,6 +942,36 @@ func TestPairingRequestCreateStatusAndAdminApprove(t *testing.T) {
 	}
 }
 
+func TestPairingRequestCreateAcceptsNativeDiscoveryPayload(t *testing.T) {
+	router := NewRouter(testDepsWithAuth(t, time.Now()))
+
+	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
+		"deviceName":    "Bedroom Apple TV",
+		"clientProfile": "apple-tv",
+		"deviceId":      "apple-tv-bedroom",
+	})
+
+	if create["status"] != "pending" || create["deviceId"] != "apple-tv-bedroom" || create["clientProfile"] != "apple-tv" {
+		t.Fatalf("expected native pairing request payload to be accepted, got %#v", create)
+	}
+}
+
+func TestPairingRequestCreateDoesNotRequireDeviceRegistry(t *testing.T) {
+	deps := testDepsWithAuth(t, time.Now())
+	deps.Devices = nil
+	router := NewRouter(deps)
+
+	create := requestJSON(t, router, http.MethodPost, "/api/pairing/requests", map[string]any{
+		"deviceName":    "Bedroom Apple TV",
+		"clientProfile": "apple-tv",
+		"deviceId":      "apple-tv-bedroom",
+	})
+
+	if create["status"] != "pending" || create["id"] == "" {
+		t.Fatalf("expected pairing create to survive missing device registry, got %#v", create)
+	}
+}
+
 func TestPairingDenyDoesNotCreateApprovedDevice(t *testing.T) {
 	router := NewRouter(testDepsWithAuth(t, time.Now()))
 

@@ -2,6 +2,7 @@ package pairing
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -163,3 +164,37 @@ func TestPersistentListOnlyReturnsActivePendingRequests(t *testing.T) {
 		t.Fatalf("expected only active pending request in persistent list, got %#v", items)
 	}
 }
+
+func TestExecPairingWriteRetriesSQLiteBusy(t *testing.T) {
+	execer := &flakyPairingExecer{remainingBusy: 2}
+
+	if _, err := execPairingWrite(execer, "UPDATE pairing_requests SET status = ?", StatusPending); err != nil {
+		t.Fatalf("expected retry to recover from sqlite busy, got %v", err)
+	}
+	if execer.calls != 3 {
+		t.Fatalf("expected three attempts, got %d", execer.calls)
+	}
+}
+
+type flakyPairingExecer struct {
+	remainingBusy int
+	calls         int
+}
+
+func (f *flakyPairingExecer) Exec(string, ...any) (sql.Result, error) {
+	f.calls++
+	if f.remainingBusy > 0 {
+		f.remainingBusy--
+		return nil, errString("database is locked (5) (SQLITE_BUSY)")
+	}
+	return noRowsResult{}, nil
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
+type noRowsResult struct{}
+
+func (noRowsResult) LastInsertId() (int64, error) { return 0, nil }
+func (noRowsResult) RowsAffected() (int64, error) { return 0, nil }

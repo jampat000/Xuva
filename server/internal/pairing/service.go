@@ -2,6 +2,7 @@ package pairing
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
@@ -98,7 +99,7 @@ func (s *Service) Create(request CreateRequest) (Request, error) {
 		UpdatedAt:     now,
 	}
 	if s.database != nil {
-		_, err := s.database.DB().Exec(`
+		_, err := execPairingWrite(s.database.DB(), `
 			INSERT INTO pairing_requests(id, code, device_name, client_profile, device_id, status, approved_by, expires_at, created_at, updated_at)
 			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, item.ID, item.Code, item.DeviceName, item.ClientProfile, item.DeviceID, item.Status, item.ApprovedBy, formatTime(item.ExpiresAt), formatTime(item.CreatedAt), formatTime(item.UpdatedAt))
@@ -185,7 +186,7 @@ func (s *Service) Deny(id string, _ string) (Request, error) {
 		if item.Status != StatusPending {
 			return Request{}, ErrClosed
 		}
-		_, err := s.database.DB().Exec(`DELETE FROM pairing_requests WHERE id = ?`, id)
+		_, err := execPairingWrite(s.database.DB(), `DELETE FROM pairing_requests WHERE id = ?`, id)
 		if err != nil {
 			return Request{}, err
 		}
@@ -207,7 +208,7 @@ func (s *Service) Deny(id string, _ string) (Request, error) {
 func (s *Service) AttachAuthGrant(id string, grant AuthGrant) (Request, error) {
 	if s.database != nil {
 		now := time.Now().UTC()
-		result, err := s.database.DB().Exec(`
+		result, err := execPairingWrite(s.database.DB(), `
 			UPDATE pairing_requests
 			SET auth_method = ?, auth_session_token = ?, auth_expires_at = ?, updated_at = ?
 			WHERE id = ? AND status = ?
@@ -265,7 +266,7 @@ func (s *Service) close(id string, status string, approvedBy string, deviceID st
 				item.DeviceID = "device_" + uuid.NewString()
 			}
 		}
-		_, err := s.database.DB().Exec(`
+		_, err := execPairingWrite(s.database.DB(), `
 			UPDATE pairing_requests
 			SET status = ?, approved_by = ?, device_id = ?, updated_at = ?
 			WHERE id = ?
@@ -300,7 +301,7 @@ func (s *Service) close(id string, status string, approvedBy string, deviceID st
 func (s *Service) expireOld() {
 	now := time.Now().UTC()
 	if s.database != nil {
-		_, _ = s.database.DB().Exec(`
+		_, _ = execPairingWrite(s.database.DB(), `
 			DELETE FROM pairing_requests WHERE status = ? AND expires_at < ?
 		`, StatusPending, formatTime(now))
 		return
@@ -325,13 +326,13 @@ func (s *Service) Purge(retain time.Duration) (int, error) {
 	}
 	cutoff := now.Add(-retain)
 	if s.database != nil {
-		pending, err := s.database.DB().Exec(`
+		pending, err := execPairingWrite(s.database.DB(), `
 			DELETE FROM pairing_requests WHERE status = ? AND expires_at < ?
 		`, StatusPending, formatTime(now))
 		if err != nil {
 			return 0, err
 		}
-		terminal, err := s.database.DB().Exec(`
+		terminal, err := execPairingWrite(s.database.DB(), `
 			DELETE FROM pairing_requests WHERE status <> ? AND updated_at < ?
 		`, StatusPending, formatTime(cutoff))
 		if err != nil {
@@ -379,7 +380,7 @@ func (s *Service) Cancel(id string, deviceID string) error {
 		if item.Status == StatusApproved {
 			return ErrClosed
 		}
-		_, err := s.database.DB().Exec(`DELETE FROM pairing_requests WHERE id = ?`, id)
+		_, err := execPairingWrite(s.database.DB(), `DELETE FROM pairing_requests WHERE id = ?`, id)
 		return err
 	}
 	s.mu.Lock()
@@ -483,6 +484,31 @@ func publicRequest(item Request, includeAuth bool) Request {
 		item.Auth = nil
 	}
 	return item
+}
+
+type pairingExecer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func execPairingWrite(db pairingExecer, query string, args ...any) (sql.Result, error) {
+	var result sql.Result
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err = db.Exec(query, args...)
+		if !isSQLiteBusy(err) {
+			return result, err
+		}
+		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+	}
+	return result, err
+}
+
+func isSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "sqlite_busy") || strings.Contains(text, "database is locked") || strings.Contains(text, "database table is locked")
 }
 
 func randomCode() (string, error) {
