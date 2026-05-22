@@ -189,7 +189,15 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         }
 
         func playerViewControllerDidEndDismissalTransition(_ playerViewController: AVPlayerViewController) {
-            close()
+            // Report the final position to the server so it can save progress
+            // and close the session. stopPlayback() calls closePlayer() internally
+            // when there is no stopUrl (trailers), so close() is not needed here.
+            let currentSeconds: Int = {
+                guard let p = playerViewController.player else { return 0 }
+                let t = CMTimeGetSeconds(p.currentTime())
+                return t.isFinite ? max(0, Int(t)) : 0
+            }()
+            Task { await stopPlayback(currentSeconds) }
         }
     }
 }
