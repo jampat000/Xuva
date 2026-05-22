@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/database"
@@ -66,6 +67,44 @@ func (s *Service) Get(ctx context.Context, userID string, mediaSourceID string) 
 	state.Watched = watched != 0
 	state.Percent = percent(state.ProgressSeconds, state.DurationSeconds)
 	return state, true, nil
+}
+
+// GetBatch fetches playback states for a set of media source IDs in a single
+// query. Returns a map of mediaSourceID → State for entries that exist.
+func (s *Service) GetBatch(ctx context.Context, userID string, mediaSourceIDs []string) (map[string]State, error) {
+	if len(mediaSourceIDs) == 0 {
+		return nil, nil
+	}
+	if userID == "" {
+		userID = DefaultUserID
+	}
+	placeholders := make([]string, len(mediaSourceIDs))
+	args := make([]any, 0, 1+len(mediaSourceIDs))
+	args = append(args, userID)
+	for i, id := range mediaSourceIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query := `SELECT user_id, media_source_id, watched, progress_seconds, duration_seconds, last_played_at, updated_at
+		FROM playback_states
+		WHERE user_id = ? AND media_source_id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]State, len(mediaSourceIDs))
+	for rows.Next() {
+		var st State
+		var watched int
+		if err := rows.Scan(&st.UserID, &st.MediaSourceID, &watched, &st.ProgressSeconds, &st.DurationSeconds, &st.LastPlayedAt, &st.UpdatedAt); err != nil {
+			return nil, err
+		}
+		st.Watched = watched != 0
+		st.Percent = percent(st.ProgressSeconds, st.DurationSeconds)
+		out[st.MediaSourceID] = st
+	}
+	return out, rows.Err()
 }
 
 func (s *Service) Set(ctx context.Context, mediaSourceID string, update Update) (State, error) {
