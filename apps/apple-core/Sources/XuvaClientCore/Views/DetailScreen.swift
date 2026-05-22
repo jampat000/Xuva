@@ -50,6 +50,7 @@ private struct DetailContentView: View {
                     twoColumn(viewport: viewport)
                         .padding(.horizontal, XuvaScale.safeHorizontal(viewport))
                         .padding(.bottom, viewport.height * 0.10)
+                        .focusSection()
                 }
             }
             // Backdrop is a fixed (non-scrolling) background layer aligned to
@@ -126,7 +127,8 @@ private struct DetailContentView: View {
             }
             .foregroundStyle(XuvaTheme.mutedText)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(XuvaNakedButtonStyle())
+        .xuvaFocused(radius: 8)
     }
 
     private var backTitle: String {
@@ -141,14 +143,19 @@ private struct DetailContentView: View {
         let isCompact = viewport.width < 700
         let posterW: CGFloat = isCompact ? viewport.width * 0.35 : XuvaScale.clamped(220, viewport.width * 0.175, 360)
         let posterH = posterW * 1.5
-
-        let layout: AnyLayout = isCompact
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 28))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: viewport.width * 0.035))
-
-        layout {
-            poster(width: posterW, height: posterH)
-            contentColumn(viewport: viewport)
+        // Explicit branches instead of AnyLayout — AnyLayout is opaque to the
+        // tvOS focus engine so swipe-down from the back button can't reach the
+        // Play button inside contentColumn.
+        if isCompact {
+            VStack(alignment: .leading, spacing: 28) {
+                poster(width: posterW, height: posterH)
+                contentColumn(viewport: viewport)
+            }
+        } else {
+            HStack(alignment: .top, spacing: viewport.width * 0.035) {
+                poster(width: posterW, height: posterH)
+                contentColumn(viewport: viewport)
+            }
         }
     }
 
