@@ -281,9 +281,14 @@ struct PosterTile: View {
                 Text(meta)
                     .font(.system(size: overlaySubSize))
                     .foregroundStyle(XuvaTheme.muted)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minWidth: posterWidth, maxWidth: posterWidth, minHeight: overlaySubSize * 1.4, alignment: .topLeading)
+                    .lineLimit(1)
+                    // Fixed height (exactly one line) keeps every tile in the
+                    // row the same total height regardless of whether the card
+                    // has a runtime string or not — eliminates the uneven
+                    // vertical spacing the user sees when tiles vary in height.
+                    .frame(minWidth: posterWidth, maxWidth: posterWidth,
+                           minHeight: overlaySubSize * 1.4, maxHeight: overlaySubSize * 1.4,
+                           alignment: .topLeading)
             }
         }
         // PosterTileButtonStyle reads isFocused from inside makeBody — the only
