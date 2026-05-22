@@ -62,6 +62,11 @@ public final class XuvaAPI: @unchecked Sendable {
         return try await send("GET", path: "/api/metadata/\(normalized)/\(id)")
     }
 
+    public func similar(kind: String, id: String) async throws -> SimilarResponse {
+        let segment = kind.lowercased().contains("series") || kind.lowercased().contains("show") ? "series" : "movies"
+        return try await send("GET", path: "/api/client/\(segment)/\(id)/similar")
+    }
+
     public func startPlayback(
         mediaSourceId: String,
         positionSeconds: Int = 0,

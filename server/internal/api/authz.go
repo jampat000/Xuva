@@ -61,7 +61,9 @@ var routePolicies = map[string]routePolicy{
 
 	"GET /api/client/home":                 route("GET /api/client/home", "client", "client.home", roleAdmin, roleStandard),
 	"GET /api/client/movies/{id}":          route("GET /api/client/movies/{id}", "client", "client.movie.detail", roleAdmin, roleStandard),
+	"GET /api/client/movies/{id}/similar":  route("GET /api/client/movies/{id}/similar", "client", "client.movie.similar", roleAdmin, roleStandard),
 	"GET /api/client/series/{id}":          route("GET /api/client/series/{id}", "client", "client.series.detail", roleAdmin, roleStandard),
+	"GET /api/client/series/{id}/similar":  route("GET /api/client/series/{id}/similar", "client", "client.series.similar", roleAdmin, roleStandard),
 	"GET /api/client/collections":          route("GET /api/client/collections", "client", "client.collections.list", roleAdmin, roleStandard),
 	"GET /api/client/collections/{id}":     route("GET /api/client/collections/{id}", "client", "client.collection.detail", roleAdmin, roleStandard),
 	"GET /api/client/people/{name}":        route("GET /api/client/people/{name}", "client", "client.person.detail", roleAdmin, roleStandard),

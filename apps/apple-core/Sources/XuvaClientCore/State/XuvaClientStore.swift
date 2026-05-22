@@ -149,11 +149,15 @@ public final class XuvaClientStore: ObservableObject {
     private func enrichSelectedDetail(itemKind: String, itemId: String) async {
         guard let api else { return }
         do {
-            let metadata = try await api.metadata(kind: itemKind, id: itemId)
+            // Fetch metadata and similar titles in parallel.
+            async let metadataTask = api.metadata(kind: itemKind, id: itemId)
+            async let similarTask = api.similar(kind: itemKind, id: itemId)
+            let (metadata, similar) = try await (metadataTask, similarTask)
             // Don't overwrite if user navigated away
             guard selectedDetail?.item?.id == itemId else { return }
             selectedDetail?.enrichedMetadata = metadata.best
-            print("[XUVA] enriched cast=\(metadata.best?.cast?.count ?? 0) directors=\(metadata.best?.directors?.count ?? 0) studios=\(metadata.best?.studios?.count ?? 0)")
+            selectedDetail?.relatedTitles = similar.items
+            print("[XUVA] enriched cast=\(metadata.best?.cast?.count ?? 0) directors=\(metadata.best?.directors?.count ?? 0) studios=\(metadata.best?.studios?.count ?? 0) similar=\(similar.items?.count ?? 0)")
         } catch {
             print("[XUVA] enrich failed: \(error)")
         }
