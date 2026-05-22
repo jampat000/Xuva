@@ -1856,7 +1856,22 @@ func clientSeriesDetailHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "series not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, clientSeriesDetailPayload(r.Context(), deps, r, detail))
+		// Collect all episode media source IDs to batch-fetch playback states.
+		var sourceIDs []string
+		for _, season := range detail.Seasons {
+			for _, episode := range season.Episodes {
+				for _, v := range episode.Versions {
+					if v.MediaSourceID != "" {
+						sourceIDs = append(sourceIDs, v.MediaSourceID)
+					}
+				}
+			}
+		}
+		var playstates map[string]playstate.State
+		if len(sourceIDs) > 0 && deps.PlayState != nil {
+			playstates, _ = deps.PlayState.GetBatch(r.Context(), requestUserID(r), sourceIDs)
+		}
+		writeJSON(w, http.StatusOK, clientSeriesDetailPayload(r.Context(), deps, r, detail, playstates))
 	}
 }
 
@@ -2363,7 +2378,7 @@ func clientMovieDetailPayload(ctx context.Context, deps Deps, r *http.Request, d
 	}
 }
 
-func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, detail catalog.SeriesDetail) map[string]any {
+func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, detail catalog.SeriesDetail, playstates map[string]playstate.State) map[string]any {
 	seasons := make([]map[string]any, 0, len(detail.Seasons))
 	defaultMediaSourceID := ""
 	for _, season := range detail.Seasons {
@@ -2395,6 +2410,13 @@ func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, 
 					epEntry["runtimeMinutes"] = episode.Metadata.RuntimeMinutes
 				}
 				epEntry["voteAverage"] = heroRating(episode.Metadata.Ratings)
+			}
+			// Inject resume position from the first version that has playback state.
+			for _, v := range episode.Versions {
+				if ps, ok := playstates[v.MediaSourceID]; ok && ps.ProgressSeconds > 0 {
+					epEntry["positionSeconds"] = int(ps.ProgressSeconds)
+					break
+				}
 			}
 			episodes = append(episodes, epEntry)
 		}
