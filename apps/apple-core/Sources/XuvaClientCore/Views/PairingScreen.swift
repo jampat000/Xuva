@@ -57,7 +57,7 @@ public struct PairingScreen: View {
         .onAppear {
             discovery.start()
             Task {
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if discovery.servers.isEmpty {
                     discoveryTimedOut = true
                     showManualEntry = true
