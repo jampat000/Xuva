@@ -29,6 +29,8 @@
   let defaultSubtitlesEnabled = $state(false);
   let loadError = $state<string | null>(null);
   let loading = $state(true);
+  /** Set to true when the server returns status="deferred" — file not yet probed. */
+  let deferredState = $state(false);
 
   // Phase label shown inside the loading screen so users understand delays.
   // "probing" is only shown when startClientPlayback triggers foreground ffprobe.
@@ -118,7 +120,11 @@
       if (!finalAttemptRoute.url && !finalAttemptRoute.manifestUrl) {
         const status = finalAttemptRoute.status ?? 'unknown';
         const mode   = finalAttemptRoute.route  ?? 'transcode';
-        if (status === 'queued' || status === 'queuing' || status === 'transcoding') {
+        if (status === 'deferred') {
+          // File has not been probed yet — we can't choose a playback route.
+          // Show a dedicated "not analysed yet" panel with a link to Activity.
+          deferredState = true;
+        } else if (status === 'queued' || status === 'queuing' || status === 'transcoding') {
           loadError = `This file needs to be transcoded before it can play (${mode}). Wait a moment and try again, or check Activity in Settings.`;
         } else {
           loadError = `No playback URL was returned (route: ${mode}, status: ${status}). Check the server logs.`;
@@ -217,6 +223,37 @@
   <div class="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-black">
     <div class="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/70"></div>
     <p class="text-xs tracking-widest text-white/40 uppercase">{PHASE_LABELS[loadPhase]}</p>
+  </div>
+
+{:else if deferredState}
+  <!-- Deferred state: file not yet probed / analysed -->
+  <div class="flex h-screen w-screen flex-col items-center justify-center gap-6 bg-black p-8 text-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
+      <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+      </svg>
+    </div>
+    <div>
+      <p class="font-serif-display text-2xl text-white">File not yet analysed</p>
+      <p class="mt-2 max-w-sm text-sm leading-relaxed text-white/50">
+        Xuva needs to run a quick analysis on this file before it can choose the best
+        playback path. This happens automatically — check Activity for progress.
+      </p>
+    </div>
+    <div class="flex gap-3">
+      <a
+        href="/settings/activity"
+        class="rounded-full bg-amber-400/20 px-6 py-2.5 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-400/30"
+      >
+        Go to Activity →
+      </a>
+      <a
+        href={backHref}
+        class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20"
+      >
+        ← Back
+      </a>
+    </div>
   </div>
 
 {:else if loadError || !route}

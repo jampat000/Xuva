@@ -3,7 +3,6 @@ package probes
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -71,11 +70,9 @@ func NewPersistentService(ctx context.Context, eventBus *events.Bus, queue *jobs
 }
 
 func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
-	if request.Limit <= 0 || request.Limit > 500 {
-		request.Limit = 50
-	}
-	if request.MediaSourceID == "" && request.Limit < 1 {
-		return Job{}, errors.New("probe limit must be positive")
+	// limit=0 means probe all unprobed files; negative is invalid.
+	if request.Limit < 0 {
+		request.Limit = 0
 	}
 	job := Job{ID: s.nextJobID(), Status: StatusQueued, MediaSourceID: request.MediaSourceID, Limit: request.Limit, CreatedAt: time.Now().UTC()}
 	s.store(job)
