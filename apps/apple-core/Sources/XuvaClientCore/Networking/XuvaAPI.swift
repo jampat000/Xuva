@@ -4,6 +4,7 @@ public enum XuvaAPIError: LocalizedError {
     case invalidURL
     case badStatus(Int, String)
     case missingStreamURL
+    case fileNotProbed
 
     public var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ public enum XuvaAPIError: LocalizedError {
             return body.isEmpty ? "Connection returned HTTP \(code)." : "Connection returned HTTP \(code): \(body)"
         case .missingStreamURL:
             return "Xuva could not prepare a playable stream URL."
+        case .fileNotProbed:
+            return "This file has not been analysed yet. Open Settings → Activity on your Xuva server to run the Probe job, then try again."
         }
     }
 }
