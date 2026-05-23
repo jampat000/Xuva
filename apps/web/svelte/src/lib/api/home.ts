@@ -118,8 +118,24 @@ export interface SeriesDetailResponse {
 	[key: string]: unknown;
 }
 
+// ── Home response cache ───────────────────────────────────────────────────────
+// The home page is visited frequently. Cache the response for 2 minutes so
+// navigating Home → Movies → Home feels instant without stale-data risk.
+let _homeCache: { data: ClientHomeResponse; exp: number } | null = null;
+const HOME_TTL_MS = 2 * 60_000; // 2 minutes
+
+/** Invalidate the home cache (call after playback stop so continue-watching refreshes). */
+export function invalidateHomeCache(): void {
+	_homeCache = null;
+}
+
 export function getClientHome(client: ApiClient = apiClient, limit = 24): Promise<ClientHomeResponse> {
-	return client.request<ClientHomeResponse>(`/api/client/home?limit=${encodeURIComponent(String(limit))}`);
+	if (_homeCache && Date.now() < _homeCache.exp) return Promise.resolve(_homeCache.data);
+	const path = `/api/client/home?limit=${encodeURIComponent(String(limit))}`;
+	return client.request<ClientHomeResponse>(path).then(data => {
+		_homeCache = { data, exp: Date.now() + HOME_TTL_MS };
+		return data;
+	});
 }
 
 export function getPlaybackRecent(

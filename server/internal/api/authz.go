@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/auth"
@@ -14,6 +15,25 @@ const (
 	roleAdmin    = "admin"
 	roleStandard = "standard"
 )
+
+// approvalCache caches approved device IDs for a short period to avoid a DB
+// round-trip on every protected client request. Devices can only hold a stale
+// "approved" entry for up to cacheTTL; revoke invalidates immediately.
+var approvalCache = struct {
+	mu sync.Mutex
+	m  map[string]time.Time
+}{m: make(map[string]time.Time)}
+
+const approvalCacheTTL = 2 * time.Minute
+
+// invalidateApprovalCache removes a device from the short-lived approval
+// cache. Call this whenever a device is revoked so the change takes effect
+// immediately rather than after the TTL expires.
+func invalidateApprovalCache(deviceID string) {
+	approvalCache.mu.Lock()
+	delete(approvalCache.m, deviceID)
+	approvalCache.mu.Unlock()
+}
 
 type routePolicy struct {
 	Pattern string
@@ -240,6 +260,14 @@ func requireApprovedNativeDevice(deps Deps, r *http.Request, policy routePolicy,
 	if deviceID == "" {
 		return fmt.Errorf("native device approval is required")
 	}
+	// Check cache first to avoid a DB round-trip on every client request.
+	approvalCache.mu.Lock()
+	exp, cached := approvalCache.m[deviceID]
+	approvalCache.mu.Unlock()
+	if cached && time.Now().Before(exp) {
+		return nil // device is approved (cached)
+	}
+
 	approved, err := deps.Devices.IsApproved(r.Context(), deviceID)
 	if err != nil {
 		slog.Warn("native device approval check failed", "deviceId", deviceID, "err", err)
@@ -248,6 +276,10 @@ func requireApprovedNativeDevice(deps Deps, r *http.Request, policy routePolicy,
 	if !approved {
 		return fmt.Errorf("native device approval is required")
 	}
+	// Cache the approval for a short period.
+	approvalCache.mu.Lock()
+	approvalCache.m[deviceID] = time.Now().Add(approvalCacheTTL)
+	approvalCache.mu.Unlock()
 	return nil
 }
 

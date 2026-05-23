@@ -7165,6 +7165,9 @@ func approvedDeviceRevokeHandler(deps Deps) http.HandlerFunc {
 			}
 			return
 		}
+		// Immediately remove from approval cache so the revoke takes effect
+		// without waiting for the TTL to expire.
+		invalidateApprovalCache(item.DeviceID)
 		// Kill the auth session that was issued at pairing time so the
 		// revoked device's cached X-Auth-Token immediately stops working.
 		// Without this the device status flips to revoked but the token

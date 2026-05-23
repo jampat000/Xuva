@@ -30,6 +30,7 @@
   } from '$lib/api/details';
   import { getChapters, type ChaptersResponse, type UserPreferences } from '$lib/api/operator';
   import { getAuthSession } from '$lib/api/auth';
+  import { invalidateHomeCache } from '$lib/api/home';
   import { fmt, parseTimestampVTT, thumbForTime as thumbForTimeHelper, type ThumbnailCue, type ChapterCue } from './helpers.js';
 
   // ─── Props ───────────────────────────────────────────────────────────────
@@ -370,6 +371,8 @@
       durationSeconds: Math.floor(duration),
       watched: true,
     }).catch(() => {});
+    // Bust home cache so continue-watching refreshes on next visit
+    invalidateHomeCache();
   }
 
   function onVolumeChange() {
@@ -771,6 +774,8 @@
         progressSeconds: pos,
         durationSeconds: Math.floor(duration),
       }).catch(() => {});
+      // Bust home cache so continue-watching refreshes on next visit
+      invalidateHomeCache();
     }
   });
 
