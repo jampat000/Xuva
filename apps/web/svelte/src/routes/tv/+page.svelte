@@ -53,12 +53,13 @@
   {:else}
     <LibraryGrid
       eyebrow="Your library · TV"
-      title="Stories told in seasons."
+      title="TV."
       tagline="Pick up mid-episode, queue the next season, or fall down a rabbit hole — your full series shelf, beautifully laid out."
       {items}
       {loading}
       kind="TV"
       baseHref="/tv"
+      showHero={false}
     />
   {/if}
 </div>

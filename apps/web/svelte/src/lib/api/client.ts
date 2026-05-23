@@ -279,7 +279,10 @@ export function createApiClient({
 			if (existing) return existing;
 			const promise = requestWithRetry<TResponse, TBody>(path, options);
 			inflight.set(path, promise as Promise<unknown>);
-			promise.finally(() => inflight.delete(path));
+			// Clean up the map on settle. Use then(ok, err) instead of .finally() so
+			// the cleanup side-chain resolves (not re-throws), avoiding an unhandled
+			// rejection that the test environment would treat as a fatal error.
+			promise.then(() => inflight.delete(path), () => inflight.delete(path));
 			return promise;
 		}
 
