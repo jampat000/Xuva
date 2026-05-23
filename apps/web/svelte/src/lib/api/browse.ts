@@ -229,12 +229,44 @@ export function searchLibrary(
 	return client.request<SearchResponse>(`/api/client/search?${params}`);
 }
 
+// ── Response cache ────────────────────────────────────────────────────────────
+// Short-lived TTL cache for the two heavy list endpoints so that navigating
+// away and back (Movies → Home → Movies) feels instant. The cache is
+// module-level so it persists across navigations within a session.
+// Mutation endpoints (scan, metadata refresh, etc.) are never cached here.
+
+const _listCache = new Map<string, { data: unknown; exp: number }>();
+const LIST_TTL_MS = 5 * 60_000; // 5 minutes
+
+function getListCached<T>(key: string): T | undefined {
+	const entry = _listCache.get(key);
+	if (entry && Date.now() < entry.exp) return entry.data as T;
+	_listCache.delete(key);
+	return undefined;
+}
+
+function setListCached<T>(key: string, data: T): T {
+	_listCache.set(key, { data, exp: Date.now() + LIST_TTL_MS });
+	return data;
+}
+
+/** Invalidate the list cache (call after a scan or library change). */
+export function invalidateListCache(): void {
+	_listCache.clear();
+}
+
 export function getMovies(client: ApiClient = apiClient, limit = 0): Promise<MoviesResponse> {
-	return client.request<MoviesResponse>(`/api/movies?limit=${encodeURIComponent(String(limit))}`);
+	const path = `/api/movies?limit=${encodeURIComponent(String(limit))}`;
+	const hit = getListCached<MoviesResponse>(path);
+	if (hit) return Promise.resolve(hit);
+	return client.request<MoviesResponse>(path).then(d => setListCached(path, d));
 }
 
 export function getSeries(client: ApiClient = apiClient, limit = 0): Promise<SeriesResponse> {
-	return client.request<SeriesResponse>(`/api/series?limit=${encodeURIComponent(String(limit))}`);
+	const path = `/api/series?limit=${encodeURIComponent(String(limit))}`;
+	const hit = getListCached<SeriesResponse>(path);
+	if (hit) return Promise.resolve(hit);
+	return client.request<SeriesResponse>(path).then(d => setListCached(path, d));
 }
 
 export function scanMovies(

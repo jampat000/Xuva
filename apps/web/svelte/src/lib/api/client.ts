@@ -240,7 +240,13 @@ export function createApiClient({
 		}
 	}
 
-	async function request<TResponse, TBody = undefined>(
+	// In-flight deduplication: identical simultaneous GET requests share one
+	// network call instead of each firing their own fetch. The promise is
+	// removed from the map as soon as it settles, so subsequent navigations
+	// always issue a fresh request.
+	const inflight = new Map<string, Promise<unknown>>();
+
+	async function requestWithRetry<TResponse, TBody = undefined>(
 		path: string,
 		options: ApiRequestOptions<TBody> = {}
 	): Promise<TResponse> {
@@ -259,6 +265,25 @@ export function createApiClient({
 				await new Promise((resolve) => setTimeout(resolve, 120 * attempt));
 			}
 		}
+	}
+
+	async function request<TResponse, TBody = undefined>(
+		path: string,
+		options: ApiRequestOptions<TBody> = {}
+	): Promise<TResponse> {
+		const method = (options.method || 'GET').toUpperCase();
+
+		// Only deduplicate GET requests with no custom abort signal.
+		if (method === 'GET' && !options.signal) {
+			const existing = inflight.get(path) as Promise<TResponse> | undefined;
+			if (existing) return existing;
+			const promise = requestWithRetry<TResponse, TBody>(path, options);
+			inflight.set(path, promise as Promise<unknown>);
+			promise.finally(() => inflight.delete(path));
+			return promise;
+		}
+
+		return requestWithRetry<TResponse, TBody>(path, options);
 	}
 
 	function send<TResponse, TBody = Record<string, unknown>>(

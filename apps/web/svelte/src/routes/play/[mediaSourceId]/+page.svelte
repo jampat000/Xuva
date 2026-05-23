@@ -166,30 +166,25 @@
       // authorizeStreamRequest on the server requires ?sessionId=&deviceId=&token=
       // to be present in the URL. We fetch those params here and patch the route
       // before handing it to the Player component.
+      // One token fetch covers both the direct URL and the HLS manifest URL.
       loadPhase = 'authorizing';
       let finalRoute = finalAttemptRoute;
 
-      if (sessionId && finalAttemptRoute.url && !finalAttemptRoute.url.includes('token=')) {
-        try {
-          const tokenResp = await getStreamToken(mediaSourceId, sessionId, sessionDeviceId ?? 'web');
-          if (tokenResp.streamUrl) {
-            finalRoute = { ...finalAttemptRoute, url: tokenResp.streamUrl };
-          }
-        } catch {
-          // Auth is disabled — plain URL will work as-is. Continue.
-        }
-      }
+      const needsDirectToken   = sessionId && finalAttemptRoute.url && !finalAttemptRoute.url.includes('token=');
+      const needsManifestToken = sessionId && finalAttemptRoute.manifestUrl && !finalAttemptRoute.manifestUrl.includes('token=');
 
-      // For adaptive streams, append the query string to the manifest URL too.
-      if (sessionId && finalAttemptRoute.manifestUrl && !finalAttemptRoute.manifestUrl.includes('token=')) {
+      if (needsDirectToken || needsManifestToken) {
         try {
-          const tokenResp = await getStreamToken(mediaSourceId, sessionId, sessionDeviceId ?? 'web');
-          if (tokenResp.query) {
-            const sep = finalAttemptRoute.manifestUrl.includes('?') ? '&' : '?';
+          const tokenResp = await getStreamToken(mediaSourceId, sessionId!, sessionDeviceId ?? 'web');
+          if (needsDirectToken && tokenResp.streamUrl) {
+            finalRoute = { ...finalRoute, url: tokenResp.streamUrl };
+          }
+          if (needsManifestToken && tokenResp.query) {
+            const sep = finalAttemptRoute.manifestUrl!.includes('?') ? '&' : '?';
             finalRoute = { ...finalRoute, manifestUrl: finalAttemptRoute.manifestUrl + sep + tokenResp.query.replace(/^\?/, '') };
           }
         } catch {
-          // Auth disabled — continue with plain manifest URL.
+          // Auth is disabled — plain URLs will work as-is. Continue.
         }
       }
 
