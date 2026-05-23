@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/api"
@@ -47,6 +50,57 @@ import (
 	"github.com/jampat000/Xuva/server/internal/watchlist"
 )
 
+// JobAutoState tracks the live status of one background automation goroutine.
+// The goroutine is the sole writer; the /api/jobs handler reads snapshots.
+type JobAutoState struct {
+	mu          sync.RWMutex
+	Status      string    // "idle" | "running" | "paused" | "disabled"
+	Enabled     bool
+	IntervalMin int
+	LastRunAt   time.Time
+	LastRunErr  string
+	NextRunAt   time.Time
+}
+
+func (s *JobAutoState) setStatus(status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Status = status
+}
+
+func (s *JobAutoState) markRun(err error, next time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.LastRunAt = time.Now().UTC()
+	s.NextRunAt = next
+	s.Status = "idle"
+	if err != nil {
+		s.LastRunErr = err.Error()
+	} else {
+		s.LastRunErr = ""
+	}
+}
+
+func (s *JobAutoState) Snapshot() map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := map[string]any{
+		"status":       s.Status,
+		"enabled":      s.Enabled,
+		"intervalMins": s.IntervalMin,
+	}
+	if !s.LastRunAt.IsZero() {
+		out["lastRunAt"] = s.LastRunAt.Format(time.RFC3339)
+	}
+	if s.LastRunErr != "" {
+		out["lastRunError"] = s.LastRunErr
+	}
+	if !s.NextRunAt.IsZero() {
+		out["nextRunAt"] = s.NextRunAt.Format(time.RFC3339)
+	}
+	return out
+}
+
 type Application struct {
 	Config    config.Config
 	StartedAt time.Time
@@ -85,6 +139,28 @@ type Application struct {
 	Notifications *notifications.Service
 	Chapters      *chapters.Service
 	Watchlist     *watchlist.Service
+
+	// Live automation status — written by background goroutines, read by /api/jobs.
+	ScanAuto     *JobAutoState
+	MetadataAuto *JobAutoState
+	ProbeAuto    *JobAutoState
+	// liveConfig holds the most-recently-applied config so automation goroutines
+	// can pick up hot-reloaded settings without a restart.
+	liveConfig atomic.Value // stores config.Config
+}
+
+// CurrentConfig returns the most recently applied configuration.
+func (a *Application) CurrentConfig() config.Config {
+	if v := a.liveConfig.Load(); v != nil {
+		return v.(config.Config)
+	}
+	return a.Config
+}
+
+// UpdateLiveConfig stores a new config so automation goroutines pick it up on
+// their next tick. Called by the settings handler after a successful save.
+func (a *Application) UpdateLiveConfig(cfg config.Config) {
+	a.liveConfig.Store(cfg)
 }
 
 func New(ctx context.Context, cfg config.Config) (*Application, error) {
@@ -199,9 +275,32 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	}
 	pairingService := pairing.NewPersistentService(databaseService)
 	startRuntimeMaintenance(appCtx, sessionService, transcodeService, probesService, downloadService, pairingService)
-	// Start background library automation after sessionService is ready so the
-	// playback-priority coordinator can check for active sessions before each run.
-	startLibraryAutomation(appCtx, cfg, bus, scanService, probesService, sessionService)
+
+	// Per-job automation state objects (written by goroutines, read by /api/jobs).
+	scanAuto := &JobAutoState{}
+	metaAuto := &JobAutoState{}
+	probeAuto := &JobAutoState{}
+
+	// Channel: scan goroutine signals probe goroutine when it finds changed files.
+	// Buffered-1 so a fast scan doesn't block waiting for probe to wake up.
+	probeSignal := make(chan int, 1)
+
+	// getCfg lets goroutines read the current live config at each tick.
+	// We populate liveConfig below after the Application is constructed; the
+	// closure is safe because liveConfig is an atomic.Value.
+	var liveCfg atomic.Value
+	liveCfg.Store(cfg)
+	getCfg := func() config.Config {
+		if v := liveCfg.Load(); v != nil {
+			return v.(config.Config)
+		}
+		return cfg
+	}
+
+	// Start the three independent automation goroutines.
+	startScanAutomation(appCtx, getCfg, bus, scanService, sessionService, scanAuto, probeSignal)
+	startMetadataAutomation(appCtx, getCfg, bus, metadataService, sessionService, metaAuto)
+	startProbeAutomation(appCtx, getCfg, bus, probesService, sessionService, probeAuto, probeSignal)
 	discoveryService := discovery.NewService(cfg)
 	discoveryService.Start(appCtx)
 	trendingService := trending.NewService(cfg.TMDBAPIKey, catalogService)
@@ -284,7 +383,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	chaptersService := chapters.NewService(databaseService.DB(), cfg.FFmpegPath, cfg.FpcalcPath)
 	watchlistService := watchlist.NewService(databaseService)
 
-	return &Application{
+	app := &Application{
 		Config:        cfg,
 		StartedAt:     time.Now().UTC(),
 		cancel:        cancel,
@@ -321,7 +420,12 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		Notifications: notifService,
 		Chapters:      chaptersService,
 		Watchlist:     watchlistService,
-	}, nil
+		ScanAuto:      scanAuto,
+		MetadataAuto:  metaAuto,
+		ProbeAuto:     probeAuto,
+	}
+	app.liveConfig.Store(cfg)
+	return app, nil
 }
 
 func startRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service, transcodeService *transcode.Service, probesService *probes.Service, downloadService *downloads.Service, pairingService *pairing.Service) {
@@ -365,85 +469,322 @@ func runRuntimeMaintenance(ctx context.Context, sessionService *sessions.Service
 	}
 }
 
-func startLibraryAutomation(ctx context.Context, cfg config.Config, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, sessionService *sessions.Service) {
-	if cfg.LibrarySyncMode == "manual" {
+// scanIntervalFor returns the scan interval from config, enforcing a minimum of 5 minutes.
+// Falls back to SyncIntervalMins (legacy) if ScanIntervalMins is unset.
+func scanIntervalFor(cfg config.Config) time.Duration {
+	mins := cfg.ScanIntervalMins
+	if mins <= 0 {
+		mins = cfg.SyncIntervalMins
+	}
+	if mins < 5 {
+		mins = 15
+	}
+	return time.Duration(mins) * time.Minute
+}
+
+// playbackActive returns true when at least one session is actively playing
+// and the config says we should pause jobs during playback.
+func playbackActive(cfg config.Config, sessionService *sessions.Service) bool {
+	if cfg.DisableJobPause || sessionService == nil {
+		return false
+	}
+	return len(sessionService.List()) > 0
+}
+
+// startScanAutomation runs an independent goroutine that triggers library scans
+// on a configurable interval. It is fully isolated from the metadata and probe
+// goroutines; coordination with probe happens via probeSignal.
+func startScanAutomation(
+	ctx context.Context,
+	getCfg func() config.Config,
+	bus *events.Bus,
+	scanService *scans.Service,
+	sessionService *sessions.Service,
+	state *JobAutoState,
+	probeSignal chan<- int,
+) {
+	cfg := getCfg()
+	if cfg.DisableScanAuto || cfg.LibrarySyncMode == "manual" {
+		state.mu.Lock()
+		state.Status = "disabled"
+		state.Enabled = false
+		state.mu.Unlock()
 		return
 	}
-	interval := time.Duration(cfg.SyncIntervalMins) * time.Minute
-	if cfg.LibrarySyncMode == "watch" {
-		interval = time.Duration(cfg.WatchDebounceSecs) * time.Second
-		if interval < 5*time.Second {
-			interval = 5 * time.Second
-		}
-		if interval > 5*time.Minute {
-			interval = 5 * time.Minute
-		}
-	} else if interval < 15*time.Minute {
-		interval = 15 * time.Minute
-	}
-	probeLimit := cfg.ProbeBatchLimit
-	if probeLimit <= 0 {
-		probeLimit = 50
-	}
+
+	interval := scanIntervalFor(cfg)
+	state.mu.Lock()
+	state.Status = "idle"
+	state.Enabled = true
+	state.IntervalMin = int(interval.Minutes())
+	state.NextRunAt = time.Now().Add(interval)
+	state.mu.Unlock()
+
 	go func() {
-		timer := time.NewTimer(interval)
-		defer timer.Stop()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-timer.C:
-				runAutomatedLibrarySync(ctx, bus, scanService, probesService, sessionService, probeLimit)
-				timer.Reset(interval)
+			case <-ticker.C:
+				cfg = getCfg()
+
+				// Hot-reload: reset ticker if interval changed.
+				newInterval := scanIntervalFor(cfg)
+				if newInterval != interval {
+					interval = newInterval
+					ticker.Reset(interval)
+				}
+
+				if cfg.DisableScanAuto || cfg.LibrarySyncMode == "manual" {
+					state.mu.Lock()
+					state.Status = "disabled"
+					state.Enabled = false
+					state.mu.Unlock()
+					return
+				}
+
+				// Pause when playback is active.
+				if playbackActive(cfg, sessionService) {
+					active := len(sessionService.List())
+					bus.Publish("automation.scan.skipped", map[string]any{
+						"reason":         "active_playback",
+						"activeSessions": active,
+					})
+					slog.Debug("scan automation skipped: active sessions", "count", active)
+					state.setStatus("paused")
+					state.mu.Lock()
+					state.NextRunAt = time.Now().Add(interval)
+					state.mu.Unlock()
+					continue
+				}
+
+				state.setStatus("running")
+				state.mu.Lock()
+				state.IntervalMin = int(interval.Minutes())
+				state.mu.Unlock()
+				bus.Publish("automation.scan.started", map[string]any{"intervalMins": int(interval.Minutes())})
+
+				changedFiles, runErr := runScanJob(ctx, scanService, bus)
+
+				next := time.Now().Add(interval)
+				state.markRun(runErr, next)
+
+				// Signal probe goroutine. Non-blocking: if it's already queued, skip.
+				if runErr == nil && !cfg.DisableProbeAuto {
+					select {
+					case probeSignal <- changedFiles:
+					default:
+					}
+				}
 			}
 		}
 	}()
 }
 
-func runAutomatedLibrarySync(ctx context.Context, bus *events.Bus, scanService *scans.Service, probesService *probes.Service, sessionService *sessions.Service, probeLimit int) {
-	// Playback-priority: skip this automated sync cycle when any session is
-	// actively playing. The next timer tick will re-check and resume.
-	if sessionService != nil {
-		if active := sessionService.List(); len(active) > 0 {
-			bus.Publish("automation.sync.skipped", map[string]any{
-				"reason":         "active_playback",
-				"activeSessions": len(active),
-			})
-			slog.Debug("automated library sync skipped: active playback sessions", "activeSessions", len(active))
-			return
-		}
-	}
-	bus.Publish("automation.sync.started", map[string]any{"probeLimit": probeLimit})
+// runScanJob executes a full library scan and waits for it to complete.
+// Returns the number of changed files found, or an error.
+func runScanJob(ctx context.Context, scanService *scans.Service, bus *events.Bus) (int, error) {
 	job, err := scanService.Start(ctx, scans.Request{Kind: scans.KindAll})
 	if err != nil {
-		bus.Publish("automation.sync.failed", map[string]string{"stage": "scan", "error": err.Error()})
-		slog.Debug("automated library scan skipped", "error", err)
-		return
+		bus.Publish("automation.scan.failed", map[string]any{"error": err.Error()})
+		slog.Debug("scan automation: scan start failed", "error", err)
+		return 0, err
 	}
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return 0, ctx.Err()
 		case <-ticker.C:
 			current, ok := scanService.Get(job.ID)
 			if !ok {
-				return
+				return 0, nil
 			}
 			switch current.Status {
 			case scans.StatusCompleted:
-				if _, err := probesService.Start(ctx, probes.Request{Limit: probeLimit}); err != nil {
-					bus.Publish("automation.sync.failed", map[string]string{"stage": "probe", "error": err.Error()})
-				}
-				bus.Publish("automation.sync.completed", map[string]any{"scanId": job.ID, "probeLimit": probeLimit})
-				return
+				bus.Publish("automation.scan.completed", map[string]any{
+					"scanId":       job.ID,
+					"mediaFiles":   current.MediaFiles,
+					"changedFiles": current.ChangedFiles,
+				})
+				return current.ChangedFiles, nil
 			case scans.StatusFailed:
-				bus.Publish("automation.sync.failed", map[string]string{"stage": "scan", "error": current.Error})
-				return
+				bus.Publish("automation.scan.failed", map[string]any{"scanId": job.ID, "error": current.Error})
+				return 0, errors.New(current.Error)
 			}
 		}
 	}
+}
+
+// startMetadataAutomation runs an independent goroutine that triggers metadata
+// backfill on its own configurable interval. Completely isolated from scan/probe.
+func startMetadataAutomation(
+	ctx context.Context,
+	getCfg func() config.Config,
+	bus *events.Bus,
+	metadataService *metadata.Service,
+	sessionService *sessions.Service,
+	state *JobAutoState,
+) {
+	cfg := getCfg()
+	if cfg.DisableMetadataAuto {
+		state.mu.Lock()
+		state.Status = "disabled"
+		state.Enabled = false
+		state.mu.Unlock()
+		return
+	}
+
+	mins := cfg.MetadataIntervalMins
+	if mins < 5 {
+		mins = 360
+	}
+	interval := time.Duration(mins) * time.Minute
+
+	state.mu.Lock()
+	state.Status = "idle"
+	state.Enabled = true
+	state.IntervalMin = mins
+	state.NextRunAt = time.Now().Add(interval)
+	state.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cfg = getCfg()
+
+				// Hot-reload interval.
+				newMins := cfg.MetadataIntervalMins
+				if newMins < 5 {
+					newMins = 360
+				}
+				newInterval := time.Duration(newMins) * time.Minute
+				if newInterval != interval {
+					interval = newInterval
+					ticker.Reset(interval)
+				}
+
+				if cfg.DisableMetadataAuto {
+					state.mu.Lock()
+					state.Status = "disabled"
+					state.Enabled = false
+					state.mu.Unlock()
+					return
+				}
+
+				if playbackActive(cfg, sessionService) {
+					active := len(sessionService.List())
+					bus.Publish("automation.metadata.skipped", map[string]any{
+						"reason":         "active_playback",
+						"activeSessions": active,
+					})
+					slog.Debug("metadata automation skipped: active sessions", "count", active)
+					state.setStatus("paused")
+					state.mu.Lock()
+					state.NextRunAt = time.Now().Add(interval)
+					state.mu.Unlock()
+					continue
+				}
+
+				state.setStatus("running")
+				bus.Publish("automation.metadata.started", nil)
+
+				err := metadataService.StartBackfill(ctx, "tmdb")
+				if err != nil {
+					// Already running is not a real error; log and skip.
+					slog.Debug("metadata automation: backfill skipped", "reason", err)
+					bus.Publish("automation.metadata.skipped", map[string]any{"reason": err.Error()})
+				} else {
+					bus.Publish("automation.metadata.started", nil)
+					slog.Debug("metadata automation: backfill started")
+				}
+
+				next := time.Now().Add(interval)
+				state.markRun(err, next)
+			}
+		}
+	}()
+}
+
+// startProbeAutomation runs an independent goroutine that triggers ffprobe jobs.
+// It fires when the scan goroutine signals via probeSignal (event-driven, no own
+// timer). It can also be triggered on-demand via POST /api/probes.
+func startProbeAutomation(
+	ctx context.Context,
+	getCfg func() config.Config,
+	bus *events.Bus,
+	probesService *probes.Service,
+	sessionService *sessions.Service,
+	state *JobAutoState,
+	probeSignal <-chan int,
+) {
+	cfg := getCfg()
+	enabled := !cfg.DisableProbeAuto
+	state.mu.Lock()
+	if enabled {
+		state.Status = "idle"
+	} else {
+		state.Status = "disabled"
+	}
+	state.Enabled = enabled
+	state.mu.Unlock()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case changedFiles := <-probeSignal:
+				cfg = getCfg()
+
+				if cfg.DisableProbeAuto {
+					state.mu.Lock()
+					state.Status = "disabled"
+					state.Enabled = false
+					state.mu.Unlock()
+					continue
+				}
+
+				if changedFiles == 0 {
+					// Scan found no new/changed files; no probe needed.
+					slog.Debug("probe automation: skipped (no changed files from scan)")
+					continue
+				}
+
+				if playbackActive(cfg, sessionService) {
+					active := len(sessionService.List())
+					bus.Publish("automation.probe.skipped", map[string]any{
+						"reason":         "active_playback",
+						"activeSessions": active,
+					})
+					slog.Debug("probe automation skipped: active sessions", "count", active)
+					state.setStatus("paused")
+					continue
+				}
+
+				state.setStatus("running")
+				bus.Publish("automation.probe.started", map[string]any{"changedFiles": changedFiles})
+
+				_, err := probesService.Start(ctx, probes.Request{Limit: cfg.ProbeBatchLimit})
+				if err != nil {
+					slog.Debug("probe automation: probe start failed", "error", err)
+					bus.Publish("automation.probe.failed", map[string]any{"error": err.Error()})
+					state.markRun(err, time.Time{})
+				} else {
+					bus.Publish("automation.probe.queued", map[string]any{"batchLimit": cfg.ProbeBatchLimit})
+					state.markRun(nil, time.Time{})
+				}
+			}
+		}
+	}()
 }
 
 func ensureRuntimeDirs(cfg config.Config) error {
@@ -495,6 +836,9 @@ func (a *Application) Router() http.Handler {
 		Notifications: a.Notifications,
 		Chapters:      a.Chapters,
 		Watchlist:     a.Watchlist,
+		ScanAuto:      a.ScanAuto,
+		MetadataAuto:  a.MetadataAuto,
+		ProbeAuto:     a.ProbeAuto,
 	})
 }
 

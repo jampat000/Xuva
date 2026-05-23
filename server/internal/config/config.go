@@ -61,7 +61,17 @@ type Config struct {
 	SyncIntervalMins  int      `json:"syncIntervalMins,omitempty"`
 	WatchDebounceSecs int      `json:"watchDebounceSecs,omitempty"`
 	ProbeBatchLimit   int      `json:"probeBatchLimit,omitempty"`
-	AllowedOrigins    []string `json:"allowedOrigins,omitempty"`
+	// Per-job automation controls. "Disable..." naming keeps the zero value
+	// meaning "enabled", which is backwards-compatible with older settings.json
+	// files that predate these fields.
+	DisableScanAuto      bool `json:"disableScanAuto,omitempty"`      // set true to stop automated library scans
+	ScanIntervalMins     int  `json:"scanIntervalMins,omitempty"`     // scan cadence; default 15 min, min 5
+	DisableMetadataAuto  bool `json:"disableMetadataAuto,omitempty"`  // set true to stop automated metadata backfill
+	MetadataIntervalMins int  `json:"metadataIntervalMins,omitempty"` // metadata cadence; default 360 min (6 h)
+	MetadataBatchLimit   int  `json:"metadataBatchLimit,omitempty"`   // 0 = unlimited
+	DisableProbeAuto     bool `json:"disableProbeAuto,omitempty"`     // set true to stop auto-probe after scan
+	DisableJobPause      bool `json:"disableJobPause,omitempty"`      // set true to run jobs even during playback
+	AllowedOrigins       []string `json:"allowedOrigins,omitempty"`
 	// Region / language settings — captured during the setup wizard.
 	Country          string `json:"country,omitempty"`          // ISO 3166-1 alpha-2, e.g. "AU"
 	Timezone         string `json:"timezone,omitempty"`         // IANA tz, e.g. "Australia/Sydney"
@@ -155,7 +165,9 @@ func FromEnv() Config {
 		LibrarySyncMode:        envString("XUVA_LIBRARY_SYNC_MODE", "daily"),
 		SyncIntervalMins:       envInt("XUVA_SYNC_INTERVAL_MINS", 1440),
 		WatchDebounceSecs:      envInt("XUVA_WATCH_DEBOUNCE_SECS", 30),
-		ProbeBatchLimit:        envInt("XUVA_PROBE_BATCH_LIMIT", 50),
+		ProbeBatchLimit:        envInt("XUVA_PROBE_BATCH_LIMIT", 0),
+		ScanIntervalMins:       envInt("XUVA_SCAN_INTERVAL_MINS", 15),
+		MetadataIntervalMins:   envInt("XUVA_METADATA_INTERVAL_MINS", 360),
 		Country:                envString("XUVA_COUNTRY", ""),
 		Timezone:               envString("XUVA_TIMEZONE", ""),
 		MetadataLanguage:       envString("XUVA_METADATA_LANGUAGE", "en-US"),
@@ -225,7 +237,10 @@ func FromEnv() Config {
 	cfg.LibrarySyncMode = envString("XUVA_LIBRARY_SYNC_MODE", defaultSyncMode(cfg.LibrarySyncMode))
 	cfg.SyncIntervalMins = envInt("XUVA_SYNC_INTERVAL_MINS", defaultInt(cfg.SyncIntervalMins, 1440))
 	cfg.WatchDebounceSecs = envInt("XUVA_WATCH_DEBOUNCE_SECS", defaultInt(cfg.WatchDebounceSecs, 30))
-	cfg.ProbeBatchLimit = envInt("XUVA_PROBE_BATCH_LIMIT", defaultInt(cfg.ProbeBatchLimit, 50))
+	// ProbeBatchLimit: 0 means unlimited; do not apply defaultInt (which would turn 0 into 50).
+	cfg.ProbeBatchLimit = envInt("XUVA_PROBE_BATCH_LIMIT", cfg.ProbeBatchLimit)
+	cfg.ScanIntervalMins = envInt("XUVA_SCAN_INTERVAL_MINS", defaultInt(cfg.ScanIntervalMins, 15))
+	cfg.MetadataIntervalMins = envInt("XUVA_METADATA_INTERVAL_MINS", defaultInt(cfg.MetadataIntervalMins, 360))
 	cfg.Country = envString("XUVA_COUNTRY", cfg.Country)
 	cfg.Timezone = envString("XUVA_TIMEZONE", cfg.Timezone)
 	cfg.MetadataLanguage = envString("XUVA_METADATA_LANGUAGE", defaultString(cfg.MetadataLanguage, "en-US"))
@@ -362,6 +377,27 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.ProbeBatchLimit > 0 {
 		base.ProbeBatchLimit = saved.ProbeBatchLimit
+	}
+	if saved.DisableScanAuto {
+		base.DisableScanAuto = true
+	}
+	if saved.ScanIntervalMins > 0 {
+		base.ScanIntervalMins = saved.ScanIntervalMins
+	}
+	if saved.DisableMetadataAuto {
+		base.DisableMetadataAuto = true
+	}
+	if saved.MetadataIntervalMins > 0 {
+		base.MetadataIntervalMins = saved.MetadataIntervalMins
+	}
+	if saved.MetadataBatchLimit > 0 {
+		base.MetadataBatchLimit = saved.MetadataBatchLimit
+	}
+	if saved.DisableProbeAuto {
+		base.DisableProbeAuto = true
+	}
+	if saved.DisableJobPause {
+		base.DisableJobPause = true
 	}
 	if len(saved.AllowedOrigins) > 0 {
 		base.AllowedOrigins = saved.AllowedOrigins

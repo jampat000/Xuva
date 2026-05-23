@@ -139,6 +139,7 @@ var routePolicies = map[string]routePolicy{
 	"GET /api/settings/performance": route("GET /api/settings/performance", "settings", "settings.performance.read", roleAdmin),
 	"GET /api/probes":               route("GET /api/probes", "media", "probe.list", roleAdmin),
 	"GET /api/probes/{id}":          route("GET /api/probes/{id}", "media", "probe.read", roleAdmin),
+	"GET /api/jobs":                 route("GET /api/jobs", "jobs", "jobs.status", roleAdmin),
 	"GET /api/work":                 route("GET /api/work", "work", "work.list", roleAdmin),
 	"GET /api/downloads":            route("GET /api/downloads", "downloads", "downloads.list", roleAdmin),
 	"GET /api/downloads/{id}":       route("GET /api/downloads/{id}", "downloads", "downloads.read", roleAdmin),

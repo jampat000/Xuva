@@ -109,6 +109,15 @@ type Deps struct {
 	Notifications *notifications.Service
 	Chapters      *chapters.Service
 	Watchlist     *watchlist.Service
+	// Automation state — live snapshots from the three background job goroutines.
+	ScanAuto     JobAutoStater
+	MetadataAuto JobAutoStater
+	ProbeAuto    JobAutoStater
+}
+
+// JobAutoStater is the read interface used by the /api/jobs handler.
+type JobAutoStater interface {
+	Snapshot() map[string]any
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -234,6 +243,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/probes", probesHandler(deps))
 	handleProtected(mux, deps, "GET /api/probes/{id}", probeJobHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/probes", probeStartHandler(deps))
+	handleProtected(mux, deps, "GET /api/jobs", jobsStatusHandler(deps))
 	handleProtected(mux, deps, "GET /api/work", workHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/work", workStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "DELETE /api/work/{id}", workCancelHandler(deps))
@@ -5158,6 +5168,39 @@ func mediaSourceProbeHandler(deps Deps) http.HandlerFunc {
 func probesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"probes": deps.Probes.List()})
+	}
+}
+
+// jobsStatusHandler returns a unified snapshot of all three automation jobs
+// (scan, metadata, probe) plus the current probe job list. Used by /settings/activity.
+func jobsStatusHandler(deps Deps) http.HandlerFunc {
+	snapshotOrNil := func(s JobAutoStater) map[string]any {
+		if s == nil {
+			return map[string]any{"status": "disabled", "enabled": false}
+		}
+		return s.Snapshot()
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		scanSnap := snapshotOrNil(deps.ScanAuto)
+		metaSnap := snapshotOrNil(deps.MetadataAuto)
+		probeSnap := snapshotOrNil(deps.ProbeAuto)
+
+		// Enrich the probe snapshot with the live probe job list so the UI can
+		// show per-file progress without a separate /api/probes call.
+		if deps.Probes != nil {
+			probeSnap["activeJobs"] = deps.Probes.List()
+		}
+
+		// Enrich metadata snapshot with backfill status from the service.
+		if deps.Metadata != nil {
+			metaSnap["backfill"] = deps.Metadata.BackfillStatus()
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"scan":     scanSnap,
+			"metadata": metaSnap,
+			"probe":    probeSnap,
+		})
 	}
 }
 

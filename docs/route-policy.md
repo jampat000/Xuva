@@ -65,6 +65,7 @@ Public client bootstrap routes:
 | `POST /api/media-sources/{id}/subtitles/{index}/convert` | media | `media.subtitle.convert` | admin, standard |
 | `POST /api/media-sources/{id}/probe` | media | `media.probe` | admin |
 | `POST /api/probes` | media | `probe.start` | admin |
+| `GET /api/jobs` | jobs | `jobs.status` | admin |
 | `POST /api/work` | work | `work.start` | admin |
 | `DELETE /api/work/{id}` | work | `work.cancel` | admin |
 | `GET /api/work/{id}/file` | work | `work.file` | admin, standard |
