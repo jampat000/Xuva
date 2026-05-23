@@ -8,7 +8,7 @@
   import { getAuthSession } from '$lib/api/auth';
   import { updateUserPreferences } from '$lib/api/operator';
 
-  let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "" } = $props<{
+  let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "", showHero = true } = $props<{
     eyebrow: string;
     title: string;
     tagline: string;
@@ -16,6 +16,8 @@
     kind: "Movies" | "TV";
     loading?: boolean;
     baseHref?: string;
+    /** When false, renders a compact text header instead of the featured-item hero. */
+    showHero?: boolean;
   }>();
 
   // ── Types ──────────────────────────────────────────────────────────────────
@@ -311,6 +313,24 @@
 </script>
 
 <main class="pb-32">
+  {#if !showHero}
+    <!-- ── Compact header (collections-style) ──────────────────────────────── -->
+    <div class="px-6 pb-0 pt-28 md:px-12 lg:px-20">
+      <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">
+        {eyebrow}
+      </div>
+      <h1 class="font-serif-display text-[clamp(2rem,5vw,3.5rem)] leading-[0.95] tracking-tight">
+        {title}
+      </h1>
+      <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+        <span><span class="text-foreground/90">{items.length}</span> in library</span>
+        {#if genreChips.length > 0}
+          <span class="opacity-30">·</span>
+          <span><span class="text-foreground/90">{genreChips.length}</span> genres</span>
+        {/if}
+      </div>
+    </div>
+  {:else}
   <!-- ── Hero header ──────────────────────────────────────────────────────── -->
   <section class="relative isolate overflow-hidden px-6 pb-10 pt-32 md:px-12 md:pb-14 md:pt-40 lg:px-20">
     {#if featured?.backdrop}
@@ -412,6 +432,7 @@
       {/if}
     </div>
   </section>
+  {/if}
 
   <!-- ── Toolbar (sticky) ─────────────────────────────────────────────────── -->
   <div class="sticky top-16 z-30 -mb-px border-y border-border bg-background/75 backdrop-blur-xl md:top-18">

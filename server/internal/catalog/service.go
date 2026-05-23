@@ -673,18 +673,46 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 	}
 	defer rows.Close()
 
-	output := []MovieListItem{}
+	type movieStub struct {
+		id, title, sortTitle, addedAt string
+		year, versionCount            int
+		needsReview, isWatched        int
+	}
+	var stubs []movieStub
 	for rows.Next() {
-		var item MovieListItem
-		var needsReview, isWatched int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Year, &item.SortTitle, &needsReview, &item.VersionCount, &item.AddedAt, &isWatched); err != nil {
+		var st movieStub
+		if err := rows.Scan(&st.id, &st.title, &st.year, &st.sortTitle, &st.needsReview, &st.versionCount, &st.addedAt, &st.isWatched); err != nil {
 			return nil, err
 		}
-		item.NeedsReview = needsReview != 0
-		item.Watched = isWatched != 0
-		if record, ok, err := s.GetBestMetadata(ctx, "movie", item.ID); err != nil {
-			return nil, err
-		} else if ok {
+		stubs = append(stubs, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Batch-fetch all metadata in one round-trip.
+	ids := make([]string, len(stubs))
+	for i, st := range stubs {
+		ids[i] = st.id
+	}
+	metaMap, err := s.GetBestMetadataBatch(ctx, "movie", ids)
+	if err != nil {
+		return nil, err
+	}
+
+	output := make([]MovieListItem, 0, len(stubs))
+	for _, st := range stubs {
+		item := MovieListItem{
+			ID:           st.id,
+			Title:        st.title,
+			Year:         st.year,
+			SortTitle:    st.sortTitle,
+			NeedsReview:  st.needsReview != 0,
+			VersionCount: st.versionCount,
+			AddedAt:      st.addedAt,
+			Watched:      st.isWatched != 0,
+		}
+		if record, ok := metaMap[st.id]; ok {
 			item.Metadata = &record
 			applyMovieMetadata(&item.Title, &item.Year, &item.SortTitle, record)
 		}
@@ -702,7 +730,7 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 			break
 		}
 	}
-	return output, rows.Err()
+	return output, nil
 }
 
 // CollectionResult is the header record returned by ListMoviesByCollection.
@@ -1643,25 +1671,50 @@ func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string, u
 	}
 	defer rows.Close()
 
-	raw := []SeriesListItem{}
+	type seriesStub struct {
+		id, title, sortTitle, addedAt string
+		seasonCount, episodeCount     int
+		isWatched                     int
+	}
+	var stubs []seriesStub
 	for rows.Next() {
-		var item SeriesListItem
-		var isWatched int
-		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount, &item.AddedAt, &isWatched); err != nil {
+		var st seriesStub
+		if err := rows.Scan(&st.id, &st.title, &st.sortTitle, &st.seasonCount, &st.episodeCount, &st.addedAt, &st.isWatched); err != nil {
 			return nil, err
 		}
-		item.Watched = isWatched != 0
-		if record, ok, err := s.GetBestMetadata(ctx, "series", item.ID); err != nil {
-			return nil, err
-		} else if ok {
+		stubs = append(stubs, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, len(stubs))
+	for i, st := range stubs {
+		ids[i] = st.id
+	}
+	metaMap, err := s.GetBestMetadataBatch(ctx, "series", ids)
+	if err != nil {
+		return nil, err
+	}
+
+	raw := make([]SeriesListItem, 0, len(stubs))
+	for _, st := range stubs {
+		item := SeriesListItem{
+			ID:           st.id,
+			Title:        st.title,
+			SortTitle:    st.sortTitle,
+			SeasonCount:  st.seasonCount,
+			EpisodeCount: st.episodeCount,
+			AddedAt:      st.addedAt,
+			Watched:      st.isWatched != 0,
+		}
+		if record, ok := metaMap[st.id]; ok {
 			item.Metadata = &record
 			applyTitleMetadata(&item.Title, &item.SortTitle, record)
 		}
 		raw = append(raw, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+
 	collapsed := collapseSeriesListItems(raw)
 	if maxRating == "" {
 		if limit > 0 && len(collapsed) > limit {
@@ -2188,14 +2241,154 @@ func (s *Service) GetBestMetadata(ctx context.Context, kind string, itemID strin
 	return merged, true, nil
 }
 
+// GetBestMetadataBatch fetches and merges metadata for multiple items of the same
+// kind in two database round-trips instead of 4N. Returns a map from item_id →
+// merged MetadataRecord; items with no metadata are absent from the map.
+func (s *Service) GetBestMetadataBatch(ctx context.Context, kind string, ids []string) (map[string]MetadataRecord, error) {
+	if len(ids) == 0 {
+		return map[string]MetadataRecord{}, nil
+	}
+
+	// Build "?,?,…" placeholder
+	ph := strings.Repeat("?,", len(ids))
+	ph = ph[:len(ph)-1]
+	args := make([]any, 0, 1+len(ids))
+	args = append(args, kind)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	// ── 1 query: all metadata records ────────────────────────────────────────
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, external_id, title, year, overview,
+		       poster_url, backdrop_url, thumbnail_url, logo_url, banner_url,
+		       video_key, trailer_path, artwork_json, details_json, confidence,
+		       raw_json, fetched_at, updated_at
+		FROM metadata_records
+		WHERE kind = ? AND item_id IN (`+ph+`)
+		ORDER BY item_id, updated_at DESC
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	allRecords, err := scanMetadataRecords(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// ── 1 query: all ratings ─────────────────────────────────────────────────
+	ratingsByID := make(map[string][]Rating, len(ids))
+	ratingRows, err := s.db.QueryContext(ctx, `
+		SELECT kind, item_id, provider, rating_type, value, display_value, scale,
+		       votes, source_url, fetched_at, updated_at
+		FROM metadata_ratings
+		WHERE kind = ? AND item_id IN (`+ph+`)
+		ORDER BY item_id,
+		         CASE rating_type
+		           WHEN 'imdb' THEN 0
+		           WHEN 'rottenTomatoesCritics' THEN 1
+		           WHEN 'rottenTomatoesAudience' THEN 2
+		           WHEN 'tmdb' THEN 3
+		           WHEN 'metacritic' THEN 4
+		           WHEN 'tvdb' THEN 5
+		           ELSE 9 END, provider
+	`, args...)
+	if err == nil {
+		defer ratingRows.Close()
+		for ratingRows.Next() {
+			var r Rating
+			if scanErr := ratingRows.Scan(
+				&r.Kind, &r.ItemID, &r.Provider, &r.RatingType,
+				&r.Value, &r.DisplayValue, &r.Scale, &r.Votes,
+				&r.SourceURL, &r.FetchedAt, &r.UpdatedAt,
+			); scanErr == nil {
+				ratingsByID[r.ItemID] = append(ratingsByID[r.ItemID], r)
+			}
+		}
+	}
+
+	// ── 1 query: all external IDs (needed for series deduplication) ──────────
+	externalIDsByItemID := make(map[string]map[string]string, len(ids))
+	extRows, extErr := s.db.QueryContext(ctx, `
+		SELECT item_id, provider, external_id
+		FROM metadata_external_ids
+		WHERE kind = ? AND item_id IN (`+ph+`)
+		ORDER BY item_id, provider
+	`, args...)
+	if extErr == nil {
+		defer extRows.Close()
+		for extRows.Next() {
+			var extItemID, extProvider, extID string
+			if scanErr := extRows.Scan(&extItemID, &extProvider, &extID); scanErr == nil {
+				if externalIDsByItemID[extItemID] == nil {
+					externalIDsByItemID[extItemID] = map[string]string{}
+				}
+				externalIDsByItemID[extItemID][extProvider] = extID
+			}
+		}
+	}
+
+	// ── 1 library lookup: shared by all items of same kind ───────────────────
+	metaOrder := metasources.DefaultSourceOrder(string(metadataLibraryKind(kind)))
+	artworkOrder := metasources.DefaultArtworkOrder(string(metadataLibraryKind(kind)))
+	for _, id := range ids {
+		if lib, ok, libErr := s.GetLibraryForItem(ctx, kind, id); libErr == nil && ok {
+			if order := metasources.NormalizeRequestedSourceOrder(string(lib.Kind), lib.MetadataSources); len(order) > 0 {
+				metaOrder = order
+			}
+			if order := metasources.NormalizeRequestedArtworkOrder(string(lib.Kind), lib.ArtworkSources); len(order) > 0 {
+				artworkOrder = order
+			}
+			break // all items of the same kind share the same library
+		}
+	}
+
+	// ── Group records by item_id and merge ───────────────────────────────────
+	byID := make(map[string][]MetadataRecord, len(ids))
+	for _, r := range allRecords {
+		byID[r.ItemID] = append(byID[r.ItemID], r)
+	}
+
+	result := make(map[string]MetadataRecord, len(byID))
+	for itemID, records := range byID {
+		merged := s.mergeMetadataRecordsOrdered(kind, itemID, records, metaOrder, artworkOrder)
+		merged.Ratings = RatingMap(ratingsByID[itemID])
+		merged.MetadataStatus = s.metadataStatusForRecord(ctx, merged, records)
+		// Attach external IDs so callers can group/deduplicate by shared identity.
+		if extMap := externalIDsByItemID[itemID]; extMap != nil {
+			merged.ExternalIDs = extMap
+			if merged.Provenance.ExternalIDs == nil {
+				merged.Provenance.ExternalIDs = map[string]string{}
+			}
+			for provider := range extMap {
+				merged.Provenance.ExternalIDs[provider] = provider
+			}
+		}
+		result[itemID] = merged
+	}
+	return result, nil
+}
+
 func (s *Service) mergeMetadataRecords(ctx context.Context, kind string, itemID string, records []MetadataRecord) MetadataRecord {
+	return s.mergeMetadataRecordsOrdered(
+		kind, itemID, records,
+		s.metadataOrderForItem(ctx, kind, itemID),
+		s.artworkOrderForItem(ctx, kind, itemID),
+	)
+}
+
+// mergeMetadataRecordsOrdered is like mergeMetadataRecords but uses
+// caller-supplied source orders instead of per-item DB lookups — used by
+// GetBestMetadataBatch to avoid N×2 library-lookup queries.
+func (s *Service) mergeMetadataRecordsOrdered(kind, itemID string, records []MetadataRecord, metaOrder, artworkOrder []string) MetadataRecord {
 	if len(records) == 0 {
 		return MetadataRecord{}
 	}
 	metadataOrdered := append([]MetadataRecord(nil), records...)
-	sortMetadataRecords(metadataOrdered, s.metadataOrderForItem(ctx, kind, itemID))
+	sortMetadataRecords(metadataOrdered, metaOrder)
 	artworkOrdered := append([]MetadataRecord(nil), records...)
-	sortMetadataRecords(artworkOrdered, s.artworkOrderForItem(ctx, kind, itemID))
+	sortMetadataRecords(artworkOrdered, artworkOrder)
 	merged := MetadataRecord{
 		Kind:       kind,
 		ItemID:     itemID,
