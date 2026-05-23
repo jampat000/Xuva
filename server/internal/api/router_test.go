@@ -1573,11 +1573,19 @@ func TestClientPlaybackStartHeartbeatAndStop(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
 
-	router := NewRouter(testDeps(t, time.Now()))
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
 	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
 	waitForScan(t, router, payload["id"].(string))
 	sources := getJSON(t, router, "/api/media-sources")
 	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+	// Probe required before playback — save a native Apple TV result so the
+	// decision engine picks DirectPlay rather than blocking on remux.
+	if err := deps.Catalog.SaveProbe(context.Background(), sourceID, catalog.ProbeResult{
+		Container: "mp4", VideoCodec: "h264", Width: 1920, Height: 1080,
+	}); err != nil {
+		t.Fatalf("save probe: %v", err)
+	}
 
 	started := postJSON(t, router, "/api/client/playback/start", map[string]any{
 		"mediaSourceId": sourceID,
@@ -1627,11 +1635,20 @@ func TestClientHomeIncludesUnknownDurationProgressInContinueWatching(t *testing.
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Arrival (2016)", "Arrival.2016.1080p.mkv"))
 
-	router := NewRouter(testDeps(t, time.Now()))
+	deps := testDeps(t, time.Now())
+	router := NewRouter(deps)
 	payload := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
 	waitForScan(t, router, payload["id"].(string))
 	sources := getJSON(t, router, "/api/media-sources")
 	sourceID := sources["mediaSources"].([]any)[0].(map[string]any)["id"].(string)
+
+	// Probe required before playback — save a native format so the decision
+	// engine picks DirectPlay rather than blocking on remux/policy.
+	if err := deps.Catalog.SaveProbe(context.Background(), sourceID, catalog.ProbeResult{
+		Container: "mp4", VideoCodec: "h264", Width: 1920, Height: 1080,
+	}); err != nil {
+		t.Fatalf("save probe: %v", err)
+	}
 
 	started := postJSON(t, router, "/api/client/playback/start", map[string]any{
 		"mediaSourceId": sourceID,
