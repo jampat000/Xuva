@@ -2197,25 +2197,17 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "media source not found")
 			return
 		}
-		// ── Probe-on-demand fallback (issue #57) ─────────────────────────────
-		// If this file has not been probed yet, run a synchronous foreground
-		// probe before making the playback decision. This lets users click
-		// Play on newly-added files before the background probe queue catches up.
-		var probeWarning string
-		probedOnDemand := false
-		if !source.Probed && deps.Probe != nil {
-			updated, probeErr := foregroundProbe(r.Context(), deps, source)
-			if probeErr == nil {
-				source = updated
-				probedOnDemand = true
-			} else {
-				// Best-guess: infer container from file extension so the decision
-				// tree can at least attempt a conservative transcode.
-				probeWarning = "File has not been probed; using best-guess codec from file extension. Playback may fail."
-				if source.Container == "" && source.Extension != "" {
-					source.Container = strings.TrimPrefix(source.Extension, ".")
-				}
-			}
+		// ── Probe required ────────────────────────────────────────────────────
+		// Playback is only permitted after a file has been analysed by the probe
+		// job. This guarantees the decision engine always has accurate codec,
+		// resolution, and HDR data to work with. Direct the user to the Activity
+		// page to run or monitor the probe job.
+		if !source.Probed {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"status": "deferred",
+				"error":  "This file has not been analysed yet. Run the Probe job in Activity (Settings → Activity) before playing.",
+			})
+			return
 		}
 		decision := clientPlaybackDecision(r.Context(), deps, source, clientPlaybackOptions{
 			ClientProfile:      payload.ClientProfile,
@@ -2273,12 +2265,6 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			"decision":                decision,
 			"route":                   routePayload,
 			"defaultSubtitlesEnabled": defaultSubs,
-		}
-		if probedOnDemand {
-			resp["probedOnDemand"] = true
-		}
-		if probeWarning != "" {
-			resp["warning"] = probeWarning
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
@@ -2607,7 +2593,7 @@ func clientPlaybackDecision(ctx context.Context, deps Deps, source catalog.Media
 }
 
 func clientPlaybackRoutePayload(deps Deps, r *http.Request, source catalog.MediaSourceItem, decision playback.Decision, payload clientPlaybackStartRequest) (map[string]any, int, error) {
-	if decision.Mode == playback.DirectPlay || decision.Mode == playback.DecisionDeferred {
+	if decision.Mode == playback.DirectPlay {
 		return map[string]any{
 			"route":    "direct",
 			"status":   "ready",
@@ -4699,7 +4685,7 @@ func normalizedPlaybackPolicy(policy string) string {
 
 func playbackPolicyAllows(policy string, decision playback.Decision) bool {
 	switch decision.Mode {
-	case playback.DirectPlay, playback.DecisionDeferred:
+	case playback.DirectPlay:
 		return true
 	}
 	switch normalizedPlaybackPolicy(policy) {
@@ -8076,7 +8062,15 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		decision := playbackDecisionForSource(r.Context(), deps, r, item)
-		if decision.Mode == playback.DirectPlay || decision.Mode == playback.DecisionDeferred {
+		if decision.Mode == playback.DecisionDeferred {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"route":    "deferred",
+				"status":   "deferred",
+				"decision": decision,
+			})
+			return
+		}
+		if decision.Mode == playback.DirectPlay {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"route":    "direct",
 				"status":   "ready",
@@ -8244,63 +8238,6 @@ func applyClientProfile(deps Deps, request playback.Request) playback.Request {
 	return request
 }
 
-// foregroundProbe runs a synchronous, high-priority probe for a single media
-// source when it has not been probed yet. It saves the result to the catalog
-// and returns an updated source. On failure it returns the original source
-// with a non-nil error so callers can decide whether to continue with a
-// best-guess transcode plan.
-func foregroundProbe(ctx context.Context, deps Deps, source catalog.MediaSourceItem) (catalog.MediaSourceItem, error) {
-	probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
-	result, err := deps.Probe.Probe(probeCtx, source.Path)
-	if err != nil {
-		return source, err
-	}
-	catalogResult := catalog.ProbeResult{
-		Container:       result.Container,
-		DurationSeconds: result.DurationSeconds,
-		Bitrate:         result.Bitrate,
-		VideoCodec:      result.VideoCodec,
-		VideoProfile:    result.VideoProfile,
-		VideoLevel:      result.VideoLevel,
-		VideoBitDepth:   result.VideoBitDepth,
-		VideoFrameRate:  result.VideoFrameRate,
-		PixelFormat:     result.PixelFormat,
-		ColorPrimaries:  result.ColorPrimaries,
-		ColorTransfer:   result.ColorTransfer,
-		ColorSpace:      result.ColorSpace,
-		HDRFormat:       result.HDRFormat,
-		DoviProfile:     result.DoviProfile,
-		MaxCLL:          result.MaxCLL,
-		MaxFALL:         result.MaxFALL,
-		Width:           result.Width,
-		Height:          result.Height,
-		AudioStreams:    result.AudioStreams,
-		SubtitleStreams: result.SubtitleStreams,
-		RawJSON:         result.RawJSON,
-	}
-	_ = deps.Catalog.SaveProbe(ctx, source.ID, catalogResult)
-	// Patch the in-memory source so playback decision uses fresh probe data
-	source.Probed = true
-	source.Container = result.Container
-	source.DurationSeconds = result.DurationSeconds
-	source.Bitrate = result.Bitrate
-	source.VideoCodec = result.VideoCodec
-	source.VideoProfile = result.VideoProfile
-	source.VideoLevel = result.VideoLevel
-	source.VideoBitDepth = result.VideoBitDepth
-	source.VideoFrameRate = result.VideoFrameRate
-	source.PixelFormat = result.PixelFormat
-	source.ColorPrimaries = result.ColorPrimaries
-	source.ColorTransfer = result.ColorTransfer
-	source.ColorSpace = result.ColorSpace
-	source.HDRFormat = result.HDRFormat
-	source.Width = result.Width
-	source.Height = result.Height
-	source.AudioStreams = result.AudioStreams
-	source.SubtitleStreams = result.SubtitleStreams
-	return source, nil
-}
 
 func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Request, source catalog.MediaSourceItem) playback.SourceFacts {
 	tracks, _, _ := deps.Catalog.GetMediaSourceTracks(ctx, request.MediaSourceID)

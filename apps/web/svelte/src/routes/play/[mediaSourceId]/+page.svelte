@@ -29,14 +29,12 @@
   let defaultSubtitlesEnabled = $state(false);
   let loadError = $state<string | null>(null);
   let loading = $state(true);
+  let deferredState = $state(false);
 
-  // Phase label shown inside the loading screen so users understand delays.
-  // "probing" is only shown when startClientPlayback triggers foreground ffprobe.
-  type LoadPhase = 'resolving' | 'probing' | 'authorizing';
+  type LoadPhase = 'resolving' | 'authorizing';
   let loadPhase = $state<LoadPhase>('resolving');
   const PHASE_LABELS: Record<LoadPhase, string> = {
     resolving:   'Resolving stream…',
-    probing:     'Analysing file — this may take a moment…',
     authorizing: 'Authorising stream…',
   };
 
@@ -112,12 +110,16 @@
         return;
       }
 
-      // ── Early-exit for transcode-needed but no ready URL ──────────────────
-      // When a transcode job is queued/queuing or in-progress, surface a clear message
-      // rather than silently setting <video src=""> and freezing.
+      // ── Early-exit when no playable URL is available ─────────────────────
       if (!finalAttemptRoute.url && !finalAttemptRoute.manifestUrl) {
         const status = finalAttemptRoute.status ?? 'unknown';
         const mode   = finalAttemptRoute.route  ?? 'transcode';
+        if (status === 'deferred') {
+          // File has not been probed yet — show the dedicated analysis panel.
+          deferredState = true;
+          loading = false;
+          return;
+        }
         if (status === 'queued' || status === 'queuing' || status === 'transcoding') {
           loadError = `This file needs to be transcoded before it can play (${mode}). Wait a moment and try again, or check Activity in Settings.`;
         } else {
@@ -127,16 +129,12 @@
         return;
       }
 
-      // ── Phase 2: Create playback session ─────────────────────────────────
-      // startClientPlayback may trigger a synchronous foreground ffprobe if
-      // this file has never been probed before — that can take up to 45s.
-      // We surface a "Analysing file…" message so users know why it's slow.
-      loadPhase = 'probing';
+      // ── Phase 2: Create playback session ──────────────────────────────────
+      loadPhase = 'authorizing';
       let sessionId: string | undefined;
       let sessionDeviceId: string | undefined;
 
       try {
-        const sessionTimer = setTimeout(() => { loadPhase = 'probing'; }, 300);
         const session = await startClientPlayback({
           mediaSourceId,
           positionSeconds: savedState?.progressSeconds ?? 0,
@@ -144,7 +142,6 @@
           deviceId: 'web',
           clientCapabilities: caps,
         });
-        clearTimeout(sessionTimer);
         // Server returns "sessionId" and "deviceId" — capture both.
         // The session was created with deviceId:'web' above; we mirror that
         // value here so getStreamToken receives a matching deviceId, avoiding
@@ -168,7 +165,6 @@
       // authorizeStreamRequest on the server requires ?sessionId=&deviceId=&token=
       // to be present in the URL. We fetch those params here and patch the route
       // before handing it to the Player component.
-      loadPhase = 'authorizing';
       let finalRoute = finalAttemptRoute;
 
       if (sessionId && finalAttemptRoute.url && !finalAttemptRoute.url.includes('token=')) {
@@ -217,6 +213,37 @@
   <div class="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-black">
     <div class="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/70"></div>
     <p class="text-xs tracking-widest text-white/40 uppercase">{PHASE_LABELS[loadPhase]}</p>
+  </div>
+
+{:else if deferredState}
+  <!-- File not yet analysed — direct user to the Activity dashboard -->
+  <div class="flex h-screen w-screen flex-col items-center justify-center gap-6 bg-black p-8 text-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
+      <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+      </svg>
+    </div>
+    <div>
+      <p class="font-serif-display text-2xl text-white">File not yet analysed</p>
+      <p class="mt-2 max-w-sm text-sm leading-relaxed text-white/50">
+        Xuva needs to run the Probe job on this file before it can determine the best playback path.
+        Head to Activity in Settings to start or monitor the probe job.
+      </p>
+    </div>
+    <div class="flex gap-3">
+      <a
+        href="/settings/activity"
+        class="rounded-full bg-amber-500/20 px-6 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-500/30"
+      >
+        Go to Activity →
+      </a>
+      <a
+        href={backHref}
+        class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20"
+      >
+        ← Back
+      </a>
+    </div>
   </div>
 
 {:else if loadError || !route}
