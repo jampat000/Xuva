@@ -2940,25 +2940,27 @@ func (s *Service) ListRatings(ctx context.Context, kind string, itemID string) (
 }
 
 func (s *Service) ListMediaSources(ctx context.Context, limit int, unprobedOnly bool) ([]MediaSourceItem, error) {
-	if limit <= 0 {
+	// limit=0 means return all (no LIMIT clause). Negative values fall back to 100.
+	if limit < 0 {
 		limit = 100
-	}
-	if limit > 5000 {
-		limit = 5000
 	}
 	filter := ""
 	if unprobedOnly {
 		filter = "WHERE mp.media_source_id IS NULL"
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	const baseQuery = `
 		SELECT ms.id, ms.library_id, ms.kind, ms.path, ms.rel_path, ms.name, ms.extension, ms.size_bytes, ms.modified_at,
 			mp.container, mp.duration_seconds, mp.bitrate, mp.video_codec, mp.video_profile, mp.video_level, mp.video_bit_depth, mp.video_frame_rate, mp.pixel_format, mp.color_primaries, mp.color_transfer, mp.color_space, mp.hdr_format, mp.dovi_profile, mp.max_cll, mp.max_fall, mp.width, mp.height, mp.audio_streams, mp.subtitle_streams
 		FROM media_sources ms
 		LEFT JOIN media_probes mp ON mp.media_source_id = ms.id
-		`+filter+`
-		ORDER BY ms.rel_path
-		LIMIT ?
-	`, limit)
+		`
+	var rows *sql.Rows
+	var err error
+	if limit == 0 {
+		rows, err = s.db.QueryContext(ctx, baseQuery+filter+` ORDER BY ms.rel_path`)
+	} else {
+		rows, err = s.db.QueryContext(ctx, baseQuery+filter+` ORDER BY ms.rel_path LIMIT ?`, limit)
+	}
 	if err != nil {
 		return nil, err
 	}
