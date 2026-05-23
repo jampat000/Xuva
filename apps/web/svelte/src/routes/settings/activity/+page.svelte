@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { getAuthSession } from '$lib/api/auth';
   import {
@@ -214,11 +214,11 @@
 
     stream.connect();
     await loadAll();
+  });
 
-    return () => {
-      stream.disconnect();
-      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-    };
+  onDestroy(() => {
+    stream.disconnect();
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   });
 
   // ── Display helpers ───────────────────────────────────────────────────────
