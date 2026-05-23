@@ -53,12 +53,13 @@
   {:else}
     <LibraryGrid
       eyebrow="Your library · Movies"
-      title="Films worth a night."
+      title="Movies."
       tagline="Every movie in your collection, organized the way you actually browse — by mood, by genre, by what you almost watched last weekend."
       {items}
       {loading}
       kind="Movies"
       baseHref="/movies"
+      showHero={false}
     />
   {/if}
 </div>
