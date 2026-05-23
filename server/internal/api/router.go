@@ -2200,12 +2200,18 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 		// ── Probe required ────────────────────────────────────────────────────
 		// Playback is only permitted after a file has been analysed by the probe
 		// job. This guarantees the decision engine always has accurate codec,
-		// resolution, and HDR data to work with. Direct the user to the Activity
-		// page to run or monitor the probe job.
+		// resolution, and HDR data to work with. Return 200 (not 4xx) so that
+		// native clients can decode the body and show a specific message rather
+		// than hitting a generic HTTP error handler. Clients must check
+		// route.status == "deferred" and surface it appropriately.
 		if !source.Probed {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			writeJSON(w, http.StatusOK, map[string]any{
 				"status": "deferred",
-				"error":  "This file has not been analysed yet. Run the Probe job in Activity (Settings → Activity) before playing.",
+				"error":  "This file has not been analysed yet. Go to Settings → Activity to run the Probe job before playing.",
+				"route": map[string]any{
+					"route":  "deferred",
+					"status": "deferred",
+				},
 			})
 			return
 		}
