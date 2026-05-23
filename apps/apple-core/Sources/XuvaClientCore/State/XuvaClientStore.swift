@@ -198,6 +198,11 @@ public final class XuvaClientStore: ObservableObject {
                 response.clientStartPositionSeconds = positionSeconds
             }
             response.clientSubtitleTrack = subtitleTrack
+            // Hard-block: file has not been probed yet. Surface a clear message
+            // instead of falling into the poll loop for 90 seconds.
+            if response.route?.status == "deferred" || response.route?.route == "deferred" {
+                throw XuvaAPIError.fileNotProbed
+            }
             let routeType = response.route?.route ?? ""
             print("[XUVA] startPlayback OK routeType=\(routeType) status=\(response.route?.status ?? "<none>") session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>")")
             if routeType == "direct" || routeType == "" {

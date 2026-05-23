@@ -32,13 +32,10 @@
   /** Set to true when the server returns status="deferred" — file not yet probed. */
   let deferredState = $state(false);
 
-  // Phase label shown inside the loading screen so users understand delays.
-  // "probing" is only shown when startClientPlayback triggers foreground ffprobe.
-  type LoadPhase = 'resolving' | 'probing' | 'authorizing';
+  type LoadPhase = 'resolving' | 'authorizing';
   let loadPhase = $state<LoadPhase>('resolving');
   const PHASE_LABELS: Record<LoadPhase, string> = {
     resolving:   'Resolving stream…',
-    probing:     'Analysing file — this may take a moment…',
     authorizing: 'Authorising stream…',
   };
 
@@ -133,16 +130,12 @@
         return;
       }
 
-      // ── Phase 2: Create playback session ─────────────────────────────────
-      // startClientPlayback may trigger a synchronous foreground ffprobe if
-      // this file has never been probed before — that can take up to 45s.
-      // We surface a "Analysing file…" message so users know why it's slow.
-      loadPhase = 'probing';
+      // ── Phase 2: Create playback session ──────────────────────────────────
+      loadPhase = 'authorizing';
       let sessionId: string | undefined;
       let sessionDeviceId: string | undefined;
 
       try {
-        const sessionTimer = setTimeout(() => { loadPhase = 'probing'; }, 300);
         const session = await startClientPlayback({
           mediaSourceId,
           positionSeconds: savedState?.progressSeconds ?? 0,
@@ -150,7 +143,6 @@
           deviceId: 'web',
           clientCapabilities: caps,
         });
-        clearTimeout(sessionTimer);
         // Server returns "sessionId" and "deviceId" — capture both.
         // The session was created with deviceId:'web' above; we mirror that
         // value here so getStreamToken receives a matching deviceId, avoiding
