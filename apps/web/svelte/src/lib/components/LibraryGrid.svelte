@@ -59,7 +59,17 @@
   // ── Filter & UI state ─────────────────────────────────────────────────────
   let q            = $state("");
   let sort         = $state<Sort>("az");
-  let density      = $state<Density>("M");
+  // Read cached density from localStorage synchronously so the correct size is
+  // applied on the very first render — no flash of the wrong grid size.
+  const DENSITY_KEY = 'xuva:poster-size';
+  function readCachedDensity(): Density {
+    try {
+      const v = typeof localStorage !== 'undefined' ? localStorage.getItem(DENSITY_KEY) : null;
+      if (v === 'S' || v === 'M' || v === 'L') return v;
+    } catch { /* SSR or privacy mode */ }
+    return 'M';
+  }
+  let density      = $state<Density>(readCachedDensity());
   let sortOpen     = $state(false);
   let filterOpen   = $state(false);
   let randomSeed   = $state(Date.now());
@@ -278,15 +288,20 @@
     const seed = parseInt(p.get('seed') ?? '', 10);
     if (!isNaN(seed) && seed > 0) randomSeed = seed;
 
-    // Restore saved poster density from user preferences.
+    // Sync density with server preference (runs after first render; localStorage
+    // already applied the cached value above so there is no visible flash).
     getAuthSession().then(s => {
       const size = s?.preferences?.posterSize;
-      if (size === 'S' || size === 'M' || size === 'L') density = size;
+      if (size === 'S' || size === 'M' || size === 'L') {
+        density = size;
+        try { localStorage.setItem(DENSITY_KEY, size); } catch { /* privacy mode */ }
+      }
     }).catch(() => {});
   });
 
   function setDensity(d: Density) {
     density = d;
+    try { localStorage.setItem(DENSITY_KEY, d); } catch { /* privacy mode */ }
     updateUserPreferences({ posterSize: d }).catch(() => {});
   }
 
