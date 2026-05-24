@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { ChevronDown, Layers, RotateCcw, Search, X } from 'lucide-svelte';
   import Header from '$lib/components/Header.svelte';
   import ErrorState from '$lib/components/ErrorState.svelte';
@@ -28,9 +27,9 @@
   ];
 
   // ── Data state ─────────────────────────────────────────────────────────────
-  let items   = $state<CollectionListItem[]>([]);
-  let loading = $state(true);
-  let error   = $state<string | null>(null);
+  let { data } = $props();
+  let items   = $state<CollectionListItem[]>(data.items);
+  let error   = $state<string | null>(data.loadError);
 
   // ── Control state ──────────────────────────────────────────────────────────
   let q          = $state('');
@@ -83,23 +82,20 @@
     updateUserPreferences({ posterSize: d }).catch(() => {});
   }
 
-  // ── Data load ──────────────────────────────────────────────────────────────
-  async function load() {
+  // ── Reload (error retry) ───────────────────────────────────────────────────
+  async function reload() {
     error = null;
-    loading = true;
     try {
       const resp = await getCollections();
       items = resp.collections ?? [];
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load collections';
-    } finally {
-      loading = false;
     }
   }
 
-  onMount(async () => {
-    load();
-    // Sync with server preference — localStorage already applied above, no flash.
+  // ── Sync server preference ─────────────────────────────────────────────────
+  import { onMount } from 'svelte';
+  onMount(() => {
     getAuthSession().then(s => {
       const size = s?.preferences?.posterSize;
       if (size === 'S' || size === 'M' || size === 'L') {
@@ -121,7 +117,7 @@
     <ErrorState
       title="Can't load collections"
       message="Make sure your Xuva server is running, then try again."
-      actions={[{ label: 'Try again', onClick: load }]}
+      actions={[{ label: 'Try again', onClick: reload }]}
       diagnosticInfo={error}
     />
   {:else}
@@ -222,19 +218,7 @@
     <!-- ── Grid ────────────────────────────────────────────────────────────── -->
     <main class="px-6 pb-32 pt-10 md:px-12 lg:px-20">
 
-      {#if loading}
-        <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
-          {#each { length: 12 } as _}
-            <div class="flex flex-col gap-2">
-              <div class="aspect-[2/3] animate-pulse rounded-xl bg-surface"></div>
-              {#if density !== 'S'}
-                <div class="h-3 w-3/4 animate-pulse rounded bg-surface"></div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-
-      {:else if items.length === 0}
+      {#if items.length === 0}
         <div class="mt-24 flex flex-col items-center justify-center gap-4 text-center">
           <Layers class="h-14 w-14 text-muted-foreground/20" />
           <p class="text-muted-foreground">No collections found in your library.</p>

@@ -1,12 +1,22 @@
 import { getMovies } from '$lib/api/browse';
+import { movieToMedia } from '$lib/api/adapters';
 
 /**
- * Pre-warm the movie list cache so that onMount gets an instant cache hit.
- * SvelteKit calls this during hover-prefetch (data-sveltekit-preload-data="hover"
- * on the body), meaning the fetch starts ~200ms before the user clicks the link.
- * Errors are swallowed — the component handles them via its own error state.
+ * Load movie list. SvelteKit calls this before mounting the component, so the
+ * page renders instantly with data on client-side navigation (no onMount flash).
+ * The TTL cache in browse.ts means repeat visits resolve in <1ms.
  */
 export async function load() {
-	try { await getMovies(); } catch { /* component handles its own errors */ }
-	return {};
+	try {
+		const resp = await getMovies();
+		return {
+			items: (resp.movies ?? []).map(movieToMedia),
+			loadError: null as string | null,
+		};
+	} catch (e) {
+		return {
+			items: [] as ReturnType<typeof movieToMedia>[],
+			loadError: e instanceof Error ? e.message : 'Failed to load movies',
+		};
+	}
 }
