@@ -1,18 +1,19 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
   import ErrorState from '$lib/components/ErrorState.svelte';
   import { getMovies } from '$lib/api/browse';
   import { movieToMedia } from '$lib/api/adapters';
-  import type { Media } from '$lib/mock-data';
 
-  let items = $state<Media[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
+  let { data } = $props();
 
-  async function load() {
+  let items = $state(data.items);
+  let loading = $state(false);
+  let error = $state<string | null>(data.loadError);
+
+  // Only used by the "Try again" button — re-runs the same fetch
+  async function reload() {
     error = null;
     loading = true;
     try {
@@ -24,8 +25,6 @@
       loading = false;
     }
   }
-
-  onMount(load);
 </script>
 
 <svelte:head>
@@ -47,7 +46,7 @@
     <ErrorState
       title="Can't reach your library"
       message="Make sure your Xuva server is running, then try again."
-      actions={[{ label: 'Try again', onClick: load }]}
+      actions={[{ label: 'Try again', onClick: reload }]}
       diagnosticInfo={error}
     />
   {:else}
