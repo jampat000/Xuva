@@ -1,12 +1,22 @@
 import { getSeries } from '$lib/api/browse';
+import { seriesToMedia } from '$lib/api/adapters';
 
 /**
- * Pre-warm the series list cache so that onMount gets an instant cache hit.
- * SvelteKit calls this during hover-prefetch (data-sveltekit-preload-data="hover"
- * on the body), meaning the fetch starts ~200ms before the user clicks the link.
- * Errors are swallowed — the component handles them via its own error state.
+ * Load series list. SvelteKit calls this before mounting the component, so the
+ * page renders instantly with data on client-side navigation (no onMount flash).
+ * The TTL cache in browse.ts means repeat visits resolve in <1ms.
  */
 export async function load() {
-	try { await getSeries(); } catch { /* component handles its own errors */ }
-	return {};
+	try {
+		const resp = await getSeries();
+		return {
+			items: (resp.series ?? []).map(seriesToMedia),
+			loadError: null as string | null,
+		};
+	} catch (e) {
+		return {
+			items: [] as ReturnType<typeof seriesToMedia>[],
+			loadError: e instanceof Error ? e.message : 'Failed to load TV shows',
+		};
+	}
 }
