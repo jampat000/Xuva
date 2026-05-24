@@ -35,7 +35,15 @@
   // ── Control state ──────────────────────────────────────────────────────────
   let q          = $state('');
   let sort       = $state<Sort>('az');
-  let density    = $state<Density>('M');
+  const DENSITY_KEY = 'xuva:poster-size';
+  function readCachedDensity(): Density {
+    try {
+      const v = typeof localStorage !== 'undefined' ? localStorage.getItem(DENSITY_KEY) : null;
+      if (v === 'S' || v === 'M' || v === 'L') return v;
+    } catch { /* SSR or privacy mode */ }
+    return 'M';
+  }
+  let density    = $state<Density>(readCachedDensity());
   let sortOpen   = $state(false);
   let randomSeed = $state(Date.now());
 
@@ -71,6 +79,7 @@
   // ── Density ────────────────────────────────────────────────────────────────
   function setDensity(d: Density) {
     density = d;
+    try { localStorage.setItem(DENSITY_KEY, d); } catch { /* privacy mode */ }
     updateUserPreferences({ posterSize: d }).catch(() => {});
   }
 
@@ -90,10 +99,13 @@
 
   onMount(async () => {
     load();
-    // Restore saved poster density from user preferences
+    // Sync with server preference — localStorage already applied above, no flash.
     getAuthSession().then(s => {
       const size = s?.preferences?.posterSize;
-      if (size === 'S' || size === 'M' || size === 'L') density = size;
+      if (size === 'S' || size === 'M' || size === 'L') {
+        density = size;
+        try { localStorage.setItem(DENSITY_KEY, size); } catch { /* privacy mode */ }
+      }
     }).catch(() => {});
   });
 </script>
