@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import heroFeatured from "$lib/assets/hero-featured.jpg";
   import CollectionsBento from "$lib/components/CollectionsBento.svelte";
@@ -8,53 +7,20 @@
   import Hero from "$lib/components/Hero.svelte";
   import Logo from "$lib/components/Logo.svelte";
   import Top10Row from "$lib/components/Top10Row.svelte";
-  import { getClientHome } from '$lib/api/home';
-  import { clientHomeItemToMedia } from '$lib/api/adapters';
-  import type { Media, Collection } from '$lib/mock-data';
+  import type { Collection } from '$lib/mock-data';
 
   const currentYear = new Date().getFullYear();
 
-  let slides = $state<Media[]>([]);
-  let continueWatching = $state<Media[]>([]);
-  let recentMovies = $state<Media[]>([]);
-  let recentSeries = $state<Media[]>([]);
-  let topTen = $state<Media[]>([]);
-  let topRowTitle = $state('Highest rated');
-  let topRowEyebrow = $state('From your library');
-  let collections = $state<Collection[]>([]);
-  let loading = $state(true);
+  let { data } = $props();
 
-  onMount(async () => {
-    try {
-      const resp = await getClientHome();
-      if (resp.heroes?.length) {
-        slides = resp.heroes.map(clientHomeItemToMedia);
-      }
-      for (const row of resp.rows ?? []) {
-        const items = (row.items ?? []).map(clientHomeItemToMedia);
-        const id = (row.id ?? '').toLowerCase();
-        const t = (row.title ?? '').toLowerCase();
-        if (id === 'continue' || t.includes('continue') || t.includes('watching')) {
-          continueWatching = items;
-        } else if (id === 'movies' || t.includes('movie')) {
-          recentMovies = items;
-        } else if (id === 'tv' || t.includes('series') || t.includes('show') || t.includes('episode')) {
-          recentSeries = items;
-        } else if (id === 'top' || t.includes('top') || t.includes('trend') || t.includes('rated')) {
-          topTen = items;
-          const r = row as Record<string, unknown>;
-          if (r.title) topRowTitle = r.title as string;
-          if (r.eyebrow) topRowEyebrow = r.eyebrow as string;
-        }
-        // 'recently-added' is intentionally not rendered on web — movies and
-        // series are already shown in their own dedicated rows above.
-      }
-    } catch {
-      // Components render gracefully with empty arrays
-    } finally {
-      loading = false;
-    }
-  });
+  let slides = $state(data.slides);
+  let continueWatching = $state(data.continueWatching);
+  let recentMovies = $state(data.recentMovies);
+  let recentSeries = $state(data.recentSeries);
+  let topTen = $state(data.topTen);
+  let topRowTitle = $state(data.topRowTitle);
+  let topRowEyebrow = $state(data.topRowEyebrow);
+  let collections = $state<Collection[]>([]);
 </script>
 
 <svelte:head>
@@ -113,7 +79,7 @@
         />
       {/if}
 
-      {#if !loading && continueWatching.length === 0 && recentMovies.length === 0 && recentSeries.length === 0}
+      {#if continueWatching.length === 0 && recentMovies.length === 0 && recentSeries.length === 0}
         <div class="relative flex flex-col items-center justify-center px-6 py-32 text-center">
           <div
             aria-hidden="true"
@@ -122,7 +88,7 @@
           ></div>
           <div class="hairline mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-elevated/70 text-primary-glow shadow-elev">
             <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0 1 12 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0c-.621 0-1.125.504-1.125 1.125v7.5" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125-1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0 1 12 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0c-.621 0-1.125.504-1.125 1.125v7.5" />
             </svg>
           </div>
           <p class="font-serif-display text-3xl tracking-tight">Your cinema awaits.</p>
