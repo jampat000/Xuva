@@ -152,6 +152,7 @@ var routePolicies = map[string]routePolicy{
 	"GET /api/libraries":            route("GET /api/libraries", "libraries", "library.list", roleAdmin),
 	"GET /api/catalog/summary":      route("GET /api/catalog/summary", "catalog", "catalog.summary", roleAdmin),
 	"GET /api/catalog/health":       route("GET /api/catalog/health", "catalog", "catalog.health", roleAdmin),
+	"GET /api/catalog/codecs":       route("GET /api/catalog/codecs", "catalog", "catalog.codecs", roleAdmin),
 	"GET /api/review":               route("GET /api/review", "metadata", "metadata.review", roleAdmin),
 	"GET /api/metadata/providers":   route("GET /api/metadata/providers", "metadata", "metadata.providers", roleAdmin),
 	"GET /api/metadata/suggestions": route("GET /api/metadata/suggestions", "metadata", "metadata.suggestions", roleAdmin),

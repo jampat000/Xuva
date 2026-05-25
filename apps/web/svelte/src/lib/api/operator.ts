@@ -440,6 +440,20 @@ export function getCatalogHealth(client: ApiClient = apiClient): Promise<Catalog
 	return client.request<CatalogHealthResponse>('/api/catalog/health');
 }
 
+export interface CodecCount {
+	codec: string;
+	count: number;
+}
+
+export interface CodecBreakdownResponse {
+	videoCodecs: CodecCount[];
+	total: number;
+}
+
+export function getCatalogCodecs(client: ApiClient = apiClient): Promise<CodecBreakdownResponse> {
+	return client.request<CodecBreakdownResponse>('/api/catalog/codecs');
+}
+
 export function getSystemStatus(client: ApiClient = apiClient): Promise<SystemStatusResponse> {
 	return client.request<SystemStatusResponse>('/api/system/status');
 }
