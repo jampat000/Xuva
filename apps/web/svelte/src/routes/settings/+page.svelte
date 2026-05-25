@@ -262,8 +262,8 @@
     return `${_DC * p / 100} ${_DC * (1 - p / 100)}`;
   }
   function dashGaugeColor(pct: number, warnAt = 70, critAt = 90): string {
-    if (pct >= critAt) return 'oklch(0.65 0.22 25)';
-    if (pct >= warnAt) return 'oklch(0.80 0.18 65)';
+    if (pct >= critAt) return 'oklch(0.68 0.26 22)';
+    if (pct >= warnAt) return 'oklch(0.85 0.22 75)';
     return 'oklch(0.62 0.22 285)';
   }
   function dashDiskBarClass(pct: number): string {
@@ -280,10 +280,11 @@
   // ─── Flight deck HUD helpers ──────────────────────────────────────────────
   const _HARC_R   = 50;
   const _HARC_LEN = Math.PI * _HARC_R; // ≈ 157.08 — semi-circle arc length
+  // RAG (Red/Amber/Green) gauge fill — used for CPU/RAM where load semantics matter.
   function dashHudColor(pct: number, warnAt = 70, critAt = 90): string {
-    if (pct >= critAt) return 'oklch(0.65 0.22 25)';
-    if (pct >= warnAt) return 'oklch(0.80 0.18 65)';
-    return 'oklch(0.72 0.18 200)';
+    if (pct >= critAt) return 'oklch(0.68 0.26 22)';   // critical red
+    if (pct >= warnAt) return 'oklch(0.85 0.22 75)';   // caution amber
+    return 'oklch(0.78 0.22 145)';                      // nominal green
   }
   const dashHudStatusStr = $derived.by(() => {
     if (!sysStatus) return '—';
@@ -1248,24 +1249,21 @@
 <div class="min-h-screen bg-background">
   <Header />
 
-  <main class="px-6 pb-32 pt-24 md:px-12 md:pt-28 lg:px-20">
-    <header class="relative mb-10">
+  <main class="px-6 pb-32 pt-16 md:px-12 md:pt-16 lg:px-20">
+    <header class="relative mb-4">
       <div
         aria-hidden="true"
-        class="pointer-events-none absolute -inset-x-6 -top-10 -z-10 h-[220px] opacity-60 md:-inset-x-12 lg:-inset-x-20"
+        class="pointer-events-none absolute -inset-x-6 -top-6 -z-10 h-[140px] opacity-60 md:-inset-x-12 lg:-inset-x-20"
         style="background: radial-gradient(50% 100% at 15% 0%, oklch(0.62 0.22 285 / 0.25), transparent 70%), radial-gradient(40% 100% at 90% 0%, oklch(0.72 0.16 255 / 0.18), transparent 70%);"
       ></div>
-      <div class="flex flex-wrap items-end justify-between gap-6">
+      <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">
+          <div class="mb-1 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">
             Settings
           </div>
-          <h1 class="font-serif-display text-[clamp(2rem,4vw,3.25rem)] leading-[1] tracking-tight">
+          <h1 class="font-serif-display text-[clamp(1.5rem,3vw,2.25rem)] leading-[1] tracking-tight">
             {#if serverNameParts.first}{serverNameParts.first}-{/if}<em>{serverNameParts.last}</em>
           </h1>
-          <p class="mt-3 max-w-xl text-sm text-muted-foreground">
-            {current.hint ?? "Configure your Xuva media server — libraries, metadata, playback, devices, and more."}
-          </p>
         </div>
         <div class="flex items-center gap-3">
           <span class="hairline inline-flex items-center gap-2 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.25em] {healthAccent}">
@@ -1281,8 +1279,8 @@
       </div>
     </header>
 
-    <div class="grid gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14">
-      <aside class="lg:sticky lg:top-24 lg:self-start">
+    <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-10">
+      <aside class="lg:sticky lg:top-20 lg:self-start">
         <div class="relative mb-4">
           <Search class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -1334,23 +1332,23 @@
 
       <div bind:this={mainRef} class="min-w-0">
         <div
-          class={`sticky top-16 z-20 -mx-6 mb-8 flex items-center justify-between gap-4 border-b px-6 py-4 backdrop-blur-xl transition-colors md:top-18 md:-mx-12 md:px-12 lg:-mx-0 lg:px-0 ${
+          class={`sticky top-14 z-20 -mx-6 mb-4 flex items-center justify-between gap-4 border-b px-6 py-2.5 backdrop-blur-xl transition-colors md:top-14 md:-mx-12 md:px-12 lg:-mx-0 lg:px-0 ${
             headerScrolled
               ? "border-border bg-background/80"
               : "border-transparent bg-transparent"
           }`}
         >
-          <div class="min-w-0">
-            <div class="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground/80">
+          <div class="min-w-0 flex items-baseline gap-3">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground/70 shrink-0">
               {current.group}
-            </div>
-            <h2 class="font-serif-display mt-0.5 truncate text-2xl tracking-tight">
+            </span>
+            <h2 class="font-serif-display truncate text-lg tracking-tight leading-none">
               {current.label}
             </h2>
             {#if current.hint}
-              <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                {current.hint}
-              </p>
+              <span class="hidden md:inline truncate text-xs text-muted-foreground/60">
+                · {current.hint}
+              </span>
             {/if}
           </div>
           {#if sectionHasSaveDiscard}
@@ -1760,28 +1758,33 @@
 
           <!-- ── Command Header ──────────────────────────────────────────────── -->
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-5 py-3.5"
-            style="border-color: oklch(0.72 0.18 200 / 0.14); background: linear-gradient(135deg, oklch(0.18 0.025 240 / 0.7) 0%, oklch(0.14 0.015 240 / 0.5) 100%);">
+            style="border-color: oklch(0.82 0.24 200 / 0.14); background: linear-gradient(135deg, oklch(0.18 0.025 240 / 0.7) 0%, oklch(0.14 0.015 240 / 0.5) 100%);">
             <div class="flex flex-wrap items-center gap-4">
               <!-- System status beacon -->
               <div class="flex items-center gap-2.5">
                 <div class="relative flex h-2.5 w-2.5 shrink-0">
                   {#if dashHudStatusStr === 'NOMINAL'}
-                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40"></span>
-                    <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+                    <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_oklch(0.78_0.2_145)]"></span>
                   {:else if dashHudStatusStr === 'CAUTION'}
-                    <span class="relative inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400"></span>
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60"></span>
+                    <span class="relative inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 shadow-[0_0_14px_oklch(0.85_0.22_75)]"></span>
                   {:else if dashHudStatusStr === 'FAULT'}
-                    <span class="relative inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-red-400"></span>
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60"></span>
+                    <span class="relative inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_16px_oklch(0.68_0.26_22)]"></span>
                   {:else}
                     <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-foreground/20"></span>
                   {/if}
                 </div>
-                <span class="font-mono text-[11px] font-bold uppercase tracking-[0.32em] {dashHudStatusStr === 'NOMINAL' ? 'text-emerald-300' : dashHudStatusStr === 'CAUTION' ? 'text-amber-300' : dashHudStatusStr === 'FAULT' ? 'text-red-300' : 'text-muted-foreground'}">
+                <span class="font-mono text-[11px] font-bold uppercase tracking-[0.32em] {dashHudStatusStr === 'NOMINAL' ? 'text-emerald-300' : dashHudStatusStr === 'CAUTION' ? 'text-amber-300' : dashHudStatusStr === 'FAULT' ? 'text-red-300' : 'text-muted-foreground'}"
+                  style={dashHudStatusStr === 'NOMINAL' ? 'text-shadow: 0 0 12px oklch(0.78 0.2 145 / 0.6);'
+                       : dashHudStatusStr === 'CAUTION' ? 'text-shadow: 0 0 12px oklch(0.85 0.22 75 / 0.6);'
+                       : dashHudStatusStr === 'FAULT' ? 'text-shadow: 0 0 12px oklch(0.68 0.26 22 / 0.7);' : ''}>
                   SYS {dashHudStatusStr}
                 </span>
               </div>
               <div class="h-3.5 w-px bg-foreground/10 hidden sm:block"></div>
-              <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/35">
+              <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
                 {settingsData?.config?.serverName ?? 'MEDIA-SERVER'} <span class="mx-1 opacity-40">//</span>
                 CLK <span class="text-muted-foreground/55">{dashUpdatedAt || '——:——:——'}</span>
               </div>
@@ -1795,7 +1798,7 @@
               </button>
               <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy}
                 class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] transition-all hover:brightness-110 disabled:opacity-50"
-                style="border-color: oklch(0.72 0.18 200 / 0.35); color: oklch(0.72 0.18 200); background: oklch(0.72 0.18 200 / 0.08);">
+                style="border-color: oklch(0.82 0.24 200 / 0.35); color: oklch(0.82 0.24 200); background: oklch(0.82 0.24 200 / 0.08);">
                 {#if dashScanBusy}
                   <span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>
                 {:else}
@@ -1812,20 +1815,20 @@
             <!-- CPU Gauge -->
             {#if true}
             {@const cpuOffset = _HARC_LEN * (1 - dashCpuPct / 100)}
-            <div class="flex flex-col items-center rounded-xl border border-foreground/[0.07] bg-surface/20 px-3 py-4">
-              <div class="mb-1 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">CPU Load</div>
+            <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
+              <div class="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">CPU Load</div>
               <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7" stroke-linecap="round"/>
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
-                  style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {cpuOffset}; transition: stroke-dashoffset 1s ease, stroke 0.5s ease;" />
+                  style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {cpuOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashCpuPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="63" text-anchor="middle" dominant-baseline="middle"
                   font-family="ui-monospace,monospace" font-size="22" font-weight="700"
-                  style="fill: {dashHudColor(dashCpuPct)}; transition: fill 0.5s ease;">{dashCpuPct}</text>
+                  style="fill: {dashHudColor(dashCpuPct)}; filter: drop-shadow(0 0 4px {dashHudColor(dashCpuPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashCpuPct}</text>
                 <text x="60" y="74" text-anchor="middle" font-family="ui-monospace,monospace"
                   font-size="7" fill="rgba(255,255,255,0.22)" letter-spacing="3">PCT</text>
               </svg>
               {#if sysStatus?.cpu?.cores}
-                <div class="mt-1 font-mono text-[9px] text-muted-foreground/30">{sysStatus.cpu.cores} CORES</div>
+                <div class="mt-1 font-mono text-[9px] text-foreground/45">{sysStatus.cpu.cores} CORES</div>
               {/if}
             </div>
             {/if}
@@ -1833,20 +1836,20 @@
             <!-- RAM Gauge -->
             {#if true}
             {@const memOffset = _HARC_LEN * (1 - dashMemPct / 100)}
-            <div class="flex flex-col items-center rounded-xl border border-foreground/[0.07] bg-surface/20 px-3 py-4">
-              <div class="mb-1 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Memory</div>
+            <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
+              <div class="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Memory</div>
               <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7" stroke-linecap="round"/>
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
-                  style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {memOffset}; transition: stroke-dashoffset 1s ease, stroke 0.5s ease;" />
+                  style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {memOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashMemPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="63" text-anchor="middle" dominant-baseline="middle"
                   font-family="ui-monospace,monospace" font-size="22" font-weight="700"
-                  style="fill: {dashHudColor(dashMemPct)}; transition: fill 0.5s ease;">{dashMemPct}</text>
+                  style="fill: {dashHudColor(dashMemPct)}; filter: drop-shadow(0 0 4px {dashHudColor(dashMemPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashMemPct}</text>
                 <text x="60" y="74" text-anchor="middle" font-family="ui-monospace,monospace"
                   font-size="7" fill="rgba(255,255,255,0.22)" letter-spacing="3">PCT</text>
               </svg>
               {#if sysStatus?.memory}
-                <div class="mt-1 font-mono text-[9px] text-muted-foreground/30">
+                <div class="mt-1 font-mono text-[9px] text-foreground/45">
                   {formatBytes(sysStatus.memory.usedBytes)} / {formatBytes(sysStatus.memory.totalBytes)}
                 </div>
               {/if}
@@ -1854,20 +1857,21 @@
             {/if}
 
             <!-- Network I/O -->
-            <div class="rounded-xl border border-foreground/[0.07] bg-surface/20 p-4">
-              <div class="mb-3 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Network I/O</div>
+            <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
+              <div class="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Network I/O</div>
               <div class="space-y-3.5">
                 <div>
-                  <div class="mb-1 font-mono text-[8px] uppercase tracking-[0.3em] text-muted-foreground/30">RECV ↓</div>
-                  <div class="font-mono text-lg font-bold leading-none tabular-nums"
-                    style="color: oklch(0.72 0.18 200);">
+                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-emerald-300/65">RECV ↓</div>
+                  <div class="font-mono text-xl font-bold leading-none tabular-nums"
+                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 12px oklch(0.78 0.22 145 / 0.4);">
                     {sysStatus?.network ? formatBps(sysStatus.network.receiveBps) : '—'}
                   </div>
                 </div>
-                <div class="h-px bg-foreground/[0.05]"></div>
+                <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 font-mono text-[8px] uppercase tracking-[0.3em] text-muted-foreground/30">XMIT ↑</div>
-                  <div class="font-mono text-lg font-bold leading-none tabular-nums text-sky-200/60">
+                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-sky-300/65">XMIT ↑</div>
+                  <div class="font-mono text-xl font-bold leading-none tabular-nums"
+                    style="color: oklch(0.82 0.22 240); text-shadow: 0 0 12px oklch(0.82 0.22 240 / 0.4);">
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
@@ -1875,19 +1879,19 @@
             </div>
 
             <!-- Process -->
-            <div class="rounded-xl border border-foreground/[0.07] bg-surface/20 p-4">
-              <div class="mb-3 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Process</div>
+            <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
+              <div class="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Process</div>
               <div class="space-y-3.5">
                 <div>
-                  <div class="mb-1 font-mono text-[8px] uppercase tracking-[0.3em] text-muted-foreground/30">GOROUTINES</div>
-                  <div class="font-mono text-lg font-bold leading-none tabular-nums text-foreground/70">
+                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-foreground/55">GOROUTINES</div>
+                  <div class="font-mono text-xl font-bold leading-none tabular-nums text-foreground/85">
                     {sysStatus?.process?.goroutines ?? '—'}
                   </div>
                 </div>
-                <div class="h-px bg-foreground/[0.05]"></div>
+                <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 font-mono text-[8px] uppercase tracking-[0.3em] text-muted-foreground/30">HEAP</div>
-                  <div class="font-mono text-lg font-bold leading-none tabular-nums text-foreground/70">
+                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-foreground/55">HEAP</div>
+                  <div class="font-mono text-xl font-bold leading-none tabular-nums text-foreground/85">
                     {sysStatus?.process ? formatBytes(sysStatus.process.goAllocBytes) : '—'}
                   </div>
                 </div>
@@ -1896,8 +1900,8 @@
           </div>
 
           <!-- ── Library Manifest ────────────────────────────────────────────── -->
-          <div class="mb-4 rounded-xl border border-foreground/[0.07] bg-surface/20 px-5 py-4">
-            <div class="mb-4 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Library Manifest</div>
+          <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">
+            <div class="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Library Manifest</div>
             <div class="grid grid-cols-3 gap-4 sm:grid-cols-6">
               {#each ([
                 { id: 'MOV', label: 'Movies',   value: catalogSummary?.movies   ?? 0, warn: false, live: false },
@@ -1908,9 +1912,11 @@
                 { id: 'ACT', label: 'Sessions', value: activeSessions.length,        warn: false, live: activeSessions.length > 0 },
               ] as const) as t (t.id)}
                 <div class="relative text-center">
-                  <div class="font-mono text-[8px] font-semibold uppercase tracking-[0.35em] text-muted-foreground/30 mb-2">{t.label}</div>
-                  <div class="font-mono text-2xl font-bold leading-none tabular-nums"
-                    style={t.warn ? 'color: oklch(0.80 0.18 65);' : t.value === 0 ? 'color: rgba(255,255,255,0.15);' : 'color: oklch(0.72 0.18 200);'}>
+                  <div class="font-mono text-[9px] font-semibold uppercase tracking-[0.35em] text-foreground/55 mb-2">{t.label}</div>
+                  <div class="font-mono text-3xl font-bold leading-none tabular-nums"
+                    style={t.warn ? 'color: oklch(0.85 0.22 75); text-shadow: 0 0 14px oklch(0.85 0.22 75 / 0.5);'
+                         : t.value === 0 ? 'color: rgba(255,255,255,0.18);'
+                         : 'color: oklch(0.82 0.24 200); text-shadow: 0 0 14px oklch(0.82 0.24 200 / 0.45);'}>
                     {t.value.toLocaleString()}
                   </div>
                   {#if t.live}
@@ -1928,8 +1934,8 @@
           <div class="mb-4 grid gap-4 lg:grid-cols-2">
 
             <!-- File Analysis Intelligence -->
-            <div class="rounded-xl border border-foreground/[0.07] bg-surface/20 p-5">
-              <div class="mb-4 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">File Analysis Intel</div>
+            <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
+              <div class="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">File Analysis Intel</div>
               {#if dashTotalFiles > 0}
                 {#if true}
                 {@const _pct = dashUnprobed > 0 ? Math.min(99, Math.floor(dashProbed / dashTotalFiles * 100)) : 100}
@@ -1939,16 +1945,16 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-baseline gap-1.5 mb-2">
-                      <span class="font-mono text-4xl font-bold leading-none tabular-nums"
-                        style="color: oklch(0.72 0.18 200);">{_pct}</span>
-                      <span class="font-mono text-sm text-muted-foreground/35">%</span>
-                      <span class="ml-1 font-mono text-[8px] uppercase tracking-[0.3em] text-muted-foreground/30">analysed</span>
+                      <span class="font-mono text-5xl font-bold leading-none tabular-nums"
+                        style="color: oklch(0.82 0.24 200); text-shadow: 0 0 18px oklch(0.82 0.24 200 / 0.5);">{_pct}</span>
+                      <span class="font-mono text-base text-foreground/55">%</span>
+                      <span class="ml-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-foreground/60">analysed</span>
                     </div>
                     <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/[0.06] mb-2">
                       <div class="h-full rounded-full transition-all duration-700"
-                        style="width: {_pct}%; background: oklch(0.72 0.18 200 / 0.65);"></div>
+                        style="width: {_pct}%; background: oklch(0.82 0.24 200 / 0.65);"></div>
                     </div>
-                    <div class="font-mono text-[9px] tabular-nums text-muted-foreground/35">
+                    <div class="font-mono text-[9px] tabular-nums text-foreground/55">
                       {dashProbed.toLocaleString()} / {dashTotalFiles.toLocaleString()} files
                     </div>
                   </div>
@@ -2013,9 +2019,9 @@
             </div>
 
             <!-- Automation Control -->
-            <div class="rounded-xl border border-foreground/[0.07] bg-surface/20 p-5">
+            <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
               <div class="mb-4 flex items-center justify-between">
-                <div class="font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Automation Control</div>
+                <div class="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Automation Control</div>
                 <a href="/settings/activity" class="font-mono text-[8px] uppercase tracking-[0.22em] text-muted-foreground/25 transition-colors hover:text-muted-foreground/60">
                   FULL VIEW →
                 </a>
@@ -2029,8 +2035,8 @@
                   <div class="shrink-0 w-2 flex justify-center">
                     {#if scanSt === 'running'}
                       <span class="relative flex h-2 w-2">
-                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.72 0.18 200);"></span>
-                        <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.72 0.18 200);"></span>
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.82 0.24 200);"></span>
+                        <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.82 0.24 200);"></span>
                       </span>
                     {:else if scanSt === 'paused'}
                       <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
@@ -2040,8 +2046,8 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground/60 mb-0.5">Library Scan</div>
-                    <div class="font-mono text-[9px] text-muted-foreground/35 uppercase tracking-[0.1em]">
-                      {#if scanSt === 'running'}<span style="color: oklch(0.72 0.18 200);">RUNNING</span>
+                    <div class="font-mono text-[9px] text-foreground/55 uppercase tracking-[0.1em]">
+                      {#if scanSt === 'running'}<span style="color: oklch(0.82 0.24 200);">RUNNING</span>
                       {:else if scanSt === 'paused'}<span class="text-amber-400/70">PAUSED — SESSION ACTIVE</span>
                       {:else}
                         IDLE{#if dashJobs?.scan?.lastRunAt} · {new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{:else} · NEVER RUN{/if}{#if dashJobs?.scan?.nextRunAt} · NEXT {new Date(dashJobs.scan.nextRunAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}{/if}
@@ -2063,8 +2069,8 @@
                   <div class="shrink-0 w-2 flex justify-center">
                     {#if dashMetaRunning}
                       <span class="relative flex h-2 w-2">
-                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.72 0.18 200);"></span>
-                        <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.72 0.18 200);"></span>
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.82 0.24 200);"></span>
+                        <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.82 0.24 200);"></span>
                       </span>
                     {:else if metaSt === 'paused'}
                       <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
@@ -2077,16 +2083,16 @@
                     {#if dashMetaRunning && bf && bf.total > 0}
                       <div class="space-y-1">
                         <div class="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.1em]">
-                          <span style="color: oklch(0.72 0.18 200);">BACKFILLING{#if bf.lastTitle} — {bf.lastTitle}{/if}</span>
-                          <span class="text-muted-foreground/30 tabular-nums">{(bf.refreshed + bf.failed).toLocaleString()}/{bf.total.toLocaleString()}</span>
+                          <span style="color: oklch(0.82 0.24 200);">BACKFILLING{#if bf.lastTitle} — {bf.lastTitle}{/if}</span>
+                          <span class="text-foreground/45 tabular-nums">{(bf.refreshed + bf.failed).toLocaleString()}/{bf.total.toLocaleString()}</span>
                         </div>
                         <div class="h-0.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
                           <div class="h-full rounded-full transition-all"
-                            style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%; background: oklch(0.72 0.18 200 / 0.6);"></div>
+                            style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%; background: oklch(0.82 0.24 200 / 0.6);"></div>
                         </div>
                       </div>
                     {:else}
-                      <div class="font-mono text-[9px] text-muted-foreground/35 uppercase tracking-[0.1em]">
+                      <div class="font-mono text-[9px] text-foreground/55 uppercase tracking-[0.1em]">
                         {#if metaSt === 'paused'}<span class="text-amber-400/70">PAUSED — SESSION ACTIVE</span>
                         {:else}IDLE{#if dashJobs?.metadata?.lastRunAt} · {new Date(dashJobs.metadata.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{:else} · NEVER RUN{/if}{/if}
                       </div>
@@ -2107,8 +2113,8 @@
                   <div class="shrink-0 w-2 flex justify-center">
                     {#if dashProbeRunning}
                       <span class="relative flex h-2 w-2">
-                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.72 0.18 200);"></span>
-                        <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.72 0.18 200);"></span>
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.82 0.24 200);"></span>
+                        <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.82 0.24 200);"></span>
                       </span>
                     {:else if probeSt === 'paused'}
                       <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
@@ -2124,17 +2130,17 @@
                       {@const tot = probeJob.total ?? 1}
                       <div class="space-y-1">
                         <div class="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.1em]">
-                          <span style="color: oklch(0.72 0.18 200);">RUNNING</span>
-                          <span class="text-muted-foreground/30 tabular-nums">{done.toLocaleString()}/{tot.toLocaleString()} · {Math.round(done/tot*100)}%</span>
+                          <span style="color: oklch(0.82 0.24 200);">RUNNING</span>
+                          <span class="text-foreground/45 tabular-nums">{done.toLocaleString()}/{tot.toLocaleString()} · {Math.round(done/tot*100)}%</span>
                         </div>
                         <div class="h-0.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
                           <div class="h-full rounded-full transition-all"
-                            style="width: {Math.round(done/tot*100)}%; background: oklch(0.72 0.18 200 / 0.6);"></div>
+                            style="width: {Math.round(done/tot*100)}%; background: oklch(0.82 0.24 200 / 0.6);"></div>
                         </div>
                       </div>
                       {/if}
                     {:else}
-                      <div class="font-mono text-[9px] text-muted-foreground/35 uppercase tracking-[0.1em]">
+                      <div class="font-mono text-[9px] text-foreground/55 uppercase tracking-[0.1em]">
                         {#if probeSt === 'paused'}<span class="text-amber-400/70">PAUSED — SESSION ACTIVE</span>
                         {:else}
                           {#if dashUnprobed > 0}<span style="color: oklch(0.80 0.18 65 / 0.7);">{dashUnprobed.toLocaleString()} FILES QUEUED</span>
@@ -2156,8 +2162,8 @@
 
           <!-- ── Storage Systems ─────────────────────────────────────────────── -->
           {#if sysStatus?.disks && sysStatus.disks.length > 0}
-            <div class="mb-4 rounded-xl border border-foreground/[0.07] bg-surface/20 p-5">
-              <div class="mb-4 font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Storage Systems</div>
+            <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
+              <div class="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Storage Systems</div>
               <div class="space-y-3">
                 {#each sysStatus.disks as disk (disk.path ?? disk.name)}
                   {#if true}
@@ -2165,11 +2171,11 @@
                   <div class="grid items-center gap-4" style="grid-template-columns: minmax(0,1fr) 160px 3rem">
                     <div class="min-w-0">
                       <div class="truncate font-mono text-[10px] font-medium text-foreground/55">{disk.path ?? disk.name ?? 'DISK'}</div>
-                      <div class="font-mono text-[9px] text-muted-foreground/30 tabular-nums">{formatBytes(disk.freeBytes)} FREE</div>
+                      <div class="font-mono text-[9px] text-foreground/45 tabular-nums">{formatBytes(disk.freeBytes)} FREE</div>
                     </div>
                     <div class="relative h-1 overflow-hidden rounded-full bg-foreground/[0.06]">
                       <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
-                        style="width: {dPct}%; background: {dPct >= 90 ? 'oklch(0.65 0.22 25)' : dPct >= 75 ? 'oklch(0.80 0.18 65)' : 'oklch(0.72 0.18 200 / 0.5)'};"></div>
+                        style="width: {dPct}%; background: {dPct >= 90 ? 'oklch(0.68 0.26 22)' : dPct >= 75 ? 'oklch(0.85 0.22 75)' : 'oklch(0.82 0.24 200 / 0.5)'};"></div>
                     </div>
                     <div class="text-right font-mono text-[11px] font-bold tabular-nums {dPct >= 90 ? 'text-red-400' : dPct >= 75 ? 'text-amber-400' : 'text-foreground/35'}">{dPct}%</div>
                   </div>
@@ -2188,7 +2194,7 @@
                   <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40"></span>
                   <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
                 </span>
-                <span class="font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-emerald-300/55">
+                <span class="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-emerald-300/55">
                   Now Playing // {activeSessions.length} Active Stream{activeSessions.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -2200,7 +2206,7 @@
                     </div>
                     <div class="min-w-0 flex-1">
                       <div class="truncate font-mono text-[12px] font-semibold text-foreground/75">{session.title ?? session.sourceName ?? 'UNKNOWN'}</div>
-                      <div class="mt-0.5 font-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/35">
+                      <div class="mt-0.5 font-mono text-[9px] uppercase tracking-[0.15em] text-foreground/55">
                         {session.mode ?? session.route ?? 'Direct Play'}{session.deviceId ? ` // ${session.deviceId}` : ''}
                       </div>
                     </div>
@@ -2212,9 +2218,9 @@
           {/if}
 
           <!-- ── Mission Log ─────────────────────────────────────────────────── -->
-          <div class="overflow-hidden rounded-xl border border-foreground/[0.07] bg-surface/20">
+          <div class="overflow-hidden rounded-xl border border-foreground/[0.12] bg-surface/20">
             <div class="border-b border-foreground/[0.06] px-5 py-3">
-              <span class="font-mono text-[8px] font-semibold uppercase tracking-[0.38em] text-muted-foreground/35">Mission Log</span>
+              <span class="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Mission Log</span>
             </div>
             {#if recentScans.length > 0}
               <div class="divide-y divide-foreground/[0.04]">
@@ -2224,7 +2230,7 @@
                       <div class="flex items-center gap-2">
                         <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground/55">{scan.kind ?? 'Scan'}</span>
                         {#if scan.libraryId}
-                          <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/30">{scan.libraryId.slice(0, 8)}</code>
+                          <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-foreground/45">{scan.libraryId.slice(0, 8)}</code>
                         {/if}
                       </div>
                       {#if scan.updatedAt}
@@ -2234,7 +2240,7 @@
                       {/if}
                     </div>
                     {#if scan.status === 'running'}
-                      <div class="font-mono text-[9px] font-bold uppercase tracking-[0.22em]" style="color: oklch(0.72 0.18 200);">RUNNING</div>
+                      <div class="font-mono text-[9px] font-bold uppercase tracking-[0.22em]" style="color: oklch(0.82 0.24 200);">RUNNING</div>
                     {:else if scan.status === 'completed'}
                       <div class="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-emerald-400/80">DONE</div>
                     {:else if scan.status}
