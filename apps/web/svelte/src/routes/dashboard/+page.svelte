@@ -76,7 +76,10 @@
   );
   // Real GPU hardware stats (from nvidia-smi / WMI); may be absent.
   const gpuHW       = $derived(sys?.gpu ?? null);
-  const gpuHasReal  = $derived(gpuHW != null && gpuHW.utilizationPct != null);
+  // gpuHasReal: true when live utilisation is available (nvidia-smi / AMD sysfs).
+  // gpuHasAny:  true when we have at least an adapter name (WMI/PS fallback covers this).
+  const gpuHasReal  = $derived(gpuHW != null && (gpuHW.utilizationPct ?? 0) > 0);
+  const gpuHasAny   = $derived(gpuHW != null);
   const gpuUtil     = $derived(
     gpuHasReal
       ? Math.round(gpuHW!.utilizationPct!)
@@ -409,7 +412,7 @@
         <!-- GPU -->
         <div class="hairline flex flex-col gap-3 rounded-2xl bg-surface/40 p-5">
           <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">GPU</div>
-          {#if hwAvail || gpuHasReal}
+          {#if hwAvail || gpuHasAny}
             <!-- Utilisation gauge — real hardware % when available, worker-slot % otherwise -->
             <div class="flex items-center gap-4">
               <div class="relative flex shrink-0 items-center justify-center">
@@ -423,7 +426,7 @@
                 </svg>
                 <div class="absolute inset-0 flex rotate-90 flex-col items-center justify-center">
                   <span class="text-xl font-bold leading-none tabular-nums">{gpuUtil}%</span>
-                  <span class="text-[9px] text-muted-foreground/60">{gpuHasReal ? 'GPU' : 'workers'}</span>
+                  <span class="text-[9px] text-muted-foreground/60">{gpuHasReal ? 'live' : gpuHasAny ? 'workers' : 'workers'}</span>
                 </div>
               </div>
               <div class="min-w-0 flex-1 space-y-1.5">
@@ -530,19 +533,28 @@
       <!-- Stat strip -->
       <div class="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
         {#each [
-          { label: 'Movies',      value: health?.summary?.movies      ?? 0, warn: false },
-          { label: 'Series',      value: health?.summary?.series      ?? 0, warn: false },
-          { label: 'Episodes',    value: health?.summary?.episodes    ?? 0, warn: false },
-          { label: 'Files',       value: totalFiles,                         warn: false },
-          { label: 'Unprobed',    value: unprobed,                          warn: unprobed > 0 },
-          { label: 'Need Review', value: health?.needsReview          ?? 0, warn: (health?.needsReview ?? 0) > 0 },
+          { label: 'Movies',      value: health?.summary?.movies      ?? 0, warn: false,          href: '/movies' },
+          { label: 'Series',      value: health?.summary?.series      ?? 0, warn: false,          href: '/tv' },
+          { label: 'Episodes',    value: health?.summary?.episodes    ?? 0, warn: false,          href: null },
+          { label: 'Files',       value: totalFiles,                         warn: false,          href: null },
+          { label: 'Unprobed',    value: unprobed,                          warn: unprobed > 0,   href: unprobed > 0 ? '/movies?unprobed=1' : null },
+          { label: 'Need Review', value: health?.needsReview          ?? 0, warn: (health?.needsReview ?? 0) > 0, href: (health?.needsReview ?? 0) > 0 ? '/movies?review=1' : null },
         ] as stat}
-          <div class="hairline rounded-2xl bg-surface/40 p-4 {stat.warn ? 'border-amber-400/30 bg-amber-400/[0.04]' : ''}">
-            <div class="text-2xl font-bold leading-none tabular-nums {stat.warn ? 'text-amber-400' : ''}">
-              {stat.value.toLocaleString()}
+          {#if stat.href}
+            <a href={stat.href} class="hairline block rounded-2xl bg-surface/40 p-4 transition-colors hover:bg-surface/60 {stat.warn ? 'border-amber-400/30 bg-amber-400/[0.04] hover:bg-amber-400/[0.07]' : ''}">
+              <div class="text-2xl font-bold leading-none tabular-nums {stat.warn ? 'text-amber-400' : ''}">
+                {stat.value.toLocaleString()}
+              </div>
+              <div class="mt-1.5 text-[11px] text-muted-foreground">{stat.label} ↗</div>
+            </a>
+          {:else}
+            <div class="hairline rounded-2xl bg-surface/40 p-4 {stat.warn ? 'border-amber-400/30 bg-amber-400/[0.04]' : ''}">
+              <div class="text-2xl font-bold leading-none tabular-nums {stat.warn ? 'text-amber-400' : ''}">
+                {stat.value.toLocaleString()}
+              </div>
+              <div class="mt-1.5 text-[11px] text-muted-foreground">{stat.label}</div>
             </div>
-            <div class="mt-1.5 text-[11px] text-muted-foreground">{stat.label}</div>
-          </div>
+          {/if}
         {/each}
       </div>
 

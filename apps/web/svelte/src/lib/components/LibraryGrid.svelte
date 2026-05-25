@@ -83,6 +83,7 @@
   let onlyNeedsReview  = $state(false);
   let onlyMultiVersion = $state(false);
   let onlyMissingMeta  = $state(false);
+  let onlyUnprobed     = $state(false);
 
   // ── Pseudo-random helper ───────────────────────────────────────────────────
   function pseudoRandom(id: string, seed: number): number {
@@ -147,6 +148,7 @@
   const hasMultipleVersion = $derived(items.some((i: Media) => (i.versionCount ?? 1) > 1));
   const hasWatchData       = $derived(items.some((i: Media) => i.watched !== undefined));
   const hasMissingMeta     = $derived(items.some((i: Media) => !i.poster && !i.synopsis));
+  const hasUnprobedItems   = $derived(items.some((i: Media) => i.probed === false));
 
   type StudioChip = { name: string; count: number };
   const studioChips = $derived.by<StudioChip[]>(() => {
@@ -179,7 +181,8 @@
   const activeFilterCount = $derived(
     selectedGenres.size + selectedDecades.size + selectedRatings.size + selectedStudios.size +
     (watchFilter !== 'all' ? 1 : 0) +
-    (onlyNeedsReview ? 1 : 0) + (onlyMultiVersion ? 1 : 0) + (onlyMissingMeta ? 1 : 0)
+    (onlyNeedsReview ? 1 : 0) + (onlyMultiVersion ? 1 : 0) + (onlyMissingMeta ? 1 : 0) +
+    (onlyUnprobed ? 1 : 0)
   );
 
   // ── Sort label ─────────────────────────────────────────────────────────────
@@ -201,6 +204,7 @@
       if (onlyNeedsReview && !item.needsReview) return false;
       if (onlyMultiVersion && (item.versionCount ?? 1) <= 1) return false;
       if (onlyMissingMeta && (item.poster || item.synopsis)) return false;
+      if (onlyUnprobed && item.probed !== false) return false;
       return true;
     });
 
@@ -262,6 +266,7 @@
     onlyNeedsReview  = false;
     onlyMultiVersion = false;
     onlyMissingMeta  = false;
+    onlyUnprobed     = false;
   }
 
   // ── URL state ──────────────────────────────────────────────────────────────
@@ -285,6 +290,7 @@
     if (p.get('review') === '1') onlyNeedsReview = true;
     if (p.get('multi') === '1') onlyMultiVersion = true;
     if (p.get('missing') === '1') onlyMissingMeta = true;
+    if (p.get('unprobed') === '1') onlyUnprobed = true;
     const seed = parseInt(p.get('seed') ?? '', 10);
     if (!isNaN(seed) && seed > 0) randomSeed = seed;
 
@@ -319,6 +325,7 @@
     if (onlyNeedsReview)  p.set('review', '1');
     if (onlyMultiVersion) p.set('multi', '1');
     if (onlyMissingMeta)  p.set('missing', '1');
+    if (onlyUnprobed)     p.set('unprobed', '1');
     const qs = p.toString();
     const cur = page.url.searchParams.toString();
     if (qs !== cur) {
@@ -725,6 +732,20 @@
                     aria-pressed={onlyMissingMeta}
                   >
                     Missing Metadata
+                  </button>
+                {/if}
+                {#if hasUnprobedItems}
+                  <button
+                    type="button"
+                    onclick={() => (onlyUnprobed = !onlyUnprobed)}
+                    class={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      onlyUnprobed
+                        ? 'bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/30'
+                        : 'bg-foreground/[0.05] text-foreground/70 hover:bg-foreground/[0.10] hover:text-foreground'
+                    }`}
+                    aria-pressed={onlyUnprobed}
+                  >
+                    Not Analysed
                   </button>
                 {/if}
               </div>

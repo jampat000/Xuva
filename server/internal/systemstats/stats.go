@@ -140,10 +140,13 @@ func volumeRoot(path string) string {
 // nvidiaGPUStats queries nvidia-smi for the first GPU's name, utilization,
 // and VRAM. Returns nil when nvidia-smi is not installed or the query fails.
 func nvidiaGPUStats() *GPUStats {
+	smi := findNvidiaSmi()
+	if smi == "" {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx,
-		"nvidia-smi",
+	out, err := exec.CommandContext(ctx, smi,
 		"--query-gpu=name,utilization.gpu,memory.used,memory.total",
 		"--format=csv,noheader,nounits",
 	).Output()
@@ -165,6 +168,28 @@ func nvidiaGPUStats() *GPUStats {
 		VRAMUsedBytes:  memUsedMiB * 1024 * 1024,
 		VRAMTotalBytes: memTotalMiB * 1024 * 1024,
 	}
+}
+
+// findNvidiaSmi returns the full path to nvidia-smi, searching PATH first then
+// common install directories (handles the frequent case where the NVIDIA NVSMI
+// directory is not added to PATH on Windows).
+func findNvidiaSmi() string {
+	if path, err := exec.LookPath("nvidia-smi"); err == nil {
+		return path
+	}
+	for _, candidate := range []string{
+		`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`,
+		`C:\Windows\System32\nvidia-smi.exe`,
+		`/usr/bin/nvidia-smi`,
+		`/usr/local/bin/nvidia-smi`,
+		`/usr/lib/nvidia/bin/nvidia-smi`,
+		`/opt/cuda/bin/nvidia-smi`,
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func usedPercent(total uint64, free uint64) float64 {

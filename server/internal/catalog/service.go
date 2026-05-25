@@ -109,6 +109,7 @@ type MovieListItem struct {
 	Year         int             `json:"year"`
 	SortTitle    string          `json:"sortTitle"`
 	NeedsReview  bool            `json:"needsReview"`
+	Probed       bool            `json:"probed"`
 	VersionCount int             `json:"versionCount"`
 	AddedAt      string          `json:"addedAt,omitempty"`
 	Watched      bool            `json:"watched,omitempty"`
@@ -733,9 +734,11 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review,
 		       count(DISTINCT mv.media_source_id) AS version_count,
 		       m.created_at,
-		       MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END) AS is_watched
+		       MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END) AS is_watched,
+		       MAX(CASE WHEN mp.media_source_id IS NOT NULL THEN 1 ELSE 0 END) AS is_probed
 		FROM movies m
 		LEFT JOIN movie_versions mv ON mv.movie_id = m.id
+		LEFT JOIN media_probes mp ON mp.media_source_id = mv.media_source_id
 		LEFT JOIN playback_states ps ON ps.media_source_id = mv.media_source_id AND ps.user_id = ?
 		GROUP BY m.id
 		ORDER BY m.sort_title, m.year
@@ -750,11 +753,12 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 		id, title, sortTitle, addedAt string
 		year, versionCount            int
 		needsReview, isWatched        int
+		isProbed                      int
 	}
 	var stubs []movieStub
 	for rows.Next() {
 		var st movieStub
-		if err := rows.Scan(&st.id, &st.title, &st.year, &st.sortTitle, &st.needsReview, &st.versionCount, &st.addedAt, &st.isWatched); err != nil {
+		if err := rows.Scan(&st.id, &st.title, &st.year, &st.sortTitle, &st.needsReview, &st.versionCount, &st.addedAt, &st.isWatched, &st.isProbed); err != nil {
 			return nil, err
 		}
 		stubs = append(stubs, st)
@@ -781,6 +785,7 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 			Year:         st.year,
 			SortTitle:    st.sortTitle,
 			NeedsReview:  st.needsReview != 0,
+			Probed:       st.isProbed != 0,
 			VersionCount: st.versionCount,
 			AddedAt:      st.addedAt,
 			Watched:      st.isWatched != 0,

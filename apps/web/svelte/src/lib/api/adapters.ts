@@ -111,6 +111,7 @@ export function movieToMedia(item: MovieListItem): Media {
 		backdrop: item.metadata?.backdropUrl || undefined,
 		contentRating: (meta?.contentRating as string | undefined) || undefined,
 		needsReview: item.needsReview ?? false,
+		probed: item.probed ?? true,
 		versionCount: item.versionCount ?? 1,
 		addedAt: item.addedAt || undefined,
 		watched: item.watched ?? false,
