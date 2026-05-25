@@ -69,6 +69,7 @@ Public client bootstrap routes:
 | `POST /api/work` | work | `work.start` | admin |
 | `DELETE /api/work/{id}` | work | `work.cancel` | admin |
 | `GET /api/work/{id}/file` | work | `work.file` | admin, standard |
+| `GET /api/work/{id}/hls/{file}` | work | `work.hls` | admin, standard |
 | `POST /api/downloads` | downloads | `download.start` | admin |
 | `GET /api/downloads/{id}/file` | downloads | `download.file` | admin, standard |
 | `GET /api/pairing/requests` | pairing | `pairing.list` | admin |
