@@ -1,6 +1,7 @@
 package transcode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,9 @@ const (
 
 	StatusQueued    Status = "queued"
 	StatusRunning   Status = "running"
+	// StatusStreaming means the job is still running but the first HLS segment
+	// and manifest are on disk — the client can begin playback immediately.
+	StatusStreaming  Status = "streaming"
 	StatusCompleted Status = "completed"
 	StatusFailed    Status = "failed"
 	StatusTimeout   Status = "failed-timeout"
@@ -47,6 +51,9 @@ type Request struct {
 	VideoEncoder    string `json:"videoEncoder,omitempty"`
 	TimeoutSeconds  int    `json:"timeoutSeconds,omitempty"`
 	MaxAttempts     int    `json:"maxAttempts,omitempty"`
+	// OutputFormat controls how the output is packaged. "hls" produces segmented
+	// HLS (.ts segments + index.m3u8); the default (empty/"mp4") is a single MP4.
+	OutputFormat string `json:"outputFormat,omitempty"`
 }
 
 type Job struct {
@@ -56,6 +63,10 @@ type Job struct {
 	Status          Status    `json:"status"`
 	SourcePath      string    `json:"sourcePath,omitempty"`
 	OutputPath      string    `json:"outputPath,omitempty"`
+	// OutputDir is set for HLS jobs and contains the directory where index.m3u8
+	// and segment_NNNNN.ts files are written. OutputPath is index.m3u8 itself.
+	OutputDir       string    `json:"outputDir,omitempty"`
+	OutputFormat    string    `json:"outputFormat,omitempty"`
 	AudioTrackIndex int       `json:"audioTrackIndex,omitempty"`
 	Command         []string  `json:"command,omitempty"`
 	Acceleration    string    `json:"acceleration,omitempty"`
@@ -123,11 +134,17 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 		maxAttempts = 2
 	}
 	now := time.Now().UTC()
-	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, AudioTrackIndex: request.AudioTrackIndex, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: now, LastAccessedAt: now, MaxAttempts: maxAttempts}
+	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, AudioTrackIndex: request.AudioTrackIndex, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, OutputFormat: request.OutputFormat, Status: StatusQueued, CreatedAt: now, LastAccessedAt: now, MaxAttempts: maxAttempts}
 	if request.TimeoutSeconds > 0 {
 		job.Timeout = (time.Duration(request.TimeoutSeconds) * time.Second).String()
 	}
-	job.OutputPath = filepath.Join(s.outDir, job.ID+".mp4")
+	if job.OutputFormat == "hls" {
+		dir := filepath.Join(s.outDir, job.ID)
+		job.OutputDir = dir
+		job.OutputPath = filepath.Join(dir, "index.m3u8")
+	} else {
+		job.OutputPath = filepath.Join(s.outDir, job.ID+".mp4")
+	}
 	job.Command = s.command(job)
 	s.store(job)
 	_ = s.persist(context.Background(), job)
@@ -225,6 +242,9 @@ func (s *Service) execute(ctx context.Context, job Job) error {
 	if job.SourcePath == "" {
 		return errors.New("source path is required")
 	}
+	if job.OutputFormat == "hls" {
+		return s.executeHLS(ctx, job)
+	}
 	if err := os.MkdirAll(filepath.Dir(job.OutputPath), 0o755); err != nil {
 		return err
 	}
@@ -237,6 +257,66 @@ func (s *Service) execute(ctx context.Context, job Job) error {
 		}
 		if len(output) > 0 {
 			return errors.New(string(output))
+		}
+		return err
+	}
+	return nil
+}
+
+// executeHLS starts FFmpeg for HLS segmented output, marks the job as
+// StatusStreaming as soon as the first manifest appears (~4 s), then waits
+// for FFmpeg to finish. The caller's worker goroutine remains blocked until
+// completion; in the meantime the HTTP handler serves segments from disk.
+func (s *Service) executeHLS(ctx context.Context, job Job) error {
+	if err := os.MkdirAll(job.OutputDir, 0o755); err != nil {
+		return err
+	}
+	args := job.Command[1:]
+	cmd := exec.CommandContext(ctx, s.ffmpeg, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Poll until the manifest appears (first segment written after ~hls_time seconds).
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	deadline := time.NewTimer(45 * time.Second)
+	defer deadline.Stop()
+
+	streamingMarked := false
+	for !streamingMarked {
+		select {
+		case <-tick.C:
+			if _, err := os.Stat(job.OutputPath); err == nil {
+				j, ok := s.Get(job.ID)
+				if ok && (j.Status == StatusRunning) {
+					j.Status = StatusStreaming
+					s.store(j)
+					_ = s.persist(context.Background(), j)
+					s.publish("transcode.streaming", j)
+				}
+				streamingMarked = true
+			}
+		case <-deadline.C:
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return errors.New("timeout waiting for first HLS segment")
+		case <-ctx.Done():
+			// CommandContext will have killed the process; just wait for cleanup.
+			_ = cmd.Wait()
+			return ctx.Err()
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if msg := stderr.String(); msg != "" {
+			return errors.New(msg)
 		}
 		return err
 	}
@@ -261,7 +341,11 @@ func (s *Service) Cancel(id string) (Job, bool) {
 	job.ReasonCode = failure.ReasonCode
 	job.Remediation = failure.Remediation
 	job.Error = failure.ReasonText
-	_ = os.Remove(job.OutputPath)
+	if job.OutputDir != "" {
+		_ = os.RemoveAll(job.OutputDir)
+	} else {
+		_ = os.Remove(job.OutputPath)
+	}
 	s.store(job)
 	_ = s.persist(context.Background(), job)
 	s.publish("transcode.cancelled", job)
@@ -290,7 +374,12 @@ func (s *Service) command(job Job) []string {
 		} else {
 			args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20")
 		}
-		args = append(args, "-c:a", "aac", "-movflags", "+faststart", job.OutputPath)
+		args = append(args, "-c:a", "aac")
+		if job.OutputFormat == "hls" {
+			args = hlsOutputArgs(args, job)
+		} else {
+			args = append(args, "-movflags", "+faststart", job.OutputPath)
+		}
 	case ModeRemuxAudio:
 		// Video copy, audio re-encode. Same audio mapping rules as transcode
 		// (explicit track index when requested, first audio stream otherwise).
@@ -305,6 +394,19 @@ func (s *Service) command(job Job) []string {
 		args = append(args, "-map", "0", "-c", "copy", "-movflags", "+faststart", job.OutputPath)
 	}
 	return args
+}
+
+// hlsOutputArgs appends the HLS packaging flags to args, writing 4-second
+// MPEG-TS segments and an event-type manifest that grows until FFmpeg exits.
+func hlsOutputArgs(args []string, job Job) []string {
+	return append(args,
+		"-f", "hls",
+		"-hls_time", "4",
+		"-hls_playlist_type", "event",
+		"-hls_segment_type", "mpegts",
+		"-hls_segment_filename", filepath.Join(job.OutputDir, "segment_%05d.ts"),
+		job.OutputPath,
+	)
 }
 
 func (s *Service) Get(id string) (Job, bool) {
@@ -342,7 +444,7 @@ func (s *Service) FindActive(mediaSourceID string, mode Mode, audioTrackIndex in
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, job := range s.jobs {
-		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.AudioTrackIndex == audioTrackIndex && (job.Status == StatusQueued || job.Status == StatusRunning) {
+		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.AudioTrackIndex == audioTrackIndex && (job.Status == StatusQueued || job.Status == StatusRunning || job.Status == StatusStreaming) {
 			// Bump LastAccessedAt so the reaper knows a client is still polling
 			// this job. If polling stops (browser closed, navigated away), the
 			// reaper will pick up the staleness and cancel the orphan.
@@ -375,7 +477,7 @@ func (s *Service) ReapIdleJobs(idleTimeout time.Duration) []string {
 	s.mu.RLock()
 	ids := make([]string, 0)
 	for _, job := range s.jobs {
-		if job.Status != StatusQueued && job.Status != StatusRunning {
+		if job.Status != StatusQueued && job.Status != StatusRunning && job.Status != StatusStreaming {
 			continue
 		}
 		// Belt-and-braces: a freshly-queued job (LastAccessedAt zero or very
@@ -432,7 +534,7 @@ func (s *Service) CancelActiveForMediaSource(mediaSourceID string) int {
 		if job.MediaSourceID != mediaSourceID {
 			continue
 		}
-		if job.Status == StatusQueued || job.Status == StatusRunning {
+		if job.Status == StatusQueued || job.Status == StatusRunning || job.Status == StatusStreaming {
 			ids = append(ids, job.ID)
 		}
 	}
@@ -459,7 +561,7 @@ func (s *Service) recover(ctx context.Context) error {
 			continue
 		}
 		switch job.Status {
-		case StatusQueued, StatusRunning:
+		case StatusQueued, StatusRunning, StatusStreaming:
 			job.Status = StatusFailed
 			job.CompletedAt = now
 			job.FailureClass = "recovered_after_restart"
