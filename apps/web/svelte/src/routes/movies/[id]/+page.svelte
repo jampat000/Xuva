@@ -12,8 +12,8 @@
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getMovieDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
-  import { getMediaSourceDetail, getMediaSourceTracks, type MediaSourceItem, type ProbeTrack } from '$lib/api/details';
-  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary } from '$lib/utils/mediaFormat';
+  import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
+  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary, playabilityBadge } from '$lib/utils/mediaFormat';
   import type { MovieDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -70,6 +70,23 @@
   let audioTracks = $state<ProbeTrack[]>([]);
   let subtitleTracks = $state<ProbeTrack[]>([]);
   let tracksLoading = $state(false);
+
+  // ── Per-version playability decision (for the badge on each Version card) ─
+  // Keyed by mediaSourceId. Calls /api/playback/decision which is side-effect-
+  // free (NO transcode start, unlike /api/playback/route). Fetched lazily as
+  // versions come into view; cached so re-renders don't refetch.
+  let versionPlayability = $state<Record<string, PlaybackDecisionResponse>>({});
+  $effect(() => {
+    const list = versions;
+    if (list.length === 0) return;
+    for (const v of list) {
+      const id = v.mediaSourceId;
+      if (!id || versionPlayability[id]) continue;
+      getPlaybackDecision(id, { clientProfile: 'web' })
+        .then(d => { versionPlayability = { ...versionPlayability, [id]: d }; })
+        .catch(() => { /* swallow — the badge just won't appear */ });
+    }
+  });
 
   // Re-fetch tracks + source detail whenever the selected version changes.
   // Wrapped in an effect so switching versions in the UI reactively updates the
@@ -445,6 +462,13 @@
                     {#if v.sizeBytes}
                       <div class="mt-2 text-[12px] text-foreground/55 tabular-nums">{formatFileSize(v.sizeBytes)}</div>
                     {/if}
+                    {#if v.mediaSourceId && versionPlayability[v.mediaSourceId]}
+                      {@const b = playabilityBadge(versionPlayability[v.mediaSourceId].mode)}
+                      <div class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium" style={`color: ${b.color}; background: ${b.color.replace(')', ' / 0.1)')}; border: 1px solid ${b.color.replace(')', ' / 0.25)')};`}>
+                        <span class="h-1.5 w-1.5 rounded-full" style={`background: ${b.color};`}></span>
+                        {b.label}
+                      </div>
+                    {/if}
                     {#if v.relPath}
                       <div class="mt-1 truncate font-mono text-[10px] text-muted-foreground/55" title={v.relPath}>{v.relPath}</div>
                     {/if}
@@ -476,6 +500,25 @@
                     </span>
                   {/each}
                 </div>
+                <!-- Playability verdict — answers "what happens when I press
+                     Play?" in plain English. Uses the side-effect-free
+                     decision endpoint so loading the detail page never starts
+                     a transcode. -->
+                {#if mediaSourceId && versionPlayability[mediaSourceId]}
+                  {@const b = playabilityBadge(versionPlayability[mediaSourceId].mode)}
+                  <div class="mt-4 rounded-lg p-3" style={`background: ${b.color.replace(')', ' / 0.06)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`}>
+                    <div class="flex items-center gap-2">
+                      <span class="h-2 w-2 rounded-full shadow-[0_0_8px_currentColor]" style={`background: ${b.color}; color: ${b.color};`}></span>
+                      <span class="text-[13px] font-medium" style={`color: ${b.color};`}>{b.label}</span>
+                    </div>
+                    <p class="mt-1 ml-4 text-[12px] leading-relaxed text-foreground/70">{b.blurb}</p>
+                    {#if versionPlayability[mediaSourceId].reasonText}
+                      <p class="mt-1.5 ml-4 text-[11.5px] italic text-muted-foreground/70">
+                        {versionPlayability[mediaSourceId].reasonText}
+                      </p>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             {/if}
             {/if}
