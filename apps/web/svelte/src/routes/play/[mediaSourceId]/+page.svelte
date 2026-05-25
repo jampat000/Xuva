@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Player from '$lib/components/player/Player.svelte';
   import {
     getPlaybackRoute,
@@ -31,6 +31,11 @@
   let loading = $state(true);
   /** Set to true when the server returns status="deferred" — file not yet probed. */
   let deferredState = $state(false);
+  /** Set when a transcode is queued/running and we're waiting for it to be ready. */
+  let preparingState = $state(false);
+  let preparingJobId = $state<string | undefined>(undefined);
+  let preparingJobStartedByUs = $state(false); // true if WE triggered the transcode (not pre-existing)
+  let preparingPollTimer: ReturnType<typeof setInterval> | null = null;
 
   type LoadPhase = 'resolving' | 'authorizing';
   let loadPhase = $state<LoadPhase>('resolving');
@@ -112,19 +117,31 @@
       }
 
       // ── Early-exit for transcode-needed but no ready URL ──────────────────
-      // When a transcode job is queued/queuing or in-progress, surface a clear message
-      // rather than silently setting <video src=""> and freezing.
+      // When a transcode job is queued/in-progress, show a "Preparing…" panel that
+      // auto-polls every 6 seconds instead of showing a dead-end error.
       if (!finalAttemptRoute.url && !finalAttemptRoute.manifestUrl) {
         const status = finalAttemptRoute.status ?? 'unknown';
-        const mode   = finalAttemptRoute.route  ?? 'transcode';
         if (status === 'deferred') {
           // File has not been probed yet — we can't choose a playback route.
-          // Show a dedicated "not analysed yet" panel with a link to Activity.
           deferredState = true;
-        } else if (status === 'queued' || status === 'queuing' || status === 'transcoding') {
-          loadError = `This file needs to be transcoded before it can play (${mode}). Wait a moment and try again, or check Activity in Settings.`;
+        } else if (status === 'queued' || status === 'running' || status === 'queuing' || status === 'transcoding') {
+          preparingState = true;
+          preparingJobId = finalAttemptRoute.job?.id;
+          // "queued" means WE just started it; "running" means it was already in progress.
+          preparingJobStartedByUs = status === 'queued';
+          // Poll every 6 s — when the route comes back with a url, reload the page
+          preparingPollTimer = setInterval(async () => {
+            try {
+              const r = await getPlaybackRoute(mediaSourceId, { clientProfile: 'web', supportsAdaptive: true });
+              if (r.url || r.manifestUrl) {
+                // Ready — hard-reload so the full mount flow runs clean
+                if (preparingPollTimer) clearInterval(preparingPollTimer);
+                window.location.reload();
+              }
+            } catch { /* keep polling */ }
+          }, 6_000);
         } else {
-          loadError = `No playback URL was returned (route: ${mode}, status: ${status}). Check the server logs.`;
+          loadError = `No playback URL was returned (status: ${status}). Check the server logs.`;
         }
         loading = false;
         return;
@@ -197,6 +214,30 @@
     }
   });
 
+  // Cancel the polling timer and, if WE started the transcode job, cancel it too
+  // so FFmpeg doesn't run orphaned after the user navigates away.
+  onDestroy(() => {
+    if (preparingPollTimer) {
+      clearInterval(preparingPollTimer);
+      preparingPollTimer = null;
+    }
+    if (preparingJobStartedByUs && preparingJobId) {
+      // Fire-and-forget — best-effort cancel of a job we started but never played
+      fetch(`/api/work/${encodeURIComponent(preparingJobId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: (() => {
+          const h: Record<string, string> = {};
+          if (typeof document !== 'undefined') {
+            const m = document.cookie.match(/(?:^|; )xuva_csrf=([^;]*)/);
+            if (m) h['X-CSRF-Token'] = decodeURIComponent(m[1]);
+          }
+          return h;
+        })(),
+      }).catch(() => {});
+    }
+  });
+
   // Derive a display title from URL param or media source name
   const displayTitle = $derived(titleParam || mediaSource?.name || '');
 </script>
@@ -237,6 +278,36 @@
       <a
         href={backHref}
         class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20"
+      >
+        ← Back
+      </a>
+    </div>
+  </div>
+
+{:else if preparingState}
+  <!-- Preparing state: transcode is queued / in progress -->
+  <div class="flex h-screen w-screen flex-col items-center justify-center gap-6 bg-black p-8 text-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
+      <div class="h-7 w-7 animate-spin rounded-full border-2 border-white/20 border-t-white/70"></div>
+    </div>
+    <div>
+      <p class="font-serif-display text-2xl text-white">Getting this file ready</p>
+      <p class="mt-2 max-w-sm text-sm leading-relaxed text-white/50">
+        Xuva is preparing this file for playback. This page will refresh automatically
+        when it's ready — usually within a minute.
+      </p>
+    </div>
+    <div class="flex gap-3">
+      <button
+        type="button"
+        onclick={() => window.location.reload()}
+        class="rounded-full bg-white/15 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/25"
+      >
+        Check now
+      </button>
+      <a
+        href={backHref}
+        class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white/70 transition-colors hover:bg-white/20"
       >
         ← Back
       </a>
