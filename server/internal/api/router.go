@@ -4780,7 +4780,7 @@ func hardwareAccelerationStatus(cfg config.Config) map[string]any {
 	if err != nil {
 		result["error"] = err.Error()
 	}
-	// Include last-run test cache if available
+	// Include last-run test cache and the best working encoder (no re-test).
 	if cache := loadHWTestCache(cfg.DataDir); cache != nil {
 		result["lastTest"] = map[string]any{
 			"status":   cache.Status,
@@ -4789,6 +4789,9 @@ func hardwareAccelerationStatus(cfg config.Config) map[string]any {
 			"tests":    cache.Tests,
 			"testedAt": cache.TestedAt,
 		}
+	}
+	if encID, encLabel := bestCachedEncoder(cfg.DataDir); encID != "" {
+		result["selectedEncoder"] = map[string]any{"id": encID, "label": encLabel}
 	}
 	return result
 }
@@ -4897,6 +4900,50 @@ func saveHWTestCache(dataDir string, cache hwTestCache) {
 		return
 	}
 	_ = os.WriteFile(hwTestCachePath(dataDir), raw, 0o644)
+}
+
+// encoderDisplayLabel maps an ffmpeg encoder ID to a user-facing vendor label.
+func encoderDisplayLabel(encoderID string) string {
+	switch {
+	case strings.Contains(encoderID, "_nvenc"):
+		return "NVIDIA NVENC"
+	case strings.Contains(encoderID, "_qsv"):
+		return "Intel QSV"
+	case strings.Contains(encoderID, "_amf"):
+		return "AMD AMF"
+	case strings.Contains(encoderID, "_vaapi"):
+		return "VAAPI"
+	case strings.Contains(encoderID, "_videotoolbox"):
+		return "Apple VideoToolbox"
+	case encoderID == "":
+		return "CPU"
+	}
+	return encoderID
+}
+
+// bestCachedEncoder reads the hardware test cache and returns the encoder ID and
+// display label for the best working encoder in the preferred order, without
+// re-running any tests.
+func bestCachedEncoder(dataDir string) (id, label string) {
+	cache := loadHWTestCache(dataDir)
+	if cache == nil || cache.Status != "passed" {
+		return "", "CPU"
+	}
+	working := make(map[string]bool, len(cache.Tests))
+	for _, test := range cache.Tests {
+		tid, _ := test["id"].(string)
+		ok, _ := test["ok"].(bool)
+		if ok {
+			working[tid] = true
+		}
+	}
+	preferred := []string{"h264_qsv", "h264_nvenc", "h264_amf", "h264_vaapi", "h264_videotoolbox"}
+	for _, pid := range preferred {
+		if working[pid] {
+			return pid, encoderDisplayLabel(pid)
+		}
+	}
+	return "", "CPU"
 }
 
 func hardwareTestHandler(deps Deps) http.HandlerFunc {
@@ -6510,6 +6557,18 @@ func enrichSessionStartRequest(deps Deps, ctx context.Context, request *sessions
 		}
 		if request.ReasonText == "" {
 			request.ReasonText = decision.ReasonText
+		}
+	}
+	// Tag the session with the encoder being used so Now Playing can show
+	// "NVENC" / "Intel QSV" / "CPU" alongside the Transcoding badge.
+	if request.EncoderLabel == "" && request.Mode == "transcode" && deps.Transcode != nil {
+		if job, ok := deps.Transcode.FindAnyActiveTranscode(request.MediaSourceID); ok {
+			request.EncoderLabel = encoderDisplayLabel(job.VideoEncoder)
+		}
+		// If no active job yet (session start racing job creation), fall back to
+		// the best encoder from the last hardware test cache.
+		if request.EncoderLabel == "" {
+			_, request.EncoderLabel = bestCachedEncoder(deps.Config.DataDir)
 		}
 	}
 	return nil

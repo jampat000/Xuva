@@ -13,6 +13,7 @@
   import { getMovieDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
+  import { getPerformanceSettings } from '$lib/api/operator';
   import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary, playabilityBadge, playabilityShortLabel } from '$lib/utils/mediaFormat';
   import type { MovieDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
@@ -70,6 +71,7 @@
   let audioTracks = $state<ProbeTrack[]>([]);
   let subtitleTracks = $state<ProbeTrack[]>([]);
   let tracksLoading = $state(false);
+  let selectedEncoderLabel = $state<string | null>(null);
 
   // ── Per-version playability matrix (web / apple-tv / android-tv) ────────────
   // Keyed by `${mediaSourceId}:${profile}`. Side-effect-free decision endpoint.
@@ -236,7 +238,12 @@
     }
   }
 
-  onMount(load);
+  onMount(() => {
+    load();
+    getPerformanceSettings().then(p => {
+      selectedEncoderLabel = p.hardwareAcceleration?.selectedEncoder?.label ?? null;
+    }).catch(() => {});
+  });
 </script>
 
 <svelte:head>
@@ -520,6 +527,9 @@
                           <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background: ${b.color};`}></span>
                           <span class="text-[11px] font-medium" style={`color: ${b.color};`}>{playabilityShortLabel(d?.mode)}</span>
                         </div>
+                        {#if (d?.mode === 'transcode' || d?.mode === 'adaptive') && selectedEncoderLabel}
+                          <div class="mt-1 text-[9px] text-muted-foreground/60">{selectedEncoderLabel}</div>
+                        {/if}
                       </div>
                     {/each}
                   </div>

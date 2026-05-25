@@ -65,12 +65,28 @@
   const cpuPct     = $derived(Math.round(sys?.cpu?.percent ?? 0));
   const memPct     = $derived(Math.round(sys?.memory?.usedPercent ?? 0));
 
-  const gpuQueue   = $derived(perf?.queues?.find(q => q.name === 'gpu') ?? null);
-  const gpuWorkers = $derived(gpuQueue?.workers ?? perf?.limits?.gpuWorkers ?? 0);
-  const gpuActive  = $derived(gpuQueue?.active ?? 0);
-  const gpuUtil    = $derived(gpuWorkers > 0 ? Math.round((gpuActive / gpuWorkers) * 100) : 0);
-  const hwAvail    = $derived(perf?.hardwareAcceleration?.available ?? false);
-  const hwEncoder  = $derived(perf?.hardwareAcceleration?.encoders?.[0]?.label ?? null);
+  const gpuQueue    = $derived(perf?.queues?.find(q => q.name === 'gpu') ?? null);
+  const gpuWorkers  = $derived(gpuQueue?.workers ?? perf?.limits?.gpuWorkers ?? 0);
+  const gpuActive   = $derived(gpuQueue?.active ?? 0);
+  const hwAvail     = $derived(perf?.hardwareAcceleration?.available ?? false);
+  const hwEncoder   = $derived(
+    perf?.hardwareAcceleration?.selectedEncoder?.label ??
+    perf?.hardwareAcceleration?.encoders?.[0]?.label ??
+    null
+  );
+  // Real GPU hardware stats (from nvidia-smi / WMI); may be absent.
+  const gpuHW       = $derived(sys?.gpu ?? null);
+  const gpuHasReal  = $derived(gpuHW != null && gpuHW.utilizationPct != null);
+  const gpuUtil     = $derived(
+    gpuHasReal
+      ? Math.round(gpuHW!.utilizationPct!)
+      : gpuWorkers > 0 ? Math.round((gpuActive / gpuWorkers) * 100) : 0
+  );
+  const gpuAdapterName = $derived(
+    gpuHW?.adapterName ??
+    perf?.hardwareAcceleration?.selectedEncoder?.label ??
+    null
+  );
 
   // ── SVG arc gauge helpers ──────────────────────────────────────────────────
   const _R    = 36;
@@ -126,11 +142,13 @@
   }
 
   function netRagColor(bps: number | undefined | null, linkBps: number | undefined | null): string {
-    if (!linkBps || !bps) return '';
+    const green = 'oklch(0.78 0.22 145)';
+    if (!linkBps || bps == null) return green; // no link data — can't judge, show green
+    if (bps <= 0) return green;                // no traffic — green (nothing to worry about)
     const pct = bps / linkBps;
     if (pct >= 0.8) return 'oklch(0.68 0.26 22)';  // red  — >80%
-    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';   // amber — 50–80%
-    return 'oklch(0.78 0.22 145)';                   // green — <50%
+    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';  // amber — 50–80%
+    return green;                                    // green — <50%
   }
 
   function netPct(bps: number | undefined | null, linkBps: number | undefined | null): string {
@@ -359,7 +377,7 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-baseline gap-2">
                   <div class="font-semibold leading-none tabular-nums"
-                    style={netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps) ? `color: ${netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps)}` : ''}>
+                    style="color: {netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps)}">
                     {fmtBps(sys?.network?.receiveBps)}
                   </div>
                   {#if sys?.network?.linkSpeedBps}
@@ -375,7 +393,7 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-baseline gap-2">
                   <div class="font-semibold leading-none tabular-nums"
-                    style={netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps) ? `color: ${netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps)}` : ''}>
+                    style="color: {netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps)}">
                     {fmtBps(sys?.network?.transmitBps)}
                   </div>
                   {#if sys?.network?.linkSpeedBps}
@@ -389,38 +407,52 @@
         </div>
 
         <!-- GPU -->
-        <div class="hairline flex flex-col items-center gap-3 rounded-2xl bg-surface/40 p-5">
-          <div class="w-full text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">GPU</div>
-          {#if hwAvail && gpuWorkers > 0}
-            <div class="relative flex items-center justify-center">
-              <svg viewBox="0 0 100 100" class="h-24 w-24 -rotate-90" aria-hidden="true">
-                <circle cx="50" cy="50" r={_R} fill="none"
-                  style="stroke: oklch(1 0 0 / 0.08); stroke-width: 10;" />
-                <circle cx="50" cy="50" r={_R} fill="none"
-                  style="stroke: {gaugeColor(gpuUtil)}; stroke-width: 10; stroke-linecap: round;
-                         stroke-dasharray: {arcDash(gpuUtil)};
-                         transition: stroke-dasharray 1s ease, stroke 0.5s ease;" />
-              </svg>
-              <div class="absolute inset-0 flex rotate-90 flex-col items-center justify-center">
-                <span class="text-2xl font-bold leading-none tabular-nums">{gpuUtil}%</span>
+        <div class="hairline flex flex-col gap-3 rounded-2xl bg-surface/40 p-5">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">GPU</div>
+          {#if hwAvail || gpuHasReal}
+            <!-- Utilisation gauge — real hardware % when available, worker-slot % otherwise -->
+            <div class="flex items-center gap-4">
+              <div class="relative flex shrink-0 items-center justify-center">
+                <svg viewBox="0 0 100 100" class="h-20 w-20 -rotate-90" aria-hidden="true">
+                  <circle cx="50" cy="50" r={_R} fill="none"
+                    style="stroke: oklch(1 0 0 / 0.08); stroke-width: 10;" />
+                  <circle cx="50" cy="50" r={_R} fill="none"
+                    style="stroke: {gaugeColor(gpuUtil)}; stroke-width: 10; stroke-linecap: round;
+                           stroke-dasharray: {arcDash(gpuUtil)};
+                           transition: stroke-dasharray 1s ease, stroke 0.5s ease;" />
+                </svg>
+                <div class="absolute inset-0 flex rotate-90 flex-col items-center justify-center">
+                  <span class="text-xl font-bold leading-none tabular-nums">{gpuUtil}%</span>
+                  <span class="text-[9px] text-muted-foreground/60">{gpuHasReal ? 'GPU' : 'workers'}</span>
+                </div>
+              </div>
+              <div class="min-w-0 flex-1 space-y-1.5">
+                {#if gpuAdapterName}
+                  <div class="truncate text-[12px] font-medium leading-snug" title={gpuAdapterName}>{gpuAdapterName}</div>
+                {/if}
+                {#if hwEncoder && hwEncoder !== gpuAdapterName}
+                  <div class="text-[11px] text-muted-foreground">{hwEncoder}</div>
+                {/if}
+                <div class="text-[11px] text-muted-foreground/70">{gpuActive} / {gpuWorkers} worker{gpuWorkers !== 1 ? 's' : ''}</div>
+                {#if gpuWorkers === 0}
+                  <div class="text-[10px] text-amber-400/70">Enable in Settings → Performance</div>
+                {/if}
               </div>
             </div>
-            <div class="w-full space-y-1 text-center">
-              <div class="text-xs font-medium">{gpuActive} / {gpuWorkers} workers</div>
-              {#if hwEncoder}
-                <div class="text-[11px] text-muted-foreground">{hwEncoder}</div>
-              {/if}
-            </div>
-          {:else if hwAvail}
-            <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4">
-              <svg class="h-8 w-8 text-green-400/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
-              </svg>
-              <div class="text-xs font-medium text-green-400">Available</div>
-              {#if hwEncoder}
-                <div class="text-[10px] text-muted-foreground">{hwEncoder}</div>
-              {/if}
-            </div>
+            <!-- VRAM bar (only when real stats available) -->
+            {#if gpuHW && gpuHW.vramTotalBytes && gpuHW.vramTotalBytes > 0}
+              {@const vramPct = Math.min(100, ((gpuHW.vramUsedBytes ?? 0) / gpuHW.vramTotalBytes) * 100)}
+              <div class="space-y-1">
+                <div class="flex justify-between text-[10px] text-muted-foreground">
+                  <span>VRAM</span>
+                  <span class="tabular-nums">{fmtBytes(gpuHW.vramUsedBytes)} / {fmtBytes(gpuHW.vramTotalBytes)}</span>
+                </div>
+                <div class="h-1.5 overflow-hidden rounded-full bg-white/8">
+                  <div class="h-full rounded-full transition-[width] duration-1000"
+                    style="width: {vramPct}%; background: {gaugeColor(vramPct, 75, 90)}"></div>
+                </div>
+              </div>
+            {/if}
           {:else}
             <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4">
               <svg class="h-8 w-8 text-muted-foreground/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -838,11 +870,22 @@
                   {hw.available ? hw.status ?? 'Available' : 'Not available'}
                 </span>
               </div>
+              {#if hw.available && hw.selectedEncoder}
+                <div class="mt-2 flex items-center justify-between text-[11px]">
+                  <span class="text-muted-foreground">Selected encoder</span>
+                  <span class="font-medium text-amber-300">{hw.selectedEncoder.label}</span>
+                </div>
+              {/if}
               {#if hw.available && hw.encoders && hw.encoders.length > 0}
+                {@const passingIds = new Set((hw.lastTest?.tests ?? []).filter(t => t.ok).map(t => t.id ?? ''))}
+                {@const hasTests = (hw.lastTest?.tests?.length ?? 0) > 0}
                 <div class="mt-2 flex flex-wrap gap-1.5">
                   {#each hw.encoders as enc (enc.id)}
-                    <span class="rounded-full border border-border bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground">
-                      {enc.label ?? enc.codec}
+                    {@const passing = !hasTests || passingIds.has(enc.id ?? '')}
+                    <span class="rounded-full border px-2 py-0.5 text-[10px] {passing
+                      ? 'border-border bg-foreground/[0.04] text-muted-foreground'
+                      : 'border-border/40 bg-foreground/[0.02] text-muted-foreground/30'}">
+                      {enc.label ?? enc.codec}{!passing ? ' · N/A' : ''}
                     </span>
                   {/each}
                 </div>

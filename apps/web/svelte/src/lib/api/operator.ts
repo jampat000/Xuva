@@ -62,6 +62,12 @@ export interface SystemStatusResponse {
 		error?: string;
 		sharedWithData?: boolean;
 	}>;
+	gpu?: {
+		adapterName?: string;
+		utilizationPct?: number;
+		vramUsedBytes?: number;
+		vramTotalBytes?: number;
+	};
 }
 
 export interface WorkQueueItem {
@@ -120,6 +126,7 @@ export interface SessionItem {
 	serverImpact?: string;
 	reasonCode?: string;
 	reasonText?: string;
+	encoderLabel?: string;
 	progressSeconds?: number;
 	durationSeconds?: number;
 	updatedAt?: string;
@@ -324,6 +331,7 @@ export interface PerformanceSettingsResponse {
 				durationMs?: number;
 			}>;
 		};
+		selectedEncoder?: { id?: string; label?: string };
 	};
 }
 
