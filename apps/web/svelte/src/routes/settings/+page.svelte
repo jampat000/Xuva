@@ -1935,8 +1935,8 @@
             <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
               <div class="mb-1 font-serif-display text-[15px] tracking-tight text-foreground/75">CPU Load</div>
               <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7" stroke-linecap="round"/>
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
+                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="butt"/>
+                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="butt"
                   style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {cpuOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashCpuPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
                   font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="30" font-weight="600" letter-spacing="-1.5"
@@ -1954,8 +1954,8 @@
             <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
               <div class="mb-1 font-serif-display text-[15px] tracking-tight text-foreground/75">Memory</div>
               <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7" stroke-linecap="round"/>
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
+                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="butt"/>
+                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="butt"
                   style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {memOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashMemPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
                   font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="30" font-weight="600" letter-spacing="-1.5"
@@ -2340,9 +2340,11 @@
           {#if dashCodecs && dashCodecs.videoCodecs.length > 0}
             {#if true}
             {@const groups = [
-              { cls: 'direct'    as const, label: 'Plays instantly',  blurb: 'No server work needed. Browsers decode these natively.', color: 'oklch(0.74 0.2 280)' },
-              { cls: 'remux'     as const, label: 'Fast repackage',    blurb: 'Video stream is kept; only the container is rewrapped. Starts in seconds.', color: 'oklch(0.78 0.22 145)' },
-              { cls: 'transcode' as const, label: 'Needs transcoding', blurb: "No browser can decode these directly — the server has to re-encode the video, which is slow.", color: 'oklch(0.85 0.22 75)' },
+              // RAG semantics: green = nothing the server has to do, amber =
+              // light server work (container repack), red = full re-encode.
+              { cls: 'direct'    as const, label: 'Plays instantly',  blurb: 'No server work needed. Browsers decode these natively.', color: 'oklch(0.78 0.22 145)' },
+              { cls: 'remux'     as const, label: 'Fast repackage',    blurb: 'Video stream is kept; only the container is rewrapped. Starts in seconds.', color: 'oklch(0.85 0.22 75)' },
+              { cls: 'transcode' as const, label: 'Needs transcoding', blurb: "No browser can decode these directly — the server has to re-encode the video, which is slow.", color: 'oklch(0.68 0.26 22)' },
             ]}
             {@const bucketed = groups.map(g => {
               const items = dashCodecs!.videoCodecs.filter(v => classifyCodec(v.codec).cls === g.cls);
@@ -2397,9 +2399,9 @@
               <!-- Helpful "what to do" footer when there are files in the transcode bucket -->
               {#if bucketed.find(g => g.cls === 'transcode' && g.count > 0)}
                 {@const tCount = bucketed.find(g => g.cls === 'transcode')!.count}
-                <div class="mt-4 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] px-4 py-3">
+                <div class="mt-4 rounded-lg border border-red-400/15 bg-red-400/[0.04] px-4 py-3">
                   <p class="text-[12.5px] leading-relaxed text-foreground/80">
-                    <span class="font-medium text-amber-300">{tCount.toLocaleString()} {tCount === 1 ? 'file' : 'files'}</span>
+                    <span class="font-medium text-red-300">{tCount.toLocaleString()} {tCount === 1 ? 'file' : 'files'}</span>
                     use older codecs (MPEG-2, VC-1, WMV, etc.) that no browser plays directly. They'll still
                     play — Xuva will re-encode the video on the fly — but expect a longer wait when you press Play
                     and higher CPU use. If you want instant playback for these, convert them to H.264 or HEVC
