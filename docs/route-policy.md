@@ -93,6 +93,7 @@ Public client bootstrap routes:
 | `GET /api/catalog/summary` | catalog | `catalog.summary` | admin |
 | `GET /api/catalog/health` | catalog | `catalog.health` | admin |
 | `GET /api/catalog/codecs` | catalog | `catalog.codecs` | admin |
+| `GET /api/catalog/playability-audit` | catalog | `catalog.playability_audit` | admin |
 | `GET /api/review` | metadata | `metadata.review` | admin |
 | `GET /api/metadata/providers` | metadata | `metadata.providers` | admin |
 | `GET /api/metadata/suggestions` | metadata | `metadata.suggestions` | admin |

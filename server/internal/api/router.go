@@ -164,6 +164,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/catalog/summary", catalogSummaryHandler(deps))
 	handleProtected(mux, deps, "GET /api/catalog/health", catalogHealthHandler(deps))
 	handleProtected(mux, deps, "GET /api/catalog/codecs", catalogCodecsHandler(deps))
+	handleProtected(mux, deps, "GET /api/catalog/playability-audit", catalogPlayabilityAuditHandler(deps))
 	handleProtected(mux, deps, "GET /api/migrations/formats", migrationFormatsHandler(deps))
 	handleProtected(mux, deps, "GET /api/migrations/runs", migrationRunsHandler(deps))
 	handleProtected(mux, deps, "GET /api/migrations/runs/{id}", migrationRunDetailHandler(deps))
@@ -1687,6 +1688,120 @@ func catalogCodecsHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, breakdown)
+	}
+}
+
+// catalogPlayabilityAuditHandler runs playback decisions for every probed
+// media source against the three canonical device profiles (web, apple-tv,
+// android-tv) and returns aggregated mode counts + top reason codes. The
+// results help operators understand what fraction of their library requires
+// transcoding and why.
+func catalogPlayabilityAuditHandler(deps Deps) http.HandlerFunc {
+	type profileBreakdown struct {
+		DirectPlay     int `json:"directPlay"`
+		Remux          int `json:"remux"`
+		AudioTranscode int `json:"audioTranscode"`
+		VideoTranscode int `json:"videoTranscode"`
+		Other          int `json:"other"`
+		Total          int `json:"total"`
+	}
+
+	type reasonEntry struct {
+		ReasonCode string `json:"reasonCode"`
+		ReasonText string `json:"reasonText"`
+		Profile    string `json:"profile"`
+		Count      int    `json:"count"`
+	}
+
+	type auditResponse struct {
+		TotalProbed int                        `json:"totalProbed"`
+		ByProfile   map[string]*profileBreakdown `json:"byProfile"`
+		TopReasons  []reasonEntry              `json:"topReasons"`
+	}
+
+	profiles := []string{"web", "apple-tv", "android-tv"}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		sources, err := deps.Catalog.ListMediaSources(r.Context(), 0, false)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "catalog listing failed")
+			return
+		}
+
+		result := &auditResponse{
+			ByProfile: make(map[string]*profileBreakdown, len(profiles)),
+		}
+		for _, p := range profiles {
+			result.ByProfile[p] = &profileBreakdown{}
+		}
+		// reason key = profile+"|"+reasonCode
+		reasonCounts := map[string]*reasonEntry{}
+
+		for i := range sources {
+			src := &sources[i]
+			if !src.Probed {
+				continue
+			}
+			result.TotalProbed++
+			for _, profile := range profiles {
+				decision := deps.Playback.DecideSource(r.Context(), playback.Request{
+					MediaSourceID: src.ID,
+					ClientProfile: profile,
+					RouteType:     "remote",
+				}, playback.SourceFacts{
+					MediaSourceID: src.ID,
+					Container:     src.Container,
+					VideoCodec:    src.VideoCodec,
+					Width:         src.Width,
+					Height:        src.Height,
+					Bitrate:       src.Bitrate,
+					AudioStreams:  src.AudioStreams,
+					Probed:        src.Probed,
+				})
+				bd := result.ByProfile[profile]
+				bd.Total++
+				switch decision.Mode {
+				case playback.DirectPlay, playback.AdaptiveStream:
+					bd.DirectPlay++
+				case playback.Remux:
+					bd.Remux++
+				case playback.AudioTranscode:
+					bd.AudioTranscode++
+				case playback.VideoTranscode, playback.SubtitleBurn:
+					bd.VideoTranscode++
+				default:
+					bd.Other++
+				}
+				if decision.ReasonCode != "" && decision.Mode != playback.DirectPlay && decision.Mode != playback.AdaptiveStream && decision.Mode != playback.DecisionDeferred {
+					key := profile + "|" + decision.ReasonCode
+					if e, ok := reasonCounts[key]; ok {
+						e.Count++
+					} else {
+						reasonCounts[key] = &reasonEntry{
+							ReasonCode: decision.ReasonCode,
+							ReasonText: decision.ReasonText,
+							Profile:    profile,
+							Count:      1,
+						}
+					}
+				}
+			}
+		}
+
+		// Sort reasons by count descending; take top 20.
+		reasons := make([]reasonEntry, 0, len(reasonCounts))
+		for _, e := range reasonCounts {
+			reasons = append(reasons, *e)
+		}
+		sort.Slice(reasons, func(i, j int) bool {
+			return reasons[i].Count > reasons[j].Count
+		})
+		if len(reasons) > 20 {
+			reasons = reasons[:20]
+		}
+		result.TopReasons = reasons
+
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

@@ -463,6 +463,32 @@ export function getCatalogCodecs(client: ApiClient = apiClient): Promise<CodecBr
 	return client.request<CodecBreakdownResponse>('/api/catalog/codecs');
 }
 
+export interface PlayabilityProfileBreakdown {
+	directPlay: number;
+	remux: number;
+	audioTranscode: number;
+	videoTranscode: number;
+	other: number;
+	total: number;
+}
+
+export interface PlayabilityReasonEntry {
+	reasonCode: string;
+	reasonText: string;
+	profile: string;
+	count: number;
+}
+
+export interface PlayabilityAuditResponse {
+	totalProbed: number;
+	byProfile: Record<string, PlayabilityProfileBreakdown>;
+	topReasons: PlayabilityReasonEntry[];
+}
+
+export function getCatalogPlayabilityAudit(client: ApiClient = apiClient): Promise<PlayabilityAuditResponse> {
+	return client.request<PlayabilityAuditResponse>('/api/catalog/playability-audit');
+}
+
 export function getSystemStatus(client: ApiClient = apiClient): Promise<SystemStatusResponse> {
 	return client.request<SystemStatusResponse>('/api/system/status');
 }
