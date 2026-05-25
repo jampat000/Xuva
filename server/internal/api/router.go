@@ -4923,7 +4923,22 @@ func selectedHardwareEncoder(ctx context.Context, cfg config.Config) (string, bo
 
 func systemStatusHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, systemstats.Collect(runtimePaths(currentConfig(deps))))
+		// Collect base stats from the systemstats package and graft on
+		// serverStartedAt so the dashboard can compute uptime client-side
+		// without a separate /api/about round-trip.
+		snap := systemstats.Collect(runtimePaths(currentConfig(deps)))
+		payload := map[string]any{
+			"collectedAt": snap.CollectedAt,
+			"cpu":         snap.CPU,
+			"memory":      snap.Memory,
+			"process":     snap.Process,
+			"network":     snap.Network,
+			"disks":       snap.Disks,
+		}
+		if !deps.StartedAt.IsZero() {
+			payload["serverStartedAt"] = deps.StartedAt.Format(time.RFC3339)
+		}
+		writeJSON(w, http.StatusOK, payload)
 	}
 }
 
