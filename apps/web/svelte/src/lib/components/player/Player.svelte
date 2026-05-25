@@ -3,7 +3,7 @@
   import Hls from 'hls.js';
   import {
     Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-    SkipBack, SkipForward, Subtitles, Mic2, Settings, Info, ChevronLeft, Keyboard, AlertTriangle
+    SkipBack, SkipForward, Subtitles, Mic2, Settings, ChevronLeft, AlertTriangle
   } from 'lucide-svelte';
   import RouteBadge from './RouteBadge.svelte';
   import TrackMenu from './TrackMenu.svelte';
@@ -1075,53 +1075,52 @@
       </div>
 
       <!-- Button row -->
-      <div class="flex items-center gap-1 md:gap-2">
-        <!-- Skip back -->
-        <button
-          onclick={() => skip(-10)}
-          class="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Skip back 10 seconds"
-        >
-          <SkipBack class="h-5 w-5" />
-        </button>
-
+      <div class="flex items-center gap-0.5">
         <!-- Play / pause -->
         <button
           onclick={togglePlay}
-          class="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black shadow-lg transition-transform hover:scale-105 active:scale-95"
+          class="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
           aria-label={paused ? 'Play' : 'Pause'}
         >
           {#if paused}
-            <Play class="h-5 w-5 translate-x-0.5" />
+            <Play class="h-[18px] w-[18px] translate-x-px fill-white" />
           {:else}
-            <Pause class="h-5 w-5" />
+            <Pause class="h-[18px] w-[18px] fill-white" />
           {/if}
+        </button>
+
+        <!-- Skip back -->
+        <button
+          onclick={() => skip(-10)}
+          class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+          aria-label="Skip back 10 seconds"
+        >
+          <SkipBack class="h-4 w-4" />
         </button>
 
         <!-- Skip forward -->
         <button
           onclick={() => skip(10)}
-          class="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           aria-label="Skip forward 10 seconds"
         >
-          <SkipForward class="h-5 w-5" />
+          <SkipForward class="h-4 w-4" />
         </button>
 
         <!-- Volume -->
-        <div class="group/vol relative ml-1 flex items-center gap-2">
+        <div class="flex items-center gap-1 ml-1">
           <button
             onclick={toggleMute}
-            class="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             aria-label={muted ? 'Unmute' : 'Mute'}
           >
             {#if muted || volume === 0}
-              <VolumeX class="h-5 w-5" />
+              <VolumeX class="h-4 w-4" />
             {:else}
-              <Volume2 class="h-5 w-5" />
+              <Volume2 class="h-4 w-4" />
             {/if}
           </button>
-          <!-- Volume slider (appears on hover) -->
-          <div class="hidden w-20 md:block">
+          <div class="hidden w-16 md:block">
             <input
               type="range"
               min="0"
@@ -1129,7 +1128,7 @@
               step="0.05"
               value={muted ? 0 : volume}
               oninput={(e) => setVolume(parseFloat((e.target as HTMLInputElement).value))}
-              class="h-1 w-full cursor-pointer appearance-none rounded-full bg-white/30 accent-white"
+              class="h-0.5 w-full cursor-pointer appearance-none rounded-full bg-white/30 accent-white"
               aria-label="Volume"
             />
           </div>
@@ -1143,11 +1142,11 @@
           <div class="relative">
             <button
               onclick={(e) => { e.stopPropagation(); showSubMenu = !showSubMenu; showAudioMenu = false; showQualityMenu = false; }}
-              class={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${activeSubtitleIndex !== null ? 'text-white' : 'text-white/60'}`}
+              class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${activeSubtitleIndex !== null ? 'text-white' : 'text-white/50'}`}
               aria-label="Subtitles"
               aria-expanded={showSubMenu}
             >
-              <Subtitles class="h-5 w-5" />
+              <Subtitles class="h-4 w-4" />
             </button>
             <TrackMenu
               open={showSubMenu}
@@ -1165,11 +1164,11 @@
           <div class="relative">
             <button
               onclick={(e) => { e.stopPropagation(); showAudioMenu = !showAudioMenu; showSubMenu = false; showQualityMenu = false; }}
-              class={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showAudioMenu ? 'text-white' : 'text-white/60'}`}
+              class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showAudioMenu ? 'text-white' : 'text-white/50'}`}
               aria-label="Audio track"
               aria-expanded={showAudioMenu}
             >
-              <Mic2 class="h-5 w-5" />
+              <Mic2 class="h-4 w-4" />
             </button>
             <TrackMenu
               open={showAudioMenu}
@@ -1187,11 +1186,11 @@
           <div class="relative">
             <button
               onclick={(e) => { e.stopPropagation(); showQualityMenu = !showQualityMenu; showAudioMenu = false; showSubMenu = false; }}
-              class={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showQualityMenu ? 'text-white' : 'text-white/60'}`}
+              class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showQualityMenu ? 'text-white' : 'text-white/50'}`}
               aria-label="Quality"
               aria-expanded={showQualityMenu}
             >
-              <Settings class="h-5 w-5" />
+              <Settings class="h-4 w-4" />
             </button>
             <QualityMenu
               open={showQualityMenu}
@@ -1203,36 +1202,16 @@
           </div>
         {/if}
 
-        <!-- Keyboard shortcuts -->
-        <button
-          onclick={(e) => { e.stopPropagation(); showShortcuts = !showShortcuts; if (showShortcuts) keepControlsVisible(); }}
-          class={`hidden md:flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showShortcuts ? 'text-white' : 'text-white/60'}`}
-          aria-label="Keyboard shortcuts"
-          aria-pressed={showShortcuts}
-        >
-          <Keyboard class="h-5 w-5" />
-        </button>
-
-        <!-- Inspector toggle -->
-        <button
-          onclick={(e) => { e.stopPropagation(); showInspector = !showInspector; }}
-          class={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showInspector ? 'text-white' : 'text-white/60'}`}
-          aria-label="Toggle inspector"
-          aria-pressed={showInspector}
-        >
-          <Info class="h-5 w-5" />
-        </button>
-
         <!-- Fullscreen -->
         <button
           onclick={toggleFullscreen}
-          class="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         >
           {#if fullscreen}
-            <Minimize class="h-5 w-5" />
+            <Minimize class="h-4 w-4" />
           {:else}
-            <Maximize class="h-5 w-5" />
+            <Maximize class="h-4 w-4" />
           {/if}
         </button>
       </div>

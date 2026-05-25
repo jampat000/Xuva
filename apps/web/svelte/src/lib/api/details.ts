@@ -143,6 +143,8 @@ export interface PlaybackRouteResponse {
 	policy?: string;
 	decision?: PlaybackDecisionResponse;
 	fallbackOptions?: Array<{ id?: string; label?: string; description?: string }>;
+	/** Populated when the server has queued or started a transcode job. */
+	job?: { id?: string; status?: string; completed?: number; total?: number };
 }
 
 export interface PlaybackQueryOptions {
