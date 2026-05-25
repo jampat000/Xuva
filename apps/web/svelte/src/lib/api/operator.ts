@@ -62,6 +62,12 @@ export interface SystemStatusResponse {
 		error?: string;
 		sharedWithData?: boolean;
 	}>;
+	gpu?: {
+		adapterName?: string;
+		utilizationPct?: number;
+		vramUsedBytes?: number;
+		vramTotalBytes?: number;
+	};
 }
 
 export interface WorkQueueItem {
