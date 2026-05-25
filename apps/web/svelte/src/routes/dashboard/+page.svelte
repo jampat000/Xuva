@@ -61,6 +61,13 @@
   const cpuPct     = $derived(Math.round(sys?.cpu?.percent ?? 0));
   const memPct     = $derived(Math.round(sys?.memory?.usedPercent ?? 0));
 
+  const gpuQueue   = $derived(perf?.queues?.find(q => q.name === 'gpu') ?? null);
+  const gpuWorkers = $derived(gpuQueue?.workers ?? perf?.limits?.gpuWorkers ?? 0);
+  const gpuActive  = $derived(gpuQueue?.active ?? 0);
+  const gpuUtil    = $derived(gpuWorkers > 0 ? Math.round((gpuActive / gpuWorkers) * 100) : 0);
+  const hwAvail    = $derived(perf?.hardwareAcceleration?.available ?? false);
+  const hwEncoder  = $derived(perf?.hardwareAcceleration?.encoders?.[0]?.label ?? null);
+
   // ── SVG arc gauge helpers ──────────────────────────────────────────────────
   const _R    = 36;
   const _CIRC = 2 * Math.PI * _R; // ≈ 226.2
@@ -281,7 +288,7 @@
     <!-- ── SYSTEM RESOURCES ──────────────────────────────────────────────── -->
     <section class="mb-10">
       <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">System Resources</h2>
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
 
         <!-- CPU -->
         <div class="hairline flex flex-col items-center gap-3 rounded-2xl bg-surface/40 p-5">
@@ -369,6 +376,49 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- GPU -->
+        <div class="hairline flex flex-col items-center gap-3 rounded-2xl bg-surface/40 p-5">
+          <div class="w-full text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">GPU</div>
+          {#if hwAvail && gpuWorkers > 0}
+            <div class="relative flex items-center justify-center">
+              <svg viewBox="0 0 100 100" class="h-24 w-24 -rotate-90" aria-hidden="true">
+                <circle cx="50" cy="50" r={_R} fill="none"
+                  style="stroke: oklch(1 0 0 / 0.08); stroke-width: 10;" />
+                <circle cx="50" cy="50" r={_R} fill="none"
+                  style="stroke: {gaugeColor(gpuUtil)}; stroke-width: 10; stroke-linecap: round;
+                         stroke-dasharray: {arcDash(gpuUtil)};
+                         transition: stroke-dasharray 1s ease, stroke 0.5s ease;" />
+              </svg>
+              <div class="absolute inset-0 flex rotate-90 flex-col items-center justify-center">
+                <span class="text-2xl font-bold leading-none tabular-nums">{gpuUtil}%</span>
+              </div>
+            </div>
+            <div class="w-full space-y-1 text-center">
+              <div class="text-xs font-medium">{gpuActive} / {gpuWorkers} workers</div>
+              {#if hwEncoder}
+                <div class="text-[11px] text-muted-foreground">{hwEncoder}</div>
+              {/if}
+            </div>
+          {:else if hwAvail}
+            <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4">
+              <svg class="h-8 w-8 text-green-400/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
+              </svg>
+              <div class="text-xs font-medium text-green-400">Available</div>
+              {#if hwEncoder}
+                <div class="text-[10px] text-muted-foreground">{hwEncoder}</div>
+              {/if}
+            </div>
+          {:else}
+            <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4">
+              <svg class="h-8 w-8 text-muted-foreground/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
+              </svg>
+              <div class="text-xs text-muted-foreground">Not available</div>
+            </div>
+          {/if}
         </div>
 
         <!-- Process -->
