@@ -107,10 +107,21 @@ export interface SessionItem {
 	mediaSourceId?: string;
 	title?: string;
 	sourceName?: string;
+	artworkUrl?: string;
 	deviceId?: string;
+	clientProfile?: string;
 	mode?: string;
 	route?: string;
 	state?: string;
+	qualityLabel?: string;
+	container?: string;
+	videoCodec?: string;
+	bitrate?: number;
+	serverImpact?: string;
+	reasonCode?: string;
+	reasonText?: string;
+	progressSeconds?: number;
+	durationSeconds?: number;
 	updatedAt?: string;
 }
 
