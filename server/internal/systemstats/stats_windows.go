@@ -3,7 +3,9 @@
 package systemstats
 
 import (
+	"context"
 	"math"
+	"os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -226,4 +228,42 @@ func rateBps(after uint64, before uint64, seconds float64) uint64 {
 		return 0
 	}
 	return uint64(float64(after-before) * 8 / seconds)
+}
+
+func gpuStats() *GPUStats {
+	// Try nvidia-smi first (gives full metrics for NVIDIA GPUs).
+	if s := nvidiaGPUStats(); s != nil {
+		return s
+	}
+	// Fall back to WMI for the adapter name (no utilization data).
+	name := wmicGPUName()
+	if name == "" {
+		return nil
+	}
+	return &GPUStats{AdapterName: name}
+}
+
+// wmicGPUName returns the primary discrete GPU adapter name via WMI.
+// Returns "" when wmic is unavailable or no suitable adapter is found.
+func wmicGPUName() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx,
+		"wmic", "path", "Win32_VideoController", "get", "Name", "/format:list",
+	).Output()
+	if err != nil {
+		return ""
+	}
+	// Pick the first non-empty name that isn't the Microsoft fallback adapter.
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Name=") {
+			continue
+		}
+		name := strings.TrimSpace(strings.TrimPrefix(line, "Name="))
+		if name != "" && !strings.Contains(name, "Microsoft Basic") {
+			return name
+		}
+	}
+	return ""
 }

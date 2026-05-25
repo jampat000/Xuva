@@ -196,3 +196,7 @@ func rateBps(after uint64, before uint64, seconds float64) uint64 {
 	}
 	return uint64(float64(after-before) * 8 / seconds)
 }
+
+func gpuStats() *GPUStats {
+	return nvidiaGPUStats()
+}
