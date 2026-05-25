@@ -55,6 +55,7 @@
     scanLibrary,
     browseFolders,
     getPerformanceSettings,
+    getCatalogPlayabilityAudit,
     getDiscoveryStatus,
     getPairingRequests,
     approvePairingRequest,
@@ -82,6 +83,7 @@
     type LibraryItem,
     type FolderEntry,
     type PerformanceSettingsResponse,
+    type PlayabilityAuditResponse,
     type DiscoveryStatusResponse,
     type PairingRequestItem,
     type ApprovedDeviceItem,
@@ -793,6 +795,43 @@
     try { perfSettings = await getPerformanceSettings(); } catch { /* ignore */ } finally { perfLoading = false; }
   }
 
+  // ─── GPU derived values (ported from orphan /dashboard) ───────────────────
+  // Uses sysStatus (polled every 5s) for real hardware metrics and
+  // perfSettings for worker-queue counts / encoder metadata.
+  const gpuHW         = $derived(sysStatus?.gpu ?? null);
+  const gpuHasAny     = $derived(gpuHW != null);
+  const gpuHasReal    = $derived(gpuHW != null && (gpuHW.utilizationPct ?? 0) > 0);
+  const gpuQueue      = $derived(perfSettings?.queues?.find(q => q.name === 'gpu') ?? null);
+  const gpuWorkers    = $derived(gpuQueue?.workers ?? perfSettings?.limits?.gpuWorkers ?? 0);
+  const gpuActive     = $derived(gpuQueue?.active ?? 0);
+  const hwAvail       = $derived(perfSettings?.hardwareAcceleration?.available ?? false);
+  const hwEncoder     = $derived(
+    perfSettings?.hardwareAcceleration?.selectedEncoder?.label ??
+    perfSettings?.hardwareAcceleration?.encoders?.[0]?.label ??
+    null
+  );
+  const gpuUtil = $derived.by(() => {
+    if (gpuHasReal) return Math.round(gpuHW!.utilizationPct!);
+    return gpuWorkers > 0 ? Math.round((gpuActive / gpuWorkers) * 100) : 0;
+  });
+  const gpuAdapterName = $derived(
+    gpuHW?.adapterName ??
+    perfSettings?.hardwareAcceleration?.selectedEncoder?.label ??
+    null
+  );
+
+  // ─── Playability audit state (ported from orphan /dashboard) ──────────────
+  let dashAudit        = $state<PlayabilityAuditResponse | null>(null);
+  let dashAuditLoading = $state(false);
+
+  async function loadDashAudit() {
+    if (dashAuditLoading) return;
+    dashAuditLoading = true;
+    try { dashAudit = await getCatalogPlayabilityAudit(); }
+    catch { /* silent */ }
+    finally { dashAuditLoading = false; }
+  }
+
   async function runHwTest() {
     hwTestRunning = true;
     hwTestResult = null;
@@ -1256,7 +1295,7 @@
     if (active === 'pending-approvals' && !pairingLoaded && !pairingLoading) loadPairingRequests();
     if (active === 'approved-devices' && !devicesLoaded && !devicesLoading) loadApprovedDevices();
     if (active === 'playback' && deviceProfiles.length === 0) loadDeviceProfiles();
-    if ((active === 'transcoding' || active === 'playback' || active === 'scanning') && !perfSettings && !perfLoading) loadPerf();
+    if ((active === 'dashboard' || active === 'transcoding' || active === 'playback' || active === 'scanning') && !perfSettings && !perfLoading) loadPerf();
     if (active !== current.id) sectionError = null;
   });
 
@@ -1955,7 +1994,7 @@
           </div>
 
           <!-- ── Instrument Cluster ──────────────────────────────────────────── -->
-          <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
 
             <!-- CPU Gauge — full-circle ring, % in middle -->
             {#if true}
@@ -2043,6 +2082,53 @@
                   </div>
                 </div>
               </div>
+            </div>
+
+            <!-- GPU -->
+            <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
+              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">GPU</div>
+              {#if hwAvail || gpuHasAny}
+                <!-- Utilisation gauge: real hardware % when available, worker-slot % otherwise -->
+                {@const gpuOffset = _RING_CIRC * (1 - gpuUtil / 100)}
+                <div class="flex flex-col items-center">
+                  <svg viewBox="0 0 100 100" class="w-full max-w-[90px]" style="aspect-ratio: 1 / 1;">
+                    <circle cx="50" cy="50" r={_RING_R} fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="8"/>
+                    <circle cx="50" cy="50" r={_RING_R} fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 50 50)"
+                      style="stroke: {dashHudColor(gpuUtil)}; stroke-dasharray: {_RING_CIRC}; stroke-dashoffset: {gpuOffset}; filter: drop-shadow(0 0 5px {dashHudColor(gpuUtil)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease;" />
+                    <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                      font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="26" font-weight="600" letter-spacing="-1.2"
+                      style="fill: {dashHudColor(gpuUtil)}; transition: fill 0.5s ease;">{gpuUtil}<tspan font-size="13" dx="1" dy="-4">%</tspan></text>
+                  </svg>
+                  <div class="mt-1.5 text-center text-[10px] text-foreground/45">{gpuHasReal ? 'live' : 'workers'}</div>
+                </div>
+                {#if gpuAdapterName}
+                  <div class="mt-2 truncate text-center text-[11px] font-medium leading-snug text-foreground/70" title={gpuAdapterName}>{gpuAdapterName}</div>
+                {/if}
+                <!-- VRAM bar -->
+                {#if gpuHW && gpuHW.vramTotalBytes && gpuHW.vramTotalBytes > 0}
+                  {@const vramPct = Math.min(100, ((gpuHW.vramUsedBytes ?? 0) / gpuHW.vramTotalBytes) * 100)}
+                  <div class="mt-2 space-y-1">
+                    <div class="flex justify-between text-[10px] text-foreground/45">
+                      <span>VRAM</span>
+                      <span class="tabular-nums">{formatBytes(gpuHW.vramUsedBytes)} / {formatBytes(gpuHW.vramTotalBytes)}</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full transition-[width] duration-1000"
+                        style="width: {vramPct}%; background: {dashHudColor(vramPct, 75, 90)};"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if hwEncoder}
+                  <div class="mt-2 text-center text-[10px] text-foreground/45">{hwEncoder}</div>
+                {/if}
+              {:else}
+                <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4 text-center">
+                  <svg class="h-7 w-7 text-foreground/15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
+                  </svg>
+                  <div class="text-[11px] text-foreground/35">Not available</div>
+                </div>
+              {/if}
             </div>
           </div>
 
@@ -2510,6 +2596,103 @@
               </div>
             </div>
           {/if}
+
+          <!-- ── Playability Audit ──────────────────────────────────────────── -->
+          <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div class="font-serif-display text-[15px] tracking-tight text-foreground/75">Playability Audit</div>
+              <button
+                type="button"
+                onclick={loadDashAudit}
+                disabled={dashAuditLoading}
+                class="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-1 text-[11px] text-foreground/55 transition-colors hover:border-foreground/15 hover:text-foreground/80 disabled:opacity-40"
+              >
+                {#if dashAuditLoading}
+                  <span class="h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent"></span>
+                  Analysing…
+                {:else}
+                  Run Audit
+                {/if}
+              </button>
+            </div>
+
+            {#if !dashAudit && !dashAuditLoading}
+              <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                <svg class="h-7 w-7 text-foreground/15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
+                </svg>
+                <div class="text-[12px] text-foreground/40">
+                  Click <span class="font-medium text-foreground/60">Run Audit</span> to analyse playback compatibility across device profiles
+                </div>
+              </div>
+            {:else if dashAudit}
+              {@const profiles = [
+                { id: 'web',         label: 'Web Browser' },
+                { id: 'apple-tv',    label: 'Apple TV' },
+                { id: 'android-tv',  label: 'Android TV' },
+              ]}
+              <div class="grid gap-4 md:grid-cols-2">
+                <!-- Profile breakdown cards -->
+                <div>
+                  <div class="mb-3 text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40">By Device Profile</div>
+                  <div class="space-y-4">
+                    {#each profiles as { id, label }}
+                      {@const bd = dashAudit.byProfile[id]}
+                      {#if bd && bd.total > 0}
+                        {@const pct = (n: number) => Math.round((n / bd.total) * 100)}
+                        <div>
+                          <div class="mb-1.5 flex items-center justify-between text-[12px]">
+                            <span class="font-medium text-foreground/70">{label}</span>
+                            <span class="tabular-nums text-foreground/40">{bd.total.toLocaleString()} files</span>
+                          </div>
+                          <div class="flex h-2.5 w-full overflow-hidden rounded-full">
+                            {#if bd.directPlay > 0}
+                              <div class="h-full" style="width:{pct(bd.directPlay)}%; background: oklch(0.78 0.22 145);" title="Direct play: {pct(bd.directPlay)}%"></div>
+                            {/if}
+                            {#if bd.remux > 0}
+                              <div class="h-full" style="width:{pct(bd.remux)}%; background: oklch(0.62 0.22 285);" title="Remux: {pct(bd.remux)}%"></div>
+                            {/if}
+                            {#if bd.audioTranscode > 0}
+                              <div class="h-full" style="width:{pct(bd.audioTranscode)}%; background: oklch(0.85 0.22 75);" title="Audio transcode: {pct(bd.audioTranscode)}%"></div>
+                            {/if}
+                            {#if bd.videoTranscode > 0}
+                              <div class="h-full" style="width:{pct(bd.videoTranscode)}%; background: oklch(0.68 0.26 22);" title="Video transcode: {pct(bd.videoTranscode)}%"></div>
+                            {/if}
+                          </div>
+                          <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums">
+                            <span style="color: oklch(0.78 0.22 145)">Direct {pct(bd.directPlay)}%</span>
+                            {#if bd.remux > 0}<span style="color: oklch(0.72 0.20 285)">Remux {pct(bd.remux)}%</span>{/if}
+                            {#if bd.audioTranscode > 0}<span style="color: oklch(0.85 0.22 75)">Audio {pct(bd.audioTranscode)}%</span>{/if}
+                            {#if bd.videoTranscode > 0}<span style="color: oklch(0.68 0.26 22)">Video {pct(bd.videoTranscode)}%</span>{/if}
+                          </div>
+                        </div>
+                      {/if}
+                    {/each}
+                  </div>
+                </div>
+
+                <!-- Top transcode triggers -->
+                {#if dashAudit.topReasons && dashAudit.topReasons.length > 0}
+                  <div>
+                    <div class="mb-3 text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40">Top Transcode Triggers</div>
+                    <div class="space-y-2">
+                      {#each dashAudit.topReasons.slice(0, 8) as reason}
+                        <div class="flex items-center gap-3">
+                          <div class="min-w-0 flex-1">
+                            <div class="truncate text-[12px] font-medium text-foreground/70">{reason.reasonText || reason.reasonCode}</div>
+                            <div class="text-[10px] capitalize text-foreground/40">{reason.profile}</div>
+                          </div>
+                          <div class="shrink-0 rounded border border-foreground/[0.08] bg-foreground/[0.04] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/55">
+                            {reason.count.toLocaleString()}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
 
           <!-- ── Now Playing ─────────────────────────────────────────────────── -->
           <!-- Always visible: shows an empty state when idle so people can spot the panel. -->
