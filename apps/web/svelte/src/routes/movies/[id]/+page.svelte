@@ -50,7 +50,10 @@
   const contentRating = $derived(metadata?.contentRating ?? '');
   const videoKey = $derived(metadata?.videoKey ?? '');
   const trailerPath = $derived(metadata?.trailerPath ?? '');
-  const hasTrailer = $derived(!!(videoKey || trailerPath));
+  // hasTrailer respects the user's "trailers on/off" setting from Settings →
+  // General. When trailers are off globally, the button hides everywhere
+  // (home hero already drops trailers entirely; this gates the detail page).
+  const hasTrailer = $derived(appState.trailersEnabled !== false && !!(videoKey || trailerPath));
   const versionCount = $derived(detail?.versions?.length ?? 0);
   const versions = $derived(detail?.versions ?? []);
   // Selected version drives the "File Info" and Play button. Defaults to the

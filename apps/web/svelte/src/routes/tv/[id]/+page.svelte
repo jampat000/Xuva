@@ -98,7 +98,10 @@
   const contentRating = $derived(metadata?.contentRating ?? '');
   const videoKey = $derived(metadata?.videoKey ?? '');
   const trailerPath = $derived(metadata?.trailerPath ?? '');
-  const hasTrailer = $derived(!!(videoKey || trailerPath));
+  // hasTrailer respects the user's "trailers on/off" setting from Settings →
+  // General. When trailers are off globally, the button hides everywhere
+  // (home hero already drops trailers entirely; this gates the detail page).
+  const hasTrailer = $derived(appState.trailersEnabled !== false && !!(videoKey || trailerPath));
   const statusText = $derived(metadata?.statusText ?? '');
 
   const seasons = $derived(detail?.seasons ?? []);
