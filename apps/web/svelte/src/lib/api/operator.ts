@@ -120,6 +120,7 @@ export interface SessionItem {
 	serverImpact?: string;
 	reasonCode?: string;
 	reasonText?: string;
+	encoderLabel?: string;
 	progressSeconds?: number;
 	durationSeconds?: number;
 	updatedAt?: string;
@@ -324,6 +325,7 @@ export interface PerformanceSettingsResponse {
 				durationMs?: number;
 			}>;
 		};
+		selectedEncoder?: { id?: string; label?: string };
 	};
 }
 

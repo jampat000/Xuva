@@ -14,6 +14,7 @@
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
   import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary, playabilityBadge, playabilityShortLabel } from '$lib/utils/mediaFormat';
+  import { getPerformanceSettings } from '$lib/api/operator';
   import type { SeriesDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -98,6 +99,7 @@
   let manualTmdbId = $state('');
   let manualTmdbError = $state<string | null>(null);
   let showTrailer = $state(false);
+  let selectedEncoderLabel = $state<string | null>(null);
 
   // ── Derived metadata fields ──────────────────────────────────────────────
   const title = $derived(metadata?.title ?? detail?.title ?? 'Unknown');
@@ -266,7 +268,12 @@
     }
   }
 
-  onMount(load);
+  onMount(() => {
+    load();
+    getPerformanceSettings().then(p => {
+      selectedEncoderLabel = p.hardwareAcceleration?.selectedEncoder?.label ?? null;
+    }).catch(() => {});
+  });
 </script>
 
 <svelte:head>
@@ -635,6 +642,9 @@
                                                   <span class="h-1 w-1 shrink-0 rounded-full" style={`background: ${b.color};`}></span>
                                                   <span class="text-[10px] font-medium" style={`color: ${b.color};`}>{playabilityShortLabel(d?.mode)}</span>
                                                 </div>
+                                                {#if (d?.mode === 'transcode' || d?.mode === 'adaptive') && selectedEncoderLabel}
+                                                  <div class="mt-0.5 text-[8px] text-muted-foreground/60">{selectedEncoderLabel}</div>
+                                                {/if}
                                               </div>
                                             {/each}
                                           </div>

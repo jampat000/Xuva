@@ -70,7 +70,11 @@
   const gpuActive  = $derived(gpuQueue?.active ?? 0);
   const gpuUtil    = $derived(gpuWorkers > 0 ? Math.round((gpuActive / gpuWorkers) * 100) : 0);
   const hwAvail    = $derived(perf?.hardwareAcceleration?.available ?? false);
-  const hwEncoder  = $derived(perf?.hardwareAcceleration?.encoders?.[0]?.label ?? null);
+  const hwEncoder  = $derived(
+    perf?.hardwareAcceleration?.selectedEncoder?.label ??
+    perf?.hardwareAcceleration?.encoders?.[0]?.label ??
+    null
+  );
 
   // ── SVG arc gauge helpers ──────────────────────────────────────────────────
   const _R    = 36;
@@ -838,6 +842,12 @@
                   {hw.available ? hw.status ?? 'Available' : 'Not available'}
                 </span>
               </div>
+              {#if hw.available && hw.selectedEncoder}
+                <div class="mt-2 flex items-center justify-between text-[11px]">
+                  <span class="text-muted-foreground">Selected encoder</span>
+                  <span class="font-medium text-amber-300">{hw.selectedEncoder.label}</span>
+                </div>
+              {/if}
               {#if hw.available && hw.encoders && hw.encoders.length > 0}
                 <div class="mt-2 flex flex-wrap gap-1.5">
                   {#each hw.encoders as enc (enc.id)}

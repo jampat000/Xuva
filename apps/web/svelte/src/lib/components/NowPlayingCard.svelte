@@ -49,6 +49,17 @@
     session.serverImpact === 'medium' ? { label: 'Medium CPU',  cls: 'text-amber-400 ring-amber-400/20 bg-amber-400/10' } :
     null
   );
+
+  const encoderBadge = $derived.by(() => {
+    if (!isTranscoding || !session.encoderLabel) return null;
+    const isCPU = session.encoderLabel === 'CPU';
+    return {
+      label: session.encoderLabel,
+      cls: isCPU
+        ? 'text-muted-foreground ring-white/10 bg-white/5'
+        : 'text-amber-300 ring-amber-400/20 bg-amber-400/10',
+    };
+  });
 </script>
 
 <div class="hairline overflow-hidden rounded-xl bg-surface/50">
@@ -86,11 +97,14 @@
       </div>
 
       <!-- Tech pills -->
-      {#if techPills.length > 0 || impactBadge}
+      {#if techPills.length > 0 || impactBadge || encoderBadge}
         <div class="flex flex-wrap items-center gap-1 pt-0.5">
           {#each techPills as pill}
             <span class="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{pill}</span>
           {/each}
+          {#if encoderBadge}
+            <span class="rounded px-1.5 py-0.5 font-mono text-[10px] ring-1 {encoderBadge.cls}">{encoderBadge.label}</span>
+          {/if}
           {#if impactBadge}
             <span class="rounded px-1.5 py-0.5 font-mono text-[10px] ring-1 {impactBadge.cls}">{impactBadge.label}</span>
           {/if}
