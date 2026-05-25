@@ -34,7 +34,7 @@
     Users,
     Wifi
   } from "lucide-svelte";
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import {
@@ -42,6 +42,9 @@
     getCatalogSummary,
     getScans,
     getSessions,
+    getJobs,
+    getCatalogHealth,
+    startProbeJob,
     getSettings,
     updateSettings,
     updateMetadataSourcePreferences,
@@ -71,6 +74,8 @@
     type CatalogSummaryResponse,
     type ScanJobItem,
     type SessionItem,
+    type JobsStatusResponse,
+    type CatalogHealthResponse,
     type SettingsResponse,
     type LibraryItem,
     type FolderEntry,
@@ -91,6 +96,8 @@
     stopBackfill,
     type BackfillResponse,
   } from '$lib/api/browse';
+  import { createEventStream } from '$lib/events/stream';
+  import ActivityRing from '$lib/components/ActivityRing.svelte';
   import { getAuthSession, logout, type AuthSessionUser } from '$lib/api/auth';
   import { updateProfileSettings, setProfilePin, RATING_OPTIONS, AVATAR_PRESETS } from '$lib/api/profiles';
 
@@ -237,6 +244,75 @@
   let activeSessions = $state<SessionItem[]>([]);
   let dashLoading = $state(false);
   let dashError = $state<string | null>(null);
+
+  // ─── Dashboard live extras (jobs, health, perf) ─────────────────────────
+  let dashJobs  = $state<JobsStatusResponse | null>(null);
+  let dashHealth = $state<CatalogHealthResponse | null>(null);
+  let dashScanBusy  = $state(false);
+  let dashProbeBusy = $state(false);
+  let dashUpdatedAt = $state('');
+  let dashPollTimers: ReturnType<typeof setInterval>[] = [];
+  const dashStream = createEventStream();
+
+  // Arc gauge helpers (used in dashboard SVG gauges)
+  const _DR = 36;
+  const _DC = 2 * Math.PI * _DR; // ≈ 226.2
+  function dashArc(pct: number): string {
+    const p = Math.min(100, Math.max(0, pct));
+    return `${_DC * p / 100} ${_DC * (1 - p / 100)}`;
+  }
+  function dashGaugeColor(pct: number, warnAt = 70, critAt = 90): string {
+    if (pct >= critAt) return 'oklch(0.65 0.22 25)';
+    if (pct >= warnAt) return 'oklch(0.80 0.18 65)';
+    return 'oklch(0.62 0.22 285)';
+  }
+  function dashDiskBarClass(pct: number): string {
+    if (pct >= 90) return 'bg-red-400';
+    if (pct >= 75) return 'bg-amber-400';
+    return 'bg-foreground/25';
+  }
+  function dashDiskValClass(pct: number): string {
+    if (pct >= 90) return 'text-red-400';
+    if (pct >= 75) return 'text-amber-400';
+    return 'text-foreground/70';
+  }
+
+  // Derived dashboard metrics
+  const dashCpuPct = $derived(Math.round(sysStatus?.cpu?.percent ?? 0));
+  const dashMemPct = $derived(Math.round(sysStatus?.memory?.usedPercent ?? 0));
+  const dashTotalFiles = $derived(dashHealth?.summary?.mediaSources ?? 0);
+  const dashUnprobed   = $derived(dashHealth?.unprobed ?? 0);
+  const dashProbed     = $derived(Math.max(0, dashTotalFiles - dashUnprobed));
+  const dashProbeRunning = $derived(
+    dashJobs?.probe?.status === 'running' ||
+    (dashJobs?.probe?.activeJobs?.some(j => j.status === 'running') ?? false)
+  );
+  const dashMetaRunning = $derived(dashJobs?.metadata?.backfill?.running === true);
+
+  async function refreshDashSys() {
+    try {
+      sysStatus = await getSystemStatus();
+      dashUpdatedAt = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch { /* silent */ }
+  }
+  async function refreshDashJobs() {
+    try {
+      const [j, s] = await Promise.allSettled([getJobs(), getSessions()]);
+      if (j.status === 'fulfilled') dashJobs = j.value;
+      if (s.status === 'fulfilled') activeSessions = s.value.sessions ?? [];
+    } catch { /* silent */ }
+  }
+  async function refreshDashHealth() {
+    try { dashHealth = await getCatalogHealth(); } catch { /* silent */ }
+  }
+  async function handleDashScanNow() {
+    dashScanBusy = true;
+    try { await scanAllLibraries(); await refreshDashJobs(); } catch { /* ignore */ } finally { dashScanBusy = false; }
+  }
+  async function handleDashProbeNow() {
+    dashProbeBusy = true;
+    try { await startProbeJob(0); await refreshDashJobs(); } catch { /* ignore */ } finally { dashProbeBusy = false; }
+  }
 
   // ─── Library CRUD state ────────────────────────────────────────────────────
   let libraries = $state<LibraryItem[]>([]);
@@ -1104,10 +1180,37 @@
     window.location.href = '/';
   }
 
+  $effect(() => {
+    const unsub = dashStream.subscribeAny(({ type }) => {
+      if (
+        type.startsWith('automation.') || type.startsWith('scan.') ||
+        type.startsWith('probe.')      || type.startsWith('metadata.') ||
+        type === 'api.session.accepted' || type === 'api.session.stopped'
+      ) {
+        refreshDashJobs();
+      }
+    });
+    return unsub;
+  });
+
   onMount(() => {
     loadDashboard();
     loadLibraries();
     getAuthSession().then(r => { if (r.user) currentUser = r.user; }).catch(() => {});
+    // Dashboard live extras
+    refreshDashJobs();
+    refreshDashHealth();
+    dashStream.connect();
+    dashPollTimers = [
+      setInterval(refreshDashSys,    5_000),
+      setInterval(refreshDashJobs,   5_000),
+      setInterval(refreshDashHealth, 60_000),
+    ];
+  });
+
+  onDestroy(() => {
+    dashStream.disconnect();
+    for (const t of dashPollTimers) clearInterval(t);
   });
 </script>
 
@@ -1635,228 +1738,400 @@
           </div>
 
         {:else if active === "dashboard"}
-          {#if dashLoading && !sysStatus && !catalogSummary}
-            <div class="flex min-h-[20vh] items-center justify-center">
-              <div class="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary-glow"></div>
+          <!-- ── Header row ─────────────────────────────────────────── -->
+          <div class="mb-8 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <span class="hairline inline-flex items-center gap-2 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.25em] {healthAccent}">
+                <span class="h-1.5 w-1.5 rounded-full {healthDotAccent}"></span>
+                {healthStatus}
+              </span>
+              {#if dashUpdatedAt}
+                <span class="text-[11px] text-muted-foreground">Updated {dashUpdatedAt}</span>
+              {/if}
             </div>
-          {:else}
-            <div class="space-y-10">
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onclick={() => { loadDashboard(); refreshDashJobs(); refreshDashHealth(); }}
+                disabled={dashLoading}
+                class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
+              >
+                <RefreshCw class="h-3 w-3 {dashLoading ? 'animate-spin' : ''}" /> Refresh
+              </button>
+              <button
+                type="button"
+                onclick={() => { handleDashScanNow(); }}
+                disabled={dashScanBusy}
+                class="inline-flex items-center gap-1.5 rounded-full bg-gradient-primary px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60"
+              >
+                {#if dashScanBusy}
+                  <span class="h-2.5 w-2.5 animate-spin rounded-full border border-white/40 border-t-white"></span>
+                {/if}
+                Scan Now
+              </button>
+            </div>
+          </div>
 
-              <!-- Refresh button -->
-              <div class="flex justify-end">
-                <button
-                  type="button"
-                  onclick={loadDashboard}
-                  disabled={dashLoading}
-                  class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
-                >
-                  <RefreshCw class="h-3 w-3 {dashLoading ? 'animate-spin' : ''}" /> Refresh
-                </button>
+          <!-- ── Library stats ──────────────────────────────────────── -->
+          <section class="mb-8">
+            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Library</div>
+            <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
+              {#each [
+                { label: 'Movies',   value: catalogSummary?.movies   ?? 0, warn: false },
+                { label: 'TV Shows', value: catalogSummary?.series   ?? 0, warn: false },
+                { label: 'Episodes', value: catalogSummary?.episodes ?? 0, warn: false },
+                { label: 'Files',    value: dashTotalFiles,                warn: false },
+                { label: 'Unprobed', value: dashUnprobed,                  warn: dashUnprobed > 0 },
+                { label: 'Sessions', value: activeSessions.length,         warn: false },
+              ] as s}
+                <div class="hairline rounded-xl bg-surface/40 p-3 {s.warn ? 'border-amber-400/30 bg-amber-400/[0.04]' : ''}">
+                  <div class="text-xl font-bold leading-none tabular-nums {s.warn ? 'text-amber-400' : ''}">{s.value.toLocaleString()}</div>
+                  <div class="mt-1.5 text-[11px] text-muted-foreground">{s.label}</div>
+                </div>
+              {/each}
+            </div>
+
+            {#if dashTotalFiles > 0}
+              <div class="hairline mt-3 flex flex-wrap items-center gap-4 rounded-xl bg-surface/40 px-4 py-3">
+                <ActivityRing probed={dashProbed} total={dashTotalFiles} size={56} />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <span class="text-sm font-medium">
+                      {dashProbed.toLocaleString()}
+                      <span class="font-normal text-muted-foreground">/ {dashTotalFiles.toLocaleString()} files analysed</span>
+                    </span>
+                    <span class="text-[11px] text-muted-foreground tabular-nums">
+                      {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}%
+                    </span>
+                  </div>
+                  <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
+                    <div class="h-full rounded-full bg-primary-glow transition-all duration-700"
+                      style="width: {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}%">
+                    </div>
+                  </div>
+                  {#if dashUnprobed > 0}
+                    <div class="mt-1.5 flex items-center gap-3">
+                      <span class="text-[11px] text-amber-400">{dashUnprobed.toLocaleString()} files awaiting probe</span>
+                      {#if !dashProbeRunning}
+                        <button
+                          type="button"
+                          onclick={handleDashProbeNow}
+                          disabled={dashProbeBusy}
+                          class="rounded-full bg-amber-400/15 px-3 py-0.5 text-[10px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/25 disabled:opacity-50"
+                        >
+                          {dashProbeBusy ? 'Starting…' : 'Probe now'}
+                        </button>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
               </div>
+            {/if}
+          </section>
 
-              <!-- Stat cards -->
-              <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {#each ([
-                  {
-                    label: 'Movies',
-                    value: catalogSummary?.movies != null ? String(catalogSummary.movies) : '—',
-                    sub: !catalogSummary ? 'Loading…' : catalogSummary.movies === 0 ? 'None scanned yet' : 'In your library',
-                    accent: catalogSummary?.movies ? 'text-foreground' : 'text-foreground/50'
-                  },
-                  {
-                    label: 'TV Shows',
-                    value: catalogSummary?.series != null ? String(catalogSummary.series) : '—',
-                    sub: !catalogSummary ? 'Loading…' : catalogSummary.series === 0 ? 'None scanned yet' : 'In your library',
-                    accent: catalogSummary?.series ? 'text-foreground' : 'text-foreground/50'
-                  },
-                  {
-                    label: 'Episodes',
-                    value: catalogSummary?.episodes != null ? String(catalogSummary.episodes) : '—',
-                    sub: 'Across all seasons',
-                    accent: 'text-foreground/80'
-                  },
-                  {
-                    label: 'Sessions',
-                    value: String(activeSessions.length),
-                    sub: activeSessions.length === 1 ? 'Now playing' : activeSessions.length > 1 ? 'Now playing' : 'Nobody watching',
-                    accent: activeSessions.length > 0 ? 'text-primary-glow' : 'text-foreground/50'
-                  }
-                ] as const) as stat (stat.label)}
-                  <div class="hairline rounded-2xl bg-surface/40 p-5">
-                    <div class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">{stat.label}</div>
-                    <div class="font-serif-display mt-2 text-3xl {stat.accent}">{stat.value}</div>
-                    <div class="mt-1 text-xs text-muted-foreground">{stat.sub}</div>
+          <!-- ── System resources ───────────────────────────────────── -->
+          <section class="mb-8">
+            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">System Resources</div>
+            <div class="hairline space-y-4 rounded-2xl bg-surface/40 p-5">
+              {#if sysStatus?.cpu}
+                {@const c = sysStatus.cpu}
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-[11px]">
+                    <span class="font-semibold uppercase tracking-[0.2em] text-muted-foreground">CPU</span>
+                    <span class="{dashCpuPct >= 85 ? 'text-amber-300' : 'text-foreground/70'} tabular-nums">
+                      {dashCpuPct}%{c.cores ? ` · ${c.cores} cores` : ''}
+                    </span>
+                  </div>
+                  <div class="h-2 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
+                    <div class="h-full rounded-full transition-all duration-700 {dashCpuPct >= 85 ? 'bg-amber-400' : 'bg-primary-glow'}"
+                      style="width: {dashCpuPct}%"></div>
+                  </div>
+                </div>
+              {/if}
+
+              {#if sysStatus?.memory}
+                {@const m = sysStatus.memory}
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-[11px]">
+                    <span class="font-semibold uppercase tracking-[0.2em] text-muted-foreground">Memory</span>
+                    <span class="{dashMemPct >= 90 ? 'text-amber-300' : 'text-foreground/70'} tabular-nums">
+                      {formatBytes(m.usedBytes)} / {formatBytes(m.totalBytes)}
+                    </span>
+                  </div>
+                  <div class="h-2 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
+                    <div class="h-full rounded-full transition-all duration-700 {dashMemPct >= 90 ? 'bg-amber-400' : 'bg-primary-glow/70'}"
+                      style="width: {dashMemPct}%"></div>
+                  </div>
+                </div>
+              {/if}
+
+              {#if sysStatus?.network}
+                {@const n = sysStatus.network}
+                <div class="flex items-center gap-6 border-t border-border pt-3">
+                  <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Network I/O</span>
+                  <div class="flex gap-5 text-[11px]">
+                    <span class="tabular-nums">↓ <span class="font-medium text-foreground/80">{formatBps(n.receiveBps)}</span></span>
+                    <span class="tabular-nums">↑ <span class="font-medium text-foreground/80">{formatBps(n.transmitBps)}</span></span>
+                  </div>
+                  {#if sysStatus.process}
+                    {@const p = sysStatus.process}
+                    <div class="ml-auto flex gap-4 text-[11px] text-muted-foreground">
+                      <span>{p.goroutines ?? 0} goroutines</span>
+                      <span>{formatBytes(p.goAllocBytes)} heap</span>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </section>
+
+          <!-- ── Disk storage ────────────────────────────────────────── -->
+          {#if sysStatus?.disks && sysStatus.disks.length > 0}
+            <section class="mb-8">
+              <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Storage</div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                {#each sysStatus.disks as disk (disk.path ?? disk.name)}
+                  {@const dPct = Math.round(disk.usedPercent ?? 0)}
+                  <div class="hairline rounded-xl bg-surface/40 p-4 {dPct >= 90 ? 'border-red-400/25' : dPct >= 75 ? 'border-amber-400/25' : ''}">
+                    <div class="flex items-start justify-between gap-3">
+                      <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{disk.path ?? disk.name ?? 'Disk'}</span>
+                      <div class="shrink-0 text-right text-[11px]">
+                        <span class="font-semibold tabular-nums {dashDiskValClass(dPct)}">{dPct}%</span>
+                        <span class="ml-1.5 text-muted-foreground">{formatBytes(disk.freeBytes)} free</span>
+                      </div>
+                    </div>
+                    <div class="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
+                      <div class="h-full rounded-full transition-all duration-700 {dashDiskBarClass(dPct)}" style="width: {dPct}%"></div>
+                    </div>
+                    <div class="mt-1.5 text-[10px] text-muted-foreground tabular-nums">
+                      {formatBytes(disk.usedBytes)} used of {formatBytes(disk.totalBytes)}
+                    </div>
                   </div>
                 {/each}
               </div>
+            </section>
+          {/if}
 
-              <!-- System resources -->
-              {#if sysStatus}
-                <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
-                  <div>
-                    <h3 class="font-serif-display text-lg tracking-tight">System resources</h3>
-                    <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                      Live resource usage from the Xuva server process.
-                    </p>
+          <!-- ── Automation jobs ─────────────────────────────────────── -->
+          <section class="mb-8">
+            <div class="mb-3 flex items-center justify-between">
+              <div class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Automation</div>
+              <a href="/settings/activity" class="text-[11px] text-muted-foreground transition-colors hover:text-foreground">
+                View details →
+              </a>
+            </div>
+            <div class="hairline divide-y divide-border rounded-2xl bg-surface/40">
+
+              <!-- Scan -->
+              {#if true}
+              {@const scanStatus = dashJobs?.scan?.status ?? 'idle'}
+              <div class="flex items-center gap-4 px-4 py-3">
+                <div class="w-24 shrink-0">
+                  <div class="text-[11px] font-medium">Library Scan</div>
+                  <div class="mt-0.5 text-[10px] text-muted-foreground">
+                    {#if dashJobs?.scan?.lastRun}
+                      {new Date(dashJobs.scan.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {:else}Never{/if}
                   </div>
-                  <div class="space-y-5">
-                    <!-- CPU -->
-                    {#if sysStatus.cpu}
-                      {@const cpuPct = sysStatus.cpu.percent ?? 0}
-                      <div>
-                        <div class="flex items-center justify-between">
-                          <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">CPU</span>
-                          <span class="text-xs {cpuPct > 85 ? 'text-amber-300' : 'text-foreground/80'}">{cpuPct.toFixed(1)}%{sysStatus.cpu.cores ? ` · ${sysStatus.cpu.cores} cores` : ''}</span>
-                        </div>
-                        <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-elevated/60">
-                          <div class="h-full rounded-full transition-all {cpuPct > 85 ? 'bg-amber-400' : 'bg-primary-glow'}" style="width: {Math.min(cpuPct, 100)}%"></div>
-                        </div>
-                      </div>
-                    {/if}
-
-                    <!-- Memory -->
-                    {#if sysStatus.memory}
-                      {@const memPct = sysStatus.memory.usedPercent ?? 0}
-                      <div>
-                        <div class="flex items-center justify-between">
-                          <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Memory</span>
-                          <span class="text-xs {memPct > 90 ? 'text-amber-300' : 'text-foreground/80'}">{formatBytes(sysStatus.memory.usedBytes)} / {formatBytes(sysStatus.memory.totalBytes)}</span>
-                        </div>
-                        <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-elevated/60">
-                          <div class="h-full rounded-full transition-all {memPct > 90 ? 'bg-amber-400' : 'bg-primary-glow/70'}" style="width: {Math.min(memPct, 100)}%"></div>
-                        </div>
-                      </div>
-                    {/if}
-
-                    <!-- Network -->
-                    {#if sysStatus.network && (sysStatus.network.receiveBps || sysStatus.network.transmitBps)}
-                      <div class="flex gap-6 text-xs text-muted-foreground/70">
-                        <span>↓ {formatBps(sysStatus.network.receiveBps)}</span>
-                        <span>↑ {formatBps(sysStatus.network.transmitBps)}</span>
-                      </div>
-                    {/if}
-
-                    <!-- Disks -->
-                    {#if sysStatus.disks && sysStatus.disks.length > 0}
-                      <div class="space-y-3 border-t border-border pt-3">
-                        {#each sysStatus.disks as disk (disk.path ?? disk.name)}
-                          {@const diskPct = disk.usedPercent ?? 0}
-                          <div>
-                            <div class="flex items-center justify-between">
-                              <span class="max-w-[55%] truncate font-mono text-[10px] text-muted-foreground">{disk.path ?? disk.name ?? 'Disk'}</span>
-                              <span class="text-[11px] {diskPct > 90 ? 'text-amber-300' : 'text-foreground/60'}">{formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)}</span>
-                            </div>
-                            <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-elevated/60">
-                              <div class="h-full rounded-full {diskPct > 90 ? 'bg-amber-400' : 'bg-foreground/25'}" style="width: {Math.min(diskPct, 100)}%"></div>
-                            </div>
-                          </div>
-                        {/each}
-                      </div>
-                    {/if}
-                  </div>
-                </section>
-              {:else if dashError}
-                <div class="hairline rounded-2xl bg-surface/30 px-6 py-8 text-center">
-                  <p class="text-sm text-muted-foreground">Server unreachable — resource data unavailable.</p>
                 </div>
+                <div class="flex-1">
+                  {#if scanStatus === 'running'}
+                    <div class="flex items-center gap-2 text-[11px] text-primary-glow">
+                      <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
+                      Running
+                    </div>
+                  {:else if scanStatus === 'paused'}
+                    <div class="text-[11px] text-amber-400">Paused — session active</div>
+                  {:else}
+                    <div class="text-[11px] text-muted-foreground">
+                      Idle{#if dashJobs?.scan?.nextRun} · next {new Date(dashJobs.scan.nextRun).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}{/if}
+                    </div>
+                  {/if}
+                </div>
+                <div class="shrink-0">
+                  <button
+                    type="button"
+                    onclick={handleDashScanNow}
+                    disabled={dashScanBusy || scanStatus === 'running'}
+                    class="hairline rounded-lg px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
+                  >
+                    {dashScanBusy ? 'Starting…' : 'Run'}
+                  </button>
+                </div>
+              </div>
               {/if}
 
-              <!-- Active sessions -->
-              {#if activeSessions.length > 0}
-                <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
-                  <div>
-                    <h3 class="font-serif-display text-lg tracking-tight">Now playing</h3>
-                    <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                      {activeSessions.length} active playback {activeSessions.length === 1 ? 'session' : 'sessions'}.
-                    </p>
+              <!-- Metadata -->
+              {#if true}
+              {@const metaStatus = dashJobs?.metadata?.status ?? 'idle'}
+              <div class="flex items-center gap-4 px-4 py-3">
+                <div class="w-24 shrink-0">
+                  <div class="text-[11px] font-medium">Metadata</div>
+                  <div class="mt-0.5 text-[10px] text-muted-foreground">
+                    {#if dashJobs?.metadata?.lastRun}
+                      {new Date(dashJobs.metadata.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {:else}Never{/if}
                   </div>
-                  <div class="space-y-2">
-                    {#each activeSessions as session (session.id)}
-                      <div class="hairline flex items-center gap-4 rounded-xl bg-surface/40 px-4 py-3">
-                        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-glow/10">
-                          <Play class="h-3.5 w-3.5 fill-primary-glow text-primary-glow" />
-                        </div>
-                        <div class="min-w-0 flex-1">
-                          <div class="truncate text-sm font-medium">{session.title ?? session.sourceName ?? 'Unknown'}</div>
-                          <div class="text-[11px] text-muted-foreground">{session.mode ?? session.route ?? ''}{session.deviceId ? ` · ${session.deviceId}` : ''}</div>
-                        </div>
-                        <span class="shrink-0 rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-300">Live</span>
-                      </div>
-                    {/each}
-                  </div>
-                </section>
-              {/if}
-
-              <!-- Activity & Jobs shortcut card -->
-              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
-                <div>
-                  <h3 class="font-serif-display text-lg tracking-tight">Library jobs</h3>
-                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                    Monitor and control scan, metadata, and probe automation jobs in real time.
-                  </p>
                 </div>
-                <a
-                  href="/settings/activity"
-                  class="hairline group flex items-center gap-5 rounded-2xl bg-surface/40 p-5 transition-colors hover:bg-surface/70"
-                >
-                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-glow/10 text-2xl">
-                    ⚡
-                  </div>
-                  <div class="min-w-0 flex-1">
-                    <div class="font-semibold text-sm">Activity &amp; Jobs</div>
-                    <div class="mt-0.5 text-[12px] text-muted-foreground">
-                      {#if catalogSummary?.unprobed && catalogSummary.unprobed > 0}
-                        <span class="text-amber-300">{catalogSummary.unprobed.toLocaleString()} files awaiting analysis</span>
-                      {:else}
-                        Scan · Metadata · Probe — real-time progress
+                <div class="flex-1">
+                  {#if dashMetaRunning}
+                    {@const bf = dashJobs?.metadata?.backfill}
+                    <div class="space-y-1">
+                      <div class="flex items-center gap-2 text-[11px] text-primary-glow">
+                        <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
+                        Backfilling{#if bf?.lastTitle} · {bf.lastTitle}{/if}
+                      </div>
+                      {#if bf && bf.total > 0}
+                        <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/10">
+                          <div class="h-full rounded-full bg-primary-glow/60 transition-all"
+                            style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%"></div>
+                        </div>
                       {/if}
                     </div>
-                  </div>
-                  <svg class="h-4 w-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </a>
-              </section>
-
-              <!-- Recent scan activity -->
-              <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
-                <div>
-                  <h3 class="font-serif-display text-lg tracking-tight">Recent activity</h3>
-                  <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                    Library scans, metadata refreshes, and system events.
-                  </p>
+                  {:else if metaStatus === 'paused'}
+                    <div class="text-[11px] text-amber-400">Paused — session active</div>
+                  {:else}
+                    <div class="text-[11px] text-muted-foreground">Idle</div>
+                  {/if}
                 </div>
-                {#if recentScans.length > 0}
-                  <div class="space-y-2">
-                    {#each recentScans as scan (scan.id)}
-                      <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-4 py-3">
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-center gap-2 text-sm">
-                            <span class="font-medium capitalize">{scan.kind ?? 'Scan'}</span>
-                            {#if scan.libraryId}<span class="font-mono text-[11px] text-muted-foreground">{scan.libraryId.slice(0, 8)}</span>{/if}
-                          </div>
-                          <div class="mt-0.5 text-[11px] text-muted-foreground">
-                            {scan.status ?? ''}
-                            {#if scan.updatedAt} · {new Date(scan.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{/if}
-                          </div>
-                        </div>
-                        {#if scan.status === 'running'}
-                          <div class="h-4 w-4 animate-spin rounded-full border border-primary-glow border-t-transparent"></div>
-                        {:else if scan.status === 'completed'}
-                          <Check class="h-4 w-4 text-emerald-300" />
+                <div class="shrink-0">
+                  <button
+                    type="button"
+                    onclick={() => { triggerBackfill(); refreshDashJobs(); }}
+                    disabled={dashMetaRunning}
+                    class="hairline rounded-lg px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
+                  >
+                    Run
+                  </button>
+                </div>
+              </div>
+              {/if}
+
+              <!-- Probe -->
+              {#if true}
+              {@const probeActiveJob = dashJobs?.probe?.activeJobs?.find(j => j.status === 'running')}
+              <div class="flex items-center gap-4 px-4 py-3">
+                <div class="w-24 shrink-0">
+                  <div class="text-[11px] font-medium">Probe</div>
+                  <div class="mt-0.5 text-[10px] text-muted-foreground">
+                    {#if dashJobs?.probe?.lastRun}
+                      {new Date(dashJobs.probe.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {:else}Never{/if}
+                  </div>
+                </div>
+                <div class="flex-1">
+                  {#if dashProbeRunning && probeActiveJob}
+                    {@const done = probeActiveJob.completed ?? 0}
+                    {@const total = probeActiveJob.total ?? 0}
+                    <div class="space-y-1">
+                      <div class="flex items-center justify-between gap-2 text-[11px]">
+                        <span class="flex items-center gap-2 text-primary-glow">
+                          <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
+                          Running
+                        </span>
+                        {#if total > 0}
+                          <span class="tabular-nums text-muted-foreground">{done.toLocaleString()} / {total.toLocaleString()}</span>
                         {/if}
                       </div>
-                    {/each}
-                  </div>
-                {:else}
-                  <div class="hairline flex flex-col items-center justify-center rounded-2xl bg-surface/30 px-8 py-16 text-center">
-                    <p class="text-sm text-muted-foreground">No recent activity.</p>
-                    <p class="mt-1 text-xs text-muted-foreground/60">Scan a library to see events here.</p>
-                  </div>
-                {/if}
-              </section>
+                      {#if total > 0}
+                        <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/10">
+                          <div class="h-full rounded-full bg-primary-glow/60 transition-all"
+                            style="width: {Math.round(done / total * 100)}%"></div>
+                        </div>
+                      {/if}
+                    </div>
+                  {:else if dashJobs?.probe?.status === 'paused'}
+                    <div class="text-[11px] text-amber-400">Paused — session active</div>
+                  {:else}
+                    <div class="text-[11px] text-muted-foreground">
+                      {#if dashUnprobed > 0}
+                        <span class="text-amber-400">{dashUnprobed.toLocaleString()} files queued</span>
+                      {:else}
+                        Idle
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+                <div class="shrink-0">
+                  <button
+                    type="button"
+                    onclick={handleDashProbeNow}
+                    disabled={dashProbeBusy || dashProbeRunning}
+                    class="hairline rounded-lg px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
+                  >
+                    {dashProbeBusy ? 'Starting…' : 'Run'}
+                  </button>
+                </div>
+              </div>
+              {/if}
             </div>
+          </section>
+
+          <!-- ── Active sessions ────────────────────────────────────── -->
+          {#if activeSessions.length > 0}
+            <section class="mb-8">
+              <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">
+                Now Playing · {activeSessions.length} session{activeSessions.length === 1 ? '' : 's'}
+              </div>
+              <div class="hairline divide-y divide-border rounded-2xl bg-surface/40">
+                {#each activeSessions as session (session.id)}
+                  <div class="flex items-center gap-4 px-4 py-3">
+                    <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10">
+                      <Play class="h-3 w-3 fill-emerald-400 text-emerald-400" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="truncate text-[13px] font-medium">{session.title ?? session.sourceName ?? 'Unknown'}</div>
+                      <div class="mt-0.5 text-[11px] text-muted-foreground">
+                        {session.mode ?? session.route ?? 'Direct Play'}{session.deviceId ? ` · ${session.deviceId}` : ''}
+                      </div>
+                    </div>
+                    <span class="shrink-0 rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-300">Live</span>
+                  </div>
+                {/each}
+              </div>
+            </section>
           {/if}
+
+          <!-- ── Recent scan activity ────────────────────────────────── -->
+          <section>
+            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Recent Activity</div>
+            {#if recentScans.length > 0}
+              <div class="hairline divide-y divide-border rounded-2xl bg-surface/40">
+                {#each recentScans as scan (scan.id)}
+                  <div class="flex items-center gap-4 px-4 py-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2 text-[13px]">
+                        <span class="font-medium capitalize">{scan.kind ?? 'Scan'}</span>
+                        {#if scan.libraryId}
+                          <span class="font-mono text-[10px] text-muted-foreground">{scan.libraryId.slice(0, 8)}</span>
+                        {/if}
+                      </div>
+                      {#if scan.updatedAt}
+                        <div class="mt-0.5 text-[11px] text-muted-foreground">
+                          {new Date(scan.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      {/if}
+                    </div>
+                    {#if scan.status === 'running'}
+                      <span class="flex items-center gap-1.5 text-[10px] text-primary-glow">
+                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
+                        Running
+                      </span>
+                    {:else if scan.status === 'completed'}
+                      <Check class="h-4 w-4 shrink-0 text-emerald-400" />
+                    {:else}
+                      <span class="text-[11px] capitalize text-muted-foreground">{scan.status ?? ''}</span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="hairline flex flex-col items-center justify-center rounded-2xl bg-surface/30 px-8 py-12 text-center">
+                <p class="text-sm text-muted-foreground">No recent activity.</p>
+                <p class="mt-1 text-xs text-muted-foreground/50">Scan a library to see events here.</p>
+              </div>
+            {/if}
+          </section>
 
         {:else if active === "libraries"}
           <div class="space-y-8">
