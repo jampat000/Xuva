@@ -44,6 +44,7 @@
     getSessions,
     getJobs,
     getCatalogHealth,
+    getCatalogCodecs,
     startProbeJob,
     getSettings,
     updateSettings,
@@ -76,6 +77,7 @@
     type SessionItem,
     type JobsStatusResponse,
     type CatalogHealthResponse,
+    type CodecBreakdownResponse,
     type SettingsResponse,
     type LibraryItem,
     type FolderEntry,
@@ -248,6 +250,7 @@
   // ─── Dashboard live extras (jobs, health, perf) ─────────────────────────
   let dashJobs  = $state<JobsStatusResponse | null>(null);
   let dashHealth = $state<CatalogHealthResponse | null>(null);
+  let dashCodecs = $state<CodecBreakdownResponse | null>(null);
   let dashScanBusy  = $state(false);
   let dashProbeBusy = $state(false);
   let dashUpdatedAt = $state('');
@@ -380,6 +383,48 @@
   }
   async function refreshDashHealth() {
     try { dashHealth = await getCatalogHealth(); } catch { /* silent */ }
+  }
+  async function refreshDashCodecs() {
+    try { dashCodecs = await getCatalogCodecs(); } catch { /* silent */ }
+  }
+
+  // ─── Codec → playback-behaviour classification ────────────────────────────
+  // The dashboard surfaces "1,200 H.264" as more than just a number — it tells
+  // the user what each codec MEANS for playback (direct play vs needs remux
+  // vs needs full transcode). These groupings reflect the actual playback
+  // decision logic in server/internal/playback/decision.go (web profile).
+  //
+  // - direct: container-and-codec-compatible browsers play it untouched
+  // - remux:  video stream is copied, only container is repackaged → fast
+  // - audio:  video copies, audio re-encodes (HEVC + DTS = this path)
+  // - transcode: video must be re-encoded — the only "slow" path
+  type CodecClass = 'direct' | 'remux' | 'transcode';
+  function classifyCodec(codec: string): { cls: CodecClass; label: string; explain: string } {
+    const c = (codec || '').toLowerCase();
+    // Direct-play on web (h264 in MP4/MOV/WebM is the baseline)
+    if (c === 'h264') {
+      return { cls: 'direct', label: 'Direct play', explain: 'Plays instantly — no server work.' };
+    }
+    // Remux territory — video stream is fine, server just repackages
+    if (c === 'hevc' || c === 'av1' || c === 'vp9') {
+      return { cls: 'remux', label: 'Fast remux', explain: 'Video stream is kept; the server only repackages the container. Starts in seconds.' };
+    }
+    // Everything else needs a full video re-encode
+    return { cls: 'transcode', label: 'Needs transcoding', explain: 'No browser can decode this directly — the server has to re-encode the video, which is slow and CPU-heavy.' };
+  }
+  // Pretty codec name (same map the detail pages use, kept here to avoid
+  // adding the util as a settings dep just for this one call).
+  function dashCodecLabel(codec: string): string {
+    const c = (codec || '').toLowerCase();
+    const map: Record<string, string> = {
+      h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9', vp8: 'VP8',
+      mpeg4: 'MPEG-4', mpeg2video: 'MPEG-2', mpeg1video: 'MPEG-1',
+      wmv1: 'WMV', wmv2: 'WMV', wmv3: 'WMV', vc1: 'VC-1',
+      rv30: 'RealVideo 3', rv40: 'RealVideo 4',
+      flv1: 'Flash Video', h263: 'H.263',
+      prores: 'ProRes', dnxhd: 'DNxHD', cinepak: 'Cinepak',
+    };
+    return map[c] ?? (codec || 'Unknown').toUpperCase();
   }
   async function handleDashScanNow() {
     dashScanBusy = true;
@@ -1277,11 +1322,13 @@
     refreshDashSys();
     refreshDashJobs();
     refreshDashHealth();
+    refreshDashCodecs();
     dashStream.connect();
     dashPollTimers = [
       setInterval(refreshDashSys,    5_000),
       setInterval(refreshDashJobs,   5_000),
       setInterval(refreshDashHealth, 60_000),
+      setInterval(refreshDashCodecs, 120_000),
       // 1-second ticker drives the live uptime + countdown displays; pure
       // client-side, no network traffic.
       setInterval(() => { dashNow = Date.now(); }, 1_000),
@@ -1819,7 +1866,7 @@
 
           <!-- ── Command Header ──────────────────────────────────────────────── -->
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-5 py-3.5"
-            style="border-color: oklch(0.82 0.24 200 / 0.14); background: linear-gradient(135deg, oklch(0.18 0.025 240 / 0.7) 0%, oklch(0.14 0.015 240 / 0.5) 100%);">
+            style="border-color: oklch(0.74 0.2 280 / 0.14); background: linear-gradient(135deg, oklch(0.16 0.025 285 / 0.7) 0%, oklch(0.12 0.018 285 / 0.5) 100%);">
             <div class="flex flex-wrap items-center gap-4">
               <!-- System status beacon -->
               <div class="flex items-center gap-2.5">
@@ -1855,14 +1902,14 @@
             </div>
             <div class="flex items-center gap-2">
               <button type="button"
-                onclick={() => { refreshDashSys(); loadDashboard(); refreshDashJobs(); refreshDashHealth(); }}
+                onclick={() => { refreshDashSys(); loadDashboard(); refreshDashJobs(); refreshDashHealth(); refreshDashCodecs(); }}
                 disabled={dashLoading}
                 class="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3.5 py-1.5 text-[12px] text-foreground/65 transition-colors hover:border-foreground/15 hover:text-foreground/85 disabled:opacity-40">
                 <RefreshCw class="h-3.5 w-3.5 {dashLoading ? 'animate-spin' : ''}" /> Refresh
               </button>
               <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy}
                 class="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-[12px] font-medium transition-all hover:brightness-110 disabled:opacity-50"
-                style="border-color: oklch(0.82 0.24 200 / 0.35); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.08);">
+                style="border-color: oklch(0.74 0.2 280 / 0.35); color: oklch(0.80 0.2 280); background: oklch(0.74 0.2 280 / 0.08);">
                 {#if dashScanBusy}
                   <span class="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent"></span>
                 {:else}
@@ -1929,9 +1976,9 @@
                 </div>
                 <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 text-[11px] font-medium tracking-wide text-sky-300/75">XMIT ↑</div>
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-accent/85">XMIT ↑</div>
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
-                    style="color: oklch(0.82 0.22 240); text-shadow: 0 0 10px oklch(0.82 0.22 240 / 0.22);">
+                    style="color: oklch(0.72 0.16 255); text-shadow: 0 0 10px oklch(0.72 0.16 255 / 0.22);">
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
@@ -1953,7 +2000,7 @@
                 <div>
                   <div class="mb-1 text-[11px] font-medium tracking-wide text-foreground/55">NOW PLAYING</div>
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight {activeSessions.length > 0 ? '' : 'text-foreground/30'}"
-                    style={activeSessions.length > 0 ? 'color: oklch(0.82 0.24 200); text-shadow: 0 0 10px oklch(0.82 0.24 200 / 0.3);' : ''}>
+                    style={activeSessions.length > 0 ? 'color: oklch(0.74 0.2 280); text-shadow: 0 0 10px oklch(0.74 0.2 280 / 0.3);' : ''}>
                     {activeSessions.length}<span class="ml-1.5 text-[12px] font-normal text-foreground/55 tracking-normal">{activeSessions.length === 1 ? 'stream' : 'streams'}</span>
                   </div>
                 </div>
@@ -1978,7 +2025,7 @@
                   <div class="font-serif-display text-4xl font-medium leading-none tabular-nums tracking-tight"
                     style={t.warn ? 'color: oklch(0.85 0.22 75); text-shadow: 0 0 12px oklch(0.85 0.22 75 / 0.28);'
                          : t.value === 0 ? 'color: rgba(255,255,255,0.2);'
-                         : 'color: oklch(0.82 0.24 200); text-shadow: 0 0 12px oklch(0.82 0.24 200 / 0.22);'}>
+                         : 'color: oklch(0.74 0.2 280); text-shadow: 0 0 12px oklch(0.74 0.2 280 / 0.22);'}>
                     {t.value.toLocaleString()}
                   </div>
                   {#if t.live}
@@ -2008,13 +2055,13 @@
                   <div class="flex-1 min-w-0">
                     <div class="flex items-baseline gap-1.5 mb-2">
                       <span class="font-serif-display text-6xl font-medium leading-none tabular-nums tracking-tight"
-                        style="color: oklch(0.82 0.24 200); text-shadow: 0 0 14px oklch(0.82 0.24 200 / 0.25);">{_pct}</span>
+                        style="color: oklch(0.74 0.2 280); text-shadow: 0 0 14px oklch(0.74 0.2 280 / 0.25);">{_pct}</span>
                       <span class="font-serif-display text-xl text-foreground/55">%</span>
                       <span class="ml-2 text-[12px] italic text-foreground/60">analysed</span>
                     </div>
                     <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/[0.06] mb-2">
                       <div class="h-full rounded-full transition-all duration-700"
-                        style="width: {_pct}%; background: oklch(0.82 0.24 200 / 0.65);"></div>
+                        style="width: {_pct}%; background: oklch(0.74 0.2 280 / 0.65);"></div>
                     </div>
                     <div class="text-[12px] tabular-nums text-foreground/55">
                       {dashProbed.toLocaleString()} of {dashTotalFiles.toLocaleString()} files
@@ -2048,14 +2095,10 @@
                       <span class="text-[12.5px] text-emerald-300/75">All files analysed</span>
                     </div>
                   {/if}
-                  {#if (dashHealth?.unsupported ?? 0) > 0}
-                    <div class="flex items-center gap-2 rounded-lg border border-red-400/12 bg-red-400/[0.04] px-3 py-2">
-                      <span class="text-[14px] text-red-400">✕</span>
-                      <span class="text-[12.5px] text-red-300/75">
-                        {dashHealth!.unsupported!.toLocaleString()} files with unsupported codecs
-                      </span>
-                    </div>
-                  {/if}
+                  <!-- The "files with unsupported codecs" flag used to live here.
+                       It's been promoted to a full Library Codecs panel below,
+                       which explains what each codec means for playback instead
+                       of just shouting a scary number. -->
                   {#if (dashHealth?.highBitrate ?? 0) > 0}
                     <div class="flex items-center gap-2 rounded-lg border border-amber-400/10 bg-amber-400/[0.03] px-3 py-2">
                       <span class="text-[13px] text-amber-400/65">▲</span>
@@ -2099,8 +2142,8 @@
                     <div class="shrink-0 w-2 flex justify-center pt-1">
                       {#if scanSt === 'running'}
                         <span class="relative flex h-2 w-2">
-                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.82 0.24 200);"></span>
-                          <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.82 0.24 200);"></span>
+                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.74 0.2 280);"></span>
+                          <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.74 0.2 280);"></span>
                         </span>
                       {:else if scanSt === 'paused'}
                         <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
@@ -2111,7 +2154,7 @@
                     <div class="flex-1 min-w-0">
                       <div class="font-serif-display text-[16px] tracking-tight text-foreground/90">Library Scan</div>
                       <div class="mt-0.5 text-[12px] text-foreground/55 tracking-tight">
-                        {#if scanSt === 'running'}<span style="color: oklch(0.82 0.24 200);">RUNNING NOW</span>
+                        {#if scanSt === 'running'}<span style="color: oklch(0.74 0.2 280);">RUNNING NOW</span>
                         {:else if scanSt === 'paused'}<span class="text-amber-300">PAUSED — SESSION ACTIVE</span>
                         {:else if dashJobs?.scan?.lastRunAt}LAST RUN {new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         {:else}NEVER RUN{/if}
@@ -2119,7 +2162,7 @@
                     </div>
                     <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy || scanSt === 'running'}
                       class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style="border-color: oklch(0.82 0.24 200 / 0.45); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.12); text-shadow: 0 0 8px oklch(0.82 0.24 200 / 0.5);">
+                      style="border-color: oklch(0.74 0.2 280 / 0.45); color: oklch(0.80 0.2 280); background: oklch(0.74 0.2 280 / 0.12); text-shadow: 0 0 8px oklch(0.74 0.2 280 / 0.5);">
                       {#if dashScanBusy}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}▶{/if}
                       Run Now
                     </button>
@@ -2129,11 +2172,11 @@
                     {#if scanIntervalEditing}
                       <span class="text-[12px] font-medium tracking-tight text-foreground/55">Every</span>
                       <input type="number" min="5" max="1440" step="5" bind:value={scanIntervalDraft}
-                        class="w-16 rounded border border-foreground/15 bg-surface/40 px-2 py-1 font-mono text-[11px] tabular-nums text-foreground outline-none focus:border-cyan-300/60" />
+                        class="w-16 rounded border border-foreground/15 bg-surface/40 px-2 py-1 font-mono text-[11px] tabular-nums text-foreground outline-none focus:border-primary/60" />
                       <span class="text-[12px] text-foreground/55">min</span>
                       <button type="button" onclick={saveScanInterval} disabled={scanIntervalSaving}
                         class="ml-1 rounded px-2.5 py-1 text-[12px] font-medium tracking-tight transition-colors disabled:opacity-50"
-                        style="color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.18);">
+                        style="color: oklch(0.80 0.2 280); background: oklch(0.74 0.2 280 / 0.18);">
                         {scanIntervalSaving ? '…' : 'Save'}
                       </button>
                       <button type="button" onclick={() => { scanIntervalEditing = false; }}
@@ -2146,7 +2189,7 @@
                         title="Click to change how often the library scans">
                         <span>Schedule</span>
                         <span class="text-foreground/75">·</span>
-                        <span style="color: oklch(0.86 0.24 200);">Every {dashIntervalLabel(scanInterval)}</span>
+                        <span style="color: oklch(0.80 0.2 280);">Every {dashIntervalLabel(scanInterval)}</span>
                         {#if dashJobs?.scan?.nextRunAt && scanSt !== 'running'}
                           <span class="text-foreground/75">·</span>
                           <span class="text-foreground/70">Next in {dashCountdown(dashJobs.scan.nextRunAt)}</span>
@@ -2168,8 +2211,8 @@
                     <div class="shrink-0 w-2 flex justify-center pt-1">
                       {#if dashMetaRunning}
                         <span class="relative flex h-2 w-2">
-                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.82 0.24 200);"></span>
-                          <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.82 0.24 200);"></span>
+                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.74 0.2 280);"></span>
+                          <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.74 0.2 280);"></span>
                         </span>
                       {:else if metaSt === 'paused'}
                         <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
@@ -2182,12 +2225,12 @@
                       {#if dashMetaRunning && bf && bf.total > 0}
                         <div class="mt-1 space-y-1">
                           <div class="flex items-center justify-between text-[12px] tracking-tight">
-                            <span style="color: oklch(0.82 0.24 200);" class="truncate pr-2">REFRESHING{#if bf.lastTitle} — {bf.lastTitle}{/if}</span>
+                            <span style="color: oklch(0.74 0.2 280);" class="truncate pr-2">REFRESHING{#if bf.lastTitle} — {bf.lastTitle}{/if}</span>
                             <span class="shrink-0 text-foreground/55 tabular-nums">{(bf.refreshed + bf.failed).toLocaleString()}/{bf.total.toLocaleString()}</span>
                           </div>
                           <div class="h-0.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
                             <div class="h-full rounded-full transition-all"
-                              style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%; background: oklch(0.82 0.24 200 / 0.7);"></div>
+                              style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%; background: oklch(0.74 0.2 280 / 0.7);"></div>
                           </div>
                         </div>
                       {:else}
@@ -2200,7 +2243,7 @@
                     </div>
                     <button type="button" onclick={() => { triggerBackfill(); refreshDashJobs(); }} disabled={dashMetaRunning}
                       class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style="border-color: oklch(0.82 0.24 200 / 0.45); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.12); text-shadow: 0 0 8px oklch(0.82 0.24 200 / 0.5);">
+                      style="border-color: oklch(0.74 0.2 280 / 0.45); color: oklch(0.80 0.2 280); background: oklch(0.74 0.2 280 / 0.12); text-shadow: 0 0 8px oklch(0.74 0.2 280 / 0.5);">
                       {#if dashMetaRunning}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}▶{/if}
                       Run Now
                     </button>
@@ -2211,7 +2254,7 @@
                       title="Open Metadata settings">
                       <span>Schedule</span>
                       <span class="text-foreground/75">·</span>
-                      <span style="color: oklch(0.86 0.24 200);">{metaInterval > 0 ? `Every ${dashIntervalLabel(metaInterval)}` : 'Auto in background'}</span>
+                      <span style="color: oklch(0.80 0.2 280);">{metaInterval > 0 ? `Every ${dashIntervalLabel(metaInterval)}` : 'Auto in background'}</span>
                       {#if dashJobs?.metadata?.nextRunAt && !dashMetaRunning}
                         <span class="text-foreground/75">·</span>
                         <span class="text-foreground/70">Next in {dashCountdown(dashJobs.metadata.nextRunAt)}</span>
@@ -2231,8 +2274,8 @@
                     <div class="shrink-0 w-2 flex justify-center pt-1">
                       {#if dashProbeRunning}
                         <span class="relative flex h-2 w-2">
-                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.82 0.24 200);"></span>
-                          <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.82 0.24 200);"></span>
+                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-55" style="background: oklch(0.74 0.2 280);"></span>
+                          <span class="relative inline-flex h-2 w-2 rounded-full" style="background: oklch(0.74 0.2 280);"></span>
                         </span>
                       {:else if probeSt === 'paused'}
                         <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
@@ -2248,12 +2291,12 @@
                         {@const tot = probeJob.total ?? 1}
                         <div class="mt-1 space-y-1">
                           <div class="flex items-center justify-between text-[12px] tracking-tight">
-                            <span style="color: oklch(0.82 0.24 200);">ANALYSING FILES</span>
+                            <span style="color: oklch(0.74 0.2 280);">ANALYSING FILES</span>
                             <span class="text-foreground/55 tabular-nums">{done.toLocaleString()}/{tot.toLocaleString()} · {Math.round(done/tot*100)}%</span>
                           </div>
                           <div class="h-0.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
                             <div class="h-full rounded-full transition-all"
-                              style="width: {Math.round(done/tot*100)}%; background: oklch(0.82 0.24 200 / 0.7);"></div>
+                              style="width: {Math.round(done/tot*100)}%; background: oklch(0.74 0.2 280 / 0.7);"></div>
                           </div>
                         </div>
                         {/if}
@@ -2267,7 +2310,7 @@
                     </div>
                     <button type="button" onclick={handleDashProbeNow} disabled={dashProbeBusy || dashProbeRunning || dashUnprobed === 0}
                       class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style="border-color: oklch(0.82 0.24 200 / 0.45); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.12); text-shadow: 0 0 8px oklch(0.82 0.24 200 / 0.5);">
+                      style="border-color: oklch(0.74 0.2 280 / 0.45); color: oklch(0.80 0.2 280); background: oklch(0.74 0.2 280 / 0.12); text-shadow: 0 0 8px oklch(0.74 0.2 280 / 0.5);">
                       {#if dashProbeBusy || dashProbeRunning}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}▶{/if}
                       Run Now
                     </button>
@@ -2275,7 +2318,7 @@
                   <div class="mt-2.5 ml-5 flex items-center gap-1.5 border-t border-foreground/[0.05] pt-2.5 text-[12px] font-medium tracking-tight text-foreground/55">
                     <span>Schedule</span>
                     <span class="text-foreground/75">·</span>
-                    <span style="color: oklch(0.86 0.24 200);">Auto after each scan</span>
+                    <span style="color: oklch(0.80 0.2 280);">Auto after each scan</span>
                     <span class="ml-2 normal-case tracking-normal text-foreground/40">— runs when new files are found</span>
                   </div>
                 </div>
@@ -2283,6 +2326,84 @@
               </div>
             </div>
           </div>
+
+          <!-- ── Library Codecs ──────────────────────────────────────────────── -->
+          <!-- Replaces the old "1,714 files with unsupported codecs" mystery
+               number with an actual breakdown of what's in the library and
+               what each codec means for playback. -->
+          {#if dashCodecs && dashCodecs.videoCodecs.length > 0}
+            {#if true}
+            {@const groups = [
+              { cls: 'direct'    as const, label: 'Plays instantly',  blurb: 'No server work needed. Browsers decode these natively.', color: 'oklch(0.74 0.2 280)' },
+              { cls: 'remux'     as const, label: 'Fast repackage',    blurb: 'Video stream is kept; only the container is rewrapped. Starts in seconds.', color: 'oklch(0.78 0.22 145)' },
+              { cls: 'transcode' as const, label: 'Needs transcoding', blurb: "No browser can decode these directly — the server has to re-encode the video, which is slow.", color: 'oklch(0.85 0.22 75)' },
+            ]}
+            {@const bucketed = groups.map(g => {
+              const items = dashCodecs!.videoCodecs.filter(v => classifyCodec(v.codec).cls === g.cls);
+              const count = items.reduce((s, v) => s + v.count, 0);
+              return { ...g, items, count };
+            })}
+            {@const total = dashCodecs.total || 1}
+            <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
+              <div class="mb-1 flex items-baseline justify-between gap-3">
+                <div class="font-serif-display text-[15px] tracking-tight text-foreground/75">Library Codecs</div>
+                <span class="text-[12px] tabular-nums text-foreground/50">{dashCodecs.total.toLocaleString()} files analysed</span>
+              </div>
+              <p class="mb-4 text-[12.5px] text-muted-foreground">
+                What your library is made of, and what each codec means when you press Play.
+              </p>
+
+              <!-- Stacked horizontal bar — proportional widths of the three buckets -->
+              <div class="mb-4 flex h-2 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                {#each bucketed as g (g.cls)}
+                  {#if g.count > 0}
+                    <div class="h-full transition-all duration-700" title={`${g.label}: ${g.count.toLocaleString()}`}
+                      style={`width: ${(g.count / total) * 100}%; background: ${g.color};`}></div>
+                  {/if}
+                {/each}
+              </div>
+
+              <!-- Three bucket sections -->
+              <div class="grid gap-3 md:grid-cols-3">
+                {#each bucketed as g (g.cls)}
+                  <div class="rounded-lg border border-foreground/[0.06] bg-foreground/[0.015] p-3"
+                    style={g.count > 0 ? `border-color: ${g.color} / 0.18; background: ${g.color.replace(')', ' / 0.04)')};` : ''}>
+                    <div class="flex items-baseline justify-between gap-2">
+                      <span class="font-serif-display text-[14px] tracking-tight" style={`color: ${g.color};`}>{g.label}</span>
+                      <span class="text-[12px] tabular-nums" style={`color: ${g.color};`}>
+                        {g.count.toLocaleString()}<span class="ml-1 text-foreground/45">· {Math.round((g.count / total) * 100)}%</span>
+                      </span>
+                    </div>
+                    <p class="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">{g.blurb}</p>
+                    {#if g.items.length > 0}
+                      <div class="mt-2.5 flex flex-wrap gap-1.5">
+                        {#each g.items as item (item.codec)}
+                          <span class="hairline rounded-full bg-surface/40 px-2.5 py-0.5 text-[11px] text-foreground/75 tabular-nums">
+                            {dashCodecLabel(item.codec)} · {item.count.toLocaleString()}
+                          </span>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+
+              <!-- Helpful "what to do" footer when there are files in the transcode bucket -->
+              {#if bucketed.find(g => g.cls === 'transcode' && g.count > 0)}
+                {@const tCount = bucketed.find(g => g.cls === 'transcode')!.count}
+                <div class="mt-4 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] px-4 py-3">
+                  <p class="text-[12.5px] leading-relaxed text-foreground/80">
+                    <span class="font-medium text-amber-300">{tCount.toLocaleString()} {tCount === 1 ? 'file' : 'files'}</span>
+                    use older codecs (MPEG-2, VC-1, WMV, etc.) that no browser plays directly. They'll still
+                    play — Xuva will re-encode the video on the fly — but expect a longer wait when you press Play
+                    and higher CPU use. If you want instant playback for these, convert them to H.264 or HEVC
+                    once with a tool like HandBrake.
+                  </p>
+                </div>
+              {/if}
+            </div>
+            {/if}
+          {/if}
 
           <!-- ── Storage Systems ─────────────────────────────────────────────── -->
           {#if sysStatus?.disks && sysStatus.disks.length > 0}
@@ -2299,7 +2420,7 @@
                     </div>
                     <div class="relative h-1 overflow-hidden rounded-full bg-foreground/[0.06]">
                       <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
-                        style="width: {dPct}%; background: {dPct >= 90 ? 'oklch(0.68 0.26 22)' : dPct >= 75 ? 'oklch(0.85 0.22 75)' : 'oklch(0.82 0.24 200 / 0.5)'};"></div>
+                        style="width: {dPct}%; background: {dPct >= 90 ? 'oklch(0.68 0.26 22)' : dPct >= 75 ? 'oklch(0.85 0.22 75)' : 'oklch(0.74 0.2 280 / 0.5)'};"></div>
                     </div>
                     <div class="text-right font-serif-display text-[16px] font-medium tabular-nums tracking-tight {dPct >= 90 ? 'text-red-400' : dPct >= 75 ? 'text-amber-400' : 'text-foreground/55'}">{dPct}%</div>
                   </div>
@@ -2388,7 +2509,7 @@
                       {/if}
                     </div>
                     {#if scan.status === 'running'}
-                      <div class="text-[12px] italic" style="color: oklch(0.82 0.24 200);">running</div>
+                      <div class="text-[12px] italic" style="color: oklch(0.74 0.2 280);">running</div>
                     {:else if scan.status === 'completed'}
                       <div class="text-[12px] italic text-emerald-400/80">done</div>
                     {:else if scan.status}

@@ -82,6 +82,23 @@ type Health struct {
 	WithSubtitles int     `json:"withSubtitles"`
 }
 
+// CodecCount is one entry in the codec histogram — codec name + how many
+// probed files use it. Sorted descending by count when returned.
+type CodecCount struct {
+	Codec string `json:"codec"`
+	Count int    `json:"count"`
+}
+
+// CodecBreakdown is the response to GET /api/catalog/codecs. Gives the
+// dashboard everything it needs to render an honest "what's in your library"
+// view that maps onto real playback behaviour.
+type CodecBreakdown struct {
+	// VideoCodecs sorted by count desc. Empty codecs are excluded.
+	VideoCodecs []CodecCount `json:"videoCodecs"`
+	// Total of all VideoCodecs counts — the population the rest are slicing.
+	Total int `json:"total"`
+}
+
 type MovieListItem struct {
 	ID           string          `json:"id"`
 	Title        string          `json:"title"`
@@ -581,7 +598,13 @@ func (s *Service) Health(ctx context.Context) (Health, error) {
 		out   *int
 	}{
 		{"SELECT (SELECT count(*) FROM movies WHERE needs_review = 1) + (SELECT count(*) FROM tv_episodes WHERE needs_review = 1)", &health.NeedsReview},
-		{"SELECT count(*) FROM media_probes WHERE video_codec NOT IN ('h264', 'av1', 'vp9')", &health.Unsupported},
+		// "Unsupported" = codecs that cannot direct-play OR remux on any of our
+		// supported clients (web + apple-tv + android-tv + chromecast). The
+		// playable set includes hevc (handled via web MSE since PR #278) and
+		// the rest of the modern codecs. Anything else (MPEG-2, VC-1, WMV,
+		// RealVideo, etc.) needs a full video re-encode, which is genuinely
+		// "unsupported" from a no-friction-playback perspective.
+		{"SELECT count(*) FROM media_probes WHERE video_codec NOT IN ('h264', 'hevc', 'av1', 'vp9')", &health.Unsupported},
 		{"SELECT count(*) FROM media_probes WHERE bitrate > 40000000", &health.HighBitrate},
 		{"SELECT count(*) FROM media_probes WHERE subtitle_streams > 0", &health.WithSubtitles},
 	}
@@ -591,6 +614,44 @@ func (s *Service) Health(ctx context.Context) (Health, error) {
 		}
 	}
 	return health, nil
+}
+
+// Codecs returns the video-codec histogram for everything ffprobe has
+// inspected. Used by the dashboard to break down the bare "unsupported"
+// count into "you have 1,200 H.264, 250 HEVC, 5 MPEG-2" — which is the
+// information a user actually needs to understand what their library will
+// do at playback time.
+//
+// Single GROUP BY against the indexed video_codec column. Cheap enough to
+// hit on every dashboard refresh; we cap at 32 distinct rows so a corrupt
+// row never produces a runaway response.
+func (s *Service) Codecs(ctx context.Context) (CodecBreakdown, error) {
+	const query = `
+		SELECT COALESCE(video_codec, '') AS codec, COUNT(*) AS n
+		FROM media_probes
+		WHERE COALESCE(video_codec, '') <> ''
+		GROUP BY video_codec
+		ORDER BY n DESC
+		LIMIT 32
+	`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return CodecBreakdown{}, err
+	}
+	defer rows.Close()
+	out := CodecBreakdown{VideoCodecs: []CodecCount{}}
+	for rows.Next() {
+		var c CodecCount
+		if err := rows.Scan(&c.Codec, &c.Count); err != nil {
+			return CodecBreakdown{}, err
+		}
+		out.VideoCodecs = append(out.VideoCodecs, c)
+		out.Total += c.Count
+	}
+	if err := rows.Err(); err != nil {
+		return CodecBreakdown{}, err
+	}
+	return out, nil
 }
 
 // RatingOrder returns a numeric order for a content rating string, allowing
