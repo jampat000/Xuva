@@ -23,6 +23,7 @@ export type Media = {
   parentKind?: string;      // For Continue Watching: "movie" or "series"
   contentRating?: string;   // Parental rating: G, PG, PG-13, R, NC-17, TV-MA, etc.
   needsReview?: boolean;    // Flagged as needing metadata review
+  probed?: boolean;         // false = no media source has been analysed yet
   versionCount?: number;    // Number of media files for this title
   addedAt?: string;         // ISO date when item was first scanned into library
   watched?: boolean;        // True if any version has been marked watched
