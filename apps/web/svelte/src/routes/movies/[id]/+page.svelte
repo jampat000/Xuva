@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import {
     Play, Plus, Check, Star, Clock, ChevronLeft, User, Film,
-    Clapperboard, X, Shield,
+    Clapperboard, X, Shield, Volume2, Captions, FileVideo, Gauge, Layers, Languages,
   } from 'lucide-svelte';
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import Header from '$lib/components/Header.svelte';
@@ -12,6 +12,7 @@
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getMovieDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
+  import { getMediaSourceDetail, getMediaSourceTracks, type MediaSourceItem, type ProbeTrack } from '$lib/api/details';
   import type { MovieDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -50,8 +51,44 @@
   const trailerPath = $derived(metadata?.trailerPath ?? '');
   const hasTrailer = $derived(!!(videoKey || trailerPath));
   const versionCount = $derived(detail?.versions?.length ?? 0);
-  const mediaSourceId = $derived(detail?.versions?.[0]?.mediaSourceId);
-  const qualityLabel = $derived(detail?.versions?.[0]?.qualityLabel ?? '');
+  const versions = $derived(detail?.versions ?? []);
+  // Selected version drives the "File Info" and Play button. Defaults to the
+  // first listed version (usually highest quality). Users with multiple versions
+  // (e.g. 1080p and 4K of the same movie) can click another card to switch.
+  let selectedVersionIdx = $state(0);
+  const selectedVersion = $derived(versions[selectedVersionIdx]);
+  const mediaSourceId = $derived(selectedVersion?.mediaSourceId);
+  const qualityLabel = $derived(selectedVersion?.qualityLabel ?? '');
+
+  // ── Per-version technical detail (codec, bitrate, tracks) ─────────────────
+  // Fetched in parallel with the metadata records once a mediaSourceId is known.
+  let mediaSource = $state<MediaSourceItem | null>(null);
+  let audioTracks = $state<ProbeTrack[]>([]);
+  let subtitleTracks = $state<ProbeTrack[]>([]);
+  let tracksLoading = $state(false);
+
+  // Re-fetch tracks + source detail whenever the selected version changes.
+  // Wrapped in an effect so switching versions in the UI reactively updates the
+  // File Info + Tracks panels without leaving stale data on screen.
+  $effect(() => {
+    const id = mediaSourceId;
+    if (!id) {
+      mediaSource = null; audioTracks = []; subtitleTracks = [];
+      return;
+    }
+    tracksLoading = true;
+    Promise.allSettled([getMediaSourceDetail(id), getMediaSourceTracks(id)])
+      .then(([src, tr]) => {
+        if (src.status === 'fulfilled') mediaSource = src.value; else mediaSource = null;
+        if (tr.status === 'fulfilled') {
+          audioTracks = tr.value.audioTracks ?? [];
+          subtitleTracks = tr.value.subtitleTracks ?? [];
+        } else {
+          audioTracks = []; subtitleTracks = [];
+        }
+      })
+      .finally(() => { tracksLoading = false; });
+  });
 
   // Credits
   const cast = $derived<MetadataCredit[]>(metadata?.cast ?? []);
@@ -172,6 +209,90 @@
   }
 
   onMount(load);
+
+  // ─── Formatting helpers (match the iOS DetailScreen style) ────────────────
+  function formatResolution(w?: number, h?: number): string {
+    if (!h) return '';
+    // Round to common bucket names. Treat anything within ±50px as the bucket.
+    if (h >= 2100) return '4K';
+    if (h >= 1000) return '1080p';
+    if (h >= 700)  return '720p';
+    if (h >= 400)  return '480p';
+    return `${w}×${h}`;
+  }
+  function formatBitrate(bps?: number): string {
+    if (!bps || bps <= 0) return '';
+    if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`;
+    if (bps >= 1_000) return `${Math.round(bps / 1_000)} kbps`;
+    return `${bps} bps`;
+  }
+  function formatChannels(n?: number): string {
+    if (!n || n <= 0) return '';
+    if (n === 1) return 'Mono';
+    if (n === 2) return 'Stereo';
+    if (n === 6) return '5.1';
+    if (n === 8) return '7.1';
+    return `${n}ch`;
+  }
+  function formatCodec(codec?: string): string {
+    if (!codec) return '';
+    // FFmpeg names → display names. Keep recognisable; uppercase short codes.
+    const map: Record<string, string> = {
+      h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4',
+      aac: 'AAC', ac3: 'AC3', eac3: 'E-AC3', dts: 'DTS', truehd: 'TrueHD',
+      flac: 'FLAC', mp3: 'MP3', opus: 'Opus', vorbis: 'Vorbis', alac: 'ALAC',
+      pgs: 'PGS', srt: 'SRT', subrip: 'SRT', webvtt: 'WebVTT', vtt: 'WebVTT',
+      ass: 'ASS', ssa: 'SSA', mov_text: 'MOV Text',
+      hdmv_pgs_subtitle: 'PGS', dvd_subtitle: 'VobSub', dvb_subtitle: 'DVB',
+    };
+    const lower = codec.toLowerCase();
+    return map[lower] ?? codec.toUpperCase();
+  }
+  function formatLanguage(code?: string): string {
+    if (!code) return '';
+    const c = code.toLowerCase();
+    const map: Record<string, string> = {
+      en: 'English', eng: 'English',
+      es: 'Spanish', spa: 'Spanish',
+      fr: 'French',  fre: 'French', fra: 'French',
+      de: 'German',  ger: 'German', deu: 'German',
+      it: 'Italian', ita: 'Italian',
+      ja: 'Japanese', jpn: 'Japanese',
+      ko: 'Korean',  kor: 'Korean',
+      zh: 'Chinese', chi: 'Chinese', zho: 'Chinese',
+      pt: 'Portuguese', por: 'Portuguese',
+      ru: 'Russian', rus: 'Russian',
+      hi: 'Hindi',   hin: 'Hindi',
+      ar: 'Arabic',  ara: 'Arabic',
+      nl: 'Dutch',   dut: 'Dutch', nld: 'Dutch',
+      sv: 'Swedish', swe: 'Swedish',
+      no: 'Norwegian', nor: 'Norwegian',
+      da: 'Danish',  dan: 'Danish',
+      fi: 'Finnish', fin: 'Finnish',
+      pl: 'Polish',  pol: 'Polish',
+      tr: 'Turkish', tur: 'Turkish',
+      he: 'Hebrew',  heb: 'Hebrew',
+      und: 'Unknown',
+    };
+    return map[c] ?? code.toUpperCase();
+  }
+  function formatFileSize(bytes?: number): string {
+    if (!bytes) return '';
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+    if (bytes >= 1_048_576) return `${Math.round(bytes / 1_048_576)} MB`;
+    return `${bytes} B`;
+  }
+
+  // Audio summary like the iOS displayAudioSummary: "AC3 5.1" or "AAC Stereo".
+  // Uses the FIRST audio track, since this is just the headline summary; the
+  // full per-track breakdown shows up in the Audio section below.
+  function audioSummary(tracks: ProbeTrack[]): string {
+    const first = tracks?.[0];
+    if (!first) return '';
+    const codec = formatCodec(first.codec);
+    const channels = formatChannels(first.channels);
+    return [codec, channels].filter(Boolean).join(' ');
+  }
 </script>
 
 <svelte:head>
@@ -377,6 +498,139 @@
                   {studio}
                 </span>
               {/each}
+            </div>
+          {/if}
+
+          <!-- ── Versions (only when multiple files exist for this movie) ─── -->
+          {#if versions.length > 1}
+            <div class="mt-10 border-t border-border pt-8">
+              <h3 class="font-serif-display text-lg tracking-tight text-foreground/90">Versions</h3>
+              <p class="mt-1 text-[12.5px] text-muted-foreground">
+                Pick which file plays. The file info and tracks below update to match your choice.
+              </p>
+              <div class="scrollbar-none mt-4 -mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+                {#each versions as v, idx (v.mediaSourceId ?? idx)}
+                  {@const isSelected = idx === selectedVersionIdx}
+                  <button type="button" onclick={() => { selectedVersionIdx = idx; }}
+                    class={`shrink-0 rounded-xl border p-4 text-left transition-all w-[220px] ${isSelected ? 'border-primary/60 bg-primary-glow/[0.08] ring-1 ring-primary/40' : 'border-border bg-surface/30 hover:bg-surface/50 hover:border-border/80'}`}>
+                    <div class="flex items-baseline justify-between gap-2">
+                      <span class="font-serif-display text-[15px] tracking-tight text-foreground/90 truncate">
+                        {v.qualityLabel || v.edition || `Version ${idx + 1}`}
+                      </span>
+                      {#if isSelected}<Check class="h-4 w-4 shrink-0 text-primary-glow" />{/if}
+                    </div>
+                    {#if v.edition && v.qualityLabel}
+                      <div class="mt-1 text-[11px] text-muted-foreground/80 truncate">{v.edition}</div>
+                    {/if}
+                    {#if v.sizeBytes}
+                      <div class="mt-2 text-[12px] text-foreground/55 tabular-nums">{formatFileSize(v.sizeBytes)}</div>
+                    {/if}
+                    {#if v.relPath}
+                      <div class="mt-1 truncate font-mono text-[10px] text-muted-foreground/55" title={v.relPath}>{v.relPath}</div>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- ── File Info pills (codec, resolution, bitrate, audio, container) -->
+          {#if mediaSource || audioTracks.length > 0}
+            {#if true}
+            {@const pills = [
+              { icon: FileVideo,  text: formatResolution(mediaSource?.width, mediaSource?.height) },
+              { icon: Film,       text: formatCodec(mediaSource?.videoCodec) },
+              { icon: Volume2,    text: audioSummary(audioTracks) },
+              { icon: Layers,     text: mediaSource?.container ? mediaSource.container.split(',')[0].toUpperCase() : '' },
+              { icon: Gauge,      text: formatBitrate(mediaSource?.bitrate) },
+              { icon: Captions,   text: subtitleTracks.length > 0 ? `${subtitleTracks.length} subtitle${subtitleTracks.length === 1 ? '' : 's'}` : '' },
+            ].filter(p => p.text)}
+            {#if pills.length > 0}
+              <div class="mt-10 border-t border-border pt-8">
+                <h3 class="font-serif-display text-lg tracking-tight text-foreground/90">File Info</h3>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  {#each pills as p, i (i)}
+                    <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-surface/40 px-3 py-1.5 text-[12px] text-foreground/75">
+                      <p.icon class="h-3.5 w-3.5 text-muted-foreground/70" />
+                      {p.text}
+                    </span>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            {/if}
+          {/if}
+
+          <!-- ── Audio & Subtitles (per-track list) ────────────────────────── -->
+          {#if audioTracks.length > 0 || subtitleTracks.length > 0}
+            <div class="mt-10 border-t border-border pt-8">
+              <h3 class="font-serif-display text-lg tracking-tight text-foreground/90">Audio &amp; Subtitles</h3>
+              <p class="mt-1 text-[12.5px] text-muted-foreground">
+                Pick a track when you press Play. Default-flagged tracks are used automatically.
+              </p>
+              <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <!-- Audio tracks -->
+                <div class="rounded-xl border border-border bg-surface/30 p-4">
+                  <div class="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    <Volume2 class="h-3.5 w-3.5" /> Audio · {audioTracks.length}
+                  </div>
+                  {#if audioTracks.length === 0}
+                    <p class="text-[12px] italic text-muted-foreground/60">No audio tracks detected.</p>
+                  {:else}
+                    <ul class="space-y-1.5">
+                      {#each audioTracks as t, i (t.index ?? i)}
+                        <li class="flex items-baseline gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-foreground/[0.025]">
+                          <span class="w-5 text-center text-[10px] tabular-nums text-muted-foreground/55">{(t.index ?? i + 1)}</span>
+                          <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                              <span class="text-[13px] font-medium text-foreground/90">{formatCodec(t.codec) || '—'}</span>
+                              {#if t.channels}<span class="text-[12px] text-foreground/65">{formatChannels(t.channels)}</span>{/if}
+                              {#if t.language}<span class="text-[12px] italic text-muted-foreground">· {formatLanguage(t.language)}</span>{/if}
+                              {#if t.title}<span class="truncate text-[11.5px] text-muted-foreground/70">· {t.title}</span>{/if}
+                            </div>
+                            <div class="mt-0.5 flex gap-1.5">
+                              {#if t.default}<span class="rounded bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary-glow">Default</span>{/if}
+                              {#if t.forced}<span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">Forced</span>{/if}
+                            </div>
+                          </div>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                </div>
+
+                <!-- Subtitle tracks -->
+                <div class="rounded-xl border border-border bg-surface/30 p-4">
+                  <div class="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    <Captions class="h-3.5 w-3.5" /> Subtitles · {subtitleTracks.length}
+                  </div>
+                  {#if subtitleTracks.length === 0}
+                    <p class="text-[12px] italic text-muted-foreground/60">No subtitle tracks. Drop an SRT next to the file to add one.</p>
+                  {:else}
+                    <ul class="space-y-1.5">
+                      {#each subtitleTracks as t, i (t.index ?? i)}
+                        <li class="flex items-baseline gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-foreground/[0.025]">
+                          <span class="w-5 text-center text-[10px] tabular-nums text-muted-foreground/55">{(t.index ?? i + 1)}</span>
+                          <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                              <span class="text-[13px] font-medium text-foreground/90">{formatLanguage(t.language) || formatCodec(t.codec) || '—'}</span>
+                              {#if t.language && t.codec}<span class="text-[11.5px] text-muted-foreground/65">· {formatCodec(t.codec)}</span>{/if}
+                              {#if t.title}<span class="truncate text-[11.5px] text-muted-foreground/70">· {t.title}</span>{/if}
+                            </div>
+                            <div class="mt-0.5 flex gap-1.5">
+                              {#if t.default}<span class="rounded bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary-glow">Default</span>{/if}
+                              {#if t.forced}<span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">Forced</span>{/if}
+                            </div>
+                          </div>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                </div>
+              </div>
+              {#if tracksLoading}
+                <p class="mt-3 text-[11px] italic text-muted-foreground/60">Loading tracks…</p>
+              {/if}
             </div>
           {/if}
 
