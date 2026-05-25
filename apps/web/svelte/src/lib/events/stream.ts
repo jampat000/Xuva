@@ -103,7 +103,21 @@ export class EventStream<TEvents extends Record<string, unknown> = XuvaEventPayl
 		};
 
 		source.onmessage = (event) => {
-			this.emit('message', parseEventPayload(event.data));
+			const payload = parseEventPayload(event.data);
+			// The server embeds the event type inside the JSON payload as `type`.
+			// Emit by that type first so typed subscribers fire, then also emit
+			// the generic 'message' event for any catch-all listeners.
+			const embeddedType =
+				typeof payload === 'object' &&
+				payload !== null &&
+				'type' in payload &&
+				typeof (payload as Record<string, unknown>).type === 'string'
+					? ((payload as Record<string, unknown>).type as string)
+					: null;
+			if (embeddedType) {
+				this.emit(embeddedType, payload);
+			}
+			this.emit('message', payload);
 		};
 
 		source.addEventListener('ready', (event) => {

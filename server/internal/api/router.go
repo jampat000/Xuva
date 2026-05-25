@@ -8656,7 +8656,7 @@ func eventsHandler(deps Deps) http.HandlerFunc {
 				if err != nil {
 					continue
 				}
-				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, payload)
+				fmt.Fprintf(w, "data: %s\n\n", payload)
 				flusher.Flush()
 			}
 		}
