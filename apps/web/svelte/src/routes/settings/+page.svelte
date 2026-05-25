@@ -1073,6 +1073,17 @@
     return `${bps} B/s`;
   }
 
+  // RAG colour for network throughput relative to link capacity.
+  // Returns green when idle/unknown, amber at ≥50%, red at ≥80%.
+  function netRagColor(bps: number | undefined, linkBps: number | undefined): string {
+    const green = 'oklch(0.78 0.22 145)';
+    if (!linkBps || bps == null || bps <= 0) return green;
+    const pct = bps / linkBps;
+    if (pct >= 0.8) return 'oklch(0.68 0.26 22)';
+    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';
+    return green;
+  }
+
   function computeParentPath(p: string): string | undefined {
     if (!p) return undefined;
     const hasBackslash = p.includes('\\');
@@ -1993,17 +2004,19 @@
               <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
               <div class="space-y-3.5">
                 <div>
-                  <div class="mb-1 text-[11px] font-medium tracking-wide text-emerald-300/75">RECV ↓</div>
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground">RECV ↓</div>
+                  {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
-                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 10px oklch(0.78 0.22 145 / 0.22);">
+                    style="color: {recvColor};">
                     {sysStatus?.network ? formatBps(sysStatus.network.receiveBps) : '—'}
                   </div>
                 </div>
                 <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 text-[11px] font-medium tracking-wide text-accent/85">XMIT ↑</div>
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground">XMIT ↑</div>
+                  {@const xmitColor = netRagColor(sysStatus?.network?.transmitBps, sysStatus?.network?.linkSpeedBps)}
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
-                    style="color: oklch(0.72 0.16 255); text-shadow: 0 0 10px oklch(0.72 0.16 255 / 0.22);">
+                    style="color: {xmitColor};">
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
