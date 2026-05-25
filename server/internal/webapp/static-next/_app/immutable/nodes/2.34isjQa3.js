@@ -1,0 +1,1 @@
+import{M as e,N as t,T as n,et as r}from"../chunks/CBzjmmxC.js";import"../chunks/C74-XmIn.js";function i(i,a){var o=t();n(r(o),()=>a.children),e(i,o)}export{i as component};
