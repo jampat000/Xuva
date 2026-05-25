@@ -43,6 +43,13 @@ export interface SystemStatusResponse {
 	network?: {
 		receiveBps?: number;
 		transmitBps?: number;
+		linkSpeedBps?: number;
+		interfaces?: Array<{
+			name?: string;
+			receiveBps?: number;
+			transmitBps?: number;
+			linkSpeedBps?: number;
+		}>;
 	};
 	disks?: Array<{
 		name?: string;

@@ -140,9 +140,10 @@ type mibIfRow struct {
 }
 
 type netCounters struct {
-	name    string
-	rxBytes uint64
-	txBytes uint64
+	name         string
+	rxBytes      uint64
+	txBytes      uint64
+	linkSpeedBps uint64
 }
 
 func networkStats() NetworkStats {
@@ -166,11 +167,16 @@ func networkStats() NetworkStats {
 		tx := rateBps(after.txBytes, before.txBytes, interval)
 		total.ReceiveBps += rx
 		total.TransmitBps += tx
-		total.Interfaces = append(total.Interfaces, NetworkInterfaceStat{
-			Name:        after.name,
-			ReceiveBps:  rx,
-			TransmitBps: tx,
-		})
+		iface := NetworkInterfaceStat{
+			Name:         after.name,
+			ReceiveBps:   rx,
+			TransmitBps:  tx,
+			LinkSpeedBps: after.linkSpeedBps,
+		}
+		total.Interfaces = append(total.Interfaces, iface)
+		if after.linkSpeedBps > total.LinkSpeedBps {
+			total.LinkSpeedBps = after.linkSpeedBps
+		}
 	}
 	return total
 }
@@ -199,10 +205,17 @@ func ifTable() (map[uint32]netCounters, bool) {
 		if name == "" {
 			name = string(row.Descr[:row.DescrLen])
 		}
+		// Speed is in bps; 0xFFFFFFFF is the Windows sentinel for >4.2Gbps
+		// (need GetIfEntry2 for those — we just report 0/unknown for now).
+		var speedBps uint64
+		if row.Speed != 0 && row.Speed != 0xFFFFFFFF {
+			speedBps = uint64(row.Speed)
+		}
 		output[row.Index] = netCounters{
-			name:    strings.TrimSpace(name),
-			rxBytes: uint64(row.InOctets),
-			txBytes: uint64(row.OutOctets),
+			name:         strings.TrimSpace(name),
+			rxBytes:      uint64(row.InOctets),
+			txBytes:      uint64(row.OutOctets),
+			linkSpeedBps: speedBps,
 		}
 	}
 	return output, true
