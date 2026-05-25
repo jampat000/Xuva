@@ -2042,9 +2042,11 @@
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
               <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
               <div class="space-y-3.5">
+                {#if true}
+                {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
+                {@const xmitColor = netRagColor(sysStatus?.network?.transmitBps, sysStatus?.network?.linkSpeedBps)}
                 <div>
                   <div class="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground">RECV ↓</div>
-                  {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
                     style="color: {recvColor};">
                     {sysStatus?.network ? formatBps(sysStatus.network.receiveBps) : '—'}
@@ -2053,12 +2055,12 @@
                 <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
                   <div class="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground">XMIT ↑</div>
-                  {@const xmitColor = netRagColor(sysStatus?.network?.transmitBps, sysStatus?.network?.linkSpeedBps)}
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
                     style="color: {xmitColor};">
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
+                {/if}
               </div>
             </div>
 
