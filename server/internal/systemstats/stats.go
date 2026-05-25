@@ -35,15 +35,17 @@ type ProcessStats struct {
 }
 
 type NetworkStats struct {
-	ReceiveBps  uint64                 `json:"receiveBps"`
-	TransmitBps uint64                 `json:"transmitBps"`
-	Interfaces  []NetworkInterfaceStat `json:"interfaces"`
+	ReceiveBps   uint64                 `json:"receiveBps"`
+	TransmitBps  uint64                 `json:"transmitBps"`
+	LinkSpeedBps uint64                 `json:"linkSpeedBps"` // max interface speed; 0 if unknown
+	Interfaces   []NetworkInterfaceStat `json:"interfaces"`
 }
 
 type NetworkInterfaceStat struct {
-	Name        string `json:"name"`
-	ReceiveBps  uint64 `json:"receiveBps"`
-	TransmitBps uint64 `json:"transmitBps"`
+	Name         string `json:"name"`
+	ReceiveBps   uint64 `json:"receiveBps"`
+	TransmitBps  uint64 `json:"transmitBps"`
+	LinkSpeedBps uint64 `json:"linkSpeedBps"` // 0 if unknown
 }
 
 type DiskStats struct {
