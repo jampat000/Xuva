@@ -1933,7 +1933,7 @@
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
                   style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {cpuOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashCpuPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
-                  font-family="ui-serif, Georgia, serif" font-size="32" font-weight="500"
+                  font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="30" font-weight="600" letter-spacing="-1.5"
                   style="fill: {dashHudColor(dashCpuPct)}; filter: drop-shadow(0 0 5px {dashHudColor(dashCpuPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashCpuPct}<tspan font-size="14" dx="1" dy="-6">%</tspan></text>
               </svg>
               {#if sysStatus?.cpu?.cores}
@@ -1952,7 +1952,7 @@
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
                   style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {memOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashMemPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
-                  font-family="ui-serif, Georgia, serif" font-size="32" font-weight="500"
+                  font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="30" font-weight="600" letter-spacing="-1.5"
                   style="fill: {dashHudColor(dashMemPct)}; filter: drop-shadow(0 0 5px {dashHudColor(dashMemPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashMemPct}<tspan font-size="14" dx="1" dy="-6">%</tspan></text>
               </svg>
               {#if sysStatus?.memory}
