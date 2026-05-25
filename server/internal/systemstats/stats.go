@@ -1,9 +1,13 @@
 package systemstats
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,6 +18,16 @@ type Snapshot struct {
 	Process     ProcessStats `json:"process"`
 	Network     NetworkStats `json:"network"`
 	Disks       []DiskStats  `json:"disks"`
+	GPU         *GPUStats    `json:"gpu,omitempty"`
+}
+
+// GPUStats carries real hardware GPU metrics (adapter name, utilization,
+// VRAM). Fields are zero/empty when the relevant data is unavailable.
+type GPUStats struct {
+	AdapterName    string  `json:"adapterName,omitempty"`
+	UtilizationPct float64 `json:"utilizationPct"`
+	VRAMUsedBytes  uint64  `json:"vramUsedBytes"`
+	VRAMTotalBytes uint64  `json:"vramTotalBytes"`
 }
 
 type CPUStats struct {
@@ -77,6 +91,7 @@ func Collect(paths map[string]string) Snapshot {
 		},
 		Network: networkStats(),
 		Disks:   []DiskStats{},
+		GPU:     gpuStats(),
 	}
 	dataRoot := volumeRoot(paths["data"])
 	for name, path := range paths {
@@ -120,6 +135,36 @@ func volumeRoot(path string) string {
 		return volume
 	}
 	return string(filepath.Separator)
+}
+
+// nvidiaGPUStats queries nvidia-smi for the first GPU's name, utilization,
+// and VRAM. Returns nil when nvidia-smi is not installed or the query fails.
+func nvidiaGPUStats() *GPUStats {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx,
+		"nvidia-smi",
+		"--query-gpu=name,utilization.gpu,memory.used,memory.total",
+		"--format=csv,noheader,nounits",
+	).Output()
+	if err != nil {
+		return nil
+	}
+	// Take the first GPU if multiple are present.
+	line := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)[0]
+	parts := strings.SplitN(line, ",", 4)
+	if len(parts) < 4 {
+		return nil
+	}
+	util, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	memUsedMiB, _ := strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64)
+	memTotalMiB, _ := strconv.ParseUint(strings.TrimSpace(parts[3]), 10, 64)
+	return &GPUStats{
+		AdapterName:    strings.TrimSpace(parts[0]),
+		UtilizationPct: util,
+		VRAMUsedBytes:  memUsedMiB * 1024 * 1024,
+		VRAMTotalBytes: memTotalMiB * 1024 * 1024,
+	}
 }
 
 func usedPercent(total uint64, free uint64) float64 {
