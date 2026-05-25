@@ -1878,18 +1878,21 @@
                     <ActivityRing probed={dashProbed} total={dashTotalFiles} size={68} />
                   </div>
                   <div class="min-w-0 flex-1 space-y-2">
+                    {#if true}
+                    {@const _pct = dashTotalFiles > 0 ? (dashUnprobed > 0 ? Math.min(99, Math.floor(dashProbed / dashTotalFiles * 100)) : 100) : 0}
                     <div class="flex items-baseline justify-between gap-2">
                       <div>
                         <span class="font-serif-display text-3xl leading-none tabular-nums tracking-tight">
-                          {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}
+                          {_pct}
                         </span><span class="ml-0.5 text-base text-muted-foreground/60">%</span>
                       </div>
                       <span class="text-[11px] text-muted-foreground/50 tabular-nums">{dashProbed.toLocaleString()} / {dashTotalFiles.toLocaleString()}</span>
                     </div>
                     <div class="h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
                       <div class="h-full rounded-full bg-primary-glow transition-all duration-700"
-                        style="width: {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}%"></div>
+                        style="width: {_pct}%"></div>
                     </div>
+                    {/if}
                     <div class="text-[11px] text-muted-foreground/60">files analysed</div>
                   </div>
                 </div>
