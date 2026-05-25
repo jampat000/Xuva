@@ -1981,10 +1981,10 @@
                     <span class="text-amber-400">Paused — session active</span>
                   {:else}
                     <span>Idle</span>
-                    {#if dashJobs?.scan?.lastRun}
-                      <span>·</span><span>{new Date(dashJobs.scan.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    {#if dashJobs?.scan?.lastRunAt}
+                      <span>·</span><span>{new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     {:else}<span>· Never run</span>{/if}
-                    {#if dashJobs?.scan?.nextRun}<span>·</span><span class="text-foreground/40">Next {new Date(dashJobs.scan.nextRun).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>{/if}
+                    {#if dashJobs?.scan?.nextRunAt}<span>·</span><span class="text-foreground/40">Next {new Date(dashJobs.scan.nextRunAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>{/if}
                   {/if}
                 </div>
               </div>
@@ -2037,7 +2037,7 @@
                     {#if metaSt === 'paused'}<span class="text-amber-400">Paused — session active</span>
                     {:else}
                       <span>Idle</span>
-                      {#if dashJobs?.metadata?.lastRun}<span>·</span><span>{new Date(dashJobs.metadata.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>{:else}<span>· Never run</span>{/if}
+                      {#if dashJobs?.metadata?.lastRunAt}<span>·</span><span>{new Date(dashJobs.metadata.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>{:else}<span>· Never run</span>{/if}
                     {/if}
                   </div>
                 {/if}
@@ -2089,7 +2089,7 @@
                     {:else}
                       {#if dashUnprobed > 0}<span class="text-amber-400">{dashUnprobed.toLocaleString()} files queued</span>
                       {:else}<span>Idle</span>{/if}
-                      {#if dashJobs?.probe?.lastRun}<span>·</span><span>{new Date(dashJobs.probe.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>{/if}
+                      {#if dashJobs?.probe?.lastRunAt}<span>·</span><span>{new Date(dashJobs.probe.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>{/if}
                     {/if}
                   </div>
                 {/if}
