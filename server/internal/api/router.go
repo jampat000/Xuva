@@ -4959,13 +4959,20 @@ func testHardwareEncoder(parent context.Context, ffmpegPath string, encoder stri
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
+	// 320x240 is safely above all encoder minimums (NVENC HEVC requires ≥128px
+	// each dimension; 128x72 triggered "Frame Dimension less than minimum").
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
-		"-f", "lavfi", "-i", "testsrc2=size=128x72:rate=1",
+		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=1",
 		"-frames:v", "1", "-an",
 		"-c:v", encoder,
-		"-f", "null", os.DevNull,
 	}
+	// QSV on Windows requires an explicit quality mode; without it the MFX
+	// session initialises but rejects the encode request.
+	if strings.HasSuffix(encoder, "_qsv") {
+		args = append(args, "-global_quality", "25")
+	}
+	args = append(args, "-f", "null", os.DevNull)
 	output, err := exec.CommandContext(ctx, ffmpegPath, args...).CombinedOutput()
 	result := map[string]any{
 		"ok":         err == nil && ctx.Err() == nil,
@@ -5021,8 +5028,18 @@ func detectHardwareEncoders(ffmpegPath string) ([]map[string]string, error) {
 		{"h264_videotoolbox", "H.264 VideoToolbox", "Apple VideoToolbox", "H.264"},
 		{"hevc_videotoolbox", "HEVC VideoToolbox", "Apple VideoToolbox", "HEVC"},
 	}
+	isWindows := runtime.GOOS == "windows"
+	isDarwin := runtime.GOOS == "darwin"
 	encoders := make([]map[string]string, 0)
 	for _, candidate := range candidates {
+		// VAAPI requires the Linux DRM/KMS subsystem — never works on Windows.
+		if strings.HasSuffix(candidate.id, "_vaapi") && isWindows {
+			continue
+		}
+		// VideoToolbox is macOS-only.
+		if strings.HasSuffix(candidate.id, "_videotoolbox") && !isDarwin {
+			continue
+		}
 		if strings.Contains(text, candidate.id) {
 			encoders = append(encoders, map[string]string{
 				"id":     candidate.id,
