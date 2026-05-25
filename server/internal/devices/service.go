@@ -78,13 +78,19 @@ func NewPersistentService(databaseService *database.Service) *Service {
 func (s *Service) Profiles() []Profile {
 	return []Profile{
 		{
-			ID:                "web",
-			Name:              "Web Player",
+			ID:   "web",
+			Name: "Web Player",
+			// Browsers play these natively or via MSE. We list them generously so
+			// the playback decision can pick "remux + audio-transcode" rather than
+			// a full video re-encode — same approach Plex/Jellyfin use for web.
+			// Container list is conservative (MP4 family) because remux always
+			// repackages to MP4 anyway; the bigger win is having the video codec
+			// accepted so canRemux() passes for HEVC sources.
 			Containers:        []string{"mp4", "mov", "webm"},
-			VideoCodecs:       []string{"h264", "av1", "vp9"},
-			AudioCodecs:       []string{"aac", "opus", "mp3"},
+			VideoCodecs:       []string{"h264", "hevc", "av1", "vp9"},
+			AudioCodecs:       []string{"aac", "ac3", "eac3", "opus", "mp3", "flac"},
 			SubtitleCodecs:    []string{"webvtt", "srt"},
-			MaxVideoBitDepth:  8,
+			MaxVideoBitDepth:  10,
 			MaxVideoFrameRate: 60,
 			SupportsHLS:       true,
 		},

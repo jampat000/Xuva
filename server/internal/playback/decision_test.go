@@ -44,7 +44,10 @@ func TestDecideSourceDefersUntilProbe(t *testing.T) {
 	}
 }
 
-func TestDecideSourceTranscodesUnsupportedVideo(t *testing.T) {
+func TestDecideSourceRemuxesHEVCInMatroska(t *testing.T) {
+	// HEVC in MKV on web used to trigger full VideoTranscode. Modern browsers
+	// can decode HEVC via MSE/fMP4, so the decision now picks Remux — only
+	// the container changes (MKV -> MP4), the video stream is copied through.
 	decision := NewService().DecideSource(context.Background(), Request{
 		MediaSourceID: "source-1",
 		ClientProfile: "web",
@@ -55,11 +58,39 @@ func TestDecideSourceTranscodesUnsupportedVideo(t *testing.T) {
 		Probed:        true,
 	})
 
-	if decision.Mode != VideoTranscode {
-		t.Fatalf("expected video transcode, got %q", decision.Mode)
+	if decision.Mode != Remux {
+		t.Fatalf("expected remux for HEVC in MKV on web, got %q", decision.Mode)
 	}
-	if decision.ReasonCode != "video_conversion_required" {
-		t.Fatalf("expected video conversion reason, got %q", decision.ReasonCode)
+	if decision.VideoAction != "copy" {
+		t.Fatalf("expected video copy, got %q", decision.VideoAction)
+	}
+}
+
+func TestDecideSourceUsesAudioTranscodeForDTSWithHEVC(t *testing.T) {
+	// HEVC video + DTS audio in MKV (Blu-ray remux profile) on web. DTS isn't
+	// browser-decodable but the video stream is. Decision should be
+	// AudioTranscode so the route handler picks the fast video-copy +
+	// audio-transcode pipeline (ModeRemuxAudio) instead of full re-encode.
+	decision := NewService().DecideSource(context.Background(), Request{
+		MediaSourceID: "source-1",
+		ClientProfile: "web",
+	}, SourceFacts{
+		MediaSourceID: "source-1",
+		Container:     "matroska,webm",
+		VideoCodec:    "hevc",
+		AudioCodec:    "dts",
+		AudioChannels: 6,
+		Probed:        true,
+	})
+
+	if decision.Mode != AudioTranscode {
+		t.Fatalf("expected audio transcode for HEVC+DTS, got %q", decision.Mode)
+	}
+	if decision.VideoAction != "copy" {
+		t.Fatalf("expected video copy, got %q", decision.VideoAction)
+	}
+	if decision.AudioAction != "transcode" {
+		t.Fatalf("expected audio transcode, got %q", decision.AudioAction)
 	}
 }
 

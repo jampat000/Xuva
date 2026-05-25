@@ -8169,9 +8169,17 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 		}
+		// Map the playback decision mode to a transcode pipeline. AudioTranscode
+		// (video plays as-is, only audio needs re-encoding — e.g. HEVC + DTS in
+		// an MKV) gets the fast ModeRemuxAudio path, which copies the video
+		// stream and only re-encodes audio. Starts streaming in seconds instead
+		// of minutes, matching Plex/Jellyfin behaviour for web playback.
 		mode := transcode.ModeTranscode
-		if decision.Mode == playback.Remux {
+		switch decision.Mode {
+		case playback.Remux:
 			mode = transcode.ModeRemux
+		case playback.AudioTranscode:
+			mode = transcode.ModeRemuxAudio
 		}
 		audioTrackIndex := resolvedAudioTrackIndex(r.Context(), deps, mediaSourceID, queryInt(r, "audioTrackIndex", 0))
 		if job, ok := deps.Transcode.FindCompleted(mediaSourceID, mode, audioTrackIndex); ok {
