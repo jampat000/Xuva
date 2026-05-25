@@ -1439,8 +1439,14 @@
       </aside>
 
       <div bind:this={mainRef} class="min-w-0">
+        <!-- Section header bar: pinned to min-h-[3.25rem] so it stays the
+             exact same height whether the section has Save/Discard buttons
+             (general/scanning/transcoding/storage/metadata/playback) or
+             not (dashboard/libraries/users/etc.). Previously it bounced
+             ~12px between sections because the button-bearing rows are
+             taller than the bare H2 row. -->
         <div
-          class={`sticky top-14 z-20 -mx-6 mb-4 flex items-center justify-between gap-4 border-b px-6 py-2.5 backdrop-blur-xl transition-colors md:top-14 md:-mx-12 md:px-12 lg:-mx-0 lg:px-0 ${
+          class={`sticky top-14 z-20 -mx-6 mb-4 flex min-h-[3.25rem] items-center justify-between gap-4 border-b px-6 py-2 backdrop-blur-xl transition-colors md:top-14 md:-mx-12 md:px-12 lg:-mx-0 lg:px-0 ${
             headerScrolled
               ? "border-border bg-background/80"
               : "border-transparent bg-transparent"
