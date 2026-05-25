@@ -13,6 +13,7 @@
   import { getMovieDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import { getMediaSourceDetail, getMediaSourceTracks, type MediaSourceItem, type ProbeTrack } from '$lib/api/details';
+  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary } from '$lib/utils/mediaFormat';
   import type { MovieDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -209,90 +210,6 @@
   }
 
   onMount(load);
-
-  // ─── Formatting helpers (match the iOS DetailScreen style) ────────────────
-  function formatResolution(w?: number, h?: number): string {
-    if (!h) return '';
-    // Round to common bucket names. Treat anything within ±50px as the bucket.
-    if (h >= 2100) return '4K';
-    if (h >= 1000) return '1080p';
-    if (h >= 700)  return '720p';
-    if (h >= 400)  return '480p';
-    return `${w}×${h}`;
-  }
-  function formatBitrate(bps?: number): string {
-    if (!bps || bps <= 0) return '';
-    if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`;
-    if (bps >= 1_000) return `${Math.round(bps / 1_000)} kbps`;
-    return `${bps} bps`;
-  }
-  function formatChannels(n?: number): string {
-    if (!n || n <= 0) return '';
-    if (n === 1) return 'Mono';
-    if (n === 2) return 'Stereo';
-    if (n === 6) return '5.1';
-    if (n === 8) return '7.1';
-    return `${n}ch`;
-  }
-  function formatCodec(codec?: string): string {
-    if (!codec) return '';
-    // FFmpeg names → display names. Keep recognisable; uppercase short codes.
-    const map: Record<string, string> = {
-      h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4',
-      aac: 'AAC', ac3: 'AC3', eac3: 'E-AC3', dts: 'DTS', truehd: 'TrueHD',
-      flac: 'FLAC', mp3: 'MP3', opus: 'Opus', vorbis: 'Vorbis', alac: 'ALAC',
-      pgs: 'PGS', srt: 'SRT', subrip: 'SRT', webvtt: 'WebVTT', vtt: 'WebVTT',
-      ass: 'ASS', ssa: 'SSA', mov_text: 'MOV Text',
-      hdmv_pgs_subtitle: 'PGS', dvd_subtitle: 'VobSub', dvb_subtitle: 'DVB',
-    };
-    const lower = codec.toLowerCase();
-    return map[lower] ?? codec.toUpperCase();
-  }
-  function formatLanguage(code?: string): string {
-    if (!code) return '';
-    const c = code.toLowerCase();
-    const map: Record<string, string> = {
-      en: 'English', eng: 'English',
-      es: 'Spanish', spa: 'Spanish',
-      fr: 'French',  fre: 'French', fra: 'French',
-      de: 'German',  ger: 'German', deu: 'German',
-      it: 'Italian', ita: 'Italian',
-      ja: 'Japanese', jpn: 'Japanese',
-      ko: 'Korean',  kor: 'Korean',
-      zh: 'Chinese', chi: 'Chinese', zho: 'Chinese',
-      pt: 'Portuguese', por: 'Portuguese',
-      ru: 'Russian', rus: 'Russian',
-      hi: 'Hindi',   hin: 'Hindi',
-      ar: 'Arabic',  ara: 'Arabic',
-      nl: 'Dutch',   dut: 'Dutch', nld: 'Dutch',
-      sv: 'Swedish', swe: 'Swedish',
-      no: 'Norwegian', nor: 'Norwegian',
-      da: 'Danish',  dan: 'Danish',
-      fi: 'Finnish', fin: 'Finnish',
-      pl: 'Polish',  pol: 'Polish',
-      tr: 'Turkish', tur: 'Turkish',
-      he: 'Hebrew',  heb: 'Hebrew',
-      und: 'Unknown',
-    };
-    return map[c] ?? code.toUpperCase();
-  }
-  function formatFileSize(bytes?: number): string {
-    if (!bytes) return '';
-    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
-    if (bytes >= 1_048_576) return `${Math.round(bytes / 1_048_576)} MB`;
-    return `${bytes} B`;
-  }
-
-  // Audio summary like the iOS displayAudioSummary: "AC3 5.1" or "AAC Stereo".
-  // Uses the FIRST audio track, since this is just the headline summary; the
-  // full per-track breakdown shows up in the Audio section below.
-  function audioSummary(tracks: ProbeTrack[]): string {
-    const first = tracks?.[0];
-    if (!first) return '';
-    const codec = formatCodec(first.codec);
-    const channels = formatChannels(first.channels);
-    return [codec, channels].filter(Boolean).join(' ');
-  }
 </script>
 
 <svelte:head>
