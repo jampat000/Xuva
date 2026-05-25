@@ -2120,8 +2120,29 @@
                     </div>
                   </div>
                 {/if}
-                {#if hwEncoder}
-                  <div class="mt-2 text-center text-[10px] text-foreground/45">{hwEncoder}</div>
+                <!-- Temperature + fan compact row -->
+                {#if gpuHW?.temperatureC != null || gpuHW?.fanSpeedPct != null}
+                  <div class="mt-2 flex items-center justify-between text-[10px]">
+                    {#if gpuHW?.temperatureC != null}
+                      <span class="tabular-nums font-semibold"
+                        style="color: {(gpuHW.temperatureC) >= 85 ? 'oklch(0.68 0.26 22)' : (gpuHW.temperatureC) >= 70 ? 'oklch(0.85 0.22 75)' : 'oklch(0.78 0.22 145)'}"
+                      >{Math.round(gpuHW.temperatureC)}°C</span>
+                    {/if}
+                    {#if gpuHW?.fanSpeedPct != null}
+                      <span class="tabular-nums text-foreground/45">{Math.round(gpuHW.fanSpeedPct)}% fan</span>
+                    {/if}
+                  </div>
+                {/if}
+                <!-- P-state + encoder badge row -->
+                {#if gpuHW?.performanceState || hwEncoder}
+                  <div class="mt-2 flex flex-wrap items-center justify-center gap-1">
+                    {#if gpuHW?.performanceState}
+                      <span class="rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-mono text-foreground/50">{gpuHW.performanceState}</span>
+                    {/if}
+                    {#if hwEncoder}
+                      <span class="rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] text-foreground/45">{hwEncoder}</span>
+                    {/if}
+                  </div>
                 {/if}
               {:else}
                 <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4 text-center">
@@ -2133,6 +2154,98 @@
               {/if}
             </div>
           </div>
+
+          <!-- ── GPU Details ─────────────────────────────────────────────────── -->
+          {#if gpuHW && (gpuHW.powerDrawW != null || gpuHW.encoderPct != null || gpuHW.clockGraphicsMHz != null)}
+            <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">
+              <div class="mb-4 font-serif-display text-[15px] tracking-tight text-foreground/75">GPU Details</div>
+              <div class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+                {#if gpuHW.powerDrawW != null}
+                  {#if true}
+                    {@const powerPct = gpuHW.powerLimitW ? Math.min(100, (gpuHW.powerDrawW / gpuHW.powerLimitW) * 100) : 0}
+                    <div>
+                      <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                        <span class="text-foreground/50">Power</span>
+                        <span class="tabular-nums font-medium text-foreground/70">
+                          {gpuHW.powerDrawW.toFixed(1)} W{gpuHW.powerLimitW != null ? ` / ${Math.round(gpuHW.powerLimitW)} W` : ''}
+                        </span>
+                      </div>
+                      {#if gpuHW.powerLimitW != null}
+                        <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                          <div class="h-full rounded-full transition-[width] duration-1000"
+                            style="width: {powerPct}%; background: {dashHudColor(powerPct, 75, 90)};"></div>
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                {/if}
+                {#if gpuHW.encoderPct != null}
+                  <div>
+                    <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                      <span class="text-foreground/50">Encoder</span>
+                      <span class="tabular-nums font-medium text-foreground/70">{Math.round(gpuHW.encoderPct)}%</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full transition-[width] duration-1000"
+                        style="width: {Math.max(1, Math.round(gpuHW.encoderPct))}%; background: oklch(0.74 0.2 280);"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.decoderPct != null}
+                  <div>
+                    <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                      <span class="text-foreground/50">Decoder</span>
+                      <span class="tabular-nums font-medium text-foreground/70">{Math.round(gpuHW.decoderPct)}%</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full transition-[width] duration-1000"
+                        style="width: {Math.max(1, Math.round(gpuHW.decoderPct))}%; background: oklch(0.74 0.2 280);"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.clockGraphicsMHz != null}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">Core clock</div>
+                    <div class="tabular-nums text-[13px] font-semibold text-foreground/75">
+                      {gpuHW.clockGraphicsMHz.toLocaleString()} <span class="text-[10px] font-normal text-foreground/40">MHz</span>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.clockMemoryMHz != null}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">Mem clock</div>
+                    <div class="tabular-nums text-[13px] font-semibold text-foreground/75">
+                      {gpuHW.clockMemoryMHz.toLocaleString()} <span class="text-[10px] font-normal text-foreground/40">MHz</span>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.encoderSessions != null}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">Enc. sessions</div>
+                    <div class="tabular-nums text-[13px] font-semibold text-foreground/75">{gpuHW.encoderSessions}</div>
+                  </div>
+                {/if}
+                {#if gpuHW.fanSpeedPct != null}
+                  <div>
+                    <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                      <span class="text-foreground/50">Fan</span>
+                      <span class="tabular-nums font-medium text-foreground/70">{Math.round(gpuHW.fanSpeedPct)}%</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full bg-foreground/25 transition-[width] duration-1000"
+                        style="width: {Math.round(gpuHW.fanSpeedPct)}%;"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.performanceState}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">P-state</div>
+                    <div class="font-mono text-[13px] font-semibold text-foreground/75">{gpuHW.performanceState}</div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
 
           <!-- ── Library Manifest ────────────────────────────────────────────── -->
           <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">

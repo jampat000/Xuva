@@ -67,6 +67,16 @@ export interface SystemStatusResponse {
 		utilizationPct?: number;
 		vramUsedBytes?: number;
 		vramTotalBytes?: number;
+		temperatureC?: number;
+		fanSpeedPct?: number;
+		powerDrawW?: number;
+		powerLimitW?: number;
+		encoderPct?: number;
+		decoderPct?: number;
+		clockGraphicsMHz?: number;
+		clockMemoryMHz?: number;
+		encoderSessions?: number;
+		performanceState?: string;
 	};
 }
 
