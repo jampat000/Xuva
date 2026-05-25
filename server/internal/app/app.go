@@ -305,6 +305,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 
 	// Start the three independent automation goroutines.
 	startScanAutomation(appCtx, getCfg, bus, scanService, sessionService, scanAuto, probeSignal)
+	startLibraryWatcher(appCtx, getCfg, bus, scanService, probeSignal)
 	startMetadataAutomation(appCtx, getCfg, bus, metadataService, sessionService, metaAuto)
 	startProbeAutomation(appCtx, getCfg, bus, probesService, sessionService, probeAuto, probeSignal)
 	discoveryService := discovery.NewService(cfg)
