@@ -107,6 +107,26 @@
     return `${bps.toFixed(0)} B/s`;
   }
 
+  function fmtLinkSpeed(bps: number | undefined | null): string {
+    if (!bps) return '';
+    if (bps >= 1_000_000_000) return `${(bps / 1_000_000_000).toFixed(0)} Gbps`;
+    if (bps >= 1_000_000)     return `${(bps / 1_000_000).toFixed(0)} Mbps`;
+    return `${(bps / 1_000).toFixed(0)} Kbps`;
+  }
+
+  function netRagColor(bps: number | undefined | null, linkBps: number | undefined | null): string {
+    if (!linkBps || !bps) return '';
+    const pct = bps / linkBps;
+    if (pct >= 0.8) return 'oklch(0.68 0.26 22)';  // red  — >80%
+    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';   // amber — 50–80%
+    return 'oklch(0.78 0.22 145)';                   // green — <50%
+  }
+
+  function netPct(bps: number | undefined | null, linkBps: number | undefined | null): string {
+    if (!linkBps || !bps) return '';
+    return `${Math.min(100, (bps / linkBps) * 100).toFixed(1)}%`;
+  }
+
   // ── Data refresh ───────────────────────────────────────────────────────────
   function stamp() { lastUpdatedAt = new Date().toLocaleTimeString(); }
 
@@ -309,22 +329,43 @@
 
         <!-- Network I/O -->
         <div class="hairline flex flex-col gap-3 rounded-2xl bg-surface/40 p-5">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Network I/O</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Network I/O</div>
+            {#if sys?.network?.linkSpeedBps}
+              <div class="text-[10px] tabular-nums text-muted-foreground">{fmtLinkSpeed(sys.network.linkSpeedBps)} link</div>
+            {/if}
+          </div>
           <div class="flex flex-1 flex-col justify-center gap-4 py-2">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
                 style="background: oklch(0.72 0.20 155 / 0.12); color: oklch(0.72 0.20 155)">↓</div>
-              <div>
-                <div class="font-semibold leading-none tabular-nums">{fmtBps(sys?.network?.receiveBps)}</div>
-                <div class="mt-0.5 text-[11px] text-muted-foreground">Receiving</div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-2">
+                  <div class="font-semibold leading-none tabular-nums"
+                    style={netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps) ? `color: ${netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps)}` : ''}>
+                    {fmtBps(sys?.network?.receiveBps)}
+                  </div>
+                  {#if sys?.network?.linkSpeedBps}
+                    <div class="text-[10px] tabular-nums text-muted-foreground">{netPct(sys.network.receiveBps, sys.network.linkSpeedBps)}</div>
+                  {/if}
+                </div>
+                <div class="mt-0.5 text-[11px] text-muted-foreground">RECV</div>
               </div>
             </div>
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
                 style="background: oklch(0.65 0.20 255 / 0.12); color: oklch(0.70 0.18 255)">↑</div>
-              <div>
-                <div class="font-semibold leading-none tabular-nums">{fmtBps(sys?.network?.transmitBps)}</div>
-                <div class="mt-0.5 text-[11px] text-muted-foreground">Transmitting</div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-2">
+                  <div class="font-semibold leading-none tabular-nums"
+                    style={netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps) ? `color: ${netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps)}` : ''}>
+                    {fmtBps(sys?.network?.transmitBps)}
+                  </div>
+                  {#if sys?.network?.linkSpeedBps}
+                    <div class="text-[10px] tabular-nums text-muted-foreground">{netPct(sys.network.transmitBps, sys.network.linkSpeedBps)}</div>
+                  {/if}
+                </div>
+                <div class="mt-0.5 text-[11px] text-muted-foreground">XMIT</div>
               </div>
             </div>
           </div>
