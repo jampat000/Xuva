@@ -7,7 +7,7 @@
   } from 'lucide-svelte';
   import RouteBadge from './RouteBadge.svelte';
   import TrackMenu from './TrackMenu.svelte';
-  import QualityMenu, { type QualityOption } from './QualityMenu.svelte';
+  import { type QualityOption } from './QualityMenu.svelte';
 
   // Local copy of the quality ladder (mirrors QualityMenu.QUALITY_OPTIONS)
   const QUALITY_OPTIONS: QualityOption[] = [
@@ -19,7 +19,9 @@
     { id: '720p', label: 'HD', sublabel: '720p · ~4 Mbps' },
     { id: '480p', label: 'Standard', sublabel: '480p · ~1.5 Mbps' },
   ];
-  import Inspector from './Inspector.svelte';
+  // Inspector + KeyboardShortcuts overlay removed in the player simplification
+  // pass (PR for issue: "player is too complicated"). Codec/bitrate diagnostics
+  // moved to the movie/TV detail page.
   import type {
     PlaybackRouteResponse, PlaybackDecisionResponse,
     MediaSourceItem, ProbeTrack, PlaybackStateResponse
@@ -89,11 +91,8 @@
   // ─── UI state ─────────────────────────────────────────────────────────────
   let controlsVisible = $state(true);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
-  let showInspector = $state(false);
   let showAudioMenu = $state(false);
   let showSubMenu = $state(false);
-  let showQualityMenu = $state(false);
-  let showShortcuts = $state(false);
   let activeQualityId = $state('auto');
   let resumeToast = $state<string | null>(null);
   let seekToast = $state<string | null>(null);
@@ -144,7 +143,7 @@
     if (hideTimer) clearTimeout(hideTimer);
     if (!paused) {
       hideTimer = setTimeout(() => {
-        if (!showAudioMenu && !showSubMenu && !showQualityMenu) {
+        if (!showAudioMenu && !showSubMenu) {
           controlsVisible = false;
         }
       }, 2500);
@@ -271,10 +270,12 @@
     await loadSource(newRoute, captured);
   }
 
+  // switchQuality is kept (unused by the UI now that the picker is removed)
+  // because it's invoked indirectly by the adaptive HLS layer to reflect the
+  // currently-selected variant. Removing it would break the auto badge.
   async function switchQuality(qualityId: string) {
     if (!videoEl || !isAdaptive) return;
     const captured = videoEl.currentTime;
-    showQualityMenu = false;
     activeQualityId = qualityId;
 
     // Map quality ID to max bitrate
@@ -593,37 +594,17 @@
         e.preventDefault();
         toggleFullscreen();
         break;
-      case 'i':
-      case 'I':
-        e.preventDefault();
-        showInspector = !showInspector;
-        if (showInspector) keepControlsVisible();
-        break;
       case 'c':
       case 'C':
+        // Keep the subtitles shortcut — it's the most-used menu and 'C' is
+        // the long-standing convention (YouTube, VLC, native browser players).
         e.preventDefault();
         showSubMenu = !showSubMenu;
         showAudioMenu = false;
-        showQualityMenu = false;
-        break;
-      case 'a':
-      case 'A':
-        e.preventDefault();
-        showAudioMenu = !showAudioMenu;
-        showSubMenu = false;
-        showQualityMenu = false;
-        break;
-      case '?':
-        e.preventDefault();
-        showShortcuts = !showShortcuts;
-        if (showShortcuts) keepControlsVisible();
         break;
       case 'Escape':
-        if (showShortcuts) { showShortcuts = false; break; }
         showAudioMenu = false;
         showSubMenu = false;
-        showQualityMenu = false;
-        showInspector = false;
         break;
       case '0': case '1': case '2': case '3': case '4':
       case '5': case '6': case '7': case '8': case '9':
@@ -869,13 +850,6 @@
         <a href={backHref} class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20">
           ← Back
         </a>
-        <button
-          type="button"
-          onclick={() => { showInspector = true; }}
-          class="rounded-full bg-white/10 px-6 py-2.5 text-sm text-white/70 transition-colors hover:bg-white/20 hover:text-white"
-        >
-          View decision details
-        </button>
       </div>
     </div>
   {/if}
@@ -1141,7 +1115,7 @@
         {#if subtitleTracks.length > 0}
           <div class="relative">
             <button
-              onclick={(e) => { e.stopPropagation(); showSubMenu = !showSubMenu; showAudioMenu = false; showQualityMenu = false; }}
+              onclick={(e) => { e.stopPropagation(); showSubMenu = !showSubMenu; showAudioMenu = false; }}
               class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${activeSubtitleIndex !== null ? 'text-white' : 'text-white/50'}`}
               aria-label="Subtitles"
               aria-expanded={showSubMenu}
@@ -1163,7 +1137,7 @@
         {#if audioTracks.length > 1}
           <div class="relative">
             <button
-              onclick={(e) => { e.stopPropagation(); showAudioMenu = !showAudioMenu; showSubMenu = false; showQualityMenu = false; }}
+              onclick={(e) => { e.stopPropagation(); showAudioMenu = !showAudioMenu; showSubMenu = false; }}
               class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showAudioMenu ? 'text-white' : 'text-white/50'}`}
               aria-label="Audio track"
               aria-expanded={showAudioMenu}
@@ -1181,26 +1155,11 @@
           </div>
         {/if}
 
-        <!-- Quality -->
-        {#if isAdaptive || (qualityOptions().length > 2)}
-          <div class="relative">
-            <button
-              onclick={(e) => { e.stopPropagation(); showQualityMenu = !showQualityMenu; showAudioMenu = false; showSubMenu = false; }}
-              class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showQualityMenu ? 'text-white' : 'text-white/50'}`}
-              aria-label="Quality"
-              aria-expanded={showQualityMenu}
-            >
-              <Settings class="h-4 w-4" />
-            </button>
-            <QualityMenu
-              open={showQualityMenu}
-              options={qualityOptions()}
-              activeId={activeQualityId}
-              onSelect={switchQuality}
-              onClose={() => { showQualityMenu = false; }}
-            />
-          </div>
-        {/if}
+        <!-- Quality picker intentionally removed (Netflix-style simplicity).
+             Adaptive streaming auto-selects quality based on bandwidth, which
+             is what we want 99% of the time. When direct play / direct stream
+             is used, there's no quality choice to make anyway. Power users
+             with strong opinions can pick a version on the detail page. -->
 
         <!-- Fullscreen -->
         <button
@@ -1218,73 +1177,11 @@
     </div>
   </div>
 
-  <!-- ─── INSPECTOR PANEL ───────────────────────────────────────────────── -->
-  <Inspector
-    open={showInspector}
-    {decision}
-    {mediaSource}
-    positionSeconds={currentTime}
-    durationSeconds={duration}
-    onClose={() => { showInspector = false; }}
-  />
+  <!-- Inspector panel removed — was a developer/debug tool that showed
+       playback decision codes, codecs, and bitrates. That info now lives on
+       the movie/TV detail page where it belongs (File Info pills + Audio
+       and Subtitles cards).
 
-  <!-- ─── KEYBOARD SHORTCUTS PANEL ────────────────────────────────────────── -->
-  {#if showShortcuts}
-    <!-- Backdrop -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onclick={(e) => { if (e.target === e.currentTarget) showShortcuts = false; }}
-    >
-      <div
-        class="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#0e0e0e]/95 shadow-2xl"
-        onclick={(e) => e.stopPropagation()}
-        role="dialog"
-        tabindex="-1"
-        aria-label="Keyboard shortcuts"
-      >
-        <!-- Header -->
-        <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <span class="text-sm font-semibold text-white">Keyboard Shortcuts</span>
-          <button
-            onclick={() => { showShortcuts = false; }}
-            class="flex h-7 w-7 items-center justify-center rounded-full text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label="Close"
-          >✕</button>
-        </div>
-
-        <!-- Shortcut rows -->
-        <div class="divide-y divide-white/[0.06] px-5 py-2">
-          {#each [
-            { keys: ['Space', 'K'], label: 'Play / Pause' },
-            { keys: ['J'], label: 'Rewind 10 s' },
-            { keys: ['L'], label: 'Forward 10 s' },
-            { keys: ['←', '→'], label: 'Skip ±10 s' },
-            { keys: ['⇧←', '⇧→'], label: 'Skip ±30 s' },
-            { keys: ['↑', '↓'], label: 'Volume ±10%' },
-            { keys: ['M'], label: 'Mute / Unmute' },
-            { keys: ['F'], label: 'Fullscreen' },
-            { keys: ['C'], label: 'Subtitles' },
-            { keys: ['A'], label: 'Audio track' },
-            { keys: ['0–9'], label: 'Jump to 0%–90%' },
-            { keys: ['?'], label: 'This panel' },
-          ] as row (row.label)}
-            <div class="flex items-center justify-between py-2.5">
-              <span class="text-sm text-white/70">{row.label}</span>
-              <div class="flex items-center gap-1.5">
-                {#each row.keys as k (k)}
-                  <kbd class="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-mono text-[11px] text-white/90">{k}</kbd>
-                {/each}
-              </div>
-            </div>
-          {/each}
-        </div>
-
-        <div class="border-t border-white/10 px-5 py-3 text-center text-[11px] text-white/30">
-          Press <kbd class="rounded border border-white/15 bg-white/10 px-1.5 font-mono text-[10px] text-white/40">Esc</kbd> or click outside to close
-        </div>
-      </div>
-    </div>
-  {/if}
+       Keyboard-shortcuts overlay also removed. Remaining shortcuts
+       (Space/K, arrows, M, F, C, Esc) are conventional. -->
 </div>
