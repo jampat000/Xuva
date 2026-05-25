@@ -281,8 +281,12 @@
   }
 
   // ─── Flight deck HUD helpers ──────────────────────────────────────────────
-  const _HARC_R   = 50;
-  const _HARC_LEN = Math.PI * _HARC_R; // ≈ 157.08 — semi-circle arc length
+  // Full-circle gauge dimensions. Switched from semicircle arc to a complete
+  // ring because the semicircle's text overlay was hiding most of the arc on
+  // some viewports — the ring keeps the % text inside the ring without ever
+  // overlapping the stroke.
+  const _RING_R    = 42;
+  const _RING_CIRC = 2 * Math.PI * _RING_R; // ≈ 263.89 — full circle length
   // RAG (Red/Amber/Green) gauge fill — used for CPU/RAM where load semantics matter.
   function dashHudColor(pct: number, warnAt = 70, critAt = 90): string {
     if (pct >= critAt) return 'oklch(0.68 0.26 22)';   // critical red
@@ -1041,16 +1045,29 @@
   });
 
   // ─── Utility helpers ───────────────────────────────────────────────────────
+  // Binary (1024-based) scale — files, RAM, disk. PB ceiling because
+  // beyond that we're in storage-array territory and 73 PB displaying as
+  // "73 PB" reads better than "73000 TB" anyway.
   function formatBytes(bytes?: number): string {
     if (bytes === undefined || bytes === null) return '—';
-    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
-    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
-    if (bytes >= 1_024) return `${(bytes / 1_024).toFixed(0)} KB`;
+    const PB = 1_125_899_906_842_624;     // 1024^5
+    const TB = 1_099_511_627_776;          // 1024^4
+    const GB = 1_073_741_824;              // 1024^3
+    const MB = 1_048_576;
+    const KB = 1_024;
+    if (bytes >= PB) return `${(bytes / PB).toFixed(2)} PB`;
+    if (bytes >= TB) return `${(bytes / TB).toFixed(2)} TB`;
+    if (bytes >= GB) return `${(bytes / GB).toFixed(1)} GB`;
+    if (bytes >= MB) return `${(bytes / MB).toFixed(0)} MB`;
+    if (bytes >= KB) return `${(bytes / KB).toFixed(0)} KB`;
     return `${bytes} B`;
   }
 
+  // SI (1000-based) scale — network throughput conventionally uses decimal
+  // units. GB/s included for completeness on fast LAN / 10GbE.
   function formatBps(bps?: number): string {
     if (!bps) return '0 B/s';
+    if (bps >= 1_000_000_000) return `${(bps / 1_000_000_000).toFixed(2)} GB/s`;
     if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} MB/s`;
     if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
     return `${bps} B/s`;
@@ -1929,37 +1946,39 @@
           <!-- ── Instrument Cluster ──────────────────────────────────────────── -->
           <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
 
-            <!-- CPU Gauge -->
+            <!-- CPU Gauge — full-circle ring, % in middle -->
             {#if true}
-            {@const cpuOffset = _HARC_LEN * (1 - dashCpuPct / 100)}
+            {@const cpuOffset = _RING_CIRC * (1 - dashCpuPct / 100)}
             <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
-              <div class="mb-1 font-serif-display text-[15px] tracking-tight text-foreground/75">CPU Load</div>
-              <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="butt"/>
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="butt"
-                  style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {cpuOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashCpuPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
-                <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
-                  font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="30" font-weight="600" letter-spacing="-1.5"
-                  style="fill: {dashHudColor(dashCpuPct)}; filter: drop-shadow(0 0 5px {dashHudColor(dashCpuPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashCpuPct}<tspan font-size="14" dx="1" dy="-6">%</tspan></text>
+              <div class="mb-2 font-serif-display text-[15px] tracking-tight text-foreground/75">CPU Load</div>
+              <svg viewBox="0 0 100 100" class="w-full max-w-[110px]" style="aspect-ratio: 1 / 1;">
+                <!-- Background ring -->
+                <circle cx="50" cy="50" r={_RING_R} fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="8"/>
+                <!-- Progress ring — rotated -90° so the fill starts at 12 o'clock and goes clockwise -->
+                <circle cx="50" cy="50" r={_RING_R} fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 50 50)"
+                  style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_RING_CIRC}; stroke-dashoffset: {cpuOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashCpuPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
+                <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                  font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="26" font-weight="600" letter-spacing="-1.2"
+                  style="fill: {dashHudColor(dashCpuPct)}; transition: fill 0.5s ease;">{dashCpuPct}<tspan font-size="13" dx="1" dy="-4">%</tspan></text>
               </svg>
               {#if sysStatus?.cpu?.cores}
-                <div class="mt-1 text-[12px] text-foreground/55">{sysStatus.cpu.cores} cores</div>
+                <div class="mt-2 text-[12px] text-foreground/55">{sysStatus.cpu.cores} cores</div>
               {/if}
             </div>
             {/if}
 
-            <!-- RAM Gauge -->
+            <!-- RAM Gauge — full-circle ring, % in middle -->
             {#if true}
-            {@const memOffset = _HARC_LEN * (1 - dashMemPct / 100)}
+            {@const memOffset = _RING_CIRC * (1 - dashMemPct / 100)}
             <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
-              <div class="mb-1 font-serif-display text-[15px] tracking-tight text-foreground/75">Memory</div>
-              <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7" stroke-linecap="butt"/>
-                <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="butt"
-                  style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {memOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashMemPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
-                <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
-                  font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="30" font-weight="600" letter-spacing="-1.5"
-                  style="fill: {dashHudColor(dashMemPct)}; filter: drop-shadow(0 0 5px {dashHudColor(dashMemPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashMemPct}<tspan font-size="14" dx="1" dy="-6">%</tspan></text>
+              <div class="mb-2 font-serif-display text-[15px] tracking-tight text-foreground/75">Memory</div>
+              <svg viewBox="0 0 100 100" class="w-full max-w-[110px]" style="aspect-ratio: 1 / 1;">
+                <circle cx="50" cy="50" r={_RING_R} fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="8"/>
+                <circle cx="50" cy="50" r={_RING_R} fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 50 50)"
+                  style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_RING_CIRC}; stroke-dashoffset: {memOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashMemPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
+                <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                  font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="26" font-weight="600" letter-spacing="-1.2"
+                  style="fill: {dashHudColor(dashMemPct)}; transition: fill 0.5s ease;">{dashMemPct}<tspan font-size="13" dx="1" dy="-4">%</tspan></text>
               </svg>
               {#if sysStatus?.memory}
                 <div class="mt-1 text-[12px] text-foreground/55">
@@ -2054,6 +2073,12 @@
               {#if dashTotalFiles > 0}
                 {#if true}
                 {@const _pct = dashUnprobed > 0 ? Math.min(99, Math.floor(dashProbed / dashTotalFiles * 100)) : 100}
+                <!-- RAG semantics: 100% analysed = green (everything ready
+                     to play), partial = amber (work still to do), 0% = red
+                     (nothing analysed yet). -->
+                {@const _pctColor = _pct >= 100 ? 'oklch(0.78 0.22 145)'
+                                  : _pct >= 50  ? 'oklch(0.85 0.22 75)'
+                                  :               'oklch(0.68 0.26 22)'}
                 <div class="flex items-center gap-5 mb-4">
                   <div class="shrink-0">
                     <ActivityRing probed={dashProbed} total={dashTotalFiles} size={72} />
@@ -2061,13 +2086,13 @@
                   <div class="flex-1 min-w-0">
                     <div class="flex items-baseline gap-1.5 mb-2">
                       <span class="font-serif-display text-6xl font-medium leading-none tabular-nums tracking-tight"
-                        style="color: oklch(0.74 0.2 280); text-shadow: 0 0 14px oklch(0.74 0.2 280 / 0.25);">{_pct}</span>
+                        style={`color: ${_pctColor}; text-shadow: 0 0 14px ${_pctColor.replace(')', ' / 0.25)')};`}>{_pct}</span>
                       <span class="font-serif-display text-xl text-foreground/55">%</span>
                       <span class="ml-2 text-[12px] italic text-foreground/60">analysed</span>
                     </div>
                     <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/[0.06] mb-2">
                       <div class="h-full rounded-full transition-all duration-700"
-                        style="width: {_pct}%; background: oklch(0.74 0.2 280 / 0.65);"></div>
+                        style={`width: ${_pct}%; background: ${_pctColor.replace(')', ' / 0.65)')};`}></div>
                     </div>
                     <div class="text-[12px] tabular-nums text-foreground/55">
                       {dashProbed.toLocaleString()} of {dashTotalFiles.toLocaleString()} files
