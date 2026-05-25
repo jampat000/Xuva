@@ -456,6 +456,21 @@ func (s *Service) FindActive(mediaSourceID string, mode Mode, audioTrackIndex in
 	return Job{}, false
 }
 
+// FindAnyActiveTranscode returns the first queued, running, or streaming
+// ModeTranscode job for the given media source, regardless of audio track.
+// Used by the session enrichment path to tag sessions with the encoder label.
+func (s *Service) FindAnyActiveTranscode(mediaSourceID string) (Job, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, job := range s.jobs {
+		if job.MediaSourceID == mediaSourceID && job.Mode == ModeTranscode &&
+			(job.Status == StatusQueued || job.Status == StatusRunning || job.Status == StatusStreaming) {
+			return job, true
+		}
+	}
+	return Job{}, false
+}
+
 // ReapIdleJobs scans active jobs and cancels any whose LastAccessedAt is
 // older than idleTimeout. Called periodically from the background reaper
 // goroutine started by RunReaper. Returns the IDs of jobs cancelled so

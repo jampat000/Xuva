@@ -31,6 +31,7 @@ type Session struct {
 	Mode           string            `json:"mode"`
 	ReasonCode     string            `json:"reasonCode,omitempty"`
 	ReasonText     string            `json:"reasonText,omitempty"`
+	EncoderLabel   string            `json:"encoderLabel,omitempty"`
 	SelectedTracks map[string]string `json:"selectedTracks,omitempty"`
 	RouteHistory   []RouteChange     `json:"routeHistory,omitempty"`
 	Status         string            `json:"status"`
@@ -85,6 +86,7 @@ type StartRequest struct {
 	Mode            string            `json:"mode"`
 	ReasonCode      string            `json:"reasonCode"`
 	ReasonText      string            `json:"reasonText"`
+	EncoderLabel    string            `json:"encoderLabel,omitempty"`
 	SelectedTracks  map[string]string `json:"selectedTracks"`
 	ProgressSeconds float64           `json:"progressSeconds"`
 	DurationSeconds float64           `json:"durationSeconds"`
@@ -154,6 +156,7 @@ func (s *Service) Start(request StartRequest) (Session, error) {
 		Mode:           request.Mode,
 		ReasonCode:     request.ReasonCode,
 		ReasonText:     request.ReasonText,
+		EncoderLabel:   request.EncoderLabel,
 		SelectedTracks: cloneMap(request.SelectedTracks),
 		Status:         "playing",
 		Progress:       nonNegative(request.ProgressSeconds),
