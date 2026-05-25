@@ -1738,15 +1738,26 @@
           </div>
 
         {:else if active === "dashboard"}
-          <!-- ── Header row ─────────────────────────────────────────── -->
+          <!-- ─── Status bar ─────────────────────────────────────────── -->
           <div class="mb-8 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-              <span class="hairline inline-flex items-center gap-2 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.25em] {healthAccent}">
-                <span class="h-1.5 w-1.5 rounded-full {healthDotAccent}"></span>
-                {healthStatus}
-              </span>
+              <div class="inline-flex items-center gap-2 rounded-full border border-border/50 bg-surface/50 px-3 py-1.5 backdrop-blur-sm">
+                <span class="relative flex h-2 w-2">
+                  {#if healthStatus === 'Healthy'}
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+                    <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
+                  {:else if healthStatus === 'Warning'}
+                    <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
+                  {:else if healthStatus === 'Offline'}
+                    <span class="relative inline-flex h-2 w-2 rounded-full bg-red-400"></span>
+                  {:else}
+                    <span class="relative inline-flex h-2 w-2 rounded-full bg-foreground/20"></span>
+                  {/if}
+                </span>
+                <span class="text-[11px] font-semibold {healthAccent}">{healthStatus}</span>
+              </div>
               {#if dashUpdatedAt}
-                <span class="text-[11px] text-muted-foreground">Updated {dashUpdatedAt}</span>
+                <span class="text-[11px] text-muted-foreground/50">Updated {dashUpdatedAt}</span>
               {/if}
             </div>
             <div class="flex items-center gap-2">
@@ -1754,384 +1765,418 @@
                 type="button"
                 onclick={() => { loadDashboard(); refreshDashJobs(); refreshDashHealth(); }}
                 disabled={dashLoading}
-                class="hairline inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface/40 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-surface hover:text-foreground disabled:opacity-40"
               >
                 <RefreshCw class="h-3 w-3 {dashLoading ? 'animate-spin' : ''}" /> Refresh
               </button>
               <button
                 type="button"
-                onclick={() => { handleDashScanNow(); }}
+                onclick={handleDashScanNow}
                 disabled={dashScanBusy}
-                class="inline-flex items-center gap-1.5 rounded-full bg-gradient-primary px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-4 py-1.5 text-[11px] font-semibold text-white shadow-glow transition hover:brightness-110 disabled:opacity-60"
               >
                 {#if dashScanBusy}
-                  <span class="h-2.5 w-2.5 animate-spin rounded-full border border-white/40 border-t-white"></span>
+                  <span class="h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"></span>
+                {:else}
+                  <ScanSearch class="h-3 w-3" />
                 {/if}
                 Scan Now
               </button>
             </div>
           </div>
 
-          <!-- ── Library stats ──────────────────────────────────────── -->
-          <section class="mb-8">
-            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Library</div>
-            <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
-              {#each [
-                { label: 'Movies',   value: catalogSummary?.movies   ?? 0, warn: false },
-                { label: 'TV Shows', value: catalogSummary?.series   ?? 0, warn: false },
-                { label: 'Episodes', value: catalogSummary?.episodes ?? 0, warn: false },
-                { label: 'Files',    value: dashTotalFiles,                warn: false },
-                { label: 'Unprobed', value: dashUnprobed,                  warn: dashUnprobed > 0 },
-                { label: 'Sessions', value: activeSessions.length,         warn: false },
-              ] as s}
-                <div class="hairline rounded-xl bg-surface/40 p-3 {s.warn ? 'border-amber-400/30 bg-amber-400/[0.04]' : ''}">
-                  <div class="text-xl font-bold leading-none tabular-nums {s.warn ? 'text-amber-400' : ''}">{s.value.toLocaleString()}</div>
-                  <div class="mt-1.5 text-[11px] text-muted-foreground">{s.label}</div>
+          <!-- ─── KPI tiles ──────────────────────────────────────────── -->
+          <div class="mb-5 grid grid-cols-3 gap-3 sm:grid-cols-6">
+            {#each ([
+              { label: 'Movies',   value: catalogSummary?.movies   ?? 0, warn: false, live: false },
+              { label: 'TV Shows', value: catalogSummary?.series   ?? 0, warn: false, live: false },
+              { label: 'Episodes', value: catalogSummary?.episodes ?? 0, warn: false, live: false },
+              { label: 'Files',    value: dashTotalFiles,                warn: false, live: false },
+              { label: 'Unprobed', value: dashUnprobed,                  warn: dashUnprobed > 0, live: false },
+              { label: 'Sessions', value: activeSessions.length,         warn: false, live: activeSessions.length > 0 },
+            ] as const) as t (t.label)}
+              <div class="relative overflow-hidden rounded-xl border {t.warn ? 'border-amber-400/25 bg-amber-400/[0.03]' : t.live ? 'border-primary-glow/25 bg-primary-glow/[0.03]' : 'border-border/50 bg-surface/30'} p-4 transition-colors hover:bg-surface/50">
+                <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground/60">{t.label}</div>
+                <div class="mt-2 font-serif-display text-3xl leading-none tabular-nums tracking-tight {t.warn ? 'text-amber-400' : t.live ? 'text-primary-glow' : t.value === 0 ? 'text-foreground/25' : 'text-foreground'}">
+                  {t.value.toLocaleString()}
                 </div>
-              {/each}
-            </div>
-
-            {#if dashTotalFiles > 0}
-              <div class="hairline mt-3 flex flex-wrap items-center gap-4 rounded-xl bg-surface/40 px-4 py-3">
-                <ActivityRing probed={dashProbed} total={dashTotalFiles} size={56} />
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-baseline justify-between gap-2">
-                    <span class="text-sm font-medium">
-                      {dashProbed.toLocaleString()}
-                      <span class="font-normal text-muted-foreground">/ {dashTotalFiles.toLocaleString()} files analysed</span>
-                    </span>
-                    <span class="text-[11px] text-muted-foreground tabular-nums">
-                      {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}%
-                    </span>
-                  </div>
-                  <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
-                    <div class="h-full rounded-full bg-primary-glow transition-all duration-700"
-                      style="width: {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}%">
-                    </div>
-                  </div>
-                  {#if dashUnprobed > 0}
-                    <div class="mt-1.5 flex items-center gap-3">
-                      <span class="text-[11px] text-amber-400">{dashUnprobed.toLocaleString()} files awaiting probe</span>
-                      {#if !dashProbeRunning}
-                        <button
-                          type="button"
-                          onclick={handleDashProbeNow}
-                          disabled={dashProbeBusy}
-                          class="rounded-full bg-amber-400/15 px-3 py-0.5 text-[10px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/25 disabled:opacity-50"
-                        >
-                          {dashProbeBusy ? 'Starting…' : 'Probe now'}
-                        </button>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
+                {#if t.live}
+                  <span class="absolute right-3 top-3 flex h-1.5 w-1.5">
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                  </span>
+                {/if}
               </div>
-            {/if}
-          </section>
+            {/each}
+          </div>
 
-          <!-- ── System resources ───────────────────────────────────── -->
-          <section class="mb-8">
-            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">System Resources</div>
-            <div class="hairline space-y-4 rounded-2xl bg-surface/40 p-5">
-              {#if sysStatus?.cpu}
-                {@const c = sysStatus.cpu}
-                <div>
-                  <div class="mb-2 flex items-center justify-between text-[11px]">
-                    <span class="font-semibold uppercase tracking-[0.2em] text-muted-foreground">CPU</span>
-                    <span class="{dashCpuPct >= 85 ? 'text-amber-300' : 'text-foreground/70'} tabular-nums">
-                      {dashCpuPct}%{c.cores ? ` · ${c.cores} cores` : ''}
-                    </span>
-                  </div>
-                  <div class="h-2 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
-                    <div class="h-full rounded-full transition-all duration-700 {dashCpuPct >= 85 ? 'bg-amber-400' : 'bg-primary-glow'}"
-                      style="width: {dashCpuPct}%"></div>
-                  </div>
-                </div>
-              {/if}
+          <!-- ─── System Resources + File Analysis (2-col) ──────────── -->
+          <div class="mb-5 grid gap-4 lg:grid-cols-2">
 
-              {#if sysStatus?.memory}
-                {@const m = sysStatus.memory}
-                <div>
-                  <div class="mb-2 flex items-center justify-between text-[11px]">
-                    <span class="font-semibold uppercase tracking-[0.2em] text-muted-foreground">Memory</span>
-                    <span class="{dashMemPct >= 90 ? 'text-amber-300' : 'text-foreground/70'} tabular-nums">
-                      {formatBytes(m.usedBytes)} / {formatBytes(m.totalBytes)}
-                    </span>
-                  </div>
-                  <div class="h-2 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
-                    <div class="h-full rounded-full transition-all duration-700 {dashMemPct >= 90 ? 'bg-amber-400' : 'bg-primary-glow/70'}"
-                      style="width: {dashMemPct}%"></div>
-                  </div>
-                </div>
-              {/if}
-
-              {#if sysStatus?.network}
-                {@const n = sysStatus.network}
-                <div class="flex items-center gap-6 border-t border-border pt-3">
-                  <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Network I/O</span>
-                  <div class="flex gap-5 text-[11px]">
-                    <span class="tabular-nums">↓ <span class="font-medium text-foreground/80">{formatBps(n.receiveBps)}</span></span>
-                    <span class="tabular-nums">↑ <span class="font-medium text-foreground/80">{formatBps(n.transmitBps)}</span></span>
-                  </div>
-                  {#if sysStatus.process}
-                    {@const p = sysStatus.process}
-                    <div class="ml-auto flex gap-4 text-[11px] text-muted-foreground">
-                      <span>{p.goroutines ?? 0} goroutines</span>
-                      <span>{formatBytes(p.goAllocBytes)} heap</span>
-                    </div>
-                  {/if}
-                </div>
-              {/if}
-            </div>
-          </section>
-
-          <!-- ── Disk storage ────────────────────────────────────────── -->
-          {#if sysStatus?.disks && sysStatus.disks.length > 0}
-            <section class="mb-8">
-              <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Storage</div>
-              <div class="grid gap-3 sm:grid-cols-2">
-                {#each sysStatus.disks as disk (disk.path ?? disk.name)}
-                  {@const dPct = Math.round(disk.usedPercent ?? 0)}
-                  <div class="hairline rounded-xl bg-surface/40 p-4 {dPct >= 90 ? 'border-red-400/25' : dPct >= 75 ? 'border-amber-400/25' : ''}">
-                    <div class="flex items-start justify-between gap-3">
-                      <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{disk.path ?? disk.name ?? 'Disk'}</span>
-                      <div class="shrink-0 text-right text-[11px]">
-                        <span class="font-semibold tabular-nums {dashDiskValClass(dPct)}">{dPct}%</span>
-                        <span class="ml-1.5 text-muted-foreground">{formatBytes(disk.freeBytes)} free</span>
+            <!-- System resources -->
+            <div class="rounded-xl border border-border/50 bg-surface/30 p-5">
+              <div class="mb-4 flex items-center justify-between">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/60">System Resources</span>
+                {#if sysStatus?.process}
+                  <span class="text-[10px] text-muted-foreground/40 tabular-nums">
+                    {sysStatus.process.goroutines ?? 0} goroutines · {formatBytes(sysStatus.process.goAllocBytes)} heap
+                  </span>
+                {/if}
+              </div>
+              <div class="space-y-4">
+                {#if sysStatus?.cpu}
+                  {@const c = sysStatus.cpu}
+                  <div>
+                    <div class="mb-1.5 flex items-center justify-between text-[11px]">
+                      <span class="text-muted-foreground/70">CPU</span>
+                      <div class="flex items-center gap-2">
+                        {#if c.cores}<span class="text-muted-foreground/40">{c.cores} cores</span>{/if}
+                        <span class="font-semibold tabular-nums {dashCpuPct >= 85 ? 'text-amber-300' : 'text-foreground/80'}">{dashCpuPct}%</span>
                       </div>
                     </div>
-                    <div class="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
-                      <div class="h-full rounded-full transition-all duration-700 {dashDiskBarClass(dPct)}" style="width: {dPct}%"></div>
+                    <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                      <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-1000 {dashCpuPct >= 85 ? 'bg-amber-400' : 'bg-primary-glow'}" style="width: {dashCpuPct}%"></div>
                     </div>
-                    <div class="mt-1.5 text-[10px] text-muted-foreground tabular-nums">
-                      {formatBytes(disk.usedBytes)} used of {formatBytes(disk.totalBytes)}
+                  </div>
+                {/if}
+                {#if sysStatus?.memory}
+                  {@const m = sysStatus.memory}
+                  <div>
+                    <div class="mb-1.5 flex items-center justify-between text-[11px]">
+                      <span class="text-muted-foreground/70">Memory</span>
+                      <span class="font-semibold tabular-nums {dashMemPct >= 90 ? 'text-amber-300' : 'text-foreground/80'}">
+                        {formatBytes(m.usedBytes)}<span class="font-normal text-muted-foreground/40"> / {formatBytes(m.totalBytes)}</span>
+                      </span>
                     </div>
+                    <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                      <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-1000 {dashMemPct >= 90 ? 'bg-amber-400' : 'bg-primary-glow/60'}" style="width: {dashMemPct}%"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if sysStatus?.network}
+                  {@const n = sysStatus.network}
+                  <div class="flex items-center gap-5 border-t border-border/30 pt-3.5 text-[12px]">
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono text-[10px] font-bold text-emerald-400">↓</span>
+                      <span class="font-semibold tabular-nums text-foreground/80">{formatBps(n.receiveBps)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono text-[10px] font-bold text-blue-400">↑</span>
+                      <span class="font-semibold tabular-nums text-foreground/80">{formatBps(n.transmitBps)}</span>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <!-- File analysis -->
+            <div class="rounded-xl border border-border/50 bg-surface/30 p-5">
+              <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/60">File Analysis</div>
+              {#if dashTotalFiles > 0}
+                <div class="flex items-center gap-5 mb-4">
+                  <div class="shrink-0">
+                    <ActivityRing probed={dashProbed} total={dashTotalFiles} size={68} />
+                  </div>
+                  <div class="min-w-0 flex-1 space-y-2">
+                    <div class="flex items-baseline justify-between gap-2">
+                      <div>
+                        <span class="font-serif-display text-3xl leading-none tabular-nums tracking-tight">
+                          {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}
+                        </span><span class="ml-0.5 text-base text-muted-foreground/60">%</span>
+                      </div>
+                      <span class="text-[11px] text-muted-foreground/50 tabular-nums">{dashProbed.toLocaleString()} / {dashTotalFiles.toLocaleString()}</span>
+                    </div>
+                    <div class="h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                      <div class="h-full rounded-full bg-primary-glow transition-all duration-700"
+                        style="width: {dashTotalFiles > 0 ? Math.round(dashProbed / dashTotalFiles * 100) : 0}%"></div>
+                    </div>
+                    <div class="text-[11px] text-muted-foreground/60">files analysed</div>
+                  </div>
+                </div>
+                {#if dashUnprobed > 0}
+                  <div class="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2.5">
+                    <div class="text-[11px]">
+                      <span class="font-semibold text-amber-300">{dashUnprobed.toLocaleString()}</span>
+                      <span class="text-muted-foreground/70"> files awaiting probe</span>
+                    </div>
+                    {#if !dashProbeRunning}
+                      <button
+                        type="button"
+                        onclick={handleDashProbeNow}
+                        disabled={dashProbeBusy}
+                        class="rounded-lg bg-amber-400/20 px-3 py-1 text-[10px] font-semibold text-amber-300 transition-colors hover:bg-amber-400/30 disabled:opacity-50"
+                      >{dashProbeBusy ? 'Starting…' : 'Probe Now'}</button>
+                    {:else}
+                      <div class="flex items-center gap-1.5 text-[11px] text-primary-glow">
+                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
+                        Running
+                      </div>
+                    {/if}
+                  </div>
+                {:else if dashTotalFiles > 0}
+                  <div class="flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2.5">
+                    <Check class="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                    <span class="text-[11px] text-emerald-300">All files analysed</span>
+                  </div>
+                {/if}
+              {:else}
+                <div class="flex items-center justify-center py-8 text-[12px] text-muted-foreground/40">
+                  No files scanned yet
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- ─── Disk Storage ────────────────────────────────────────── -->
+          {#if sysStatus?.disks && sysStatus.disks.length > 0}
+            <div class="mb-5 rounded-xl border border-border/50 bg-surface/30 p-5">
+              <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/60">Storage</div>
+              <div class="space-y-3">
+                {#each sysStatus.disks as disk (disk.path ?? disk.name)}
+                  {@const dPct = Math.round(disk.usedPercent ?? 0)}
+                  <div class="grid items-center gap-3" style="grid-template-columns: 10rem 1fr 4rem">
+                    <div class="min-w-0">
+                      <div class="truncate font-mono text-[11px] text-foreground/70">{disk.path ?? disk.name ?? 'Disk'}</div>
+                      <div class="mt-0.5 text-[10px] text-muted-foreground/40 tabular-nums">{formatBytes(disk.freeBytes)} free</div>
+                    </div>
+                    <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                      <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-700 {dPct >= 90 ? 'bg-red-400' : dPct >= 75 ? 'bg-amber-400' : 'bg-foreground/20'}" style="width: {dPct}%"></div>
+                    </div>
+                    <div class="text-right text-[11px] font-semibold tabular-nums {dPct >= 90 ? 'text-red-400' : dPct >= 75 ? 'text-amber-400' : 'text-foreground/50'}">{dPct}%</div>
                   </div>
                 {/each}
               </div>
-            </section>
+            </div>
           {/if}
 
-          <!-- ── Automation jobs ─────────────────────────────────────── -->
-          <section class="mb-8">
-            <div class="mb-3 flex items-center justify-between">
-              <div class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Automation</div>
-              <a href="/settings/activity" class="text-[11px] text-muted-foreground transition-colors hover:text-foreground">
-                View details →
-              </a>
+          <!-- ─── Automation Jobs ─────────────────────────────────────── -->
+          <div class="mb-5 overflow-hidden rounded-xl border border-border/50 bg-surface/30">
+            <div class="flex items-center justify-between border-b border-border/40 px-5 py-3">
+              <span class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/60">Automation Jobs</span>
+              <a href="/settings/activity" class="text-[10px] font-medium text-muted-foreground/50 transition-colors hover:text-foreground">Full view →</a>
             </div>
-            <div class="hairline divide-y divide-border rounded-2xl bg-surface/40">
 
-              <!-- Scan -->
-              {#if true}
-              {@const scanStatus = dashJobs?.scan?.status ?? 'idle'}
-              <div class="flex items-center gap-4 px-4 py-3">
-                <div class="w-24 shrink-0">
-                  <div class="text-[11px] font-medium">Library Scan</div>
-                  <div class="mt-0.5 text-[10px] text-muted-foreground">
-                    {#if dashJobs?.scan?.lastRun}
-                      {new Date(dashJobs.scan.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {:else}Never{/if}
-                  </div>
-                </div>
-                <div class="flex-1">
-                  {#if scanStatus === 'running'}
-                    <div class="flex items-center gap-2 text-[11px] text-primary-glow">
-                      <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
-                      Running
-                    </div>
-                  {:else if scanStatus === 'paused'}
-                    <div class="text-[11px] text-amber-400">Paused — session active</div>
+            <!-- Scan -->
+            {#if true}
+            {@const scanSt = dashJobs?.scan?.status ?? 'idle'}
+            <div class="flex items-center gap-4 border-b border-border/30 px-5 py-3.5">
+              <div class="flex w-28 shrink-0 items-center gap-2.5">
+                <span class="relative flex h-1.5 w-1.5 shrink-0">
+                  {#if scanSt === 'running'}
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-glow opacity-60"></span>
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary-glow"></span>
+                  {:else if scanSt === 'paused'}
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-400"></span>
                   {:else}
-                    <div class="text-[11px] text-muted-foreground">
-                      Idle{#if dashJobs?.scan?.nextRun} · next {new Date(dashJobs.scan.nextRun).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}{/if}
-                    </div>
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-foreground/15"></span>
+                  {/if}
+                </span>
+                <span class="text-[12px] font-medium">Library Scan</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 text-[11px] text-muted-foreground/60">
+                  {#if scanSt === 'running'}
+                    <span class="font-medium text-primary-glow">Running</span>
+                  {:else if scanSt === 'paused'}
+                    <span class="text-amber-400">Paused — session active</span>
+                  {:else}
+                    <span>Idle</span>
+                    {#if dashJobs?.scan?.lastRunAt}
+                      <span>·</span><span>{new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    {:else}<span>· Never run</span>{/if}
+                    {#if dashJobs?.scan?.nextRunAt}<span>·</span><span class="text-foreground/40">Next {new Date(dashJobs.scan.nextRunAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>{/if}
                   {/if}
                 </div>
-                <div class="shrink-0">
-                  <button
-                    type="button"
-                    onclick={handleDashScanNow}
-                    disabled={dashScanBusy || scanStatus === 'running'}
-                    class="hairline rounded-lg px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
-                  >
-                    {dashScanBusy ? 'Starting…' : 'Run'}
-                  </button>
-                </div>
               </div>
-              {/if}
+              <div class="shrink-0">
+                <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy || scanSt === 'running'}
+                  class="rounded-lg border border-border/50 bg-surface/40 px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-surface hover:text-foreground disabled:opacity-40">
+                  {dashScanBusy ? 'Starting…' : 'Run'}
+                </button>
+              </div>
+            </div>
+            {/if}
 
-              <!-- Metadata -->
-              {#if true}
-              {@const metaStatus = dashJobs?.metadata?.status ?? 'idle'}
-              <div class="flex items-center gap-4 px-4 py-3">
-                <div class="w-24 shrink-0">
-                  <div class="text-[11px] font-medium">Metadata</div>
-                  <div class="mt-0.5 text-[10px] text-muted-foreground">
-                    {#if dashJobs?.metadata?.lastRun}
-                      {new Date(dashJobs.metadata.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {:else}Never{/if}
-                  </div>
-                </div>
-                <div class="flex-1">
+            <!-- Metadata -->
+            {#if true}
+            {@const metaSt = dashJobs?.metadata?.status ?? 'idle'}
+            <div class="flex items-center gap-4 border-b border-border/30 px-5 py-3.5">
+              <div class="flex w-28 shrink-0 items-center gap-2.5">
+                <span class="relative flex h-1.5 w-1.5 shrink-0">
                   {#if dashMetaRunning}
-                    {@const bf = dashJobs?.metadata?.backfill}
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2 text-[11px] text-primary-glow">
-                        <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
-                        Backfilling{#if bf?.lastTitle} · {bf.lastTitle}{/if}
-                      </div>
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-glow opacity-60"></span>
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary-glow"></span>
+                  {:else if metaSt === 'paused'}
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                  {:else}
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-foreground/15"></span>
+                  {/if}
+                </span>
+                <span class="text-[12px] font-medium">Metadata</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                {#if dashMetaRunning}
+                  {@const bf = dashJobs?.metadata?.backfill}
+                  <div class="space-y-1.5">
+                    <div class="flex items-center justify-between gap-3 text-[11px]">
+                      <span class="font-medium text-primary-glow">
+                        Backfilling{#if bf?.lastTitle}<span class="font-normal text-muted-foreground/60"> — {bf.lastTitle}</span>{/if}
+                      </span>
                       {#if bf && bf.total > 0}
-                        <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/10">
-                          <div class="h-full rounded-full bg-primary-glow/60 transition-all"
-                            style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%"></div>
-                        </div>
+                        <span class="shrink-0 tabular-nums text-muted-foreground/50">{(bf.refreshed + bf.failed).toLocaleString()} / {bf.total.toLocaleString()}</span>
                       {/if}
                     </div>
-                  {:else if metaStatus === 'paused'}
-                    <div class="text-[11px] text-amber-400">Paused — session active</div>
-                  {:else}
-                    <div class="text-[11px] text-muted-foreground">Idle</div>
-                  {/if}
-                </div>
-                <div class="shrink-0">
-                  <button
-                    type="button"
-                    onclick={() => { triggerBackfill(); refreshDashJobs(); }}
-                    disabled={dashMetaRunning}
-                    class="hairline rounded-lg px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
-                  >
-                    Run
-                  </button>
-                </div>
-              </div>
-              {/if}
-
-              <!-- Probe -->
-              {#if true}
-              {@const probeActiveJob = dashJobs?.probe?.activeJobs?.find(j => j.status === 'running')}
-              <div class="flex items-center gap-4 px-4 py-3">
-                <div class="w-24 shrink-0">
-                  <div class="text-[11px] font-medium">Probe</div>
-                  <div class="mt-0.5 text-[10px] text-muted-foreground">
-                    {#if dashJobs?.probe?.lastRun}
-                      {new Date(dashJobs.probe.lastRun).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {:else}Never{/if}
-                  </div>
-                </div>
-                <div class="flex-1">
-                  {#if dashProbeRunning && probeActiveJob}
-                    {@const done = probeActiveJob.completed ?? 0}
-                    {@const total = probeActiveJob.total ?? 0}
-                    <div class="space-y-1">
-                      <div class="flex items-center justify-between gap-2 text-[11px]">
-                        <span class="flex items-center gap-2 text-primary-glow">
-                          <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
-                          Running
-                        </span>
-                        {#if total > 0}
-                          <span class="tabular-nums text-muted-foreground">{done.toLocaleString()} / {total.toLocaleString()}</span>
-                        {/if}
+                    {#if bf && bf.total > 0}
+                      <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                        <div class="h-full rounded-full bg-primary-glow/60 transition-all" style="width: {Math.round((bf.refreshed + bf.failed) / bf.total * 100)}%"></div>
                       </div>
-                      {#if total > 0}
-                        <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/10">
-                          <div class="h-full rounded-full bg-primary-glow/60 transition-all"
-                            style="width: {Math.round(done / total * 100)}%"></div>
-                        </div>
-                      {/if}
-                    </div>
-                  {:else if dashJobs?.probe?.status === 'paused'}
-                    <div class="text-[11px] text-amber-400">Paused — session active</div>
-                  {:else}
-                    <div class="text-[11px] text-muted-foreground">
-                      {#if dashUnprobed > 0}
-                        <span class="text-amber-400">{dashUnprobed.toLocaleString()} files queued</span>
-                      {:else}
-                        Idle
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-                <div class="shrink-0">
-                  <button
-                    type="button"
-                    onclick={handleDashProbeNow}
-                    disabled={dashProbeBusy || dashProbeRunning}
-                    class="hairline rounded-lg px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground disabled:opacity-40"
-                  >
-                    {dashProbeBusy ? 'Starting…' : 'Run'}
-                  </button>
-                </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <div class="flex items-center gap-2 text-[11px] text-muted-foreground/60">
+                    {#if metaSt === 'paused'}<span class="text-amber-400">Paused — session active</span>
+                    {:else}
+                      <span>Idle</span>
+                      {#if dashJobs?.metadata?.lastRunAt}<span>·</span><span>{new Date(dashJobs.metadata.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>{:else}<span>· Never run</span>{/if}
+                    {/if}
+                  </div>
+                {/if}
               </div>
-              {/if}
+              <div class="shrink-0">
+                <button type="button" onclick={() => { triggerBackfill(); refreshDashJobs(); }} disabled={dashMetaRunning}
+                  class="rounded-lg border border-border/50 bg-surface/40 px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-surface hover:text-foreground disabled:opacity-40">
+                  Run
+                </button>
+              </div>
             </div>
-          </section>
+            {/if}
 
-          <!-- ── Active sessions ────────────────────────────────────── -->
-          {#if activeSessions.length > 0}
-            <section class="mb-8">
-              <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">
-                Now Playing · {activeSessions.length} session{activeSessions.length === 1 ? '' : 's'}
+            <!-- Probe -->
+            {#if true}
+            {@const probeJob = dashJobs?.probe?.activeJobs?.find(j => j.status === 'running')}
+            <div class="flex items-center gap-4 px-5 py-3.5">
+              <div class="flex w-28 shrink-0 items-center gap-2.5">
+                <span class="relative flex h-1.5 w-1.5 shrink-0">
+                  {#if dashProbeRunning}
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-glow opacity-60"></span>
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary-glow"></span>
+                  {:else if dashJobs?.probe?.status === 'paused'}
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                  {:else}
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-foreground/15"></span>
+                  {/if}
+                </span>
+                <span class="text-[12px] font-medium">Probe</span>
               </div>
-              <div class="hairline divide-y divide-border rounded-2xl bg-surface/40">
+              <div class="min-w-0 flex-1">
+                {#if dashProbeRunning && probeJob}
+                  {@const done = probeJob.completed ?? 0}
+                  {@const tot  = probeJob.total ?? 0}
+                  <div class="space-y-1.5">
+                    <div class="flex items-center justify-between gap-3 text-[11px]">
+                      <span class="font-medium text-primary-glow">Running</span>
+                      {#if tot > 0}<span class="shrink-0 tabular-nums text-muted-foreground/50">{done.toLocaleString()} / {tot.toLocaleString()} · {Math.round(done / tot * 100)}%</span>{/if}
+                    </div>
+                    {#if tot > 0}
+                      <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                        <div class="h-full rounded-full bg-primary-glow/60 transition-all" style="width: {Math.round(done / tot * 100)}%"></div>
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <div class="flex items-center gap-2 text-[11px] text-muted-foreground/60">
+                    {#if dashJobs?.probe?.status === 'paused'}<span class="text-amber-400">Paused — session active</span>
+                    {:else}
+                      {#if dashUnprobed > 0}<span class="text-amber-400">{dashUnprobed.toLocaleString()} files queued</span>
+                      {:else}<span>Idle</span>{/if}
+                      {#if dashJobs?.probe?.lastRunAt}<span>·</span><span>{new Date(dashJobs.probe.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>{/if}
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+              <div class="shrink-0">
+                <button type="button" onclick={handleDashProbeNow} disabled={dashProbeBusy || dashProbeRunning}
+                  class="rounded-lg border border-border/50 bg-surface/40 px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-surface hover:text-foreground disabled:opacity-40">
+                  {dashProbeBusy ? 'Starting…' : 'Run'}
+                </button>
+              </div>
+            </div>
+            {/if}
+          </div>
+
+          <!-- ─── Active Sessions ─────────────────────────────────────── -->
+          {#if activeSessions.length > 0}
+            <div class="mb-5 overflow-hidden rounded-xl border border-border/50 bg-surface/30">
+              <div class="flex items-center gap-2.5 border-b border-border/40 px-5 py-3">
+                <span class="relative flex h-1.5 w-1.5">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+                  <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                </span>
+                <span class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/60">
+                  Now Playing · {activeSessions.length} {activeSessions.length === 1 ? 'Session' : 'Sessions'}
+                </span>
+              </div>
+              <div class="divide-y divide-border/30">
                 {#each activeSessions as session (session.id)}
-                  <div class="flex items-center gap-4 px-4 py-3">
-                    <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10">
-                      <Play class="h-3 w-3 fill-emerald-400 text-emerald-400" />
+                  <div class="flex items-center gap-4 px-5 py-3.5">
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06]">
+                      <Play class="h-3.5 w-3.5 fill-emerald-400 text-emerald-400" />
                     </div>
                     <div class="min-w-0 flex-1">
                       <div class="truncate text-[13px] font-medium">{session.title ?? session.sourceName ?? 'Unknown'}</div>
-                      <div class="mt-0.5 text-[11px] text-muted-foreground">
+                      <div class="mt-0.5 text-[11px] text-muted-foreground/50">
                         {session.mode ?? session.route ?? 'Direct Play'}{session.deviceId ? ` · ${session.deviceId}` : ''}
                       </div>
                     </div>
-                    <span class="shrink-0 rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-300">Live</span>
+                    <span class="shrink-0 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-300">Live</span>
                   </div>
                 {/each}
               </div>
-            </section>
+            </div>
           {/if}
 
-          <!-- ── Recent scan activity ────────────────────────────────── -->
-          <section>
-            <div class="mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/70">Recent Activity</div>
+          <!-- ─── Recent Activity ─────────────────────────────────────── -->
+          <div class="overflow-hidden rounded-xl border border-border/50 bg-surface/30">
+            <div class="border-b border-border/40 px-5 py-3">
+              <span class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/60">Recent Activity</span>
+            </div>
             {#if recentScans.length > 0}
-              <div class="hairline divide-y divide-border rounded-2xl bg-surface/40">
+              <div class="divide-y divide-border/30">
                 {#each recentScans as scan (scan.id)}
-                  <div class="flex items-center gap-4 px-4 py-3">
+                  <div class="flex items-center gap-4 px-5 py-3">
                     <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2 text-[13px]">
-                        <span class="font-medium capitalize">{scan.kind ?? 'Scan'}</span>
+                      <div class="flex items-center gap-2">
+                        <span class="text-[12px] font-medium capitalize">{scan.kind ?? 'Scan'}</span>
                         {#if scan.libraryId}
-                          <span class="font-mono text-[10px] text-muted-foreground">{scan.libraryId.slice(0, 8)}</span>
+                          <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/50">{scan.libraryId.slice(0, 8)}</code>
                         {/if}
                       </div>
                       {#if scan.updatedAt}
-                        <div class="mt-0.5 text-[11px] text-muted-foreground">
+                        <div class="mt-0.5 text-[11px] text-muted-foreground/40">
                           {new Date(scan.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </div>
                       {/if}
                     </div>
                     {#if scan.status === 'running'}
-                      <span class="flex items-center gap-1.5 text-[10px] text-primary-glow">
-                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>
-                        Running
-                      </span>
+                      <div class="flex items-center gap-1.5 text-[10px] font-medium text-primary-glow">
+                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-glow"></span>Running
+                      </div>
                     {:else if scan.status === 'completed'}
-                      <Check class="h-4 w-4 shrink-0 text-emerald-400" />
-                    {:else}
-                      <span class="text-[11px] capitalize text-muted-foreground">{scan.status ?? ''}</span>
+                      <div class="flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
+                        <Check class="h-3.5 w-3.5" />Done
+                      </div>
+                    {:else if scan.status}
+                      <span class="text-[10px] capitalize text-muted-foreground/40">{scan.status}</span>
                     {/if}
                   </div>
                 {/each}
               </div>
             {:else}
-              <div class="hairline flex flex-col items-center justify-center rounded-2xl bg-surface/30 px-8 py-12 text-center">
-                <p class="text-sm text-muted-foreground">No recent activity.</p>
-                <p class="mt-1 text-xs text-muted-foreground/50">Scan a library to see events here.</p>
+              <div class="flex items-center justify-center px-5 py-10 text-[11px] text-muted-foreground/40">
+                No recent activity — run a scan to see events here.
               </div>
             {/if}
-          </section>
+          </div>
 
         {:else if active === "libraries"}
           <div class="space-y-8">
