@@ -265,6 +265,12 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Reap orphaned ffmpeg jobs whose client stopped polling. Check every
+	// 30s; cancel anything not touched for 90s. Frontend polls /api/playback/
+	// route every 6s while the "Preparing…" panel is shown, so 90s is ~15
+	// missed polls — far past any reasonable network blip. Without this,
+	// closing the tab on a transcoding file leaves ffmpeg burning CPU.
+	transcodeService.RunReaper(ctx, 30*time.Second, 90*time.Second)
 	downloadService, err := downloads.NewPersistentService(ctx, bus, jobRegistry.Transcode, cfg.FFmpegPath, cfg.DownloadsDir, runtimeStore)
 	if err != nil {
 		return nil, err
