@@ -11,7 +11,24 @@ import (
 	"strings"
 )
 
-//go:embed all:static-next
+// Enumerate static-next explicitly so that icons/pwa (which has broken ACLs
+// on the dev network share) is excluded without breaking the build. PWA icons
+// are not referenced by index.html or the JS bundle so excluding them is safe.
+//
+//go:embed all:static-next/_app
+//go:embed all:static-next/avatars
+//go:embed static-next/index.html
+//go:embed static-next/robots.txt
+//go:embed static-next/favicon.ico static-next/favicon.svg
+//go:embed static-next/favicon-16.png static-next/favicon-32.png
+//go:embed static-next/favicon-48.png static-next/favicon-64.png
+//go:embed static-next/apple-touch-icon.png
+//go:embed all:static-next/icons/apple
+//go:embed all:static-next/icons/favicon
+//go:embed all:static-next/icons/ios-app-store
+//go:embed all:static-next/icons/macos
+//go:embed all:static-next/icons/tray
+//go:embed all:static-next/icons/windows
 var assets embed.FS
 
 func RootHandler() http.Handler {
