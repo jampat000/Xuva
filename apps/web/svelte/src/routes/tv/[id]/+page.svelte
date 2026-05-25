@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import {
     Star, ChevronLeft, Play, Plus, Check, Tv, User,
-    Clapperboard, X, Shield,
+    Clapperboard, X, Shield, ChevronDown, Volume2, Captions, FileVideo, Film, Gauge, Layers,
   } from 'lucide-svelte';
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import Header from '$lib/components/Header.svelte';
@@ -12,8 +12,61 @@
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getSeriesDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
+  import { getMediaSourceDetail, getMediaSourceTracks, type MediaSourceItem, type ProbeTrack } from '$lib/api/details';
+  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary } from '$lib/utils/mediaFormat';
   import type { SeriesDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
+
+  // ── Per-episode technical detail cache ────────────────────────────────────
+  // Episodes load their codec/track info on-demand when the user clicks
+  // "Details" — fetching this upfront for a 10-season show would mean
+  // hundreds of extra requests. The Map persists across season collapses so
+  // re-expanding doesn't refetch.
+  type EpisodeTech = {
+    source: MediaSourceItem | null;
+    audioTracks: ProbeTrack[];
+    subtitleTracks: ProbeTrack[];
+    loading: boolean;
+  };
+  let episodeTech = $state(new Map<string, EpisodeTech>());
+  let expandedEpisodes = $state<Set<string>>(new Set());
+
+  async function loadEpisodeTech(mediaSourceId: string) {
+    if (episodeTech.has(mediaSourceId) && !episodeTech.get(mediaSourceId)?.loading) return;
+    const next = new Map(episodeTech);
+    next.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], loading: true });
+    episodeTech = next;
+    try {
+      const [src, tr] = await Promise.allSettled([
+        getMediaSourceDetail(mediaSourceId),
+        getMediaSourceTracks(mediaSourceId),
+      ]);
+      const updated = new Map(episodeTech);
+      updated.set(mediaSourceId, {
+        source: src.status === 'fulfilled' ? src.value : null,
+        audioTracks: tr.status === 'fulfilled' ? (tr.value.audioTracks ?? []) : [],
+        subtitleTracks: tr.status === 'fulfilled' ? (tr.value.subtitleTracks ?? []) : [],
+        loading: false,
+      });
+      episodeTech = updated;
+    } catch {
+      // Swallow — UI will show "couldn't load tracks" next to the button.
+      const updated = new Map(episodeTech);
+      updated.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], loading: false });
+      episodeTech = updated;
+    }
+  }
+
+  function toggleEpisodeDetails(mediaSourceId: string) {
+    const next = new Set(expandedEpisodes);
+    if (next.has(mediaSourceId)) {
+      next.delete(mediaSourceId);
+    } else {
+      next.add(mediaSourceId);
+      loadEpisodeTech(mediaSourceId); // fire-and-forget
+    }
+    expandedEpisodes = next;
+  }
 
   const id = $derived(page.params.id ?? '');
 
@@ -520,6 +573,88 @@
                                 {/if}
                                 {#if epOverview}
                                   <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{epOverview}</p>
+                                {/if}
+                                {#if epMsid}
+                                  {@const isExpanded = expandedEpisodes.has(epMsid)}
+                                  {@const tech = episodeTech.get(epMsid)}
+                                  <button type="button" onclick={(e) => { e.preventDefault(); toggleEpisodeDetails(epMsid); }}
+                                    class="mt-2 inline-flex items-center gap-1 rounded text-[11px] text-muted-foreground/75 transition-colors hover:text-foreground/90">
+                                    <span>{isExpanded ? 'Hide' : 'File info & tracks'}</span>
+                                    <ChevronDown class="h-3 w-3 transition-transform" style={isExpanded ? 'transform: rotate(180deg)' : ''} />
+                                  </button>
+                                  {#if isExpanded}
+                                    <div class="mt-3 rounded-lg border border-border bg-background/50 p-3">
+                                      {#if tech?.loading}
+                                        <p class="text-[11px] italic text-muted-foreground/70">Loading tracks…</p>
+                                      {:else if tech && (tech.source || tech.audioTracks.length > 0)}
+                                        {#if true}
+                                        {@const pills = [
+                                          { icon: FileVideo, text: formatResolution(tech.source?.width, tech.source?.height) },
+                                          { icon: Film, text: formatCodec(tech.source?.videoCodec) },
+                                          { icon: Volume2, text: audioSummary(tech.audioTracks) },
+                                          { icon: Layers, text: tech.source?.container ? tech.source.container.split(',')[0].toUpperCase() : '' },
+                                          { icon: Gauge, text: formatBitrate(tech.source?.bitrate) },
+                                          { icon: Captions, text: tech.subtitleTracks.length > 0 ? `${tech.subtitleTracks.length} subtitle${tech.subtitleTracks.length === 1 ? '' : 's'}` : '' },
+                                        ].filter(p => p.text)}
+                                        {#if pills.length > 0}
+                                          <div class="flex flex-wrap gap-1.5 mb-3">
+                                            {#each pills as p, pi (pi)}
+                                              <span class="inline-flex items-center gap-1 rounded-full bg-surface/40 px-2.5 py-1 text-[11px] text-foreground/75">
+                                                <p.icon class="h-3 w-3 text-muted-foreground/70" />
+                                                {p.text}
+                                              </span>
+                                            {/each}
+                                          </div>
+                                        {/if}
+                                        {/if}
+                                        <div class="grid gap-3 sm:grid-cols-2">
+                                          <!-- Audio -->
+                                          <div>
+                                            <div class="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                                              <Volume2 class="h-3 w-3" /> Audio · {tech.audioTracks.length}
+                                            </div>
+                                            {#if tech.audioTracks.length === 0}
+                                              <p class="text-[11px] italic text-muted-foreground/60">No audio tracks.</p>
+                                            {:else}
+                                              <ul class="space-y-0.5">
+                                                {#each tech.audioTracks as t, ti (t.index ?? ti)}
+                                                  <li class="flex flex-wrap items-baseline gap-x-1.5 text-[11.5px] text-foreground/80">
+                                                    <span class="font-medium">{formatCodec(t.codec) || '—'}</span>
+                                                    {#if t.channels}<span class="text-foreground/60">{formatChannels(t.channels)}</span>{/if}
+                                                    {#if t.language}<span class="italic text-muted-foreground">· {formatLanguage(t.language)}</span>{/if}
+                                                    {#if t.default}<span class="ml-1 rounded bg-primary-glow/15 px-1 py-0 text-[9px] uppercase text-primary-glow">Default</span>{/if}
+                                                    {#if t.forced}<span class="ml-1 rounded bg-amber-400/15 px-1 py-0 text-[9px] uppercase text-amber-300">Forced</span>{/if}
+                                                  </li>
+                                                {/each}
+                                              </ul>
+                                            {/if}
+                                          </div>
+                                          <!-- Subtitles -->
+                                          <div>
+                                            <div class="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                                              <Captions class="h-3 w-3" /> Subtitles · {tech.subtitleTracks.length}
+                                            </div>
+                                            {#if tech.subtitleTracks.length === 0}
+                                              <p class="text-[11px] italic text-muted-foreground/60">None embedded.</p>
+                                            {:else}
+                                              <ul class="space-y-0.5">
+                                                {#each tech.subtitleTracks as t, ti (t.index ?? ti)}
+                                                  <li class="flex flex-wrap items-baseline gap-x-1.5 text-[11.5px] text-foreground/80">
+                                                    <span class="font-medium">{formatLanguage(t.language) || formatCodec(t.codec) || '—'}</span>
+                                                    {#if t.language && t.codec}<span class="text-foreground/55">· {formatCodec(t.codec)}</span>{/if}
+                                                    {#if t.default}<span class="ml-1 rounded bg-primary-glow/15 px-1 py-0 text-[9px] uppercase text-primary-glow">Default</span>{/if}
+                                                    {#if t.forced}<span class="ml-1 rounded bg-amber-400/15 px-1 py-0 text-[9px] uppercase text-amber-300">Forced</span>{/if}
+                                                  </li>
+                                                {/each}
+                                              </ul>
+                                            {/if}
+                                          </div>
+                                        </div>
+                                      {:else}
+                                        <p class="text-[11px] italic text-muted-foreground/60">Couldn't load tracks for this episode.</p>
+                                      {/if}
+                                    </div>
+                                  {/if}
                                 {/if}
                               </div>
                             </li>
