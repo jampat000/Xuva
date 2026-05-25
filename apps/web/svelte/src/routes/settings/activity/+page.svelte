@@ -322,8 +322,8 @@
           status={jobs?.scan?.status ?? 'idle'}
           lastRunAt={jobs?.scan?.lastRunAt}
           nextRunAt={jobs?.scan?.nextRunAt}
-          intervalMin={jobs?.scan?.intervalMin}
-          error={jobs?.scan?.lastRunErr || null}
+          intervalMin={jobs?.scan?.intervalMins}
+          error={jobs?.scan?.lastRunError || null}
           canRunNow={true}
           canStop={false}
           runBusy={scanBusy}
@@ -337,8 +337,8 @@
           status={jobs?.metadata?.status ?? 'idle'}
           lastRunAt={jobs?.metadata?.lastRunAt}
           nextRunAt={jobs?.metadata?.nextRunAt}
-          intervalMin={jobs?.metadata?.intervalMin}
-          error={jobs?.metadata?.lastRunErr || null}
+          intervalMin={jobs?.metadata?.intervalMins}
+          error={jobs?.metadata?.lastRunError || null}
           progress={metaProgress()?.pct ?? null}
           progressDetail={metaProgress()?.detail ?? null}
           canRunNow={true}
@@ -355,7 +355,7 @@
           status={jobs?.probe?.status ?? 'idle'}
           lastRunAt={jobs?.probe?.lastRunAt}
           nextRunAt={jobs?.probe?.nextRunAt}
-          error={jobs?.probe?.lastRunErr || null}
+          error={jobs?.probe?.lastRunError || null}
           progress={probeProgress()?.pct ?? null}
           progressDetail={probeProgress()?.detail ?? null}
           canRunNow={true}

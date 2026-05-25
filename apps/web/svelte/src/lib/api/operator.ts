@@ -21,6 +21,8 @@ export interface CatalogHealthResponse {
 
 export interface SystemStatusResponse {
 	collectedAt?: string;
+	/** ISO-8601 timestamp the server process started. Used to compute uptime client-side. */
+	serverStartedAt?: string;
 	cpu?: {
 		percent?: number;
 		cores?: number;
@@ -955,9 +957,11 @@ export interface BackfillStatusSnapshot {
 export interface JobAutoSnapshot {
 	status?: string;       // "idle" | "running" | "paused" | "disabled"
 	enabled?: boolean;
-	intervalMin?: number;
+	/** Schedule interval in minutes (server sends "intervalMins" plural). */
+	intervalMins?: number;
 	lastRunAt?: string;
-	lastRunErr?: string;
+	/** Server sends "lastRunError"; keep the matching field name. */
+	lastRunError?: string;
 	nextRunAt?: string;
 }
 
