@@ -3,9 +3,10 @@
   import Hls from 'hls.js';
   import {
     Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-    SkipBack, SkipForward, Subtitles, Mic2, Settings, ChevronLeft, AlertTriangle
+    Subtitles, Mic2, ChevronLeft, AlertTriangle
   } from 'lucide-svelte';
-  import RouteBadge from './RouteBadge.svelte';
+  // RouteBadge + SkipBack/Forward + Settings icons removed in the v2 player
+  // simplification — see the trail of comments below for context.
   import TrackMenu from './TrackMenu.svelte';
   import { type QualityOption } from './QualityMenu.svelte';
 
@@ -926,7 +927,7 @@
     >
       <a
         href={backHref}
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
         aria-label="Back"
         onclick={() => {
           // Stop session before navigating
@@ -935,19 +936,16 @@
           }
         }}
       >
-        <ChevronLeft class="h-5 w-5" />
+        <ChevronLeft class="h-[18px] w-[18px]" />
       </a>
 
       {#if title}
-        <span class="flex-1 truncate text-sm font-semibold text-white/90 md:text-base">{title}</span>
+        <span class="flex-1 truncate text-[13px] font-medium text-white/85 md:text-sm">{title}</span>
       {/if}
 
-      <RouteBadge {decision} />
-      {#if decision?.reasonCode === 'dolby_vision_pass_through'}
-        <span class="hidden rounded-md bg-blue-900/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-300 ring-1 ring-blue-500/30 backdrop-blur-sm md:inline">DV</span>
-      {:else if decision?.reasonCode === 'hdr_pass_through'}
-        <span class="hidden rounded-md bg-amber-900/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-amber-300 ring-1 ring-amber-500/30 backdrop-blur-sm md:inline">HDR</span>
-      {/if}
+      <!-- RouteBadge + DV/HDR pills removed from the top chrome — they were
+           tech-overlay noise on a player. The same info lives on the detail
+           page now (File Info pills). -->
     </div>
 
     <!-- Spacer -->
@@ -960,7 +958,7 @@
     >
       <!-- Seek bar -->
       <div class="flex items-center gap-3">
-        <span class="min-w-[3rem] text-right font-mono text-xs text-white/70">{fmt(currentTime)}</span>
+        <span class="min-w-[3rem] text-right text-[11px] tabular-nums text-white/55">{fmt(currentTime)}</span>
 
         <div class="relative flex-1">
           <!-- Thumbnail preview tooltip (shown on hover) -->
@@ -993,7 +991,7 @@
 
           <div
             bind:this={seekBarEl}
-            class="group relative h-1.5 w-full cursor-pointer rounded-full bg-white/20 hover:h-2.5 transition-all duration-150"
+            class="group relative h-1 w-full cursor-pointer rounded-full bg-white/15 hover:h-1.5 transition-all duration-150"
             onpointerdown={onSeekBarPointerDown}
             onpointermove={onSeekBarPointerMove}
             onpointerup={onSeekBarPointerUp}
@@ -1053,60 +1051,34 @@
         <!-- Play / pause -->
         <button
           onclick={togglePlay}
-          class="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+          class="flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
           aria-label={paused ? 'Play' : 'Pause'}
         >
           {#if paused}
-            <Play class="h-[18px] w-[18px] translate-x-px fill-white" />
+            <Play class="h-[17px] w-[17px] translate-x-px fill-white" />
           {:else}
-            <Pause class="h-[18px] w-[18px] fill-white" />
+            <Pause class="h-[17px] w-[17px] fill-white" />
           {/if}
         </button>
 
-        <!-- Skip back -->
-        <button
-          onclick={() => skip(-10)}
-          class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Skip back 10 seconds"
-        >
-          <SkipBack class="h-4 w-4" />
-        </button>
+        <!-- Skip back / forward buttons removed in the v2 simplification pass.
+             Keyboard ←/→ (and J/L) still skip ±10s; mobile double-tap-left /
+             double-tap-right ripples still work. YouTube dropped these on
+             desktop years ago; we follow the same logic — they were just
+             clutter on the bar. -->
 
-        <!-- Skip forward -->
+        <!-- Mute toggle (volume slider removed — keyboard ↑↓ adjusts) -->
         <button
-          onclick={() => skip(10)}
-          class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Skip forward 10 seconds"
+          onclick={toggleMute}
+          class="flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          aria-label={muted ? 'Unmute' : 'Mute'}
         >
-          <SkipForward class="h-4 w-4" />
+          {#if muted || volume === 0}
+            <VolumeX class="h-[15px] w-[15px]" />
+          {:else}
+            <Volume2 class="h-[15px] w-[15px]" />
+          {/if}
         </button>
-
-        <!-- Volume -->
-        <div class="flex items-center gap-1 ml-1">
-          <button
-            onclick={toggleMute}
-            class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label={muted ? 'Unmute' : 'Mute'}
-          >
-            {#if muted || volume === 0}
-              <VolumeX class="h-4 w-4" />
-            {:else}
-              <Volume2 class="h-4 w-4" />
-            {/if}
-          </button>
-          <div class="hidden w-16 md:block">
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={muted ? 0 : volume}
-              oninput={(e) => setVolume(parseFloat((e.target as HTMLInputElement).value))}
-              class="h-0.5 w-full cursor-pointer appearance-none rounded-full bg-white/30 accent-white"
-              aria-label="Volume"
-            />
-          </div>
-        </div>
 
         <!-- Spacer -->
         <div class="flex-1"></div>
@@ -1116,11 +1088,11 @@
           <div class="relative">
             <button
               onclick={(e) => { e.stopPropagation(); showSubMenu = !showSubMenu; showAudioMenu = false; }}
-              class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${activeSubtitleIndex !== null ? 'text-white' : 'text-white/50'}`}
+              class={`flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${activeSubtitleIndex !== null ? 'text-white' : 'text-white/60'}`}
               aria-label="Subtitles"
               aria-expanded={showSubMenu}
             >
-              <Subtitles class="h-4 w-4" />
+              <Subtitles class="h-[15px] w-[15px]" />
             </button>
             <TrackMenu
               open={showSubMenu}
@@ -1133,16 +1105,16 @@
           </div>
         {/if}
 
-        <!-- Audio tracks -->
+        <!-- Audio tracks (only when source has 2+ audio tracks) -->
         {#if audioTracks.length > 1}
           <div class="relative">
             <button
               onclick={(e) => { e.stopPropagation(); showAudioMenu = !showAudioMenu; showSubMenu = false; }}
-              class={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showAudioMenu ? 'text-white' : 'text-white/50'}`}
+              class={`flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 ${showAudioMenu ? 'text-white' : 'text-white/60'}`}
               aria-label="Audio track"
               aria-expanded={showAudioMenu}
             >
-              <Mic2 class="h-4 w-4" />
+              <Mic2 class="h-[15px] w-[15px]" />
             </button>
             <TrackMenu
               open={showAudioMenu}
@@ -1155,22 +1127,16 @@
           </div>
         {/if}
 
-        <!-- Quality picker intentionally removed (Netflix-style simplicity).
-             Adaptive streaming auto-selects quality based on bandwidth, which
-             is what we want 99% of the time. When direct play / direct stream
-             is used, there's no quality choice to make anyway. Power users
-             with strong opinions can pick a version on the detail page. -->
-
         <!-- Fullscreen -->
         <button
           onclick={toggleFullscreen}
-          class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+          class="flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
           aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         >
           {#if fullscreen}
-            <Minimize class="h-4 w-4" />
+            <Minimize class="h-[15px] w-[15px]" />
           {:else}
-            <Maximize class="h-4 w-4" />
+            <Maximize class="h-[15px] w-[15px]" />
           {/if}
         </button>
       </div>
