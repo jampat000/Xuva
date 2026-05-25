@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 func main() {
 	cfg := config.FromEnv()
+	configureSlog(cfg.LogFormat, cfg.LogLevel)
 	if restored, err := backup.ApplyIfPending(cfg.DataDir); err != nil {
 		slog.Error("backup restore failed", "error", err)
 		os.Exit(1)
@@ -61,4 +63,29 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("xuva server stopped")
+}
+
+// configureSlog sets the default slog handler based on the given format and
+// level. Must be called before any slog calls so that startup messages are
+// formatted correctly. Unrecognised values fall back to safe defaults.
+func configureSlog(format, level string) {
+	var l slog.Level
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug":
+		l = slog.LevelDebug
+	case "warn", "warning":
+		l = slog.LevelWarn
+	case "error":
+		l = slog.LevelError
+	default:
+		l = slog.LevelInfo
+	}
+	opts := &slog.HandlerOptions{Level: l}
+	var h slog.Handler
+	if strings.ToLower(strings.TrimSpace(format)) == "json" {
+		h = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		h = slog.NewTextHandler(os.Stderr, opts)
+	}
+	slog.SetDefault(slog.New(h))
 }
