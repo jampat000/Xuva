@@ -94,6 +94,11 @@ type Config struct {
 	AuthDisabled    bool   `json:"-"`
 	AdminUsername   string `json:"-"`
 	AdminPassword   string `json:"-"`
+	// Logging config — env-only, not persisted in settings.json.
+	// LogFormat: "text" (default) or "json" (machine-readable, e.g. for Loki/Datadog)
+	// LogLevel: "debug", "info" (default), "warn", "error"
+	LogFormat string `json:"-"`
+	LogLevel  string `json:"-"`
 }
 
 // defaultDataDir resolves the data directory to a stable absolute path that
@@ -183,6 +188,8 @@ func FromEnv() Config {
 		AuthDisabled:           envBool("XUVA_AUTH_DISABLED", false),
 		AdminUsername:          envString("XUVA_ADMIN_USERNAME", "admin"),
 		AdminPassword:          envString("XUVA_ADMIN_PASSWORD", ""),
+		LogFormat:              envString("XUVA_LOG_FORMAT", "text"),
+		LogLevel:               envString("XUVA_LOG_LEVEL", "info"),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)

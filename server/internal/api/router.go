@@ -6918,6 +6918,17 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		decision := playbackDecisionForSource(r.Context(), deps, r, item)
+		slog.Debug("playback route decision",
+			"mediaSourceId", mediaSourceID,
+			"clientProfile", r.URL.Query().Get("clientProfile"),
+			"mode", string(decision.Mode),
+			"reasonCode", decision.ReasonCode,
+			"videoAction", decision.VideoAction,
+			"audioAction", decision.AudioAction,
+			"containerAction", decision.ContainerAction,
+			"estimatedCpuCost", decision.EstimatedCPUCost,
+			"correlationId", observability.CorrelationID(r.Context()),
+		)
 		if decision.Mode == playback.DecisionDeferred {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"route":    "deferred",
