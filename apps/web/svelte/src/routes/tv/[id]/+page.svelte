@@ -13,7 +13,7 @@
   import { getSeriesDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
-  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary, playabilityBadge } from '$lib/utils/mediaFormat';
+  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary, playabilityBadge, playabilityShortLabel } from '$lib/utils/mediaFormat';
   import type { SeriesDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -22,11 +22,15 @@
   // "Details" — fetching this upfront for a 10-season show would mean
   // hundreds of extra requests. The Map persists across season collapses so
   // re-expanding doesn't refetch.
+  const deviceProfiles = ['web', 'apple-tv', 'android-tv'] as const;
+  const deviceLabels: Record<string, string> = { web: 'Web', 'apple-tv': 'Apple TV', 'android-tv': 'Android TV' };
+  type DeviceDecisions = { web?: PlaybackDecisionResponse; 'apple-tv'?: PlaybackDecisionResponse; 'android-tv'?: PlaybackDecisionResponse };
   type EpisodeTech = {
     source: MediaSourceItem | null;
     audioTracks: ProbeTrack[];
     subtitleTracks: ProbeTrack[];
     decision: PlaybackDecisionResponse | null;
+    decisions: DeviceDecisions;
     loading: boolean;
   };
   let episodeTech = $state(new Map<string, EpisodeTech>());
@@ -35,31 +39,34 @@
   async function loadEpisodeTech(mediaSourceId: string) {
     if (episodeTech.has(mediaSourceId) && !episodeTech.get(mediaSourceId)?.loading) return;
     const next = new Map(episodeTech);
-    next.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], decision: null, loading: true });
+    next.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], decision: null, decisions: {}, loading: true });
     episodeTech = next;
     try {
-      // Fetch source + tracks + playback decision in parallel.
-      // getPlaybackDecision is side-effect-free (does NOT start a transcode,
-      // unlike /api/playback/route which queues one). Safe to call on
-      // detail-page render.
-      const [src, tr, dec] = await Promise.allSettled([
+      // Fetch source + tracks + all device profile decisions in parallel.
+      // getPlaybackDecision is side-effect-free (does NOT start a transcode).
+      const [src, tr, ...decResults] = await Promise.allSettled([
         getMediaSourceDetail(mediaSourceId),
         getMediaSourceTracks(mediaSourceId),
-        getPlaybackDecision(mediaSourceId, { clientProfile: 'web' }),
+        ...deviceProfiles.map(p => getPlaybackDecision(mediaSourceId, { clientProfile: p })),
       ]);
+      const decisions: DeviceDecisions = {};
+      deviceProfiles.forEach((p, i) => {
+        if (decResults[i].status === 'fulfilled') decisions[p] = decResults[i].value;
+      });
       const updated = new Map(episodeTech);
       updated.set(mediaSourceId, {
         source: src.status === 'fulfilled' ? src.value : null,
         audioTracks: tr.status === 'fulfilled' ? (tr.value.audioTracks ?? []) : [],
         subtitleTracks: tr.status === 'fulfilled' ? (tr.value.subtitleTracks ?? []) : [],
-        decision: dec.status === 'fulfilled' ? dec.value : null,
+        decision: decisions.web ?? null,
+        decisions,
         loading: false,
       });
       episodeTech = updated;
     } catch {
       // Swallow — UI will show "couldn't load tracks" next to the button.
       const updated = new Map(episodeTech);
-      updated.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], decision: null, loading: false });
+      updated.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], decision: null, decisions: {}, loading: false });
       episodeTech = updated;
     }
   }
@@ -617,14 +624,19 @@
                                           </div>
                                         {/if}
                                         {/if}
-                                        {#if tech.decision}
-                                          {@const b = playabilityBadge(tech.decision.mode)}
-                                          <div class="mb-3 rounded-lg p-2.5" style={`background: ${b.color.replace(')', ' / 0.06)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`}>
-                                            <div class="flex items-center gap-1.5">
-                                              <span class="h-1.5 w-1.5 rounded-full" style={`background: ${b.color};`}></span>
-                                              <span class="text-[12px] font-medium" style={`color: ${b.color};`}>{b.label}</span>
-                                            </div>
-                                            <p class="mt-0.5 ml-3 text-[11px] leading-relaxed text-foreground/65">{b.blurb}</p>
+                                        {#if tech.decisions && Object.keys(tech.decisions).length > 0}
+                                          <div class="mb-3 grid grid-cols-3 gap-1.5">
+                                            {#each deviceProfiles as profile}
+                                              {@const d = tech.decisions[profile]}
+                                              {@const b = playabilityBadge(d?.mode)}
+                                              <div class="rounded p-2 text-center" style={`background: ${b.color.replace(')', ' / 0.07)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`} title={d?.reasonText || b.blurb}>
+                                                <div class="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{deviceLabels[profile]}</div>
+                                                <div class="flex items-center justify-center gap-1">
+                                                  <span class="h-1 w-1 shrink-0 rounded-full" style={`background: ${b.color};`}></span>
+                                                  <span class="text-[10px] font-medium" style={`color: ${b.color};`}>{playabilityShortLabel(d?.mode)}</span>
+                                                </div>
+                                              </div>
+                                            {/each}
                                           </div>
                                         {/if}
                                         <div class="grid gap-3 sm:grid-cols-2">

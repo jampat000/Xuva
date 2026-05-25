@@ -13,7 +13,7 @@
   import { getMovieDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
-  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary, playabilityBadge } from '$lib/utils/mediaFormat';
+  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary, playabilityBadge, playabilityShortLabel } from '$lib/utils/mediaFormat';
   import type { MovieDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -71,20 +71,27 @@
   let subtitleTracks = $state<ProbeTrack[]>([]);
   let tracksLoading = $state(false);
 
-  // ── Per-version playability decision (for the badge on each Version card) ─
-  // Keyed by mediaSourceId. Calls /api/playback/decision which is side-effect-
-  // free (NO transcode start, unlike /api/playback/route). Fetched lazily as
-  // versions come into view; cached so re-renders don't refetch.
-  let versionPlayability = $state<Record<string, PlaybackDecisionResponse>>({});
+  // ── Per-version playability matrix (web / apple-tv / android-tv) ────────────
+  // Keyed by `${mediaSourceId}:${profile}`. Side-effect-free decision endpoint.
+  type DeviceDecisions = { web?: PlaybackDecisionResponse; 'apple-tv'?: PlaybackDecisionResponse; 'android-tv'?: PlaybackDecisionResponse };
+  const deviceProfiles = ['web', 'apple-tv', 'android-tv'] as const;
+  const deviceLabels: Record<string, string> = { web: 'Web', 'apple-tv': 'Apple TV', 'android-tv': 'Android TV' };
+  let versionPlayability = $state<Record<string, DeviceDecisions>>({});
   $effect(() => {
     const list = versions;
     if (list.length === 0) return;
     for (const v of list) {
       const id = v.mediaSourceId;
       if (!id || versionPlayability[id]) continue;
-      getPlaybackDecision(id, { clientProfile: 'web' })
-        .then(d => { versionPlayability = { ...versionPlayability, [id]: d }; })
-        .catch(() => { /* swallow — the badge just won't appear */ });
+      Promise.allSettled(
+        deviceProfiles.map(p => getPlaybackDecision(id, { clientProfile: p }))
+      ).then(results => {
+        const decisions: DeviceDecisions = {};
+        deviceProfiles.forEach((p, i) => {
+          if (results[i].status === 'fulfilled') decisions[p] = results[i].value;
+        });
+        versionPlayability = { ...versionPlayability, [id]: decisions };
+      });
     }
   });
 
@@ -462,8 +469,8 @@
                     {#if v.sizeBytes}
                       <div class="mt-2 text-[12px] text-foreground/55 tabular-nums">{formatFileSize(v.sizeBytes)}</div>
                     {/if}
-                    {#if v.mediaSourceId && versionPlayability[v.mediaSourceId]}
-                      {@const b = playabilityBadge(versionPlayability[v.mediaSourceId].mode)}
+                    {#if v.mediaSourceId && versionPlayability[v.mediaSourceId]?.web}
+                      {@const b = playabilityBadge(versionPlayability[v.mediaSourceId].web?.mode)}
                       <div class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium" style={`color: ${b.color}; background: ${b.color.replace(')', ' / 0.1)')}; border: 1px solid ${b.color.replace(')', ' / 0.25)')};`}>
                         <span class="h-1.5 w-1.5 rounded-full" style={`background: ${b.color};`}></span>
                         {b.label}
@@ -500,24 +507,25 @@
                     </span>
                   {/each}
                 </div>
-                <!-- Playability verdict — answers "what happens when I press
-                     Play?" in plain English. Uses the side-effect-free
-                     decision endpoint so loading the detail page never starts
-                     a transcode. -->
+                <!-- Multi-device playability matrix — shows Web / Apple TV / Android TV -->
                 {#if mediaSourceId && versionPlayability[mediaSourceId]}
-                  {@const b = playabilityBadge(versionPlayability[mediaSourceId].mode)}
-                  <div class="mt-4 rounded-lg p-3" style={`background: ${b.color.replace(')', ' / 0.06)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`}>
-                    <div class="flex items-center gap-2">
-                      <span class="h-2 w-2 rounded-full shadow-[0_0_8px_currentColor]" style={`background: ${b.color}; color: ${b.color};`}></span>
-                      <span class="text-[13px] font-medium" style={`color: ${b.color};`}>{b.label}</span>
-                    </div>
-                    <p class="mt-1 ml-4 text-[12px] leading-relaxed text-foreground/70">{b.blurb}</p>
-                    {#if versionPlayability[mediaSourceId].reasonText}
-                      <p class="mt-1.5 ml-4 text-[11.5px] italic text-muted-foreground/70">
-                        {versionPlayability[mediaSourceId].reasonText}
-                      </p>
-                    {/if}
+                  {@const decisions = versionPlayability[mediaSourceId]}
+                  <div class="mt-4 grid grid-cols-3 gap-2">
+                    {#each deviceProfiles as profile}
+                      {@const d = decisions[profile]}
+                      {@const b = playabilityBadge(d?.mode)}
+                      <div class="rounded-lg p-2.5 text-center" style={`background: ${b.color.replace(')', ' / 0.07)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`} title={d?.reasonText || b.blurb}>
+                        <div class="mb-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{deviceLabels[profile]}</div>
+                        <div class="flex items-center justify-center gap-1">
+                          <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background: ${b.color};`}></span>
+                          <span class="text-[11px] font-medium" style={`color: ${b.color};`}>{playabilityShortLabel(d?.mode)}</span>
+                        </div>
+                      </div>
+                    {/each}
                   </div>
+                  {#if decisions.web?.reasonText}
+                    <p class="mt-2 text-[11.5px] italic text-muted-foreground/70">{decisions.web.reasonText}</p>
+                  {/if}
                 {/if}
               </div>
             {/if}

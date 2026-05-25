@@ -170,3 +170,15 @@ export function playabilityBadge(mode?: string): PlayabilityBadge {
 		tone: 'muted',
 	};
 }
+
+// Short 1-2 word label for use in compact matrix cells.
+export function playabilityShortLabel(mode?: string): string {
+	const m = (mode || '').toLowerCase();
+	if (m === 'direct play') return 'Direct';
+	if (m === 'remux') return 'Remux';
+	if (m === 'audio transcode') return 'Audio';
+	if (m === 'video transcode' || m === 'adaptive stream') return 'Transcode';
+	if (m === 'subtitle burn') return 'Sub burn';
+	if (m === 'decision deferred') return 'Pending';
+	return '—';
+}
