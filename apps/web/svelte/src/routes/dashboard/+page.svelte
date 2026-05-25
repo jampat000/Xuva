@@ -1,0 +1,661 @@
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import {
+    getSystemStatus, getCatalogHealth, getSessions, getJobs, getPerformanceSettings,
+    scanAllLibraries, startProbeJob,
+    type SystemStatusResponse, type CatalogHealthResponse,
+    type SessionItem, type JobsStatusResponse, type PerformanceSettingsResponse,
+  } from '$lib/api/operator';
+  import { startBackfill, stopBackfill } from '$lib/api/browse';
+  import { createEventStream } from '$lib/events/stream';
+  import { appState } from '$lib/stores/appState.svelte';
+  import Header from '$lib/components/Header.svelte';
+  import JobCard from '$lib/components/JobCard.svelte';
+  import NowPlayingCard from '$lib/components/NowPlayingCard.svelte';
+  import ActivityRing from '$lib/components/ActivityRing.svelte';
+
+  let { data } = $props();
+
+  // ── Live state ─────────────────────────────────────────────────────────────
+  let sys      = $state<SystemStatusResponse | null>(data.sys);
+  let health   = $state<CatalogHealthResponse | null>(data.health);
+  let sessions = $state<SessionItem[]>(data.sessions);
+  let jobs     = $state<JobsStatusResponse | null>(data.jobs);
+  let perf     = $state<PerformanceSettingsResponse | null>(data.perf);
+  let lastUpdatedAt = $state<string>(new Date().toLocaleTimeString());
+
+  // ── Job busy flags ─────────────────────────────────────────────────────────
+  let scanBusy   = $state(false);
+  let metaBusy   = $state(false);
+  let probeBusy  = $state(false);
+  let runAllBusy = $state(false);
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const probeRunning = $derived(
+    jobs?.probe?.status === 'running' ||
+    (jobs?.probe?.activeJobs?.some(j => j.status === 'running') ?? false)
+  );
+
+  const activeProbeJob = $derived(
+    jobs?.probe?.activeJobs?.find(j => j.status === 'running') ?? null
+  );
+
+  const probeProgress = $derived.by(() => {
+    if (!activeProbeJob) return null;
+    const total = activeProbeJob.total ?? 0;
+    const done  = activeProbeJob.completed ?? 0;
+    if (total === 0) return null;
+    return { pct: Math.round((done / total) * 100), detail: `${done.toLocaleString()} / ${total.toLocaleString()}` };
+  });
+
+  const metaProgress = $derived.by(() => {
+    const bf = jobs?.metadata?.backfill;
+    if (!bf?.running || bf.total === 0) return null;
+    const done = bf.refreshed + bf.failed;
+    return { pct: Math.round((done / bf.total) * 100), detail: `${done.toLocaleString()} / ${bf.total.toLocaleString()}` };
+  });
+
+  const totalFiles = $derived(health?.summary?.mediaSources ?? 0);
+  const unprobed   = $derived(health?.unprobed ?? 0);
+  const probed     = $derived(Math.max(0, totalFiles - unprobed));
+  const cpuPct     = $derived(Math.round(sys?.cpu?.percent ?? 0));
+  const memPct     = $derived(Math.round(sys?.memory?.usedPercent ?? 0));
+
+  // ── SVG arc gauge helpers ──────────────────────────────────────────────────
+  const _R    = 36;
+  const _CIRC = 2 * Math.PI * _R; // ≈ 226.2
+
+  function arcDash(pct: number): string {
+    const p = Math.min(100, Math.max(0, pct));
+    const filled = _CIRC * (p / 100);
+    return `${filled} ${_CIRC - filled}`;
+  }
+
+  function gaugeColor(pct: number, warnAt = 70, critAt = 90): string {
+    if (pct >= critAt)  return 'oklch(0.65 0.22 25)';   // red
+    if (pct >= warnAt)  return 'oklch(0.80 0.18 65)';   // amber
+    return 'oklch(0.62 0.22 285)';                       // purple (primary)
+  }
+
+  function diskColor(pct: number): string {
+    if (pct >= 90) return 'bg-red-400';
+    if (pct >= 75) return 'bg-amber-400';
+    return 'bg-primary-glow';
+  }
+
+  function diskTextColor(pct: number): string {
+    if (pct >= 90) return 'text-red-400';
+    if (pct >= 75) return 'text-amber-400';
+    return 'text-foreground';
+  }
+
+  // ── Formatters ─────────────────────────────────────────────────────────────
+  function fmtBytes(bytes: number | undefined | null): string {
+    if (!bytes || bytes === 0) return '0 B';
+    if (bytes >= 1099511627776) return `${(bytes / 1099511627776).toFixed(1)} TB`;
+    if (bytes >= 1073741824)    return `${(bytes / 1073741824).toFixed(1)} GB`;
+    if (bytes >= 1048576)       return `${(bytes / 1048576).toFixed(1)} MB`;
+    if (bytes >= 1024)          return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${bytes} B`;
+  }
+
+  function fmtBps(bps: number | undefined | null): string {
+    if (!bps || bps === 0) return '0 B/s';
+    if (bps >= 1073741824) return `${(bps / 1073741824).toFixed(1)} GB/s`;
+    if (bps >= 1048576)    return `${(bps / 1048576).toFixed(1)} MB/s`;
+    if (bps >= 1024)       return `${(bps / 1024).toFixed(1)} KB/s`;
+    return `${bps.toFixed(0)} B/s`;
+  }
+
+  // ── Data refresh ───────────────────────────────────────────────────────────
+  function stamp() { lastUpdatedAt = new Date().toLocaleTimeString(); }
+
+  async function refreshSys() {
+    try { sys = await getSystemStatus(); stamp(); } catch { /* silent */ }
+  }
+
+  async function refreshJobs() {
+    try {
+      const [j, s] = await Promise.allSettled([getJobs(), getSessions()]);
+      if (j.status === 'fulfilled') jobs = j.value;
+      if (s.status === 'fulfilled') sessions = s.value.sessions ?? [];
+      stamp();
+    } catch { /* silent */ }
+  }
+
+  async function refreshHealth() {
+    try { health = await getCatalogHealth(); stamp(); } catch { /* silent */ }
+  }
+
+  async function refreshPerf() {
+    try { perf = await getPerformanceSettings(); } catch { /* silent */ }
+  }
+
+  async function refreshAll() {
+    await Promise.allSettled([refreshSys(), refreshJobs(), refreshHealth(), refreshPerf()]);
+  }
+
+  // ── Job actions ────────────────────────────────────────────────────────────
+  async function handleScanNow() {
+    scanBusy = true;
+    try { await scanAllLibraries(); await refreshJobs(); } catch { /* ignore */ } finally { scanBusy = false; }
+  }
+
+  async function handleMetaNow() {
+    metaBusy = true;
+    try { await startBackfill('tmdb'); await refreshJobs(); } catch { /* ignore */ } finally { metaBusy = false; }
+  }
+
+  async function handleMetaStop() {
+    metaBusy = true;
+    try { await stopBackfill(); await refreshJobs(); } catch { /* ignore */ } finally { metaBusy = false; }
+  }
+
+  async function handleProbeNow() {
+    probeBusy = true;
+    try { await startProbeJob(0); await refreshJobs(); } catch { /* ignore */ } finally { probeBusy = false; }
+  }
+
+  async function handleRunAll() {
+    runAllBusy = true;
+    try {
+      await scanAllLibraries();
+      await new Promise(r => setTimeout(r, 400));
+      await startBackfill('tmdb');
+      await new Promise(r => setTimeout(r, 400));
+      await startProbeJob(0);
+      await refreshJobs();
+    } catch { /* ignore */ } finally { runAllBusy = false; }
+  }
+
+  // ── SSE ────────────────────────────────────────────────────────────────────
+  const stream = createEventStream();
+
+  $effect(() => {
+    const unsub = stream.subscribeAny(({ type }) => {
+      if (
+        type.startsWith('automation.') ||
+        type.startsWith('scan.')       ||
+        type.startsWith('probe.')      ||
+        type.startsWith('metadata.')   ||
+        type === 'api.session.accepted' ||
+        type === 'api.session.stopped'
+      ) {
+        refreshJobs();
+      }
+    });
+    return unsub;
+  });
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+  let timers: ReturnType<typeof setInterval>[] = [];
+
+  onMount(() => {
+    stream.connect();
+    timers = [
+      setInterval(refreshSys,    5_000),   // system stats — fast
+      setInterval(refreshJobs,   5_000),   // jobs + sessions — fast
+      setInterval(refreshPerf,   15_000),  // worker queues
+      setInterval(refreshHealth, 60_000),  // catalog health — slow
+    ];
+  });
+
+  onDestroy(() => {
+    stream.disconnect();
+    for (const t of timers) clearInterval(t);
+  });
+</script>
+
+<svelte:head>
+  <title>Dashboard — {appState.serverName}</title>
+  <meta name="description" content="Live server status — system resources, library health, automation jobs, and active sessions." />
+</svelte:head>
+
+<div class="min-h-screen bg-background">
+  <Header />
+
+  <main class="px-6 pb-32 pt-24 md:px-12 md:pt-28 lg:px-20">
+
+    <!-- ── Page header ────────────────────────────────────────────────────── -->
+    <header class="relative mb-12 flex flex-wrap items-end justify-between gap-4">
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute -inset-x-6 -top-10 -z-10 h-[180px] opacity-40 md:-inset-x-12 lg:-inset-x-20"
+        style="background: radial-gradient(50% 100% at 15% 0%, oklch(0.62 0.22 285 / 0.25), transparent 70%);"
+      ></div>
+      <div>
+        <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">Server</div>
+        <h1 class="font-serif-display text-[clamp(2rem,4vw,3.25rem)] leading-[1] tracking-tight">Dashboard</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span
+            class="inline-block h-2 w-2 rounded-full bg-green-400"
+            style="box-shadow: 0 0 6px oklch(0.72 0.20 155 / 0.8)"
+          ></span>
+          Live · {lastUpdatedAt}
+        </span>
+        <button
+          type="button"
+          onclick={refreshAll}
+          class="hairline rounded-full px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+        >
+          Refresh
+        </button>
+        <button
+          type="button"
+          onclick={handleRunAll}
+          disabled={runAllBusy}
+          class="inline-flex items-center gap-1.5 rounded-full bg-gradient-primary px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-glow ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60"
+        >
+          {#if runAllBusy}
+            <span class="h-2.5 w-2.5 animate-spin rounded-full border border-white/40 border-t-white"></span>
+          {:else}
+            <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          {/if}
+          Run All Jobs
+        </button>
+      </div>
+    </header>
+
+    <!-- ── SYSTEM RESOURCES ──────────────────────────────────────────────── -->
+    <section class="mb-10">
+      <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">System Resources</h2>
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+
+        <!-- CPU -->
+        <div class="hairline flex flex-col items-center gap-3 rounded-2xl bg-surface/40 p-5">
+          <div class="w-full text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">CPU</div>
+          <div class="relative flex items-center justify-center">
+            <svg viewBox="0 0 100 100" class="h-24 w-24 -rotate-90" aria-hidden="true">
+              <circle cx="50" cy="50" r={_R} fill="none"
+                style="stroke: oklch(1 0 0 / 0.08); stroke-width: 10;" />
+              <circle cx="50" cy="50" r={_R} fill="none"
+                style="stroke: {gaugeColor(cpuPct)}; stroke-width: 10; stroke-linecap: round;
+                       stroke-dasharray: {arcDash(cpuPct)};
+                       transition: stroke-dasharray 1s ease, stroke 0.5s ease;" />
+            </svg>
+            <div class="absolute inset-0 flex rotate-90 flex-col items-center justify-center">
+              <span class="text-2xl font-bold leading-none tabular-nums">{cpuPct}%</span>
+            </div>
+          </div>
+          <div class="w-full space-y-1 text-center">
+            <div class="text-xs font-medium">{cpuPct}% utilisation</div>
+            <div class="text-[11px] text-muted-foreground">{sys?.cpu?.cores ?? '—'} cores</div>
+          </div>
+        </div>
+
+        <!-- Memory -->
+        <div class="hairline flex flex-col items-center gap-3 rounded-2xl bg-surface/40 p-5">
+          <div class="w-full text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Memory</div>
+          <div class="relative flex items-center justify-center">
+            <svg viewBox="0 0 100 100" class="h-24 w-24 -rotate-90" aria-hidden="true">
+              <circle cx="50" cy="50" r={_R} fill="none"
+                style="stroke: oklch(1 0 0 / 0.08); stroke-width: 10;" />
+              <circle cx="50" cy="50" r={_R} fill="none"
+                style="stroke: {gaugeColor(memPct, 75, 90)}; stroke-width: 10; stroke-linecap: round;
+                       stroke-dasharray: {arcDash(memPct)};
+                       transition: stroke-dasharray 1s ease, stroke 0.5s ease;" />
+            </svg>
+            <div class="absolute inset-0 flex rotate-90 flex-col items-center justify-center">
+              <span class="text-2xl font-bold leading-none tabular-nums">{memPct}%</span>
+            </div>
+          </div>
+          <div class="w-full space-y-1 text-center">
+            <div class="text-xs font-medium">{fmtBytes(sys?.memory?.usedBytes)} used</div>
+            <div class="text-[11px] text-muted-foreground">of {fmtBytes(sys?.memory?.totalBytes)}</div>
+          </div>
+        </div>
+
+        <!-- Network I/O -->
+        <div class="hairline flex flex-col gap-3 rounded-2xl bg-surface/40 p-5">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Network I/O</div>
+          <div class="flex flex-1 flex-col justify-center gap-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+                style="background: oklch(0.72 0.20 155 / 0.12); color: oklch(0.72 0.20 155)">↓</div>
+              <div>
+                <div class="font-semibold leading-none tabular-nums">{fmtBps(sys?.network?.receiveBps)}</div>
+                <div class="mt-0.5 text-[11px] text-muted-foreground">Receiving</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+                style="background: oklch(0.65 0.20 255 / 0.12); color: oklch(0.70 0.18 255)">↑</div>
+              <div>
+                <div class="font-semibold leading-none tabular-nums">{fmtBps(sys?.network?.transmitBps)}</div>
+                <div class="mt-0.5 text-[11px] text-muted-foreground">Transmitting</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process -->
+        <div class="hairline flex flex-col gap-3 rounded-2xl bg-surface/40 p-5">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">Process</div>
+          <div class="flex flex-1 flex-col justify-center gap-4 py-1">
+            <div>
+              <div class="text-3xl font-bold leading-none tabular-nums">{sys?.process?.goroutines ?? '—'}</div>
+              <div class="mt-1 text-[11px] text-muted-foreground">Goroutines</div>
+            </div>
+            <div class="space-y-2 border-t border-border pt-3">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="text-muted-foreground">Heap</span>
+                <span class="font-medium tabular-nums">{fmtBytes(sys?.process?.goAllocBytes)}</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="text-muted-foreground">Reserved</span>
+                <span class="font-medium tabular-nums">{fmtBytes(sys?.process?.goSysBytes)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STORAGE ────────────────────────────────────────────────────────── -->
+    {#if sys?.disks && sys.disks.length > 0}
+    <section class="mb-10">
+      <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Storage</h2>
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {#each sys.disks as disk (disk.path ?? disk.name)}
+          {@const dPct = Math.round(disk.usedPercent ?? 0)}
+          <div class="hairline rounded-2xl bg-surface/40 p-4 {dPct >= 90 ? 'border-red-400/30' : dPct >= 75 ? 'border-amber-400/30' : ''}">
+            <div class="mb-3 flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="truncate text-sm font-medium font-mono">{disk.path ?? disk.name ?? 'Unknown'}</div>
+                <div class="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  {fmtBytes(disk.usedBytes)} / {fmtBytes(disk.totalBytes)}
+                </div>
+              </div>
+              <div class="shrink-0 text-right">
+                <div class="text-sm font-bold tabular-nums {diskTextColor(dPct)}">{dPct}%</div>
+                <div class="text-[11px] text-muted-foreground tabular-nums">{fmtBytes(disk.freeBytes)} free</div>
+              </div>
+            </div>
+            <div class="h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
+              <div
+                class="h-full rounded-full transition-all duration-700 {diskColor(dPct)}"
+                style="width: {dPct}%"
+              ></div>
+            </div>
+            {#if disk.error}
+              <p class="mt-2 text-[10px] text-red-400">{disk.error}</p>
+            {:else if disk.sharedWithData}
+              <p class="mt-2 text-[10px] text-muted-foreground/50">Shared with data directory</p>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </section>
+    {/if}
+
+    <!-- ── LIBRARY ─────────────────────────────────────────────────────────── -->
+    <section class="mb-10">
+      <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Library</h2>
+
+      <!-- Stat strip -->
+      <div class="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
+        {#each [
+          { label: 'Movies',      value: health?.summary?.movies      ?? 0, warn: false },
+          { label: 'Series',      value: health?.summary?.series      ?? 0, warn: false },
+          { label: 'Episodes',    value: health?.summary?.episodes    ?? 0, warn: false },
+          { label: 'Files',       value: totalFiles,                         warn: false },
+          { label: 'Unprobed',    value: unprobed,                          warn: unprobed > 0 },
+          { label: 'Need Review', value: health?.needsReview          ?? 0, warn: (health?.needsReview ?? 0) > 0 },
+        ] as stat}
+          <div class="hairline rounded-2xl bg-surface/40 p-4 {stat.warn ? 'border-amber-400/30 bg-amber-400/[0.04]' : ''}">
+            <div class="text-2xl font-bold leading-none tabular-nums {stat.warn ? 'text-amber-400' : ''}">
+              {stat.value.toLocaleString()}
+            </div>
+            <div class="mt-1.5 text-[11px] text-muted-foreground">{stat.label}</div>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Analysis progress -->
+      {#if totalFiles > 0}
+        <div class="hairline flex flex-wrap items-center gap-5 rounded-2xl bg-surface/40 px-5 py-4">
+          <div class="shrink-0">
+            <ActivityRing {probed} total={totalFiles} size={80} />
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-semibold">
+              {probed.toLocaleString()}
+              <span class="font-normal text-muted-foreground">/ {totalFiles.toLocaleString()} files analysed</span>
+            </div>
+            <div class="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
+              <div
+                class="h-full rounded-full bg-primary-glow transition-all duration-700"
+                style="width: {totalFiles > 0 ? Math.round((probed / totalFiles) * 100) : 0}%"
+              ></div>
+            </div>
+            <div class="mt-1.5 text-[11px] text-muted-foreground">
+              {totalFiles > 0 ? Math.round((probed / totalFiles) * 100) : 0}% complete
+              {#if unprobed > 0}· <span class="text-amber-400">{unprobed.toLocaleString()} remaining</span>{/if}
+            </div>
+          </div>
+          {#if health?.unsupported && health.unsupported > 0}
+            <div class="shrink-0 rounded-xl border border-border bg-foreground/[0.04] px-3 py-2 text-center">
+              <div class="text-lg font-bold leading-none tabular-nums">{health.unsupported}</div>
+              <div class="mt-1 text-[10px] text-muted-foreground">Unsupported</div>
+            </div>
+          {/if}
+          {#if health?.highBitrate && health.highBitrate > 0}
+            <div class="shrink-0 rounded-xl border border-border bg-foreground/[0.04] px-3 py-2 text-center">
+              <div class="text-lg font-bold leading-none tabular-nums">{health.highBitrate}</div>
+              <div class="mt-1 text-[10px] text-muted-foreground">High Bitrate</div>
+            </div>
+          {/if}
+          {#if unprobed > 0 && !probeRunning}
+            <button
+              type="button"
+              onclick={handleProbeNow}
+              disabled={probeBusy}
+              class="shrink-0 rounded-full bg-amber-400/15 px-4 py-2 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-400/25 disabled:opacity-50"
+            >
+              {probeBusy ? 'Starting…' : 'Probe now'}
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Metadata backfill detail (shown when running) -->
+      {#if jobs?.metadata?.backfill?.running}
+        {@const bf = jobs.metadata.backfill}
+        <div class="hairline mt-3 flex items-center gap-4 rounded-xl border-primary/20 bg-primary-glow/[0.06] px-4 py-3">
+          <span class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary-glow"></span>
+          <div class="min-w-0 flex-1 text-xs">
+            <span class="font-medium text-foreground">Metadata backfill running</span>
+            {#if bf.lastTitle}
+              <span class="ml-2 truncate text-muted-foreground">— {bf.lastTitle}</span>
+            {/if}
+          </div>
+          <div class="shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
+            {(bf.refreshed + bf.failed).toLocaleString()} / {bf.total.toLocaleString()}
+          </div>
+        </div>
+      {/if}
+    </section>
+
+    <!-- ── AUTOMATION JOBS ──────────────────────────────────────────────────── -->
+    <section class="mb-10">
+      <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Automation Jobs</h2>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <JobCard
+          name="Library Scan"
+          emoji="📁"
+          status={jobs?.scan?.status ?? 'idle'}
+          lastRunAt={jobs?.scan?.lastRunAt}
+          nextRunAt={jobs?.scan?.nextRunAt}
+          intervalMin={jobs?.scan?.intervalMin}
+          error={jobs?.scan?.lastRunErr || null}
+          canRunNow={true}
+          canStop={false}
+          runBusy={scanBusy}
+          onRunNow={handleScanNow}
+        />
+        <JobCard
+          name="Metadata"
+          emoji="🎬"
+          status={jobs?.metadata?.status ?? 'idle'}
+          lastRunAt={jobs?.metadata?.lastRunAt}
+          nextRunAt={jobs?.metadata?.nextRunAt}
+          intervalMin={jobs?.metadata?.intervalMin}
+          error={jobs?.metadata?.lastRunErr || null}
+          progress={metaProgress?.pct ?? null}
+          progressDetail={metaProgress?.detail ?? null}
+          canRunNow={true}
+          canStop={true}
+          runBusy={metaBusy}
+          onRunNow={handleMetaNow}
+          onStop={handleMetaStop}
+        />
+        <JobCard
+          name="Probe"
+          emoji="🔬"
+          status={jobs?.probe?.status ?? 'idle'}
+          lastRunAt={jobs?.probe?.lastRunAt}
+          nextRunAt={jobs?.probe?.nextRunAt}
+          error={jobs?.probe?.lastRunErr || null}
+          progress={probeProgress?.pct ?? null}
+          progressDetail={probeProgress?.detail ?? null}
+          canRunNow={true}
+          canStop={false}
+          runBusy={probeBusy}
+          onRunNow={handleProbeNow}
+        />
+      </div>
+    </section>
+
+    <!-- ── NOW PLAYING + WORKER QUEUES ────────────────────────────────────── -->
+    <div class="grid gap-6 lg:grid-cols-[1fr_360px]">
+
+      <!-- Sessions / Now Playing -->
+      <section>
+        <div class="mb-4 flex items-center gap-3">
+          <h2 class="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Now Playing</h2>
+          {#if sessions.length > 0}
+            <span class="rounded-full bg-primary-glow/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-primary-glow">
+              {sessions.length} active
+            </span>
+          {/if}
+        </div>
+
+        {#if sessions.length === 0}
+          <div class="hairline flex flex-col items-center justify-center gap-3 rounded-2xl bg-surface/40 py-14 text-center">
+            <svg class="h-10 w-10 text-muted-foreground/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            </svg>
+            <p class="text-sm text-muted-foreground">Nothing playing right now</p>
+          </div>
+        {:else}
+          {#if sessions.some(s => s.state === 'playing')}
+            <div class="hairline mb-3 flex items-center gap-3 rounded-xl border-amber-400/20 bg-amber-400/[0.06] px-4 py-2.5">
+              <span class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400"></span>
+              <p class="text-xs text-amber-300">
+                {sessions.length === 1 ? '1 active session' : `${sessions.length} active sessions`} —
+                automation jobs pause during playback
+              </p>
+            </div>
+          {/if}
+          <div class="space-y-2">
+            {#each sessions as session (session.id)}
+              <NowPlayingCard {session} />
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <!-- Worker Queues -->
+      <section>
+        <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Worker Queues</h2>
+        <div class="hairline rounded-2xl bg-surface/40 p-5">
+          {#if perf?.queues && perf.queues.length > 0}
+            <div class="space-y-5">
+              {#each perf.queues as q (q.name)}
+                {@const active  = q.active  ?? 0}
+                {@const workers = q.workers ?? 0}
+                {@const queued  = q.queued  ?? 0}
+                {@const util    = workers > 0 ? Math.round((active / workers) * 100) : 0}
+                <div>
+                  <div class="mb-2 flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium capitalize">{q.name}</span>
+                      {#if active > 0}
+                        <span class="rounded-full bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-bold text-primary-glow">{active}</span>
+                      {/if}
+                    </div>
+                    <span class="text-[11px] text-muted-foreground tabular-nums">
+                      {active} / {workers} workers
+                    </span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-foreground/10">
+                    <div
+                      class="h-full rounded-full transition-all duration-700 {util >= 100 ? 'bg-amber-400' : 'bg-primary-glow'}"
+                      style="width: {util}%"
+                    ></div>
+                  </div>
+                  {#if queued > 0}
+                    <p class="mt-1.5 text-[11px] text-muted-foreground tabular-nums">
+                      {queued} job{queued !== 1 ? 's' : ''} queued
+                    </p>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <!-- Fallback: show limits from config -->
+            {#if perf?.limits}
+              <div class="space-y-5">
+                {#each [
+                  { name: 'Scan',       workers: perf.limits.scanWorkers      ?? 0 },
+                  { name: 'Probe',      workers: perf.limits.probeWorkers     ?? 0 },
+                  { name: 'Transcode',  workers: perf.limits.transcodeWorkers ?? 0 },
+                  { name: 'GPU',        workers: perf.limits.gpuWorkers       ?? 0 },
+                ].filter(q => q.workers > 0) as q (q.name)}
+                  <div>
+                    <div class="mb-2 flex items-center justify-between">
+                      <span class="text-sm font-medium">{q.name}</span>
+                      <span class="text-[11px] text-muted-foreground tabular-nums">{q.workers} workers</span>
+                    </div>
+                    <div class="h-2 overflow-hidden rounded-full bg-foreground/10">
+                      <div class="h-full w-0 rounded-full bg-primary-glow"></div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="flex flex-col items-center gap-2 py-8 text-center">
+                <p class="text-sm text-muted-foreground">No queue data available</p>
+              </div>
+            {/if}
+          {/if}
+
+          <!-- Hardware acceleration badge -->
+          {#if perf?.hardwareAcceleration}
+            {@const hw = perf.hardwareAcceleration}
+            <div class="mt-5 border-t border-border pt-4">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="text-muted-foreground">Hardware acceleration</span>
+                <span class="font-medium {hw.available ? 'text-green-400' : 'text-muted-foreground'}">
+                  {hw.available ? hw.status ?? 'Available' : 'Not available'}
+                </span>
+              </div>
+              {#if hw.available && hw.encoders && hw.encoders.length > 0}
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  {#each hw.encoders as enc (enc.id)}
+                    <span class="rounded-full border border-border bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground">
+                      {enc.label ?? enc.codec}
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      </section>
+    </div>
+
+  </main>
+</div>
