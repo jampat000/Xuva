@@ -163,6 +163,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/libraries/{id}/scan", libraryScanByIDHandler(deps))
 	handleProtected(mux, deps, "GET /api/catalog/summary", catalogSummaryHandler(deps))
 	handleProtected(mux, deps, "GET /api/catalog/health", catalogHealthHandler(deps))
+	handleProtected(mux, deps, "GET /api/catalog/codecs", catalogCodecsHandler(deps))
 	handleProtected(mux, deps, "GET /api/migrations/formats", migrationFormatsHandler(deps))
 	handleProtected(mux, deps, "GET /api/migrations/runs", migrationRunsHandler(deps))
 	handleProtected(mux, deps, "GET /api/migrations/runs/{id}", migrationRunDetailHandler(deps))
@@ -1666,6 +1667,19 @@ func catalogHealthHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, health)
+	}
+}
+
+// catalogCodecsHandler returns the per-codec breakdown the dashboard uses
+// to show "what's in your library" — see catalog.Codecs() doc.
+func catalogCodecsHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		breakdown, err := deps.Catalog.Codecs(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "catalog codec breakdown failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, breakdown)
 	}
 }
 
