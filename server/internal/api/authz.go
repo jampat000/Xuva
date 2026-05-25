@@ -140,7 +140,9 @@ var routePolicies = map[string]routePolicy{
 	"PATCH /api/sessions/{id}":                route("PATCH /api/sessions/{id}", "sessions", "session.update", roleAdmin, roleStandard),
 	"DELETE /api/sessions/{id}":               route("DELETE /api/sessions/{id}", "sessions", "session.stop", roleAdmin, roleStandard),
 	"PUT /api/playback/state/{id}":            route("PUT /api/playback/state/{id}", "playback", "playback.state.update", roleAdmin, roleStandard),
-	"GET /play/{id}":                          route("GET /play/{id}", "playback", "player.open", roleAdmin, roleStandard),
+	// "GET /play/{id}" intentionally removed — the legacy HTML player
+	// handler is no longer registered in router.go. The SPA route
+	// /play/[mediaSourceId] now handles the URL via webRootHandler fallback.
 
 	// --- read-only endpoints (issue #55: auth lockdown) ---
 	// Admin-only operational / config reads:

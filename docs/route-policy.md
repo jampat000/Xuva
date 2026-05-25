@@ -83,7 +83,6 @@ Public client bootstrap routes:
 | `PATCH /api/sessions/{id}` | sessions | `session.update` | admin, standard |
 | `DELETE /api/sessions/{id}` | sessions | `session.stop` | admin, standard |
 | `PUT /api/playback/state/{id}` | playback | `playback.state.update` | admin, standard |
-| `GET /play/{id}` | playback | `player.open` | admin, standard |
 | `GET /api/metrics` | system | `system.metrics` | admin |
 | `GET /api/events` | system | `system.events` | admin |
 | `GET /api/architecture` | system | `system.architecture` | admin |

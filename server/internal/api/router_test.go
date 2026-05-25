@@ -2112,43 +2112,13 @@ func TestMetadataProvidersEndpointUsesStrictManagedModeHealth(t *testing.T) {
 	}
 }
 
-func TestPlayerPageIncludesDirectStreamRecoveryFlow(t *testing.T) {
-	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "Heat (1995)", "Heat.1995.1080p.BluRay.mkv"))
-
-	router := NewRouter(testDeps(t, time.Now()))
-	scan := postJSON(t, router, "/api/libraries/movies/scan", map[string]any{"path": root})
-	waitForScan(t, router, scan["id"].(string))
-
-	sources := getJSON(t, router, "/api/media-sources?limit=1")
-	list, _ := sources["mediaSources"].([]any)
-	if len(list) == 0 {
-		t.Fatalf("expected at least one media source, got %#v", sources)
-	}
-	sourceID, _ := list[0].(map[string]any)["id"].(string)
-	if strings.TrimSpace(sourceID) == "" {
-		t.Fatalf("expected media source id, got %#v", list[0])
-	}
-
-	request := httptest.NewRequest(http.MethodGet, "/play/"+sourceID, nil)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected player page 200, got %d: %s", response.Code, response.Body.String())
-	}
-
-	body := response.Body.String()
-	for _, fragment := range []string{
-		"Direct retry",
-		"auth_token",
-		"handlePlaybackFailure(\"abort\")",
-		"authorizeStream(forceRefresh = false)",
-	} {
-		if !strings.Contains(body, fragment) {
-			t.Fatalf("expected player page to include %q", fragment)
-		}
-	}
-}
+// TestPlayerPageIncludesDirectStreamRecoveryFlow used to assert that the
+// legacy hardcoded HTML player (playerHandler) included specific JS fragments
+// for stream-recovery flow. That handler has been deleted — /play/{id} now
+// falls through to the SPA root which loads the SvelteKit Player.svelte
+// component, so this test is no longer meaningful. The recovery flow lives
+// in apps/web/svelte/src/lib/components/player/Player.svelte and is covered
+// by frontend tests.
 
 func TestPlaybackStateAndSessions(t *testing.T) {
 	root := t.TempDir()
