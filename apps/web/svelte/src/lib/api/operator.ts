@@ -12,6 +12,8 @@ export interface CatalogSummaryResponse {
 
 export interface CatalogHealthResponse {
 	summary?: CatalogSummaryResponse;
+	/** Total disk usage of all media sources in bytes (SUM of size_bytes). */
+	totalSizeBytes?: number;
 	needsReview?: number;
 	unprobed?: number;
 	unsupported?: number;

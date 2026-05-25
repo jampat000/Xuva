@@ -2122,6 +2122,40 @@
                     </div>
                   {/if}
                 </div>
+
+                <!-- ─── Library at a glance ────────────────────────────────
+                     Fills the vertical real estate below the health flags
+                     with useful summary stats from data we already have:
+                     total library footprint on disk + subtitle coverage.
+                     Neither needs RAG (these are info, not warnings) so
+                     they get the theme accent treatment. -->
+                {#if true}
+                {@const totalBytes = dashHealth?.totalSizeBytes ?? 0}
+                {@const withSubs = dashHealth?.withSubtitles ?? 0}
+                {@const subsPct = dashTotalFiles > 0 ? Math.round((withSubs / dashTotalFiles) * 100) : 0}
+                <div class="mt-4 grid grid-cols-2 gap-3 border-t border-foreground/[0.06] pt-4">
+                  <div class="rounded-lg bg-foreground/[0.02] px-3 py-2.5">
+                    <div class="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/55">Library footprint</div>
+                    <div class="mt-1 font-serif-display text-xl tracking-tight tabular-nums"
+                      style="color: oklch(0.74 0.2 280);">
+                      {totalBytes > 0 ? formatBytes(totalBytes) : '—'}
+                    </div>
+                    <div class="text-[11px] text-muted-foreground/55">
+                      across {dashTotalFiles.toLocaleString()} files
+                    </div>
+                  </div>
+                  <div class="rounded-lg bg-foreground/[0.02] px-3 py-2.5">
+                    <div class="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/55">Subtitle coverage</div>
+                    <div class="mt-1 font-serif-display text-xl tracking-tight tabular-nums"
+                      style="color: oklch(0.74 0.2 280);">
+                      {subsPct}<span class="text-sm text-muted-foreground/55">%</span>
+                    </div>
+                    <div class="text-[11px] text-muted-foreground/55">
+                      {withSubs.toLocaleString()} have subtitles
+                    </div>
+                  </div>
+                </div>
+                {/if}
               {:else}
                 <div class="flex items-center justify-center py-12 text-[13px] italic text-muted-foreground/40">
                   No files indexed yet

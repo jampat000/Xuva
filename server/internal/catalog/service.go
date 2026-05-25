@@ -80,6 +80,10 @@ type Health struct {
 	Unsupported   int     `json:"unsupported"`
 	HighBitrate   int     `json:"highBitrate"`
 	WithSubtitles int     `json:"withSubtitles"`
+	// TotalSizeBytes is the sum of size_bytes across all media_sources rows.
+	// Surfaces the library footprint on disk on the dashboard so users can
+	// see "4.2 TB across 4,418 files" alongside the file count.
+	TotalSizeBytes int64 `json:"totalSizeBytes"`
 }
 
 // CodecCount is one entry in the codec histogram — codec name + how many
@@ -612,6 +616,14 @@ func (s *Service) Health(ctx context.Context) (Health, error) {
 		if err := s.db.QueryRowContext(ctx, item.query).Scan(item.out); err != nil {
 			return Health{}, err
 		}
+	}
+	// Total library footprint — COALESCE protects against empty libraries
+	// where SUM returns NULL. Indexed by media_source primary key so this
+	// scans the full table but it's a tiny per-row read.
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT COALESCE(SUM(size_bytes), 0) FROM media_sources",
+	).Scan(&health.TotalSizeBytes); err != nil {
+		return Health{}, err
 	}
 	return health, nil
 }
