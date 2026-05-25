@@ -70,6 +70,14 @@ type Job struct {
 	FailureClass    string    `json:"failureClass,omitempty"`
 	ReasonCode      string    `json:"reasonCode,omitempty"`
 	Remediation     string    `json:"remediation,omitempty"`
+	// LastAccessedAt is bumped every time a client polls the playback route
+	// and matches this job (FindActive hit). The reaper uses it to detect
+	// abandoned transcodes: if no client has asked about a queued/running job
+	// for ReaperIdleTimeout, the job is cancelled and ffmpeg is killed.
+	// Without this, navigating away from the "Preparing…" panel leaves
+	// ffmpeg burning CPU until the file completes — exactly the bug the
+	// user reported with movie 1408.
+	LastAccessedAt time.Time `json:"lastAccessedAt,omitempty"`
 }
 
 type Service struct {
@@ -114,7 +122,8 @@ func (s *Service) Start(ctx context.Context, request Request) (Job, error) {
 	if maxAttempts <= 0 {
 		maxAttempts = 2
 	}
-	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, AudioTrackIndex: request.AudioTrackIndex, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: time.Now().UTC(), MaxAttempts: maxAttempts}
+	now := time.Now().UTC()
+	job := Job{ID: s.nextJobID(), MediaSourceID: request.MediaSourceID, Mode: request.Mode, SourcePath: request.SourcePath, AudioTrackIndex: request.AudioTrackIndex, Acceleration: request.Acceleration, VideoEncoder: request.VideoEncoder, Status: StatusQueued, CreatedAt: now, LastAccessedAt: now, MaxAttempts: maxAttempts}
 	if request.TimeoutSeconds > 0 {
 		job.Timeout = (time.Duration(request.TimeoutSeconds) * time.Second).String()
 	}
@@ -330,14 +339,87 @@ func (s *Service) FindCompleted(mediaSourceID string, mode Mode, audioTrackIndex
 }
 
 func (s *Service) FindActive(mediaSourceID string, mode Mode, audioTrackIndex int) (Job, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, job := range s.jobs {
 		if job.MediaSourceID == mediaSourceID && job.Mode == mode && job.AudioTrackIndex == audioTrackIndex && (job.Status == StatusQueued || job.Status == StatusRunning) {
+			// Bump LastAccessedAt so the reaper knows a client is still polling
+			// this job. If polling stops (browser closed, navigated away), the
+			// reaper will pick up the staleness and cancel the orphan.
+			job.LastAccessedAt = time.Now().UTC()
+			s.jobs[job.ID] = job
 			return job, true
 		}
 	}
 	return Job{}, false
+}
+
+// ReapIdleJobs scans active jobs and cancels any whose LastAccessedAt is
+// older than idleTimeout. Called periodically from the background reaper
+// goroutine started by RunReaper. Returns the IDs of jobs cancelled so
+// callers can log them.
+//
+// Rationale: when a user clicks Play on a file that needs transcoding,
+// the route handler queues a job and the frontend polls the route every
+// 6s waiting for the output URL. If the user navigates away mid-prepare
+// (closes tab, hits Back) the frontend's onDestroy fires DELETE
+// /api/work/{id} — but only if the unload completed cleanly. Tab crashes,
+// network drops, devtools throttling, etc. can all skip that cleanup.
+// The reaper is the safety net: no polling = no client = nothing for the
+// output to be delivered to = cancel and free the CPU.
+func (s *Service) ReapIdleJobs(idleTimeout time.Duration) []string {
+	if idleTimeout <= 0 {
+		return nil
+	}
+	cutoff := time.Now().UTC().Add(-idleTimeout)
+	s.mu.RLock()
+	ids := make([]string, 0)
+	for _, job := range s.jobs {
+		if job.Status != StatusQueued && job.Status != StatusRunning {
+			continue
+		}
+		// Belt-and-braces: a freshly-queued job (LastAccessedAt zero or very
+		// recent because CreatedAt set it) isn't reaped on its first tick.
+		if job.LastAccessedAt.IsZero() || job.LastAccessedAt.After(cutoff) {
+			continue
+		}
+		ids = append(ids, job.ID)
+	}
+	s.mu.RUnlock()
+	for _, id := range ids {
+		s.Cancel(id)
+	}
+	return ids
+}
+
+// RunReaper starts a background loop that calls ReapIdleJobs on the given
+// interval until ctx is cancelled. Call once at startup.
+func (s *Service) RunReaper(ctx context.Context, interval, idleTimeout time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if cancelled := s.ReapIdleJobs(idleTimeout); len(cancelled) > 0 {
+					// Publish so the dashboard's event stream can show the
+					// "Cancelled abandoned transcode" notification, and so
+					// future log inspectors can see the trail.
+					if s.events != nil {
+						s.events.Publish("transcode.reaped", map[string]any{
+							"jobIds":        cancelled,
+							"idleTimeoutMs": idleTimeout.Milliseconds(),
+						})
+					}
+				}
+			}
+		}
+	}()
 }
 
 func (s *Service) CancelActiveForMediaSource(mediaSourceID string) int {
