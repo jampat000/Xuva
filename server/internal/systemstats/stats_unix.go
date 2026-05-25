@@ -207,11 +207,10 @@ func gpuStats() *GPUStats {
 	return amdSysfsGPUStats()
 }
 
-// amdSysfsGPUStats reads AMD GPU metrics from the DRM sysfs interface.
-// This works for any AMDGPU-driven card (GCN 1.0+ / RDNA) without requiring
-// the ROCm toolkit. Skips cards that don't expose gpu_busy_percent.
+// amdSysfsGPUStats reads AMD GPU metrics from the DRM + hwmon sysfs interfaces.
+// Works for any AMDGPU-driven card (GCN 1.0+ / RDNA) without ROCm.
+// Temperature, fan speed, and power draw are read from hwmon when available.
 func amdSysfsGPUStats() *GPUStats {
-	// Vendor ID 0x1002 = AMD / ATI
 	const amdVendorID = "0x1002"
 	cards, _ := filepath.Glob("/sys/class/drm/card*/device")
 	for _, devPath := range cards {
@@ -226,12 +225,58 @@ func amdSysfsGPUStats() *GPUStats {
 		util, _ := strconv.ParseFloat(strings.TrimSpace(string(utilRaw)), 64)
 		vramUsed := readSysfsUint64(filepath.Join(devPath, "mem_info_vram_used"))
 		vramTotal := readSysfsUint64(filepath.Join(devPath, "mem_info_vram_total"))
-		return &GPUStats{
+		g := &GPUStats{
 			AdapterName:    amdSysfsName(devPath),
 			UtilizationPct: util,
 			VRAMUsedBytes:  vramUsed,
 			VRAMTotalBytes: vramTotal,
 		}
+		// Hwmon: temperature, power, fan.
+		// The hwmon directory pattern is <devPath>/hwmon/hwmon*
+		hwmonDirs, _ := filepath.Glob(filepath.Join(devPath, "hwmon", "hwmon*"))
+		if len(hwmonDirs) > 0 {
+			hw := hwmonDirs[0]
+			// Temperature — temp1_input is junction/GPU die; temp2_input is hotspot on RDNA.
+			// Values are in millidegrees Celsius.
+			if raw := readSysfsUint64(filepath.Join(hw, "temp1_input")); raw > 0 {
+				v := float64(raw) / 1000.0
+				g.TemperatureC = &v
+			}
+			// Power draw — power1_average in microwatts.
+			if raw := readSysfsUint64(filepath.Join(hw, "power1_average")); raw > 0 {
+				v := float64(raw) / 1_000_000.0
+				g.PowerDrawW = &v
+			}
+			// Fan speed: try pwm1/pwm1_max for a clean % first, fall back to
+			// fan1_input / fan1_max (RPM-based percentage).
+			if fanPct := amdFanPct(hw); fanPct != nil {
+				g.FanSpeedPct = fanPct
+			}
+		}
+		return g
+	}
+	return nil
+}
+
+// amdFanPct returns a 0–100 fan duty cycle percentage read from hwmon.
+// It prefers the PWM interface (pwm1/pwm1_max) and falls back to RPM-based
+// (fan1_input / fan1_max). Returns nil when no fan data is available.
+func amdFanPct(hwmonDir string) *float64 {
+	pwm := readSysfsUint64(filepath.Join(hwmonDir, "pwm1"))
+	pwmMax := readSysfsUint64(filepath.Join(hwmonDir, "pwm1_max"))
+	if pwmMax == 0 {
+		pwmMax = 255 // PWM standard range
+	}
+	if pwm > 0 {
+		v := float64(pwm) / float64(pwmMax) * 100.0
+		return &v
+	}
+	// RPM fallback: fan1_input / fan1_max
+	fanRPM := readSysfsUint64(filepath.Join(hwmonDir, "fan1_input"))
+	fanMax := readSysfsUint64(filepath.Join(hwmonDir, "fan1_max"))
+	if fanRPM > 0 && fanMax > 0 {
+		v := float64(fanRPM) / float64(fanMax) * 100.0
+		return &v
 	}
 	return nil
 }
