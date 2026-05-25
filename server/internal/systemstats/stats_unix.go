@@ -124,13 +124,31 @@ func networkStats() NetworkStats {
 		tx := rateBps(after.txBytes, before.txBytes, interval)
 		total.ReceiveBps += rx
 		total.TransmitBps += tx
-		total.Interfaces = append(total.Interfaces, NetworkInterfaceStat{
-			Name:        name,
-			ReceiveBps:  rx,
-			TransmitBps: tx,
-		})
+		speedBps := ifaceSpeedBps(name)
+		iface := NetworkInterfaceStat{
+			Name:         name,
+			ReceiveBps:   rx,
+			TransmitBps:  tx,
+			LinkSpeedBps: speedBps,
+		}
+		total.Interfaces = append(total.Interfaces, iface)
+		if speedBps > total.LinkSpeedBps {
+			total.LinkSpeedBps = speedBps
+		}
 	}
 	return total
+}
+
+func ifaceSpeedBps(name string) uint64 {
+	raw, err := os.ReadFile("/sys/class/net/" + name + "/speed")
+	if err != nil {
+		return 0
+	}
+	mbps, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
+	if err != nil || mbps <= 0 {
+		return 0
+	}
+	return uint64(mbps) * 1_000_000
 }
 
 type netCounters struct {
