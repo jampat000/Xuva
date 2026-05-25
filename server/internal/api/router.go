@@ -249,6 +249,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "POST /api/work", workStartHandler(deps))
 	handleProtectedCSRF(mux, deps, "DELETE /api/work/{id}", workCancelHandler(deps))
 	handleProtected(mux, deps, "GET /api/work/{id}/file", workFileHandler(deps))
+	handleProtected(mux, deps, "GET /api/work/{id}/hls/{file}", workHLSHandler(deps))
 	handleProtected(mux, deps, "GET /api/downloads", downloadsHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/downloads", downloadStartHandler(deps))
 	handleProtected(mux, deps, "GET /api/downloads/{id}", downloadJobHandler(deps))
@@ -5716,6 +5717,30 @@ func workFileHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func workHLSHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, ok := deps.Transcode.Get(r.PathValue("id"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "work job not found")
+			return
+		}
+		if job.OutputDir == "" {
+			writeError(w, http.StatusConflict, "job is not in HLS mode")
+			return
+		}
+		if job.Status != transcode.StatusStreaming && job.Status != transcode.StatusCompleted {
+			writeError(w, http.StatusConflict, "HLS segments not yet available")
+			return
+		}
+		file := r.PathValue("file")
+		if file == "" || strings.ContainsAny(file, "/\\") || strings.Contains(file, "..") {
+			writeError(w, http.StatusBadRequest, "invalid segment filename")
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(job.OutputDir, file))
+	}
+}
+
 func downloadsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"downloads": deps.Downloads.List()})
@@ -6834,26 +6859,49 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 		}
 		audioTrackIndex := resolvedAudioTrackIndex(r.Context(), deps, mediaSourceID, queryInt(r, "audioTrackIndex", 0))
 		if job, ok := deps.Transcode.FindCompleted(mediaSourceID, mode, audioTrackIndex); ok {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"route":    string(mode),
-				"status":   "ready",
-				"url":      "/api/work/" + job.ID + "/file",
-				"job":      job,
-				"decision": decision,
-			})
+			if job.OutputFormat == "hls" {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"route":       string(mode),
+					"status":      "ready",
+					"protocol":    "hls",
+					"manifestUrl": "/api/work/" + job.ID + "/hls/index.m3u8",
+					"job":         job,
+					"decision":    decision,
+				})
+			} else {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"route":    string(mode),
+					"status":   "ready",
+					"url":      "/api/work/" + job.ID + "/file",
+					"job":      job,
+					"decision": decision,
+				})
+			}
 			return
 		}
 		if job, ok := deps.Transcode.FindActive(mediaSourceID, mode, audioTrackIndex); ok {
-			writeJSON(w, http.StatusAccepted, map[string]any{
-				"route":    string(mode),
-				"status":   string(job.Status),
-				"job":      job,
-				"decision": decision,
-			})
+			if job.Status == transcode.StatusStreaming {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"route":       string(mode),
+					"status":      "ready",
+					"protocol":    "hls",
+					"manifestUrl": "/api/work/" + job.ID + "/hls/index.m3u8",
+					"job":         job,
+					"decision":    decision,
+				})
+			} else {
+				writeJSON(w, http.StatusAccepted, map[string]any{
+					"route":    string(mode),
+					"status":   string(job.Status),
+					"job":      job,
+					"decision": decision,
+				})
+			}
 			return
 		}
 		request := transcode.Request{MediaSourceID: mediaSourceID, Mode: mode, SourcePath: item.Path, AudioTrackIndex: audioTrackIndex}
 		if mode == transcode.ModeTranscode {
+			request.OutputFormat = "hls"
 			if encoder, ok := selectedHardwareEncoder(r.Context(), deps.Config); ok {
 				request.Acceleration = "hardware"
 				request.VideoEncoder = encoder
