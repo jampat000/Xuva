@@ -17,7 +17,6 @@
     { label: "TV", href: "/tv" },
     { label: "Collections", href: "/collections" },
     { label: "Watchlist", href: "/watchlist" },
-    { label: "Dashboard", href: "/dashboard" },
   ];
 
   let scrolled = $state(false);

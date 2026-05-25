@@ -1,0 +1,1 @@
+import{H as e,it as t,rt as n}from"./DKxj0SL-.js";var r=new class{#e=t(`Xuva`);get serverName(){return e(this.#e)}set serverName(e){n(this.#e,e,!0)}#t=t(!0);get trailersEnabled(){return e(this.#t)}set trailersEnabled(e){n(this.#t,e,!0)}};export{r as t};
