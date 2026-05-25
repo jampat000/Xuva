@@ -2,9 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import {
     getSystemStatus, getCatalogHealth, getSessions, getJobs, getPerformanceSettings,
+    getCatalogPlayabilityAudit,
     scanAllLibraries, startProbeJob,
     type SystemStatusResponse, type CatalogHealthResponse,
     type SessionItem, type JobsStatusResponse, type PerformanceSettingsResponse,
+    type PlayabilityAuditResponse,
   } from '$lib/api/operator';
   import { startBackfill, stopBackfill } from '$lib/api/browse';
   import { createEventStream } from '$lib/events/stream';
@@ -22,6 +24,8 @@
   let sessions = $state<SessionItem[]>(data.sessions);
   let jobs     = $state<JobsStatusResponse | null>(data.jobs);
   let perf     = $state<PerformanceSettingsResponse | null>(data.perf);
+  let audit    = $state<PlayabilityAuditResponse | null>(null);
+  let auditLoading = $state(false);
   let lastUpdatedAt = $state<string>(new Date().toLocaleTimeString());
 
   // ── Job busy flags ─────────────────────────────────────────────────────────
@@ -156,6 +160,12 @@
 
   async function refreshPerf() {
     try { perf = await getPerformanceSettings(); } catch { /* silent */ }
+  }
+
+  async function loadAudit() {
+    if (auditLoading) return;
+    auditLoading = true;
+    try { audit = await getCatalogPlayabilityAudit(); } catch { /* silent */ } finally { auditLoading = false; }
   }
 
   async function refreshAll() {
@@ -565,6 +575,101 @@
           <div class="shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
             {(bf.refreshed + bf.failed).toLocaleString()} / {bf.total.toLocaleString()}
           </div>
+        </div>
+      {/if}
+    </section>
+
+    <!-- ── PLAYABILITY AUDIT ────────────────────────────────────────────────── -->
+    <section class="mb-10">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Playability Audit</h2>
+        <button
+          type="button"
+          onclick={loadAudit}
+          disabled={auditLoading}
+          class="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground transition hover:bg-foreground/[0.10] hover:text-foreground disabled:opacity-50"
+        >
+          {#if auditLoading}
+            <span class="h-2 w-2 animate-spin rounded-full border border-muted-foreground/40 border-t-muted-foreground"></span>
+            Analysing…
+          {:else}
+            Run Audit
+          {/if}
+        </button>
+      </div>
+
+      {#if !audit && !auditLoading}
+        <div class="hairline flex flex-col items-center justify-center gap-3 rounded-2xl bg-surface/40 py-10 text-center">
+          <svg class="h-8 w-8 text-muted-foreground/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
+          </svg>
+          <p class="text-sm text-muted-foreground">Click <span class="font-medium text-foreground">Run Audit</span> to analyse playback compatibility across device profiles</p>
+        </div>
+      {:else if audit}
+        {@const profiles = [
+          { id: 'web',         label: 'Web Browser' },
+          { id: 'apple-tv',    label: 'Apple TV' },
+          { id: 'android-tv',  label: 'Android TV' },
+        ]}
+        <div class="grid gap-4 md:grid-cols-2">
+          <!-- Profile breakdown cards -->
+          <div class="hairline rounded-2xl bg-surface/40 p-5">
+            <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">By Device Profile</div>
+            <div class="space-y-5">
+              {#each profiles as { id, label }}
+                {@const bd = audit.byProfile[id]}
+                {#if bd && bd.total > 0}
+                  {@const pct = (n: number) => Math.round((n / bd.total) * 100)}
+                  <div>
+                    <div class="mb-1.5 flex items-center justify-between text-xs">
+                      <span class="font-medium">{label}</span>
+                      <span class="tabular-nums text-muted-foreground">{bd.total.toLocaleString()} files</span>
+                    </div>
+                    <div class="flex h-3 w-full overflow-hidden rounded-full">
+                      {#if bd.directPlay > 0}
+                        <div class="h-full" style="width:{pct(bd.directPlay)}%; background: oklch(0.78 0.22 145);" title="Direct play: {pct(bd.directPlay)}%"></div>
+                      {/if}
+                      {#if bd.remux > 0}
+                        <div class="h-full" style="width:{pct(bd.remux)}%; background: oklch(0.62 0.22 285);" title="Remux: {pct(bd.remux)}%"></div>
+                      {/if}
+                      {#if bd.audioTranscode > 0}
+                        <div class="h-full" style="width:{pct(bd.audioTranscode)}%; background: oklch(0.85 0.22 75);" title="Audio transcode: {pct(bd.audioTranscode)}%"></div>
+                      {/if}
+                      {#if bd.videoTranscode > 0}
+                        <div class="h-full" style="width:{pct(bd.videoTranscode)}%; background: oklch(0.68 0.26 22);" title="Video transcode: {pct(bd.videoTranscode)}%"></div>
+                      {/if}
+                    </div>
+                    <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] tabular-nums text-muted-foreground">
+                      <span style="color: oklch(0.78 0.22 145)">Direct {pct(bd.directPlay)}%</span>
+                      {#if bd.remux > 0}<span style="color: oklch(0.72 0.20 285)">Remux {pct(bd.remux)}%</span>{/if}
+                      {#if bd.audioTranscode > 0}<span style="color: oklch(0.85 0.22 75)">Audio {pct(bd.audioTranscode)}%</span>{/if}
+                      {#if bd.videoTranscode > 0}<span style="color: oklch(0.68 0.26 22)">Video {pct(bd.videoTranscode)}%</span>{/if}
+                    </div>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          </div>
+
+          <!-- Top reason codes -->
+          {#if audit.topReasons && audit.topReasons.length > 0}
+            <div class="hairline rounded-2xl bg-surface/40 p-5">
+              <div class="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Top Transcode Triggers</div>
+              <div class="space-y-2.5">
+                {#each audit.topReasons.slice(0, 8) as reason}
+                  <div class="flex items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="truncate text-xs font-medium">{reason.reasonText || reason.reasonCode}</div>
+                      <div class="text-[10px] text-muted-foreground capitalize">{reason.profile}</div>
+                    </div>
+                    <div class="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-semibold tabular-nums">
+                      {reason.count.toLocaleString()}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </div>
       {/if}
     </section>
