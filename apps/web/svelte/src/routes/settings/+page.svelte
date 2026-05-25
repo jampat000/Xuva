@@ -1357,7 +1357,7 @@
 <div class="min-h-screen bg-background">
   <Header />
 
-  <main class="px-6 pb-32 pt-16 md:px-12 md:pt-16 lg:px-20">
+  <main class="px-6 pb-32 pt-20 md:px-12 md:pt-24 lg:px-20">
     <header class="relative mb-4">
       <div
         aria-hidden="true"
@@ -1388,7 +1388,7 @@
     </header>
 
     <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-10">
-      <aside class="lg:sticky lg:top-20 lg:self-start">
+      <aside class="lg:sticky lg:top-24 lg:self-start">
         <div class="relative mb-4">
           <Search class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -1446,7 +1446,7 @@
              ~12px between sections because the button-bearing rows are
              taller than the bare H2 row. -->
         <div
-          class={`sticky top-14 z-20 -mx-6 mb-4 flex min-h-[3.25rem] items-center justify-between gap-4 border-b px-6 py-2 backdrop-blur-xl transition-colors md:top-14 md:-mx-12 md:px-12 lg:-mx-0 lg:px-0 ${
+          class={`sticky top-16 z-20 -mx-6 mb-4 flex min-h-[3.25rem] items-center justify-between gap-4 border-b px-6 py-2 backdrop-blur-xl transition-colors md:top-[72px] md:-mx-12 md:px-12 lg:-mx-0 lg:px-0 ${
             headerScrolled
               ? "border-border bg-background/80"
               : "border-transparent bg-transparent"
