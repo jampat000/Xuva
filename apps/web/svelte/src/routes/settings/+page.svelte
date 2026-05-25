@@ -1837,35 +1837,38 @@
                     <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-foreground/20"></span>
                   {/if}
                 </div>
-                <span class="font-mono text-[11px] font-bold uppercase tracking-[0.32em] {dashHudStatusStr === 'NOMINAL' ? 'text-emerald-300' : dashHudStatusStr === 'CAUTION' ? 'text-amber-300' : dashHudStatusStr === 'FAULT' ? 'text-red-300' : 'text-muted-foreground'}"
-                  style={dashHudStatusStr === 'NOMINAL' ? 'text-shadow: 0 0 12px oklch(0.78 0.2 145 / 0.6);'
-                       : dashHudStatusStr === 'CAUTION' ? 'text-shadow: 0 0 12px oklch(0.85 0.22 75 / 0.6);'
-                       : dashHudStatusStr === 'FAULT' ? 'text-shadow: 0 0 12px oklch(0.68 0.26 22 / 0.7);' : ''}>
-                  SYS {dashHudStatusStr}
+                <span class="text-[13px] font-medium tracking-tight {dashHudStatusStr === 'NOMINAL' ? 'text-emerald-300' : dashHudStatusStr === 'CAUTION' ? 'text-amber-300' : dashHudStatusStr === 'FAULT' ? 'text-red-300' : 'text-muted-foreground'}"
+                  style={dashHudStatusStr === 'NOMINAL' ? 'text-shadow: 0 0 10px oklch(0.78 0.2 145 / 0.32);'
+                       : dashHudStatusStr === 'CAUTION' ? 'text-shadow: 0 0 10px oklch(0.85 0.22 75 / 0.4);'
+                       : dashHudStatusStr === 'FAULT' ? 'text-shadow: 0 0 10px oklch(0.68 0.26 22 / 0.5);' : ''}>
+                  {#if dashHudStatusStr === 'NOMINAL'}All systems healthy
+                  {:else if dashHudStatusStr === 'CAUTION'}Heads up — system under load
+                  {:else if dashHudStatusStr === 'FAULT'}Critical — system overloaded
+                  {:else}Checking…{/if}
                 </span>
               </div>
               <div class="h-3.5 w-px bg-foreground/10 hidden sm:block"></div>
-              <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
-                {settingsData?.config?.serverName ?? 'MEDIA-SERVER'} <span class="mx-1 opacity-40">//</span>
-                CLK <span class="text-muted-foreground/55">{dashUpdatedAt || '——:——:——'}</span>
+              <div class="text-[12px] text-foreground/55 tracking-tight">
+                {settingsData?.config?.serverName ?? 'Media Server'} <span class="mx-1.5 text-foreground/30">·</span>
+                <span class="italic text-foreground/50">updated</span> <span class="text-foreground/70 tabular-nums">{dashUpdatedAt || '——:——:——'}</span>
               </div>
             </div>
             <div class="flex items-center gap-2">
               <button type="button"
                 onclick={() => { refreshDashSys(); loadDashboard(); refreshDashJobs(); refreshDashHealth(); }}
                 disabled={dashLoading}
-                class="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/50 transition-colors hover:border-foreground/15 hover:text-muted-foreground/80 disabled:opacity-40">
-                <RefreshCw class="h-3 w-3 {dashLoading ? 'animate-spin' : ''}" /> Refresh
+                class="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3.5 py-1.5 text-[12px] text-foreground/65 transition-colors hover:border-foreground/15 hover:text-foreground/85 disabled:opacity-40">
+                <RefreshCw class="h-3.5 w-3.5 {dashLoading ? 'animate-spin' : ''}" /> Refresh
               </button>
               <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy}
-                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] transition-all hover:brightness-110 disabled:opacity-50"
-                style="border-color: oklch(0.82 0.24 200 / 0.35); color: oklch(0.82 0.24 200); background: oklch(0.82 0.24 200 / 0.08);">
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-[12px] font-medium transition-all hover:brightness-110 disabled:opacity-50"
+                style="border-color: oklch(0.82 0.24 200 / 0.35); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.08);">
                 {#if dashScanBusy}
-                  <span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>
+                  <span class="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent"></span>
                 {:else}
-                  <ScanSearch class="h-3 w-3" />
+                  <ScanSearch class="h-3.5 w-3.5" />
                 {/if}
-                Scan Libs
+                Scan libraries
               </button>
             </div>
           </div>
@@ -1877,17 +1880,17 @@
             {#if true}
             {@const cpuOffset = _HARC_LEN * (1 - dashCpuPct / 100)}
             <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
-              <div class="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">CPU Load</div>
+              <div class="mb-1 font-serif-display text-[15px] tracking-tight text-foreground/75">CPU Load</div>
               <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7" stroke-linecap="round"/>
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
                   style="stroke: {dashHudColor(dashCpuPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {cpuOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashCpuPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
-                  font-family="ui-monospace,monospace" font-size="30" font-weight="800"
+                  font-family="ui-serif, Georgia, serif" font-size="32" font-weight="500"
                   style="fill: {dashHudColor(dashCpuPct)}; filter: drop-shadow(0 0 5px {dashHudColor(dashCpuPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashCpuPct}<tspan font-size="14" dx="1" dy="-6">%</tspan></text>
               </svg>
               {#if sysStatus?.cpu?.cores}
-                <div class="mt-1 font-mono text-[10px] font-bold tracking-[0.18em] text-foreground/55">{sysStatus.cpu.cores} CORES</div>
+                <div class="mt-1 text-[12px] text-foreground/55">{sysStatus.cpu.cores} cores</div>
               {/if}
             </div>
             {/if}
@@ -1896,17 +1899,17 @@
             {#if true}
             {@const memOffset = _HARC_LEN * (1 - dashMemPct / 100)}
             <div class="flex flex-col items-center rounded-xl border border-foreground/[0.12] bg-surface/20 px-3 py-4">
-              <div class="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Memory</div>
+              <div class="mb-1 font-serif-display text-[15px] tracking-tight text-foreground/75">Memory</div>
               <svg viewBox="0 0 120 76" class="w-full max-w-[120px]">
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7" stroke-linecap="round"/>
                 <path d="M 10 70 A 50 50 0 0 0 110 70" fill="none" stroke-width="7" stroke-linecap="round"
                   style="stroke: {dashHudColor(dashMemPct)}; stroke-dasharray: {_HARC_LEN}; stroke-dashoffset: {memOffset}; filter: drop-shadow(0 0 6px {dashHudColor(dashMemPct)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease, filter 0.5s ease;" />
                 <text x="60" y="58" text-anchor="middle" dominant-baseline="middle"
-                  font-family="ui-monospace,monospace" font-size="30" font-weight="800"
+                  font-family="ui-serif, Georgia, serif" font-size="32" font-weight="500"
                   style="fill: {dashHudColor(dashMemPct)}; filter: drop-shadow(0 0 5px {dashHudColor(dashMemPct)}); transition: fill 0.5s ease, filter 0.5s ease;">{dashMemPct}<tspan font-size="14" dx="1" dy="-6">%</tspan></text>
               </svg>
               {#if sysStatus?.memory}
-                <div class="mt-1 font-mono text-[10px] font-bold tracking-[0.04em] text-foreground/55">
+                <div class="mt-1 text-[12px] text-foreground/55">
                   {formatBytes(sysStatus.memory.usedBytes)} / {formatBytes(sysStatus.memory.totalBytes)}
                 </div>
               {/if}
@@ -1915,20 +1918,20 @@
 
             <!-- Network I/O -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
-              <div class="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Network I/O</div>
+              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
               <div class="space-y-3.5">
                 <div>
-                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-emerald-300/65">RECV ↓</div>
-                  <div class="font-mono text-xl font-bold leading-none tabular-nums"
-                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 12px oklch(0.78 0.22 145 / 0.4);">
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-emerald-300/75">RECV ↓</div>
+                  <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
+                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 10px oklch(0.78 0.22 145 / 0.22);">
                     {sysStatus?.network ? formatBps(sysStatus.network.receiveBps) : '—'}
                   </div>
                 </div>
                 <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-sky-300/65">XMIT ↑</div>
-                  <div class="font-mono text-xl font-bold leading-none tabular-nums"
-                    style="color: oklch(0.82 0.22 240); text-shadow: 0 0 12px oklch(0.82 0.22 240 / 0.4);">
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-sky-300/75">XMIT ↑</div>
+                  <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
+                    style="color: oklch(0.82 0.22 240); text-shadow: 0 0 10px oklch(0.82 0.22 240 / 0.22);">
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
@@ -1937,21 +1940,21 @@
 
             <!-- Server -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
-              <div class="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Server</div>
+              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Server</div>
               <div class="space-y-3.5">
                 <div>
-                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-foreground/55">UPTIME</div>
-                  <div class="font-mono text-xl font-bold leading-none tabular-nums"
-                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 12px oklch(0.78 0.22 145 / 0.35);">
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-foreground/55">UPTIME</div>
+                  <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
+                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 10px oklch(0.78 0.22 145 / 0.2);">
                     {dashUptimeStr}
                   </div>
                 </div>
                 <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-foreground/55">NOW PLAYING</div>
-                  <div class="font-mono text-xl font-bold leading-none tabular-nums {activeSessions.length > 0 ? '' : 'text-foreground/30'}"
-                    style={activeSessions.length > 0 ? 'color: oklch(0.82 0.24 200); text-shadow: 0 0 12px oklch(0.82 0.24 200 / 0.5);' : ''}>
-                    {activeSessions.length}<span class="ml-1.5 text-[10px] font-semibold text-foreground/45 tracking-[0.15em]">{activeSessions.length === 1 ? 'STREAM' : 'STREAMS'}</span>
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-foreground/55">NOW PLAYING</div>
+                  <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight {activeSessions.length > 0 ? '' : 'text-foreground/30'}"
+                    style={activeSessions.length > 0 ? 'color: oklch(0.82 0.24 200); text-shadow: 0 0 10px oklch(0.82 0.24 200 / 0.3);' : ''}>
+                    {activeSessions.length}<span class="ml-1.5 text-[12px] font-normal text-foreground/55 tracking-normal">{activeSessions.length === 1 ? 'stream' : 'streams'}</span>
                   </div>
                 </div>
               </div>
@@ -1960,7 +1963,7 @@
 
           <!-- ── Library Manifest ────────────────────────────────────────────── -->
           <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">
-            <div class="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Library Manifest</div>
+            <div class="mb-4 font-serif-display text-[15px] tracking-tight text-foreground/75">Library Manifest</div>
             <div class="grid grid-cols-3 gap-4 sm:grid-cols-6">
               {#each ([
                 { id: 'MOV', label: 'Movies',   value: catalogSummary?.movies   ?? 0, warn: false, live: false },
@@ -1971,11 +1974,11 @@
                 { id: 'ACT', label: 'Sessions', value: activeSessions.length,        warn: false, live: activeSessions.length > 0 },
               ] as const) as t (t.id)}
                 <div class="relative text-center">
-                  <div class="font-mono text-[9px] font-semibold uppercase tracking-[0.35em] text-foreground/55 mb-2">{t.label}</div>
-                  <div class="font-mono text-3xl font-bold leading-none tabular-nums"
-                    style={t.warn ? 'color: oklch(0.85 0.22 75); text-shadow: 0 0 14px oklch(0.85 0.22 75 / 0.5);'
-                         : t.value === 0 ? 'color: rgba(255,255,255,0.18);'
-                         : 'color: oklch(0.82 0.24 200); text-shadow: 0 0 14px oklch(0.82 0.24 200 / 0.45);'}>
+                  <div class="text-[11px] font-medium tracking-wide text-foreground/55 mb-2">{t.label}</div>
+                  <div class="font-serif-display text-4xl font-medium leading-none tabular-nums tracking-tight"
+                    style={t.warn ? 'color: oklch(0.85 0.22 75); text-shadow: 0 0 12px oklch(0.85 0.22 75 / 0.28);'
+                         : t.value === 0 ? 'color: rgba(255,255,255,0.2);'
+                         : 'color: oklch(0.82 0.24 200); text-shadow: 0 0 12px oklch(0.82 0.24 200 / 0.22);'}>
                     {t.value.toLocaleString()}
                   </div>
                   {#if t.live}
@@ -1994,7 +1997,7 @@
 
             <!-- File Analysis Intelligence -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
-              <div class="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">File Analysis Intel</div>
+              <div class="mb-4 font-serif-display text-[15px] tracking-tight text-foreground/75">File Analysis Intel</div>
               {#if dashTotalFiles > 0}
                 {#if true}
                 {@const _pct = dashUnprobed > 0 ? Math.min(99, Math.floor(dashProbed / dashTotalFiles * 100)) : 100}
@@ -2004,17 +2007,17 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-baseline gap-1.5 mb-2">
-                      <span class="font-mono text-5xl font-bold leading-none tabular-nums"
-                        style="color: oklch(0.82 0.24 200); text-shadow: 0 0 18px oklch(0.82 0.24 200 / 0.5);">{_pct}</span>
-                      <span class="font-mono text-base text-foreground/55">%</span>
-                      <span class="ml-1 font-mono text-[9px] font-semibold uppercase tracking-[0.3em] text-foreground/60">analysed</span>
+                      <span class="font-serif-display text-6xl font-medium leading-none tabular-nums tracking-tight"
+                        style="color: oklch(0.82 0.24 200); text-shadow: 0 0 14px oklch(0.82 0.24 200 / 0.25);">{_pct}</span>
+                      <span class="font-serif-display text-xl text-foreground/55">%</span>
+                      <span class="ml-2 text-[12px] italic text-foreground/60">analysed</span>
                     </div>
                     <div class="h-1 w-full overflow-hidden rounded-full bg-foreground/[0.06] mb-2">
                       <div class="h-full rounded-full transition-all duration-700"
                         style="width: {_pct}%; background: oklch(0.82 0.24 200 / 0.65);"></div>
                     </div>
-                    <div class="font-mono text-[9px] tabular-nums text-foreground/55">
-                      {dashProbed.toLocaleString()} / {dashTotalFiles.toLocaleString()} files
+                    <div class="text-[12px] tabular-nums text-foreground/55">
+                      {dashProbed.toLocaleString()} of {dashTotalFiles.toLocaleString()} files
                     </div>
                   </div>
                 </div>
@@ -2025,54 +2028,54 @@
                   {#if dashUnprobed > 0}
                     <div class="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[0.05] px-3 py-2">
                       <div class="flex items-center gap-2">
-                        <span class="font-mono text-[10px] font-bold text-amber-400">⚠</span>
-                        <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-300/75">
-                          {dashUnprobed.toLocaleString()} awaiting probe
+                        <span class="text-[14px] text-amber-400">⚠</span>
+                        <span class="text-[12.5px] text-amber-300/85">
+                          {dashUnprobed.toLocaleString()} files awaiting analysis
                         </span>
                       </div>
                       {#if !dashProbeRunning}
                         <button type="button" onclick={handleDashProbeNow} disabled={dashProbeBusy}
-                          class="rounded px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-amber-300 transition-colors hover:bg-amber-400/10 disabled:opacity-50">
-                          {dashProbeBusy ? '…' : 'PROBE'}
+                          class="rounded px-2.5 py-1 text-[11px] font-medium text-amber-300 transition-colors hover:bg-amber-400/10 disabled:opacity-50">
+                          {dashProbeBusy ? '…' : 'Analyse now'}
                         </button>
                       {:else}
-                        <span class="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-amber-300/70 animate-pulse">RUNNING</span>
+                        <span class="text-[11px] italic text-amber-300/70 animate-pulse">analysing…</span>
                       {/if}
                     </div>
                   {:else}
                     <div class="flex items-center gap-2 rounded-lg border border-emerald-400/12 bg-emerald-400/[0.04] px-3 py-2">
-                      <span class="font-mono text-[10px] font-bold text-emerald-400">✓</span>
-                      <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-emerald-300/60">All files analysed</span>
+                      <span class="text-[14px] text-emerald-400">✓</span>
+                      <span class="text-[12.5px] text-emerald-300/75">All files analysed</span>
                     </div>
                   {/if}
                   {#if (dashHealth?.unsupported ?? 0) > 0}
                     <div class="flex items-center gap-2 rounded-lg border border-red-400/12 bg-red-400/[0.04] px-3 py-2">
-                      <span class="font-mono text-[10px] font-bold text-red-400">✕</span>
-                      <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-red-300/65">
-                        {dashHealth!.unsupported!.toLocaleString()} unsupported codec
+                      <span class="text-[14px] text-red-400">✕</span>
+                      <span class="text-[12.5px] text-red-300/75">
+                        {dashHealth!.unsupported!.toLocaleString()} files with unsupported codecs
                       </span>
                     </div>
                   {/if}
                   {#if (dashHealth?.highBitrate ?? 0) > 0}
                     <div class="flex items-center gap-2 rounded-lg border border-amber-400/10 bg-amber-400/[0.03] px-3 py-2">
-                      <span class="font-mono text-[10px] font-bold text-amber-400/60">▲</span>
-                      <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground/45">
-                        {dashHealth!.highBitrate!.toLocaleString()} high bitrate
+                      <span class="text-[13px] text-amber-400/65">▲</span>
+                      <span class="text-[12.5px] text-muted-foreground/65">
+                        {dashHealth!.highBitrate!.toLocaleString()} files at high bitrate
                       </span>
                     </div>
                   {/if}
                   {#if (dashHealth?.needsReview ?? 0) > 0}
                     <div class="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
-                      <span class="font-mono text-[10px] font-bold text-muted-foreground/40">!</span>
-                      <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground/40">
-                        {dashHealth!.needsReview!.toLocaleString()} needs review
+                      <span class="text-[14px] text-muted-foreground/55">!</span>
+                      <span class="text-[12.5px] text-muted-foreground/55">
+                        {dashHealth!.needsReview!.toLocaleString()} items need review
                       </span>
                     </div>
                   {/if}
                 </div>
               {:else}
-                <div class="flex items-center justify-center py-12 font-mono text-[9px] uppercase tracking-[0.38em] text-muted-foreground/25">
-                  No files indexed
+                <div class="flex items-center justify-center py-12 text-[13px] italic text-muted-foreground/40">
+                  No files indexed yet
                 </div>
               {/if}
             </div>
@@ -2080,9 +2083,9 @@
             <!-- Automation Control -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
               <div class="mb-4 flex items-center justify-between">
-                <div class="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Automation Control</div>
-                <a href="/settings/activity" class="font-mono text-[8px] uppercase tracking-[0.22em] text-muted-foreground/25 transition-colors hover:text-muted-foreground/60">
-                  FULL VIEW →
+                <div class="font-serif-display text-[15px] tracking-tight text-foreground/75">Automation Control</div>
+                <a href="/settings/activity" class="text-[11px] italic text-muted-foreground/55 transition-colors hover:text-muted-foreground/85">
+                  Full view →
                 </a>
               </div>
 
@@ -2106,8 +2109,8 @@
                       {/if}
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div class="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-foreground/80">Library Scan</div>
-                      <div class="mt-0.5 font-mono text-[10px] text-foreground/55 uppercase tracking-[0.08em]">
+                      <div class="font-serif-display text-[16px] tracking-tight text-foreground/90">Library Scan</div>
+                      <div class="mt-0.5 text-[12px] text-foreground/55 tracking-tight">
                         {#if scanSt === 'running'}<span style="color: oklch(0.82 0.24 200);">RUNNING NOW</span>
                         {:else if scanSt === 'paused'}<span class="text-amber-300">PAUSED — SESSION ACTIVE</span>
                         {:else if dashJobs?.scan?.lastRunAt}LAST RUN {new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -2115,7 +2118,7 @@
                       </div>
                     </div>
                     <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy || scanSt === 'running'}
-                      class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                      class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
                       style="border-color: oklch(0.82 0.24 200 / 0.45); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.12); text-shadow: 0 0 8px oklch(0.82 0.24 200 / 0.5);">
                       {#if dashScanBusy}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}▶{/if}
                       Run Now
@@ -2124,22 +2127,22 @@
                   <!-- Schedule row — click to edit -->
                   <div class="mt-2.5 ml-5 flex items-center gap-2 border-t border-foreground/[0.05] pt-2.5">
                     {#if scanIntervalEditing}
-                      <span class="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/55">Every</span>
+                      <span class="text-[12px] font-medium tracking-tight text-foreground/55">Every</span>
                       <input type="number" min="5" max="1440" step="5" bind:value={scanIntervalDraft}
                         class="w-16 rounded border border-foreground/15 bg-surface/40 px-2 py-1 font-mono text-[11px] tabular-nums text-foreground outline-none focus:border-cyan-300/60" />
-                      <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/55">min</span>
+                      <span class="text-[12px] text-foreground/55">min</span>
                       <button type="button" onclick={saveScanInterval} disabled={scanIntervalSaving}
-                        class="ml-1 rounded px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors disabled:opacity-50"
+                        class="ml-1 rounded px-2.5 py-1 text-[12px] font-medium tracking-tight transition-colors disabled:opacity-50"
                         style="color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.18);">
                         {scanIntervalSaving ? '…' : 'Save'}
                       </button>
                       <button type="button" onclick={() => { scanIntervalEditing = false; }}
-                        class="rounded px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/80">
+                        class="rounded px-2 py-1 text-[12px] font-medium tracking-tight text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/80">
                         Cancel
                       </button>
                     {:else}
                       <button type="button" onclick={openScanIntervalEditor}
-                        class="group inline-flex items-center gap-1.5 rounded font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/55 transition-colors hover:text-foreground/85"
+                        class="group inline-flex items-center gap-1.5 rounded text-[12px] font-medium tracking-tight text-foreground/55 transition-colors hover:text-foreground/85"
                         title="Click to change how often the library scans">
                         <span>Schedule</span>
                         <span class="text-foreground/75">·</span>
@@ -2175,10 +2178,10 @@
                       {/if}
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div class="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-foreground/80">Metadata Refresh</div>
+                      <div class="font-serif-display text-[16px] tracking-tight text-foreground/90">Metadata Refresh</div>
                       {#if dashMetaRunning && bf && bf.total > 0}
                         <div class="mt-1 space-y-1">
-                          <div class="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.08em]">
+                          <div class="flex items-center justify-between text-[12px] tracking-tight">
                             <span style="color: oklch(0.82 0.24 200);" class="truncate pr-2">REFRESHING{#if bf.lastTitle} — {bf.lastTitle}{/if}</span>
                             <span class="shrink-0 text-foreground/55 tabular-nums">{(bf.refreshed + bf.failed).toLocaleString()}/{bf.total.toLocaleString()}</span>
                           </div>
@@ -2188,7 +2191,7 @@
                           </div>
                         </div>
                       {:else}
-                        <div class="mt-0.5 font-mono text-[10px] text-foreground/55 uppercase tracking-[0.08em]">
+                        <div class="mt-0.5 text-[12px] text-foreground/55 tracking-tight">
                           {#if metaSt === 'paused'}<span class="text-amber-300">PAUSED — SESSION ACTIVE</span>
                           {:else if dashJobs?.metadata?.lastRunAt}LAST RUN {new Date(dashJobs.metadata.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           {:else}NEVER RUN{/if}
@@ -2196,7 +2199,7 @@
                       {/if}
                     </div>
                     <button type="button" onclick={() => { triggerBackfill(); refreshDashJobs(); }} disabled={dashMetaRunning}
-                      class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                      class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
                       style="border-color: oklch(0.82 0.24 200 / 0.45); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.12); text-shadow: 0 0 8px oklch(0.82 0.24 200 / 0.5);">
                       {#if dashMetaRunning}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}▶{/if}
                       Run Now
@@ -2204,7 +2207,7 @@
                   </div>
                   <div class="mt-2.5 ml-5 flex items-center gap-1.5 border-t border-foreground/[0.05] pt-2.5">
                     <button type="button" onclick={() => select('metadata')}
-                      class="group inline-flex items-center gap-1.5 rounded font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/55 transition-colors hover:text-foreground/85"
+                      class="group inline-flex items-center gap-1.5 rounded text-[12px] font-medium tracking-tight text-foreground/55 transition-colors hover:text-foreground/85"
                       title="Open Metadata settings">
                       <span>Schedule</span>
                       <span class="text-foreground/75">·</span>
@@ -2238,13 +2241,13 @@
                       {/if}
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div class="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-foreground/80">File Analysis</div>
+                      <div class="font-serif-display text-[16px] tracking-tight text-foreground/90">File Analysis</div>
                       {#if dashProbeRunning && probeJob && (probeJob.total ?? 0) > 0}
                         {#if true}
                         {@const done = probeJob.completed ?? 0}
                         {@const tot = probeJob.total ?? 1}
                         <div class="mt-1 space-y-1">
-                          <div class="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.08em]">
+                          <div class="flex items-center justify-between text-[12px] tracking-tight">
                             <span style="color: oklch(0.82 0.24 200);">ANALYSING FILES</span>
                             <span class="text-foreground/55 tabular-nums">{done.toLocaleString()}/{tot.toLocaleString()} · {Math.round(done/tot*100)}%</span>
                           </div>
@@ -2255,7 +2258,7 @@
                         </div>
                         {/if}
                       {:else}
-                        <div class="mt-0.5 font-mono text-[10px] text-foreground/55 uppercase tracking-[0.08em]">
+                        <div class="mt-0.5 text-[12px] text-foreground/55 tracking-tight">
                           {#if probeSt === 'paused'}<span class="text-amber-300">PAUSED — SESSION ACTIVE</span>
                           {:else if dashUnprobed > 0}<span style="color: oklch(0.85 0.22 75);">{dashUnprobed.toLocaleString()} FILES AWAITING ANALYSIS</span>
                           {:else}ALL FILES ANALYSED{/if}
@@ -2263,13 +2266,13 @@
                       {/if}
                     </div>
                     <button type="button" onclick={handleDashProbeNow} disabled={dashProbeBusy || dashProbeRunning || dashUnprobed === 0}
-                      class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                      class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
                       style="border-color: oklch(0.82 0.24 200 / 0.45); color: oklch(0.86 0.24 200); background: oklch(0.82 0.24 200 / 0.12); text-shadow: 0 0 8px oklch(0.82 0.24 200 / 0.5);">
                       {#if dashProbeBusy || dashProbeRunning}<span class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>{:else}▶{/if}
                       Run Now
                     </button>
                   </div>
-                  <div class="mt-2.5 ml-5 flex items-center gap-1.5 border-t border-foreground/[0.05] pt-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-foreground/55">
+                  <div class="mt-2.5 ml-5 flex items-center gap-1.5 border-t border-foreground/[0.05] pt-2.5 text-[12px] font-medium tracking-tight text-foreground/55">
                     <span>Schedule</span>
                     <span class="text-foreground/75">·</span>
                     <span style="color: oklch(0.86 0.24 200);">Auto after each scan</span>
@@ -2284,21 +2287,21 @@
           <!-- ── Storage Systems ─────────────────────────────────────────────── -->
           {#if sysStatus?.disks && sysStatus.disks.length > 0}
             <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
-              <div class="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Storage Systems</div>
+              <div class="mb-4 font-serif-display text-[15px] tracking-tight text-foreground/75">Storage Systems</div>
               <div class="space-y-3">
                 {#each sysStatus.disks as disk (disk.path ?? disk.name)}
                   {#if true}
                   {@const dPct = Math.round(disk.usedPercent ?? 0)}
                   <div class="grid items-center gap-4" style="grid-template-columns: minmax(0,1fr) 160px 3rem">
                     <div class="min-w-0">
-                      <div class="truncate font-mono text-[10px] font-medium text-foreground/55">{disk.path ?? disk.name ?? 'DISK'}</div>
-                      <div class="font-mono text-[9px] text-foreground/45 tabular-nums">{formatBytes(disk.freeBytes)} FREE</div>
+                      <div class="truncate text-[13px] text-foreground/75">{disk.path ?? disk.name ?? 'Disk'}</div>
+                      <div class="text-[12px] text-foreground/45 tabular-nums">{formatBytes(disk.freeBytes)} free</div>
                     </div>
                     <div class="relative h-1 overflow-hidden rounded-full bg-foreground/[0.06]">
                       <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
                         style="width: {dPct}%; background: {dPct >= 90 ? 'oklch(0.68 0.26 22)' : dPct >= 75 ? 'oklch(0.85 0.22 75)' : 'oklch(0.82 0.24 200 / 0.5)'};"></div>
                     </div>
-                    <div class="text-right font-mono text-[11px] font-bold tabular-nums {dPct >= 90 ? 'text-red-400' : dPct >= 75 ? 'text-amber-400' : 'text-foreground/35'}">{dPct}%</div>
+                    <div class="text-right font-serif-display text-[16px] font-medium tabular-nums tracking-tight {dPct >= 90 ? 'text-red-400' : dPct >= 75 ? 'text-amber-400' : 'text-foreground/55'}">{dPct}%</div>
                   </div>
                   {/if}
                 {/each}
@@ -2325,12 +2328,12 @@
                     <span class="relative inline-flex h-2 w-2 rounded-full bg-foreground/15"></span>
                   {/if}
                 </span>
-                <span class="font-mono text-[11px] font-bold uppercase tracking-[0.32em] {hasLive ? 'text-emerald-300' : 'text-foreground/55'}"
-                  style={hasLive ? 'text-shadow: 0 0 10px oklch(0.78 0.2 145 / 0.55);' : ''}>
+                <span class="font-serif-display text-[16px] tracking-tight {hasLive ? 'text-emerald-300' : 'text-foreground/75'}"
+                  style={hasLive ? 'text-shadow: 0 0 10px oklch(0.78 0.2 145 / 0.3);' : ''}>
                   Now Playing
                 </span>
-                <span class="font-mono text-[10px] font-bold tabular-nums {hasLive ? 'text-emerald-300/75' : 'text-foreground/35'}">
-                  {hasLive ? `${liveCount} ${liveCount === 1 ? 'STREAM' : 'STREAMS'}` : 'NO ACTIVE STREAMS'}
+                <span class="text-[12px] tabular-nums italic {hasLive ? 'text-emerald-300/75' : 'text-foreground/45'}">
+                  {hasLive ? `${liveCount} ${liveCount === 1 ? 'stream' : 'streams'}` : 'nobody watching'}
                 </span>
               </div>
             </div>
@@ -2343,12 +2346,12 @@
                     </div>
                     <div class="min-w-0 flex-1">
                       <div class="truncate text-[13px] font-semibold text-foreground/90">{session.title ?? session.sourceName ?? 'Unknown'}</div>
-                      <div class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/55">
+                      <div class="mt-0.5 text-[12.5px] text-foreground/55">
                         {session.mode ?? session.route ?? 'Direct Play'}{session.deviceId ? ` · ${session.deviceId}` : ''}
                       </div>
                     </div>
-                    <span class="shrink-0 rounded border border-emerald-400/25 bg-emerald-400/[0.1] px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.28em] text-emerald-300"
-                      style="text-shadow: 0 0 8px oklch(0.78 0.2 145 / 0.5);">LIVE</span>
+                    <span class="shrink-0 rounded border border-emerald-400/25 bg-emerald-400/[0.1] px-2.5 py-0.5 text-[11px] font-medium tracking-wide text-emerald-300"
+                      style="text-shadow: 0 0 8px oklch(0.78 0.2 145 / 0.3);">Live</span>
                   </div>
                 {/each}
               </div>
@@ -2365,7 +2368,7 @@
           <!-- ── Recent Activity ─────────────────────────────────────────────── -->
           <div class="overflow-hidden rounded-xl border border-foreground/[0.12] bg-surface/20">
             <div class="border-b border-foreground/[0.06] px-5 py-3">
-              <span class="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-foreground/55">Recent Activity</span>
+              <span class="font-serif-display text-[15px] tracking-tight text-foreground/75">Recent Activity</span>
             </div>
             {#if recentScans.length > 0}
               <div class="divide-y divide-foreground/[0.04]">
@@ -2373,29 +2376,29 @@
                   <div class="flex items-center gap-4 px-5 py-2.5">
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-2">
-                        <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground/55">{scan.kind ?? 'Scan'}</span>
+                        <span class="text-[13px] font-medium text-foreground/75 capitalize">{scan.kind ?? 'Scan'}</span>
                         {#if scan.libraryId}
-                          <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-foreground/45">{scan.libraryId.slice(0, 8)}</code>
+                          <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-foreground/45">{scan.libraryId.slice(0, 8)}</code>
                         {/if}
                       </div>
                       {#if scan.updatedAt}
-                        <div class="mt-0.5 font-mono text-[9px] text-muted-foreground/28">
+                        <div class="mt-0.5 text-[11px] italic text-muted-foreground/55">
                           {new Date(scan.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </div>
                       {/if}
                     </div>
                     {#if scan.status === 'running'}
-                      <div class="font-mono text-[9px] font-bold uppercase tracking-[0.22em]" style="color: oklch(0.82 0.24 200);">RUNNING</div>
+                      <div class="text-[12px] italic" style="color: oklch(0.82 0.24 200);">running</div>
                     {:else if scan.status === 'completed'}
-                      <div class="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-emerald-400/80">DONE</div>
+                      <div class="text-[12px] italic text-emerald-400/80">done</div>
                     {:else if scan.status}
-                      <span class="font-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/28">{scan.status}</span>
+                      <span class="text-[12px] italic text-muted-foreground/55 capitalize">{scan.status}</span>
                     {/if}
                   </div>
                 {/each}
               </div>
             {:else}
-              <div class="flex items-center justify-center px-5 py-10 font-mono text-[9px] uppercase tracking-[0.38em] text-muted-foreground/22">
+              <div class="flex items-center justify-center px-5 py-10 text-[13px] italic text-muted-foreground/50">
                 No recent activity
               </div>
             {/if}
