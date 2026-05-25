@@ -2107,9 +2107,10 @@
                     <div class="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[0.05] px-3 py-2">
                       <div class="flex items-center gap-2">
                         <span class="text-[14px] text-amber-400">⚠</span>
-                        <span class="text-[12.5px] text-amber-300/85">
+                        <a href="/movies?unprobed=1"
+                          class="text-[12.5px] text-amber-300/85 underline-offset-2 hover:text-amber-300 hover:underline">
                           {dashUnprobed.toLocaleString()} files awaiting analysis
-                        </span>
+                        </a>
                       </div>
                       {#if !dashProbeRunning}
                         <button type="button" onclick={handleDashProbeNow} disabled={dashProbeBusy}
