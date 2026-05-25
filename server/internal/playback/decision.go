@@ -448,7 +448,11 @@ func canRemux(request Request, videoCodec string) bool {
 	case "apple-tv":
 		return codecIn(videoCodec, "h264", "hevc")
 	default:
-		return codecIn(videoCodec, "h264", "av1", "vp9")
+		// Web: modern browsers can decode HEVC via MSE/fMP4 on most platforms
+		// (Safari, Chrome 105+, Edge 18+), so include it here — matching the
+		// "web" device profile. canRemux only governs whether the video stream
+		// can pass through; the audio path is handled separately by audioAction.
+		return codecIn(videoCodec, "h264", "hevc", "av1", "vp9")
 	}
 }
 
@@ -568,7 +572,11 @@ func audioAction(request Request, codec string, channels int) string {
 			return "direct"
 		}
 	default:
-		if codecIn(codec, "aac", "mp3", "opus", "vorbis") && channels <= 6 {
+		// Web: modern browsers decode these audio codecs natively in MSE/fMP4.
+		// DTS, TrueHD, Atmos are NOT in this list — those trigger an audio
+		// transcode (which now uses the fast ModeRemuxAudio pipeline upstream:
+		// video copies through, only audio is re-encoded to AAC).
+		if codecIn(codec, "aac", "ac3", "eac3", "mp3", "opus", "vorbis", "flac") && channels <= 8 {
 			return "direct"
 		}
 	}
