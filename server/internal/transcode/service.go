@@ -23,6 +23,12 @@ type Status string
 const (
 	ModeRemux     Mode = "remux"
 	ModeTranscode Mode = "transcode"
+	// ModeRemuxAudio copies the video stream as-is and re-encodes only the
+	// selected audio track to AAC, repackaging into MP4 with faststart. This
+	// is the fast path for files whose video plays directly in the client but
+	// whose audio codec (DTS, TrueHD) isn't supported — same approach
+	// Plex/Jellyfin take for web playback of HEVC+DTS Blu-ray remuxes.
+	ModeRemuxAudio Mode = "remux-audio"
 
 	StatusQueued    Status = "queued"
 	StatusRunning   Status = "running"
@@ -276,6 +282,16 @@ func (s *Service) command(job Job) []string {
 			args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20")
 		}
 		args = append(args, "-c:a", "aac", "-movflags", "+faststart", job.OutputPath)
+	case ModeRemuxAudio:
+		// Video copy, audio re-encode. Same audio mapping rules as transcode
+		// (explicit track index when requested, first audio stream otherwise).
+		args = append(args, "-map", "0:v:0")
+		if job.AudioTrackIndex > 0 {
+			args = append(args, "-map", "0:"+intString(job.AudioTrackIndex)+"?")
+		} else {
+			args = append(args, "-map", "0:a:0?")
+		}
+		args = append(args, "-c:v", "copy", "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-movflags", "+faststart", job.OutputPath)
 	default:
 		args = append(args, "-map", "0", "-c", "copy", "-movflags", "+faststart", job.OutputPath)
 	}
