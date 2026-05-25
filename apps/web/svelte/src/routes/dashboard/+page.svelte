@@ -422,10 +422,13 @@
               <svg class="h-8 w-8 text-green-400/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
               </svg>
-              <div class="text-xs font-medium text-green-400">Available</div>
+              <div class="text-xs font-medium text-green-400">Detected</div>
               {#if hwEncoder}
                 <div class="text-[10px] text-muted-foreground">{hwEncoder}</div>
               {/if}
+              <div class="mt-1 text-center text-[10px] leading-snug text-muted-foreground/50">
+                0 GPU workers configured<br/>Enable in Settings → Performance
+              </div>
             </div>
           {:else}
             <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4">
@@ -852,20 +855,17 @@
               {/if}
               {#if hw.available && hw.encoders && hw.encoders.length > 0}
                 {@const passingIds = new Set((hw.lastTest?.tests ?? []).filter(t => t.ok).map(t => t.id ?? ''))}
-                {@const testedEncoders = hw.lastTest?.tests?.length
-                  ? hw.encoders.filter(enc => passingIds.has(enc.id ?? ''))
-                  : hw.encoders}
-                {#if testedEncoders.length > 0}
-                  <div class="mt-2 flex flex-wrap gap-1.5">
-                    {#each testedEncoders as enc (enc.id)}
-                      <span class="rounded-full border border-border bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground">
-                        {enc.label ?? enc.codec}
-                      </span>
-                    {/each}
-                  </div>
-                {:else if hw.lastTest}
-                  <p class="mt-2 text-[11px] text-muted-foreground/60">No encoders passed the hardware test.</p>
-                {/if}
+                {@const hasTests = (hw.lastTest?.tests?.length ?? 0) > 0}
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  {#each hw.encoders as enc (enc.id)}
+                    {@const passing = !hasTests || passingIds.has(enc.id ?? '')}
+                    <span class="rounded-full border px-2 py-0.5 text-[10px] {passing
+                      ? 'border-border bg-foreground/[0.04] text-muted-foreground'
+                      : 'border-border/40 bg-foreground/[0.02] text-muted-foreground/30'}">
+                      {enc.label ?? enc.codec}{!passing ? ' · N/A' : ''}
+                    </span>
+                  {/each}
+                </div>
               {/if}
             </div>
           {/if}
