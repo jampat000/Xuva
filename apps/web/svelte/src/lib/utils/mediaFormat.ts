@@ -93,3 +93,80 @@ export function audioSummary(tracks: ProbeTrack[]): string {
 	if (!first) return '';
 	return [formatCodec(first.codec), formatChannels(first.channels)].filter(Boolean).join(' ');
 }
+
+// ─── Playability badges ────────────────────────────────────────────────────
+// Translates a playback decision mode (server-side enum from
+// internal/playback/decision.go) into a user-facing label, blurb, and RAG
+// colour so movie/TV detail pages can show "Plays instantly" /
+// "Will repackage in ~30s" / "Needs full transcode" per version.
+//
+// RAG semantics match the Library Codecs panel on the dashboard:
+//   green  = no server work (direct play)
+//   amber  = container repackage only (remux)
+//   amber+ = video copy + audio re-encode (a bit more work)
+//   red    = full video re-encode required
+//   muted  = blocked / deferred (file not probed, policy block, etc.)
+export type PlayabilityBadge = {
+	label: string;
+	blurb: string;
+	color: string;       // OKLCH literal for inline styles
+	tone: 'green' | 'amber' | 'red' | 'muted';
+};
+
+export function playabilityBadge(mode?: string): PlayabilityBadge {
+	const m = (mode || '').toLowerCase();
+	if (m === 'direct play') {
+		return {
+			label: 'Plays instantly',
+			blurb: 'No server work needed — browser decodes the file natively.',
+			color: 'oklch(0.78 0.22 145)',
+			tone: 'green',
+		};
+	}
+	if (m === 'remux') {
+		return {
+			label: 'Fast repackage',
+			blurb: 'Server rewraps the container (≈30s for a 2h film). Video stream is untouched.',
+			color: 'oklch(0.85 0.22 75)',
+			tone: 'amber',
+		};
+	}
+	if (m === 'audio transcode') {
+		return {
+			label: 'Audio transcode',
+			blurb: 'Video stream passes through, only audio is re-encoded (≈2–3 min for a 2h film).',
+			color: 'oklch(0.85 0.22 75)',
+			tone: 'amber',
+		};
+	}
+	if (m === 'video transcode' || m === 'adaptive stream') {
+		return {
+			label: 'Needs full transcode',
+			blurb: 'No browser can decode this directly. The server has to re-encode the video — slow and CPU-heavy. Convert once with HandBrake for instant playback later.',
+			color: 'oklch(0.68 0.26 22)',
+			tone: 'red',
+		};
+	}
+	if (m === 'subtitle burn') {
+		return {
+			label: 'Subtitle burn-in',
+			blurb: 'The selected subtitle track is image-based — playing it requires re-encoding the video with subs baked in.',
+			color: 'oklch(0.68 0.26 22)',
+			tone: 'red',
+		};
+	}
+	if (m === 'decision deferred') {
+		return {
+			label: 'Not yet analysed',
+			blurb: 'Xuva needs to inspect this file once before it can pick the best playback path.',
+			color: 'oklch(0.65 0.02 280)',
+			tone: 'muted',
+		};
+	}
+	return {
+		label: 'Unknown',
+		blurb: 'Playback path not determined.',
+		color: 'oklch(0.65 0.02 280)',
+		tone: 'muted',
+	};
+}

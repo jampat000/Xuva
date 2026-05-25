@@ -12,8 +12,8 @@
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
   import { getSeriesDetail } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
-  import { getMediaSourceDetail, getMediaSourceTracks, type MediaSourceItem, type ProbeTrack } from '$lib/api/details';
-  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary } from '$lib/utils/mediaFormat';
+  import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
+  import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary, playabilityBadge } from '$lib/utils/mediaFormat';
   import type { SeriesDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -26,6 +26,7 @@
     source: MediaSourceItem | null;
     audioTracks: ProbeTrack[];
     subtitleTracks: ProbeTrack[];
+    decision: PlaybackDecisionResponse | null;
     loading: boolean;
   };
   let episodeTech = $state(new Map<string, EpisodeTech>());
@@ -34,25 +35,31 @@
   async function loadEpisodeTech(mediaSourceId: string) {
     if (episodeTech.has(mediaSourceId) && !episodeTech.get(mediaSourceId)?.loading) return;
     const next = new Map(episodeTech);
-    next.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], loading: true });
+    next.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], decision: null, loading: true });
     episodeTech = next;
     try {
-      const [src, tr] = await Promise.allSettled([
+      // Fetch source + tracks + playback decision in parallel.
+      // getPlaybackDecision is side-effect-free (does NOT start a transcode,
+      // unlike /api/playback/route which queues one). Safe to call on
+      // detail-page render.
+      const [src, tr, dec] = await Promise.allSettled([
         getMediaSourceDetail(mediaSourceId),
         getMediaSourceTracks(mediaSourceId),
+        getPlaybackDecision(mediaSourceId, { clientProfile: 'web' }),
       ]);
       const updated = new Map(episodeTech);
       updated.set(mediaSourceId, {
         source: src.status === 'fulfilled' ? src.value : null,
         audioTracks: tr.status === 'fulfilled' ? (tr.value.audioTracks ?? []) : [],
         subtitleTracks: tr.status === 'fulfilled' ? (tr.value.subtitleTracks ?? []) : [],
+        decision: dec.status === 'fulfilled' ? dec.value : null,
         loading: false,
       });
       episodeTech = updated;
     } catch {
       // Swallow — UI will show "couldn't load tracks" next to the button.
       const updated = new Map(episodeTech);
-      updated.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], loading: false });
+      updated.set(mediaSourceId, { source: null, audioTracks: [], subtitleTracks: [], decision: null, loading: false });
       episodeTech = updated;
     }
   }
@@ -609,6 +616,16 @@
                                             {/each}
                                           </div>
                                         {/if}
+                                        {/if}
+                                        {#if tech.decision}
+                                          {@const b = playabilityBadge(tech.decision.mode)}
+                                          <div class="mb-3 rounded-lg p-2.5" style={`background: ${b.color.replace(')', ' / 0.06)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`}>
+                                            <div class="flex items-center gap-1.5">
+                                              <span class="h-1.5 w-1.5 rounded-full" style={`background: ${b.color};`}></span>
+                                              <span class="text-[12px] font-medium" style={`color: ${b.color};`}>{b.label}</span>
+                                            </div>
+                                            <p class="mt-0.5 ml-3 text-[11px] leading-relaxed text-foreground/65">{b.blurb}</p>
+                                          </div>
                                         {/if}
                                         <div class="grid gap-3 sm:grid-cols-2">
                                           <!-- Audio -->
