@@ -130,11 +130,13 @@
   }
 
   function netRagColor(bps: number | undefined | null, linkBps: number | undefined | null): string {
-    if (!linkBps || !bps) return '';
+    const green = 'oklch(0.78 0.22 145)';
+    if (!linkBps || bps == null) return green; // no link data — can't judge, show green
+    if (bps <= 0) return green;                // no traffic — green (nothing to worry about)
     const pct = bps / linkBps;
     if (pct >= 0.8) return 'oklch(0.68 0.26 22)';  // red  — >80%
-    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';   // amber — 50–80%
-    return 'oklch(0.78 0.22 145)';                   // green — <50%
+    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';  // amber — 50–80%
+    return green;                                    // green — <50%
   }
 
   function netPct(bps: number | undefined | null, linkBps: number | undefined | null): string {
@@ -363,7 +365,7 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-baseline gap-2">
                   <div class="font-semibold leading-none tabular-nums"
-                    style={netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps) ? `color: ${netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps)}` : ''}>
+                    style="color: {netRagColor(sys?.network?.receiveBps, sys?.network?.linkSpeedBps)}">
                     {fmtBps(sys?.network?.receiveBps)}
                   </div>
                   {#if sys?.network?.linkSpeedBps}
@@ -379,7 +381,7 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-baseline gap-2">
                   <div class="font-semibold leading-none tabular-nums"
-                    style={netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps) ? `color: ${netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps)}` : ''}>
+                    style="color: {netRagColor(sys?.network?.transmitBps, sys?.network?.linkSpeedBps)}">
                     {fmtBps(sys?.network?.transmitBps)}
                   </div>
                   {#if sys?.network?.linkSpeedBps}
@@ -849,13 +851,21 @@
                 </div>
               {/if}
               {#if hw.available && hw.encoders && hw.encoders.length > 0}
-                <div class="mt-2 flex flex-wrap gap-1.5">
-                  {#each hw.encoders as enc (enc.id)}
-                    <span class="rounded-full border border-border bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground">
-                      {enc.label ?? enc.codec}
-                    </span>
-                  {/each}
-                </div>
+                {@const passingIds = new Set((hw.lastTest?.tests ?? []).filter(t => t.ok).map(t => t.id ?? ''))}
+                {@const testedEncoders = hw.lastTest?.tests?.length
+                  ? hw.encoders.filter(enc => passingIds.has(enc.id ?? ''))
+                  : hw.encoders}
+                {#if testedEncoders.length > 0}
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    {#each testedEncoders as enc (enc.id)}
+                      <span class="rounded-full border border-border bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground">
+                        {enc.label ?? enc.codec}
+                      </span>
+                    {/each}
+                  </div>
+                {:else if hw.lastTest}
+                  <p class="mt-2 text-[11px] text-muted-foreground/60">No encoders passed the hardware test.</p>
+                {/if}
               {/if}
             </div>
           {/if}
