@@ -184,6 +184,15 @@ func networkStats() NetworkStats {
 			total.LinkSpeedBps = after.linkSpeedBps
 		}
 	}
+	// If the summed traffic across all interfaces exceeds the single-interface max
+	// speed reported by GetIfTable (uint32 Speed field, capped at ~4.29 Gbps), it
+	// means one or more high-speed NICs (10/25/40 Gbps) returned Speed=0xFFFFFFFF
+	// and were excluded from the max. Signal "unknown" so the UI doesn't show a
+	// misleading red alert.
+	if total.LinkSpeedBps > 0 &&
+		(total.ReceiveBps > total.LinkSpeedBps || total.TransmitBps > total.LinkSpeedBps) {
+		total.LinkSpeedBps = 0
+	}
 	return total
 }
 

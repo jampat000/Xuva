@@ -1114,10 +1114,15 @@
 
   // RAG colour for network throughput relative to link capacity.
   // Returns green when idle/unknown, amber at ≥50%, red at ≥80%.
+  // When the ratio exceeds 1.0 it means total multi-NIC traffic is summed against
+  // the single fastest NIC speed (a common measurement artefact on multi-adapter or
+  // high-speed-NIC machines where GetIfTable caps at 4.29 Gbps). In that case we
+  // fall back to green rather than showing a misleading alarm.
   function netRagColor(bps: number | undefined, linkBps: number | undefined): string {
     const green = 'oklch(0.78 0.22 145)';
     if (!linkBps || bps == null || bps <= 0) return green;
     const pct = bps / linkBps;
+    if (pct > 1.0) return green; // ratio > 100 % = measurement artefact, don't alarm
     if (pct >= 0.8) return 'oklch(0.68 0.26 22)';
     if (pct >= 0.5) return 'oklch(0.85 0.22 75)';
     return green;
@@ -2156,7 +2161,7 @@
           </div>
 
           <!-- ── GPU Details ─────────────────────────────────────────────────── -->
-          {#if gpuHW && (gpuHW.powerDrawW != null || gpuHW.encoderPct != null || gpuHW.clockGraphicsMHz != null)}
+          {#if gpuHW && (gpuHW.powerDrawW != null || gpuHW.encoderPct != null || gpuHW.clockGraphicsMHz != null || gpuHW.decoderPct != null || gpuHW.clockMemoryMHz != null || gpuHW.encoderSessions != null || gpuHW.fanSpeedPct != null || !!gpuHW.performanceState)}
             <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">
               <div class="mb-4 font-serif-display text-[15px] tracking-tight text-foreground/75">GPU Details</div>
               <div class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
