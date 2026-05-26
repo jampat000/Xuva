@@ -18,6 +18,28 @@
 		TV0000000000000000000031 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		TV00000000000000000000A0 /* Sync Working Tree from HEAD */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync Working Tree from HEAD";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Guard: only run when the project is on an SMB/network volume where\n# files can revert between sessions (NAS snapshots, SMB caching, etc.).\n# Restores the working tree to exactly what HEAD committed so the build\n# always uses the correct source files and icon assets.\nREPO=\"$SRCROOT/../..\"\nif git -C \"$REPO\" rev-parse --git-dir > /dev/null 2>&1; then\n  git -C \"$REPO\" checkout HEAD -- \\\n    apps/apple-core/Sources/XuvaClientCore/ \\\n    apps/tvos/Sources/XuvaTVApp/ \\\n    2>/dev/null || true\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		TV0000000000000000000009 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -62,6 +84,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = TV0000000000000000000018 /* Build configuration list for PBXNativeTarget "Xuva TV" */;
 			buildPhases = (
+				TV00000000000000000000A0 /* Sync Working Tree from HEAD */,
 				TV0000000000000000000008 /* Sources */,
 				TV0000000000000000000009 /* Frameworks */,
 				TV0000000000000000000032 /* Resources */,
