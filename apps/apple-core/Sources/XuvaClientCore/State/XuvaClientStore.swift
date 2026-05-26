@@ -34,6 +34,11 @@ public final class XuvaClientStore: ObservableObject {
     /// the detail endpoint needs the parent movie/series id. We open detail
     /// for the parent but remember which version to actually start.
     @Published public var pendingResumeMediaSourceId: String?
+    /// Full library lists loaded when Movies/TV tabs are first activated.
+    /// Kept populated so subsequent tab switches are instant; refreshed when
+    /// the home data is refreshed.
+    @Published public var moviesLibrary: [HomeItem]?
+    @Published public var seriesLibrary: [HomeItem]?
 
     public private(set) var api: XuvaAPI?
     public let deviceId: String
@@ -121,11 +126,34 @@ public final class XuvaClientStore: ObservableObject {
         if let snapshot = home, let currentAPI = api {
             scheduleTopShelfRefresh(home: snapshot, api: currentAPI)
         }
+        // Silently refresh any library pages already cached so Movies/TV tabs
+        // stay in sync after returning from player or a foreground transition.
+        Task { [weak self] in
+            guard let self else { return }
+            if self.moviesLibrary != nil { await self.loadMoviesLibrary() }
+            if self.seriesLibrary != nil { await self.loadSeriesLibrary() }
+        }
         if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
             if let first = home?.rows?.flatMap({ $0.items ?? [] }).first {
                 try? await Task.sleep(nanoseconds: 600_000_000)
                 await open(item: first)
             }
+        }
+    }
+
+    public func loadMoviesLibrary() async {
+        await run(showBusy: false) {
+            guard let api else { return }
+            let resp = try await api.libraryMovies()
+            moviesLibrary = (resp.movies ?? []).map { $0.toHomeItem() }
+        }
+    }
+
+    public func loadSeriesLibrary() async {
+        await run(showBusy: false) {
+            guard let api else { return }
+            let resp = try await api.librarySeries()
+            seriesLibrary = (resp.series ?? []).map { $0.toHomeItem() }
         }
     }
 
@@ -305,6 +333,9 @@ public final class XuvaClientStore: ObservableObject {
             errorMessage = error.localizedDescription
         }
         closePlayer()
+        // Refresh home silently so the Continue Watching row updates immediately
+        // when the user returns to the home screen after stopping playback.
+        Task { [weak self] in await self?.loadHome() }
     }
 
     public func backToHome() {
@@ -327,6 +358,13 @@ public final class XuvaClientStore: ObservableObject {
     public func setSection(_ section: String) {
         activeSection = section
         heroIndex = 0
+        Task {
+            switch section {
+            case "Movies": await loadMoviesLibrary()
+            case "TV":     await loadSeriesLibrary()
+            default: break
+            }
+        }
     }
 
     public func clearError() {
