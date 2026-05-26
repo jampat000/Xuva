@@ -2,6 +2,9 @@ package database
 
 import (
 	"context"
+	"database/sql"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,6 +84,77 @@ func TestSchemaVersionReturnsLatestMigrationID(t *testing.T) {
 	}
 	if version != "0001_legacy_inline_schema" {
 		t.Fatalf("expected latest schema version, got %q", version)
+	}
+}
+
+func TestOpenBacksUpPreexistingDatabaseBeforeFirstSchemaMigration(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	raw, err := sql.Open("sqlite", sqliteDSN(filepath.Join(dir, "xuva.db")))
+	if err != nil {
+		t.Fatalf("open raw database: %v", err)
+	}
+	if _, err := raw.ExecContext(ctx, `CREATE TABLE preexisting_marker(value TEXT)`); err != nil {
+		t.Fatalf("create preexisting marker: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw database: %v", err)
+	}
+
+	service, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatalf("open migrated database: %v", err)
+	}
+	defer service.Close()
+
+	backups, err := filepath.Glob(filepath.Join(dir, "backups", "schema-upgrade-*.db"))
+	if err != nil {
+		t.Fatalf("glob backups: %v", err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("expected one schema backup, got %d: %#v", len(backups), backups)
+	}
+
+	backupDB, err := sql.Open("sqlite", sqliteDSN(backups[0]))
+	if err != nil {
+		t.Fatalf("open backup database: %v", err)
+	}
+	defer backupDB.Close()
+	var markerCount int
+	if err := backupDB.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+		AND name = 'preexisting_marker'
+	`).Scan(&markerCount); err != nil {
+		t.Fatalf("query backup marker: %v", err)
+	}
+	if markerCount != 1 {
+		t.Fatalf("expected preexisting marker in backup, got %d", markerCount)
+	}
+	var ledgerCount int
+	if err := backupDB.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+		AND name = 'schema_migrations'
+	`).Scan(&ledgerCount); err != nil {
+		t.Fatalf("query backup ledger: %v", err)
+	}
+	if ledgerCount != 0 {
+		t.Fatalf("expected backup before migration ledger creation, got %d ledger tables", ledgerCount)
+	}
+}
+
+func TestOpenDoesNotBackUpBrandNewDatabase(t *testing.T) {
+	service, err := Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer service.Close()
+
+	if _, err := os.Stat(filepath.Join(service.DataDir, "backups")); !os.IsNotExist(err) {
+		t.Fatalf("expected no backups directory for new database, got err=%v", err)
 	}
 }
 
