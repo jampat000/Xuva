@@ -49,3 +49,5 @@ git push origin v0.0.x
 ```
 
 Every release tag must point at a commit that has passed the release-readiness checks.
+
+The release workflow enforces this early-release policy with `tools/validate-release-tag.cjs`. Update that guard only when the project is deliberately promoted to the `1.x` track.

@@ -10,9 +10,19 @@ permissions:
   packages: write
 
 jobs:
+  version-policy:
+    name: Validate release version policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release tag
+        run: node tools/validate-release-tag.cjs "${GITHUB_REF_NAME}"
+
   windows:
     name: Build Windows package
     runs-on: windows-latest
+    needs: version-policy
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +52,7 @@ jobs:
   docker:
     name: Build & publish Docker image
     runs-on: ubuntu-latest
+    needs: version-policy
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
