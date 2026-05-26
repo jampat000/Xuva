@@ -1,8 +1,12 @@
 import Foundation
 import SwiftUI
+import Security
+import os
 
 @MainActor
 public final class XuvaClientStore: ObservableObject {
+    private let logger = Logger(subsystem: "com.xuva.client", category: "store")
+
     @Published public var serverText = "http://127.0.0.1:8097" {
         didSet {
             UserDefaults.standard.set(serverText, forKey: Self.serverURLKey)
@@ -39,7 +43,7 @@ public final class XuvaClientStore: ObservableObject {
     private static let serverURLKey = "xuva.apple.serverURL"
     private static let pairedServerURLKey = "xuva.apple.pairedServerURL"
     private static let pairedDeviceKey = "xuva.apple.pairedDevice"
-    private static let authTokenKey = "xuva.apple.authToken"
+    private static let keychainAuthTokenAccount = "xuva.apple.authToken"
 
     public init() {
         if let existingServer = UserDefaults.standard.string(forKey: Self.serverURLKey), !existingServer.isEmpty {
@@ -122,7 +126,7 @@ public final class XuvaClientStore: ObservableObject {
     public func open(item: HomeItem) async {
         let detailId = item.resolvedDetailId
         let detailKind = item.resolvedDetailKind
-        print("[XUVA] open item detailId=\(detailId) kind=\(detailKind) title=\(item.title ?? "-") progress=\(item.progress ?? 0)")
+        logger.debug("open item detailId=\(detailId) kind=\(detailKind) title=\(item.title ?? "-") progress=\(item.progress ?? 0)")
         // If this is a Continue Watching tile, capture the resume context so
         // the user's next Play press picks the right media source + position.
         if let progress = item.progress, progress > 0, let msid = item.mediaSourceId, !msid.isEmpty {
@@ -135,7 +139,7 @@ public final class XuvaClientStore: ObservableObject {
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
             selectedDetail = try await api.detail(kind: detailKind, id: detailId)
-            print("[XUVA] detail loaded versions=\(selectedDetail?.versions?.count ?? 0)")
+            logger.debug("detail loaded versions=\(self.selectedDetail?.versions?.count ?? 0)")
             persistCurrentAuthToken()
             screen = .detail
         }
@@ -161,28 +165,28 @@ public final class XuvaClientStore: ObservableObject {
             // Similar failure is non-fatal — apply if available, skip if not.
             let similar = try? await similarTask
             selectedDetail?.relatedTitles = similar?.items
-            print("[XUVA] enriched cast=\(metadata.best?.cast?.count ?? 0) directors=\(metadata.best?.directors?.count ?? 0) studios=\(metadata.best?.studios?.count ?? 0) similar=\(similar?.items?.count ?? 0)")
+            logger.debug("enriched cast=\(metadata.best?.cast?.count ?? 0) directors=\(metadata.best?.directors?.count ?? 0) studios=\(metadata.best?.studios?.count ?? 0) similar=\(similar?.items?.count ?? 0)")
         } catch {
-            print("[XUVA] enrich failed: \(error)")
+            logger.debug("enrich failed: \(error)")
         }
     }
 
     public func play(version: MediaVersion? = nil, audioTrack: MediaTrack? = nil, subtitleTrack: MediaTrack? = nil) async {
-        print("[XUVA] play() called, hasAPI=\(api != nil) pendingResume=\(pendingResumeFraction ?? 0)")
+        logger.debug("play() called, hasAPI=\(self.api != nil) pendingResume=\(self.pendingResumeFraction ?? 0)")
         await run {
             guard let api else { throw XuvaAPIError.invalidURL }
             // Pick the right mediaSource: explicit param > resume's source > first version.
             let mediaSourceId = version?.mediaSourceId
                 ?? pendingResumeMediaSourceId
                 ?? selectedDetail?.versions?.first?.mediaSourceId
-            print("[XUVA] play() mediaSourceId=\(mediaSourceId ?? "<none>")")
+            logger.debug("play() mediaSourceId=\(mediaSourceId ?? "<none>")")
             guard let mediaSourceId, !mediaSourceId.isEmpty else { throw XuvaAPIError.missingStreamURL }
             // Compute resume position from progress fraction × that source's duration.
             var positionSeconds = 0
             if let fraction = pendingResumeFraction, fraction > 0,
                let duration = selectedDetail?.versions?.first(where: { $0.mediaSourceId == mediaSourceId })?.source?.durationSeconds, duration > 0 {
                 positionSeconds = Int((fraction * duration).rounded())
-                print("[XUVA] resume positionSeconds=\(positionSeconds) (\(Int(fraction * 100))% of \(Int(duration))s)")
+                logger.debug("resume positionSeconds=\(positionSeconds) (\(Int(fraction * 100))% of \(Int(duration))s)")
             }
             var response = try await api.startPlayback(
                 mediaSourceId: mediaSourceId,
@@ -204,20 +208,20 @@ public final class XuvaClientStore: ObservableObject {
                 throw XuvaAPIError.fileNotProbed
             }
             let routeType = response.route?.route ?? ""
-            print("[XUVA] startPlayback OK routeType=\(routeType) status=\(response.route?.status ?? "<none>") session=\(response.sessionId ?? "<none>") deviceId=\(response.deviceId ?? "<none>")")
+            logger.debug("startPlayback OK routeType=\(routeType) status=\(response.route?.status ?? "<none>") session=\(response.sessionId ?? "<none>")")
             if routeType == "direct" || routeType == "" {
                 // Direct play: sign the stream URL so AVPlayer can fetch it without a
                 // persistent auth header (token in query string survives redirects).
                 if let sessionId = response.sessionId, !sessionId.isEmpty,
                    let deviceId = response.deviceId, !deviceId.isEmpty {
                     let signed = try await api.requestStreamToken(mediaSourceId: mediaSourceId, sessionId: sessionId, deviceId: deviceId)
-                    print("[XUVA] streamToken OK signedUrl=\(signed.streamUrl ?? "<none>")")
+                    logger.debug("streamToken OK")
                     guard let signedUrl = signed.streamUrl, !signedUrl.isEmpty else {
                         throw XuvaAPIError.missingStreamURL
                     }
                     response.route?.url = signedUrl
                 } else {
-                    print("[XUVA] WARN missing sessionId/deviceId — skipping streamToken")
+                    logger.warning("missing sessionId/deviceId — skipping streamToken")
                 }
             } else if routeType == "adaptive" {
                 // Adaptive HLS: the manifestUrl is used directly.
@@ -249,7 +253,7 @@ public final class XuvaClientStore: ObservableObject {
             playback = response
             persistCurrentAuthToken()
             screen = .player
-            print("[XUVA] screen=.player, final url=\(response.route?.url ?? response.route?.manifestUrl ?? "<none>")")
+            logger.debug("screen=.player")
         }
     }
 
@@ -344,7 +348,7 @@ public final class XuvaClientStore: ObservableObject {
         screen = .connect
         UserDefaults.standard.removeObject(forKey: Self.pairedDeviceKey)
         UserDefaults.standard.removeObject(forKey: Self.pairedServerURLKey)
-        UserDefaults.standard.removeObject(forKey: Self.authTokenKey)
+        deleteAuthTokenFromKeychain()
     }
 
     public func reconnectIfPossible() async {
@@ -395,7 +399,7 @@ public final class XuvaClientStore: ObservableObject {
         do {
             try await operation()
         } catch {
-            print("[XUVA] ERR \(error)")
+            logger.error("ERR \(error)")
             errorMessage = error.localizedDescription
             if case XuvaAPIError.badStatus(401, _) = error {
                 connectionState = .needsAuthCredential
@@ -409,7 +413,16 @@ public final class XuvaClientStore: ObservableObject {
     private func normalizedServerURL() -> String {
         let trimmed = serverText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") { return trimmed }
-        return "http://\(trimmed)"
+        let scheme = isLocalAddress(trimmed) ? "http" : "https"
+        return "\(scheme)://\(trimmed)"
+    }
+
+    private func isLocalAddress(_ address: String) -> Bool {
+        let host = address.components(separatedBy: ":").first ?? address
+        if host == "localhost" || host.hasSuffix(".local") { return true }
+        if host.hasPrefix("10.") || host.hasPrefix("192.168.") { return true }
+        for i in 16...31 where host.hasPrefix("172.\(i).") { return true }
+        return false
     }
 
     private func deviceName() -> String {
@@ -447,7 +460,7 @@ public final class XuvaClientStore: ObservableObject {
     private func markPaired(with token: String?) {
         if let token = token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             api?.authToken = token
-            UserDefaults.standard.set(token, forKey: Self.authTokenKey)
+            saveAuthTokenToKeychain(token)
         }
         connectionState = .paired
         UserDefaults.standard.set(true, forKey: Self.pairedDeviceKey)
@@ -455,13 +468,49 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     private func storedAuthToken() -> String? {
-        let token = UserDefaults.standard.string(forKey: Self.authTokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return token.isEmpty ? nil : token
+        loadAuthTokenFromKeychain()
     }
 
     private func persistCurrentAuthToken() {
         guard let token = api?.authToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else { return }
-        UserDefaults.standard.set(token, forKey: Self.authTokenKey)
+        saveAuthTokenToKeychain(token)
+    }
+
+    private func saveAuthTokenToKeychain(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: Self.keychainAuthTokenAccount
+        ]
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecItemNotFound {
+            var addQuery = query
+            addQuery[kSecValueData as String] = data
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+    }
+
+    private func loadAuthTokenFromKeychain() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: Self.keychainAuthTokenAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8),
+              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return token
+    }
+
+    private func deleteAuthTokenFromKeychain() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: Self.keychainAuthTokenAccount
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
 
