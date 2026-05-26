@@ -143,6 +143,8 @@ jobs:
         shell: powershell
         run: |
           $files = @(
+            "tools/check.ps1",
+            "tools/rehearse-install-upgrade-rollback.ps1",
             "packaging/windows/build-package.ps1",
             "packaging/windows/verify-package.ps1"
           )

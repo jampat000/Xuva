@@ -104,6 +104,6 @@ Denied streams continue to emit `audit.stream.denied` with the media source, ses
 
 ## Dependency Scanning
 
-GitHub Actions runs `go test ./...` and `govulncheck ./...` for every pull request and push to `main`. Critical reachable Go vulnerabilities fail the security workflow.
+GitHub Actions runs `go test ./...` and `govulncheck ./...` from the `server/` module for every pull request and push to `main`. Critical reachable Go vulnerabilities fail the security workflow.
 
 False positives should be handled by linking the advisory, recording reachability, and either upgrading the dependency or documenting why the vulnerable symbol is not reachable before merging.
