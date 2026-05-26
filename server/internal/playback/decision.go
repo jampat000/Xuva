@@ -35,6 +35,11 @@ type Request struct {
 	SubtitleMode        string  `json:"subtitleMode,omitempty"`
 	SubtitleTrackActive bool    `json:"subtitleTrackActive,omitempty"`
 	SupportsAdaptive    bool    `json:"supportsAdaptive,omitempty"`
+	// PreferAdaptive signals that the client wants HLS segment-based playback
+	// regardless of network conditions (e.g. tvOS for precise Siri Remote
+	// seeking). The adaptive route is still exempt for Dolby Vision files
+	// where transcoding would strip DV metadata.
+	PreferAdaptive      bool    `json:"preferAdaptive,omitempty"`
 	// Client capability whitelists (populated from the device profile or
 	// from a client-reported capability payload):
 	Containers       []string
@@ -214,6 +219,27 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.EstimatedGPUCost = "optional"
 		decision.SuggestedFixes = []string{"Use original quality on LAN", "Raise the network bitrate limit", "Use hardware acceleration for lower server impact"}
 		return finalizeDecision(request, source, decision)
+	}
+	// If the client explicitly prefers adaptive HLS (e.g. Apple TV for
+	// Siri Remote segment-based seeking), route to adaptive before the
+	// direct-play check so scrubbing always lands on a clean segment
+	// boundary. Dolby Vision pass-through is exempt: any transcode strips
+	// the DV metadata, so direct play is strictly better there.
+	if request.SupportsAdaptive && request.PreferAdaptive {
+		isDVPassThrough := source.DoviProfile != 0 && request.SupportsDolbyVision
+		if !isDVPassThrough {
+			decision.Mode = AdaptiveStream
+			decision.ReasonCode = "adaptive_preferred"
+			decision.ReasonText = "Client requested adaptive HLS for segment-based seeking regardless of network conditions."
+			decision.ContainerAction = "adaptive_hls"
+			decision.VideoAction = "adaptive"
+			decision.AudioAction = audioAction
+			decision.SubtitleAction = subtitles
+			decision.EstimatedCPUCost = "medium"
+			decision.EstimatedGPUCost = "optional"
+			decision.SuggestedFixes = []string{"Switch to direct play to reduce server CPU", "Add hardware acceleration for lower server impact"}
+			return finalizeDecision(request, source, decision)
+		}
 	}
 	// Source-level capability checks: even when codec + container match the
 	// client whitelist, this client may not handle higher bit depths, HDR,

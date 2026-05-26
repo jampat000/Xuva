@@ -2418,6 +2418,7 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			SubtitleMode:       payload.SubtitleMode,
 			SubtitleActive:     payload.SubtitleActive,
 			Capabilities:       payload.ClientCapabilities,
+			PreferAdaptive:     payload.PreferAdaptive,
 		})
 		routePayload, status, err := clientPlaybackRoutePayload(deps, r, source, decision, payload)
 		if err != nil {
@@ -2615,6 +2616,9 @@ type clientPlaybackOptions struct {
 	SubtitleMode       string
 	SubtitleActive     bool
 	Capabilities       *clientCapabilities
+	// PreferAdaptive routes to HLS regardless of network conditions so that
+	// seeking is always segment-based. Set by Apple TV clients.
+	PreferAdaptive     bool
 }
 
 type clientPlaybackStartRequest struct {
@@ -2627,6 +2631,8 @@ type clientPlaybackStartRequest struct {
 	SubtitleTrackIndex int    `json:"subtitleTrackIndex"`
 	SubtitleMode       string `json:"subtitleMode"`
 	SubtitleActive     bool   `json:"subtitleActive"`
+	// PreferAdaptive: client wants HLS for segment-based seeking.
+	PreferAdaptive     bool   `json:"preferAdaptive,omitempty"`
 	// ClientCapabilities, when provided, overrides the static device-profile
 	// codec / container / HDR whitelist with values measured by the client
 	// at runtime (e.g. via MediaSource.isTypeSupported / canPlayType).
@@ -2808,6 +2814,7 @@ func clientPlaybackDecision(ctx context.Context, deps Deps, source catalog.Media
 		SubtitleTrackIndex:  options.SubtitleTrackIndex,
 		SubtitleMode:        options.SubtitleMode,
 		SubtitleTrackActive: options.SubtitleActive,
+		PreferAdaptive:      options.PreferAdaptive,
 	}
 	request = applyClientProfile(deps, request)
 	// Client-reported capabilities override profile fields when present (#64).
