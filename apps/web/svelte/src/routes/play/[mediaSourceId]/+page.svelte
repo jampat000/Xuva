@@ -13,6 +13,7 @@
     type MediaSourceItem,
   } from '$lib/api/details';
   import { buildCapabilityReport } from '$lib/api/capabilities';
+  import { appState } from '$lib/stores/appState.svelte';
 
   // ─── Route param ──────────────────────────────────────────────────────────
   const mediaSourceId = $derived($page.params.mediaSourceId ?? '');
@@ -193,8 +194,16 @@
       if (needsDirectToken || needsManifestToken) {
         try {
           const tokenResp = await getStreamToken(mediaSourceId, sessionId!, sessionDeviceId ?? 'web');
-          if (needsDirectToken && tokenResp.streamUrl) {
-            finalRoute = { ...finalRoute, url: tokenResp.streamUrl };
+          if (needsDirectToken && tokenResp.query) {
+            // For remux routes the token system returns a streamUrl that points at
+            // /stream, not /remux-stream. Append the query params directly to the
+            // route URL instead so the correct endpoint is used.
+            if (finalAttemptRoute.route === 'remux' && finalAttemptRoute.url) {
+              const sep = finalAttemptRoute.url.includes('?') ? '&' : '?';
+              finalRoute = { ...finalRoute, url: finalAttemptRoute.url + sep + tokenResp.query.replace(/^\?/, '') };
+            } else if (tokenResp.streamUrl) {
+              finalRoute = { ...finalRoute, url: tokenResp.streamUrl };
+            }
           }
           if (needsManifestToken && tokenResp.query) {
             const sep = finalAttemptRoute.manifestUrl!.includes('?') ? '&' : '?';
@@ -238,12 +247,23 @@
     }
   });
 
-  // Derive a display title from URL param or media source name
-  const displayTitle = $derived(titleParam || mediaSource?.name || '');
+  // Derive a display title from URL param or media source name.
+  // When no clean title was passed in the URL, strip the file extension and
+  // quality-tag suffixes from the raw filename so the tab shows e.g.
+  // "Smoke Signals (1998)" instead of "Smoke Signals (1998) (WEBRip-1080p).mp4".
+  function cleanMediaTitle(name: string | undefined): string {
+    if (!name) return '';
+    return name
+      .replace(/\.[a-z0-9]{2,5}$/i, '')    // remove extension
+      .replace(/\s*\([^)]*(?:remux|bluray|blu-ray|web-?dl|webrip|hdtv|dvdrip|bdrip|hdrip|amzn|nf|dsnp|hmax|[0-9]{3,4}p)[^)]*\)/gi, '')
+      .replace(/\s*\[[^\]]*(?:remux|bluray|web-?dl|webrip|hdtv|[0-9]{3,4}p)[^\]]*\]/gi, '')
+      .trim();
+  }
+  const displayTitle = $derived(titleParam || cleanMediaTitle(mediaSource?.name) || mediaSource?.name || '');
 </script>
 
 <svelte:head>
-  <title>{displayTitle ? `${displayTitle} — Xuva` : 'Playing — Xuva'}</title>
+  <title>{displayTitle ? `${displayTitle} — ${appState.serverName || 'Xuva'}` : (appState.serverName || 'Xuva')}</title>
 </svelte:head>
 
 {#if loading}

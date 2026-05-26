@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -220,11 +221,15 @@ func ifTable() (map[uint32]netCounters, bool) {
 		if name == "" {
 			name = string(row.Descr[:row.DescrLen])
 		}
-		// Speed is in bps; 0xFFFFFFFF is the Windows sentinel for >4.2Gbps
-		// (need GetIfEntry2 for those — we just report 0/unknown for now).
+		// Speed is a 32-bit field; 0xFFFFFFFF is the Windows sentinel for
+		// >4.2 Gbps and many modern drivers return 0 for this field. Fall
+		// back to the PowerShell Get-NetAdapter cache for accurate data.
 		var speedBps uint64
 		if row.Speed != 0 && row.Speed != 0xFFFFFFFF {
 			speedBps = uint64(row.Speed)
+		}
+		if speedBps == 0 {
+			speedBps = linkSpeedForIndex(row.Index)
 		}
 		output[row.Index] = netCounters{
 			name:         strings.TrimSpace(name),
@@ -241,6 +246,80 @@ func rateBps(after uint64, before uint64, seconds float64) uint64 {
 		return 0
 	}
 	return uint64(float64(after-before) * 8 / seconds)
+}
+
+// ─── Link-speed cache ─────────────────────────────────────────────────────────
+//
+// GetIfTable (MIB_IFROW.Speed) is a 32-bit field and returns 0 or 0xFFFFFFFF for
+// modern NICs whose speed exceeds 4.2 Gbps or whose driver doesn't populate the
+// legacy field. We fall back to Get-NetAdapter (PowerShell) which reads the
+// NDIS-reported link speed accurately, and cache the result for 5 minutes since
+// link speed never changes during normal operation.
+
+var (
+	linkSpeedCacheMu   sync.Mutex
+	linkSpeedCache     map[uint32]uint64
+	linkSpeedCacheTime time.Time
+)
+
+// linkSpeedForIndex returns the link speed (bps) for the given interface index,
+// using a cached PowerShell lookup. Returns 0 if unavailable.
+func linkSpeedForIndex(index uint32) uint64 {
+	linkSpeedCacheMu.Lock()
+	defer linkSpeedCacheMu.Unlock()
+	if time.Since(linkSpeedCacheTime) > 5*time.Minute || linkSpeedCache == nil {
+		if m := psNetLinkSpeeds(); m != nil {
+			linkSpeedCache = m
+			linkSpeedCacheTime = time.Now()
+		}
+	}
+	if linkSpeedCache == nil {
+		return 0
+	}
+	return linkSpeedCache[index]
+}
+
+// psNetLinkSpeeds shells out to PowerShell to get per-adapter link speeds keyed
+// by interface index. Returns nil on any error (caller uses the cached value).
+func psNetLinkSpeeds() map[uint32]uint64 {
+	if _, err := os.Stat(`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`); err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	// Select ifIndex (matches MIB_IFROW.Index) and Speed (NDIS 64-bit bps).
+	cmd := `Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | ` +
+		`Select-Object @{n='i';e={$_.ifIndex}},@{n='s';e={$_.Speed}} | ` +
+		`ConvertTo-Json -Compress`
+	out, err := exec.CommandContext(ctx,
+		"powershell", "-NoProfile", "-NonInteractive", "-Command", cmd,
+	).Output()
+	if err != nil {
+		return nil
+	}
+	type entry struct {
+		I float64 `json:"i"`
+		S float64 `json:"s"`
+	}
+	var arr []entry
+	if err := json.Unmarshal(bytes.TrimSpace(out), &arr); err != nil {
+		// Single adapter returns an object, not an array.
+		var single entry
+		if err2 := json.Unmarshal(bytes.TrimSpace(out), &single); err2 != nil {
+			return nil
+		}
+		arr = []entry{single}
+	}
+	result := make(map[uint32]uint64, len(arr))
+	for _, a := range arr {
+		if a.I > 0 && a.S > 0 {
+			result[uint32(a.I)] = uint64(a.S)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func gpuStats() *GPUStats {

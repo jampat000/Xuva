@@ -227,6 +227,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/adaptive/{variant}", adaptiveVariantHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/adaptive/session", adaptiveSessionHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/stream", mediaSourceStreamHandler(deps))
+	handleProtected(mux, deps, "GET /api/media-sources/{id}/remux-stream", remuxStreamHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/download", mediaSourceDownloadHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/media-sources/{id}/stream-token", mediaSourceStreamTokenHandler(deps))
 	handleProtected(mux, deps, "GET /api/media-sources/{id}/tracks", mediaSourceTracksHandler(deps))
@@ -5184,6 +5185,9 @@ func systemStatusHandler(deps Deps) http.HandlerFunc {
 			"network":     snap.Network,
 			"disks":       snap.Disks,
 		}
+		if snap.GPU != nil {
+			payload["gpu"] = snap.GPU
+		}
 		if !deps.StartedAt.IsZero() {
 			payload["serverStartedAt"] = deps.StartedAt.Format(time.RFC3339)
 		}
@@ -5594,6 +5598,90 @@ func ensureMediaFileAccessible(path string) error {
 		return os.ErrInvalid
 	}
 	return nil
+}
+
+// remuxStreamHandler pipes FFmpeg output directly to the HTTP response as
+// fragmented MP4, enabling instant playback of MKV files without waiting for
+// the HLS pre-processing job to complete. The audio is either copied as-is
+// (audioMode=copy) or re-encoded to AAC (audioMode=transcode) for browsers
+// that cannot decode the source codec (e.g. DTS, TrueHD).
+func remuxStreamHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		release, ok := authorizeStreamRequest(deps, w, r, r.PathValue("id"))
+		if !ok {
+			return
+		}
+		defer release()
+		item, ok, err := deps.Catalog.GetMediaSource(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "media source lookup failed")
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusNotFound, "media source not found")
+			return
+		}
+		if err := ensureMediaFileAccessible(item.Path); err != nil {
+			writeError(w, http.StatusNotFound, "media file is unavailable from the configured library path")
+			return
+		}
+
+		startTime := queryFloat(r, "startTime", 0)
+		audioMode := r.URL.Query().Get("audioMode")
+		if audioMode != "transcode" {
+			audioMode = "copy"
+		}
+
+		ffmpegPath := deps.Config.FFmpegPath
+		if strings.TrimSpace(ffmpegPath) == "" {
+			ffmpegPath = "ffmpeg"
+		}
+
+		var args []string
+		// Use fast input seek only when a non-zero start time is requested.
+		// Placing -ss before -i enables fast seek (keyframe seek); placing it
+		// after would require decoding every frame up to the target -- very slow.
+		if startTime > 0 {
+			args = append(args, "-ss", fmt.Sprintf("%.3f", startTime))
+		}
+		args = append(args, "-i", item.Path)
+		if audioMode == "transcode" {
+			args = append(args, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k")
+		} else {
+			args = append(args, "-c", "copy")
+		}
+		args = append(args, "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+dash", "-")
+
+		// CommandContext ensures the FFmpeg process is killed when the HTTP
+		// connection closes (context cancelled) so we do not leak child processes.
+		cmd := exec.CommandContext(r.Context(), ffmpegPath, args...)
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to create ffmpeg pipe")
+			return
+		}
+		cmd.Stderr = nil
+
+		if err := cmd.Start(); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to start ffmpeg: "+err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Accept-Ranges", "none")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusOK)
+
+		// Pipe FFmpeg stdout to the response. io.Copy returns when the client
+		// disconnects or FFmpeg exits -- whichever happens first.
+		_, _ = io.Copy(w, stdout)
+
+		// Wait for the process to exit so we can reclaim its resources.
+		// A broken-pipe exit (client disconnected) is normal and expected.
+		_ = cmd.Wait()
+	}
 }
 
 func mediaSourceStreamHandler(deps Deps) http.HandlerFunc {
@@ -7116,18 +7204,26 @@ func playbackRouteHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 		}
-		// Map the playback decision mode to a transcode pipeline. AudioTranscode
-		// (video plays as-is, only audio needs re-encoding — e.g. HEVC + DTS in
-		// an MKV) gets the fast ModeRemuxAudio path, which copies the video
-		// stream and only re-encodes audio. Starts streaming in seconds instead
-		// of minutes, matching Plex/Jellyfin behaviour for web playback.
-		mode := transcode.ModeTranscode
-		switch decision.Mode {
-		case playback.Remux:
-			mode = transcode.ModeRemux
-		case playback.AudioTranscode:
-			mode = transcode.ModeRemuxAudio
+		// Remux (container-only repack) and AudioTranscode (video copy + audio
+		// re-encode) both use the live-pipe remux endpoint -- no pre-processing
+		// required, playback starts within a second matching Plex/Jellyfin/Emby
+		// direct-stream behaviour.
+		if decision.Mode == playback.Remux || decision.Mode == playback.AudioTranscode {
+			audioMode := "copy"
+			if decision.Mode == playback.AudioTranscode {
+				audioMode = "transcode"
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"route":    "remux",
+				"status":   "ready",
+				"url":      "/api/media-sources/" + mediaSourceID + "/remux-stream?audioMode=" + audioMode,
+				"decision": decision,
+			})
+			return
 		}
+		// Map the playback decision mode to the transcode pipeline for full
+		// transcodes (video re-encoding needed).
+		mode := transcode.ModeTranscode
 		audioTrackIndex := resolvedAudioTrackIndex(r.Context(), deps, mediaSourceID, queryInt(r, "audioTrackIndex", 0))
 		if job, ok := deps.Transcode.FindCompleted(mediaSourceID, mode, audioTrackIndex); ok {
 			if job.OutputFormat == "hls" {
@@ -7580,6 +7676,18 @@ func queryInt64(r *http.Request, key string, fallback int64) int64 {
 		output = output*10 + int64(ch-'0')
 	}
 	if output == 0 {
+		return fallback
+	}
+	return output
+}
+
+func queryFloat(r *http.Request, key string, fallback float64) float64 {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return fallback
+	}
+	output, err := strconv.ParseFloat(value, 64)
+	if err != nil {
 		return fallback
 	}
 	return output
