@@ -352,8 +352,46 @@
     keepControlsVisible();
   }
 
+  // ─── Remux seek restart ───────────────────────────────────────────────────
+  // For live-pipe fMP4 streams (route === "remux") the server pipes data from
+  // the beginning of the file. The browser cannot seek beyond what has been
+  // buffered. When a seek lands beyond the buffered range the video stalls;
+  // we detect this in onWaiting and restart the stream at the requested
+  // position by setting a new src with ?startTime=<seconds>.
+  let remuxRestartTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function maybeRestartRemuxAtSeekPosition() {
+    if (!videoEl || route.route !== 'remux' || !route.url) return;
+    const target = videoEl.currentTime;
+    // Check if target is beyond the buffered end
+    let bufferedEnd = 0;
+    for (let i = 0; i < videoEl.buffered.length; i++) {
+      if (videoEl.buffered.start(i) <= target + 0.5) {
+        bufferedEnd = Math.max(bufferedEnd, videoEl.buffered.end(i));
+      }
+    }
+    if (target <= bufferedEnd + 1) return; // within buffer — no restart needed
+
+    // Restart the stream at the seek target by replacing the startTime param
+    const baseUrl = route.url.replace(/([?&])startTime=[^&]*/g, '').replace(/&$|[?]$/, '');
+    const sep = baseUrl.includes('?') ? '&' : '?';
+    const newUrl = `${baseUrl}${sep}startTime=${target.toFixed(3)}`;
+    videoEl.src = newUrl;
+    videoEl.currentTime = 0; // server seeks to startTime — client starts from 0
+    videoEl.load();
+    videoEl.play().catch(() => {});
+  }
+
   function onWaiting() {
     seeking = true;
+    // Debounce — only attempt a remux restart if stalled for more than 400 ms
+    if (route.route === 'remux') {
+      if (remuxRestartTimer) clearTimeout(remuxRestartTimer);
+      remuxRestartTimer = setTimeout(() => {
+        remuxRestartTimer = null;
+        maybeRestartRemuxAtSeekPosition();
+      }, 400);
+    }
   }
 
   function onCanPlay() {
@@ -745,6 +783,7 @@
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     if (hideTimer) clearTimeout(hideTimer);
     if (seekToastTimer) clearTimeout(seekToastTimer);
+    if (remuxRestartTimer) clearTimeout(remuxRestartTimer);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     window.removeEventListener('beforeunload', onBeforeUnload);
 
