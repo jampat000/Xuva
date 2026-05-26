@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -24,5 +25,71 @@ func TestOpenCreatesDatabaseAndMigratesSchema(t *testing.T) {
 	}
 	if tableCount != 5 {
 		t.Fatalf("expected core tables to exist, got %d", tableCount)
+	}
+
+	var migrationCount int
+	err = service.DB().QueryRowContext(context.Background(), `
+		SELECT count(*)
+		FROM schema_migrations
+		WHERE id = '0001_legacy_inline_schema'
+	`).Scan(&migrationCount)
+	if err != nil {
+		t.Fatalf("query schema migration ledger: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected legacy migration ledger row, got %d", migrationCount)
+	}
+}
+
+func TestOpenReusesSchemaMigrationLedger(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	service, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+
+	reopened, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	defer reopened.Close()
+
+	var migrationCount int
+	if err := reopened.DB().QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema migrations: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected migration ledger to stay stable, got %d rows", migrationCount)
+	}
+}
+
+func TestOpenRejectsSchemaMigrationChecksumMismatch(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	service, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if _, err := service.DB().ExecContext(ctx, `
+		UPDATE schema_migrations
+		SET checksum = 'bad'
+		WHERE id = '0001_legacy_inline_schema'
+	`); err != nil {
+		t.Fatalf("corrupt schema migration checksum: %v", err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+
+	_, err = Open(ctx, dir)
+	if err == nil {
+		t.Fatalf("expected checksum mismatch")
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("expected checksum mismatch error, got %v", err)
 	}
 }

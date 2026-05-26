@@ -2,11 +2,15 @@ package database
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -83,15 +87,103 @@ func (s *Service) configure(ctx context.Context) error {
 }
 
 func (s *Service) migrate(ctx context.Context) error {
-	for _, statement := range migrations {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			if strings.Contains(err.Error(), "duplicate column name") {
-				continue
-			}
+	if err := s.ensureMigrationLedger(ctx); err != nil {
+		return err
+	}
+	for _, migration := range schemaMigrations {
+		checksum := migration.checksum()
+		applied, err := s.migrationApplied(ctx, migration.ID, checksum)
+		if err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		if err := s.applyMigration(ctx, migration, checksum); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+type schemaMigration struct {
+	ID                   string
+	Name                 string
+	Statements           []string
+	AllowDuplicateColumn bool
+}
+
+func (m schemaMigration) checksum() string {
+	hash := sha256.New()
+	for _, statement := range m.Statements {
+		_, _ = hash.Write([]byte(statement))
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func (s *Service) ensureMigrationLedger(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		checksum TEXT NOT NULL,
+		applied_at TEXT NOT NULL,
+		duration_ms INTEGER NOT NULL
+	)`)
+	return err
+}
+
+func (s *Service) migrationApplied(ctx context.Context, id string, checksum string) (bool, error) {
+	var stored string
+	err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE id = ?`, id).Scan(&stored)
+	if err == nil {
+		if stored != checksum {
+			return false, fmt.Errorf("schema migration %s checksum mismatch", id)
+		}
+		return true, nil
+	}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return false, err
+}
+
+func (s *Service) applyMigration(ctx context.Context, migration schemaMigration, checksum string) error {
+	start := time.Now()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, statement := range migration.Statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			if migration.AllowDuplicateColumn && strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("apply schema migration %s: %w", migration.ID, err)
+		}
+	}
+	duration := time.Since(start).Milliseconds()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO schema_migrations(id, name, checksum, applied_at, duration_ms)
+		VALUES(?, ?, ?, ?, ?)
+	`, migration.ID, migration.Name, checksum, time.Now().UTC().Format(time.RFC3339Nano), duration); err != nil {
+		return fmt.Errorf("record schema migration %s: %w", migration.ID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit schema migration %s: %w", migration.ID, err)
+	}
+	return nil
+}
+
+var schemaMigrations = []schemaMigration{
+	{
+		ID:                   "0001_legacy_inline_schema",
+		Name:                 "Legacy inline schema",
+		Statements:           migrations,
+		AllowDuplicateColumn: true,
+	},
 }
 
 var migrations = []string{
