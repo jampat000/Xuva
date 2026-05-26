@@ -152,6 +152,7 @@
       loadPhase = 'authorizing';
       let sessionId: string | undefined;
       let sessionDeviceId: string | undefined;
+      let embeddedStreamToken: import('$lib/api/details').StreamTokenResponse | undefined;
 
       try {
         const session = await startClientPlayback({
@@ -174,6 +175,14 @@
         if (session.route?.url || session.route?.manifestUrl) {
           finalAttemptRoute = { ...finalAttemptRoute, ...session.route };
         }
+        // Capture the inline stream token — Phase 3 uses it to skip getStreamToken.
+        if (session.streamTokenQuery) {
+          embeddedStreamToken = {
+            query:           session.streamTokenQuery,
+            streamUrl:       session.streamUrl,
+            subtitleBaseUrl: session.subtitleBaseUrl,
+          };
+        }
       } catch {
         // Non-fatal if auth is disabled; proceed with the plain URL.
         // If auth IS enabled, the stream will 403 and the player will show an error.
@@ -185,6 +194,9 @@
       // to be present in the URL. We fetch those params here and patch the route
       // before handing it to the Player component.
       // One token fetch covers both the direct URL and the HLS manifest URL.
+      //
+      // Fast path: startClientPlayback embeds the token in its response, so we
+      // can skip the separate getStreamToken round-trip entirely.
       loadPhase = 'authorizing';
       let finalRoute = finalAttemptRoute;
 
@@ -193,7 +205,12 @@
 
       if (needsDirectToken || needsManifestToken) {
         try {
-          const tokenResp = await getStreamToken(mediaSourceId, sessionId!, sessionDeviceId ?? 'web');
+          // Use the token already embedded in the startClientPlayback response
+          // when available — avoids a full HTTP round-trip on every play.
+          const tokenResp: import('$lib/api/details').StreamTokenResponse =
+            embeddedStreamToken ??
+            await getStreamToken(mediaSourceId, sessionId!, sessionDeviceId ?? 'web');
+
           if (needsDirectToken && tokenResp.query) {
             // For remux routes the token system returns a streamUrl that points at
             // /stream, not /remux-stream. Append the query params directly to the
