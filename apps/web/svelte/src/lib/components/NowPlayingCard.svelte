@@ -2,7 +2,7 @@
   import type { SessionItem } from '$lib/api/operator';
   import { formatBitrate, formatCodec } from '$lib/utils/mediaFormat';
 
-  let { session } = $props<{ session: SessionItem }>();
+  let { session, userName = '' } = $props<{ session: SessionItem; userName?: string }>();
 
   const isTranscoding = $derived(session.mode === 'transcode' || session.mode === 'adaptive');
 
@@ -19,10 +19,23 @@
     'bg-primary-glow/10 text-primary-glow ring-primary-glow/20'
   );
 
-  const title  = $derived(session.title ?? session.sourceName ?? 'Unknown');
-  const device = $derived(
+  const title      = $derived(session.title ?? session.sourceName ?? 'Unknown');
+  const userLabel  = $derived(userName || null);
+  const deviceLine = $derived(
     [session.deviceId, session.clientProfile].filter(Boolean).join(' · ') || 'Unknown device'
   );
+
+  function startedAgo(iso?: string): string {
+    if (!iso) return '';
+    const diff = Math.max(0, Date.now() - new Date(iso).getTime());
+    const m = Math.floor(diff / 60000);
+    if (m < 1)  return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ${m % 60}m ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
+  const startedLabel = $derived(startedAgo(session.startedAt));
 
   const progress    = $derived(session.progressSeconds ?? 0);
   const duration    = $derived(session.durationSeconds ?? 0);
@@ -142,13 +155,31 @@
         </span>
       </div>
 
-      <!-- Device / state row -->
-      <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span class="truncate">{device}</span>
-        {#if session.state}
-          <span class="shrink-0 capitalize text-muted-foreground/40">· {session.state}</span>
-        {/if}
-      </div>
+      <!-- Who is watching -->
+      {#if userLabel}
+        <div class="flex items-center gap-1.5 text-[11px]">
+          <svg class="h-3 w-3 shrink-0 text-muted-foreground/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          <span class="font-medium text-foreground/80">{userLabel}</span>
+          <span class="text-muted-foreground/40">·</span>
+          <span class="truncate text-muted-foreground/60">{deviceLine}</span>
+          {#if startedLabel}
+            <span class="shrink-0 text-muted-foreground/35">· {startedLabel}</span>
+          {/if}
+        </div>
+      {:else}
+        <!-- Device / state row (no user info) -->
+        <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span class="truncate">{deviceLine}</span>
+          {#if startedLabel}
+            <span class="shrink-0 text-muted-foreground/35">· {startedLabel}</span>
+          {/if}
+          {#if session.state}
+            <span class="shrink-0 capitalize text-muted-foreground/40">· {session.state}</span>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Tech pills -->
       {#if techPills.length > 0 || impactBadge || encoderBadge}
