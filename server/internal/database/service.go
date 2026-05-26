@@ -2,19 +2,24 @@ package database
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 type Service struct {
-	DataDir string
-	Path    string
-	db      *sql.DB
+	DataDir     string
+	Path        string
+	db          *sql.DB
+	preexisting bool
 }
 
 func Open(ctx context.Context, dataDir string) (*Service, error) {
@@ -26,15 +31,21 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "xuva.db")
+	_, statErr := os.Stat(dbPath)
+	preexisting := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, statErr
+	}
 	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, err
 	}
 
 	service := &Service{
-		DataDir: dataDir,
-		Path:    dbPath,
-		db:      db,
+		DataDir:     dataDir,
+		Path:        dbPath,
+		db:          db,
+		preexisting: preexisting,
 	}
 	if err := service.configure(ctx); err != nil {
 		db.Close()
@@ -67,6 +78,18 @@ func (s *Service) Close() error {
 	return s.db.Close()
 }
 
+func (s *Service) SchemaVersion(ctx context.Context) (string, error) {
+	if s == nil || s.db == nil {
+		return "", nil
+	}
+	var id string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM schema_migrations ORDER BY id DESC LIMIT 1`).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return id, err
+}
+
 func (s *Service) configure(ctx context.Context) error {
 	statements := []string{
 		"PRAGMA foreign_keys = ON",
@@ -83,15 +106,175 @@ func (s *Service) configure(ctx context.Context) error {
 }
 
 func (s *Service) migrate(ctx context.Context) error {
-	for _, statement := range migrations {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			if strings.Contains(err.Error(), "duplicate column name") {
-				continue
+	if err := s.integrityCheck(ctx, "before schema migrations"); err != nil {
+		return err
+	}
+	backupCreated := false
+	if s.preexisting {
+		ledgerExists, err := s.schemaMigrationLedgerExists(ctx)
+		if err != nil {
+			return err
+		}
+		if !ledgerExists {
+			if err := s.backupBeforeSchemaMigration(ctx); err != nil {
+				return err
 			}
+			backupCreated = true
+		}
+	}
+	if err := s.ensureMigrationLedger(ctx); err != nil {
+		return err
+	}
+	for _, migration := range schemaMigrations {
+		checksum := migration.checksum()
+		applied, err := s.migrationApplied(ctx, migration.ID, checksum)
+		if err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		if s.preexisting && !backupCreated {
+			if err := s.backupBeforeSchemaMigration(ctx); err != nil {
+				return err
+			}
+			backupCreated = true
+		}
+		if err := s.applyMigration(ctx, migration, checksum); err != nil {
 			return err
 		}
 	}
+	if err := s.integrityCheck(ctx, "after schema migrations"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *Service) schemaMigrationLedgerExists(ctx context.Context) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+		AND name = 'schema_migrations'
+	`).Scan(&count)
+	return count > 0, err
+}
+
+type schemaMigration struct {
+	ID                   string
+	Name                 string
+	Statements           []string
+	AllowDuplicateColumn bool
+}
+
+func (m schemaMigration) checksum() string {
+	hash := sha256.New()
+	for _, statement := range m.Statements {
+		_, _ = hash.Write([]byte(statement))
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func (s *Service) ensureMigrationLedger(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		checksum TEXT NOT NULL,
+		applied_at TEXT NOT NULL,
+		duration_ms INTEGER NOT NULL
+	)`)
+	return err
+}
+
+func (s *Service) migrationApplied(ctx context.Context, id string, checksum string) (bool, error) {
+	var stored string
+	err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE id = ?`, id).Scan(&stored)
+	if err == nil {
+		if stored != checksum {
+			return false, fmt.Errorf("schema migration %s checksum mismatch", id)
+		}
+		return true, nil
+	}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return false, err
+}
+
+func (s *Service) applyMigration(ctx context.Context, migration schemaMigration, checksum string) error {
+	start := time.Now()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, statement := range migration.Statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			if migration.AllowDuplicateColumn && strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("apply schema migration %s: %w", migration.ID, err)
+		}
+	}
+	duration := time.Since(start).Milliseconds()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO schema_migrations(id, name, checksum, applied_at, duration_ms)
+		VALUES(?, ?, ?, ?, ?)
+	`, migration.ID, migration.Name, checksum, time.Now().UTC().Format(time.RFC3339Nano), duration); err != nil {
+		return fmt.Errorf("record schema migration %s: %w", migration.ID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit schema migration %s: %w", migration.ID, err)
+	}
+	return nil
+}
+
+func (s *Service) backupBeforeSchemaMigration(ctx context.Context) error {
+	backupDir := filepath.Join(s.DataDir, "backups")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return err
+	}
+	backupPath := filepath.Join(backupDir, "schema-upgrade-"+time.Now().UTC().Format("20060102T150405Z")+".db")
+	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", backupPath); err != nil {
+		return fmt.Errorf("backup database before schema migration: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) integrityCheck(ctx context.Context, phase string) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA integrity_check`)
+	if err != nil {
+		return fmt.Errorf("sqlite integrity check %s: %w", phase, err)
+	}
+	defer rows.Close()
+
+	results := []string{}
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("sqlite integrity check %s: %w", phase, err)
+		}
+		results = append(results, strings.TrimSpace(result))
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("sqlite integrity check %s: %w", phase, err)
+	}
+	if len(results) == 1 && strings.EqualFold(results[0], "ok") {
+		return nil
+	}
+	return fmt.Errorf("sqlite integrity check %s failed: %s", phase, strings.Join(results, "; "))
+}
+
+var schemaMigrations = []schemaMigration{
+	{
+		ID:                   "0001_legacy_inline_schema",
+		Name:                 "Legacy inline schema",
+		Statements:           migrations,
+		AllowDuplicateColumn: true,
+	},
 }
 
 var migrations = []string{

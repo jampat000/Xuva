@@ -8,6 +8,7 @@ Public client bootstrap routes:
 
 | Pattern | Purpose |
 | --- | --- |
+| `GET /api/system/version` | Read-only release and schema identity for package and upgrade verification. |
 | `GET /api/client/bootstrap` | Read-only native-client bootstrap for server identity, auth requirement, feature flags, profiles, and endpoint templates. |
 | `POST /api/pairing/requests` | Creates a short-lived local pairing code for a TV/native app. |
 | `GET /api/pairing/requests/{id}` | Polls pairing status for the requesting TV/native app. |
