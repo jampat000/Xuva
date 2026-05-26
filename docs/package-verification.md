@@ -18,6 +18,7 @@ Artifact expectations:
 - Portable package contains `resources/runtime/bin/ffmpeg.exe`.
 - Portable package contains `resources/runtime/bin/ffprobe.exe`.
 - Package does not contain Apple, Android, iOS, tvOS, or native client build outputs.
+- Packaged runtime state is outside the install directory. Preferred runtime home is `C:\ProgramData\Xuva`; `%LOCALAPPDATA%\Xuva` is fallback-only.
 
 Automated package verification:
 
@@ -39,14 +40,15 @@ Clean install smoke:
 8. Add a local media folder.
 9. Add a mapped drive or UNC NAS media folder.
 10. Restart Xuva and verify settings/database persisted.
-11. Confirm the desktop runtime folders exist under `%LOCALAPPDATA%\Xuva\`: `data`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+11. Confirm the desktop runtime folders exist under the resolved runtime home: `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+12. Confirm `logs/xuva.ndjson` exists and contains structured JSON log lines.
 
 Upgrade smoke:
 
 1. Install/extract previous `v0.0.x` desktop package.
 2. Complete setup and add at least one library.
 3. Stop Xuva.
-4. Start the newer package against the same default `%LOCALAPPDATA%\Xuva\data` directory or explicit `XUVA_DATA_DIR`.
+4. Start the newer package against the same runtime home, either default `C:\ProgramData\Xuva` or explicit `XUVA_RUNTIME_HOME`.
 5. Confirm `/api/system/version` reports the newer tag.
 6. Confirm `data/backups/schema-upgrade-*.db` exists when a schema migration was pending.
 7. Confirm users, libraries, devices, settings, and playback state remain intact.

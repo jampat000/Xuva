@@ -38,6 +38,7 @@ Early release tags use the `v0.0.x` track until Windows/Docker install and upgra
 - Restart actions are explicit and visible to operators.
 - Desktop logs include restart and bridge action audit events.
 - Packaged Windows runtime includes Xuva, embedded web assets, desktop shell runtime, FFmpeg, FFprobe, CA certificates, and default runtime directory creation.
+- Windows runtime home defaults to `C:\ProgramData\Xuva` so server identity and approvals are per device/server, not per Windows user.
 
 ## 6) Verification Suite
 
@@ -55,6 +56,7 @@ The canonical runner keeps monorepo working directories explicit; Go tests run f
 - Upgrade from previous build verified with settings and data retained.
 - Uninstall/reinstall verified without orphaning critical runtime state.
 - Rollback procedure documented and rehearsed.
+- Structured logs are written under the runtime home and survive app binary upgrades.
 - Unsigned Windows artifact trust is covered by GitHub Release provenance plus published SHA256 checksums.
 - No user-facing package assumes Go, Node.js, npm, SQLite tooling, FFmpeg, or FFprobe are already installed.
 - Docker images include runtime prerequisites and expose a healthcheck suitable for orchestrators.

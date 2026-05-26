@@ -54,7 +54,7 @@ import (
 // The goroutine is the sole writer; the /api/jobs handler reads snapshots.
 type JobAutoState struct {
 	mu          sync.RWMutex
-	Status      string    // "idle" | "running" | "paused" | "disabled"
+	Status      string // "idle" | "running" | "paused" | "disabled"
 	Enabled     bool
 	IntervalMin int
 	LastRunAt   time.Time
@@ -795,7 +795,7 @@ func startProbeAutomation(
 }
 
 func ensureRuntimeDirs(cfg config.Config) error {
-	for _, dir := range []string{cfg.DataDir, cfg.TranscodeDir, cfg.DownloadsDir, cfg.MetadataDir, cfg.CacheDir, cfg.TempDir} {
+	for _, dir := range []string{cfg.DataDir, cfg.LogDir, cfg.TranscodeDir, cfg.DownloadsDir, cfg.MetadataDir, cfg.CacheDir, cfg.TempDir, cfg.TrailersDir} {
 		if dir == "" {
 			continue
 		}

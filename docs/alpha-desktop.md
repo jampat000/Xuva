@@ -45,7 +45,8 @@ The desktop shell also exposes `window.xuvaDesktop.restartServer()` for explicit
 - Publish SHA256 checksums and GitHub Release provenance for every installer/package artifact.
 - Do not require users to install Go, Node.js, npm, FFmpeg, FFprobe, or a database engine.
 - Prefer per-user install and user-session execution so mapped drives, removable disks, SMB shares, and UNC paths work under the same permissions the operator sees in File Explorer.
-- Keep writable runtime state outside the application install directory under `%LOCALAPPDATA%\Xuva\`: `data`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+- Keep writable runtime state outside the application install directory under the machine runtime home `C:\ProgramData\Xuva\` by default: `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+- If the machine runtime home is not writable, fall back to `%LOCALAPPDATA%\Xuva\` and expose that as single-user fallback mode, not the preferred server identity model.
 - If Windows SmartScreen warns because the installer is unsigned, document that clearly rather than pretending the warning will not happen.
 
 ## Shell Choice (Alpha)
