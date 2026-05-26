@@ -15,6 +15,7 @@
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
   import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, audioSummary, playabilityBadge, playabilityShortLabel } from '$lib/utils/mediaFormat';
   import { getPerformanceSettings } from '$lib/api/operator';
+  import PlayabilityMatrix from '$lib/components/PlayabilityMatrix.svelte';
   import type { SeriesDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -632,21 +633,17 @@
                                         {/if}
                                         {/if}
                                         {#if tech.decisions && Object.keys(tech.decisions).length > 0}
-                                          <div class="mb-3 grid grid-cols-3 gap-1.5">
-                                            {#each deviceProfiles as profile}
-                                              {@const d = tech.decisions[profile]}
-                                              {@const b = playabilityBadge(d?.mode)}
-                                              <div class="rounded p-2 text-center" style={`background: ${b.color.replace(')', ' / 0.07)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`} title={d?.reasonText || b.blurb}>
-                                                <div class="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{deviceLabels[profile]}</div>
-                                                <div class="flex items-center justify-center gap-1">
-                                                  <span class="h-1 w-1 shrink-0 rounded-full" style={`background: ${b.color};`}></span>
-                                                  <span class="text-[10px] font-medium" style={`color: ${b.color};`}>{playabilityShortLabel(d?.mode)}</span>
-                                                </div>
-                                                {#if (d?.mode === 'transcode' || d?.mode === 'adaptive') && selectedEncoderLabel}
-                                                  <div class="mt-0.5 text-[8px] text-muted-foreground/60">{selectedEncoderLabel}</div>
-                                                {/if}
-                                              </div>
-                                            {/each}
+                                          <div class="mb-3">
+                                            <PlayabilityMatrix
+                                              decisions={tech.decisions}
+                                              {deviceProfiles}
+                                              {deviceLabels}
+                                              mediaSource={tech.source}
+                                              audioTracks={tech.audioTracks}
+                                              subtitleTracks={tech.subtitleTracks}
+                                              encoderLabel={selectedEncoderLabel}
+                                              compact={true}
+                                            />
                                           </div>
                                         {/if}
                                         <div class="grid gap-3 sm:grid-cols-2">

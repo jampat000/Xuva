@@ -11,7 +11,14 @@ import (
 	"strings"
 )
 
-//go:embed all:static-next
+//go:embed all:static-next/_app
+//go:embed all:static-next/avatars
+//go:embed static-next/index.html
+//go:embed static-next/robots.txt
+//go:embed static-next/favicon.ico static-next/favicon.svg
+//go:embed static-next/favicon-16.png static-next/favicon-32.png
+//go:embed static-next/favicon-48.png static-next/favicon-64.png
+//go:embed static-next/apple-touch-icon.png
 var assets embed.FS
 
 func RootHandler() http.Handler {

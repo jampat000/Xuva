@@ -67,6 +67,16 @@ export interface SystemStatusResponse {
 		utilizationPct?: number;
 		vramUsedBytes?: number;
 		vramTotalBytes?: number;
+		temperatureC?: number;
+		fanSpeedPct?: number;
+		powerDrawW?: number;
+		powerLimitW?: number;
+		encoderPct?: number;
+		decoderPct?: number;
+		clockGraphicsMHz?: number;
+		clockMemoryMHz?: number;
+		encoderSessions?: number;
+		performanceState?: string;
 	};
 }
 
@@ -122,11 +132,15 @@ export interface SessionItem {
 	qualityLabel?: string;
 	container?: string;
 	videoCodec?: string;
+	audioCodec?: string;
 	bitrate?: number;
 	serverImpact?: string;
 	reasonCode?: string;
 	reasonText?: string;
 	encoderLabel?: string;
+	videoAction?: string;
+	audioAction?: string;
+	containerAction?: string;
 	progressSeconds?: number;
 	durationSeconds?: number;
 	updatedAt?: string;
@@ -489,6 +503,9 @@ export interface PlayabilityProfileBreakdown {
 	videoTranscode: number;
 	other: number;
 	total: number;
+	videoActions?: Record<string, number>;
+	audioActions?: Record<string, number>;
+	containerActions?: Record<string, number>;
 }
 
 export interface PlayabilityReasonEntry {
@@ -496,6 +513,10 @@ export interface PlayabilityReasonEntry {
 	reasonText: string;
 	profile: string;
 	count: number;
+	videoAction?: string;
+	audioAction?: string;
+	containerAction?: string;
+	componentLabel?: string;
 }
 
 export interface PlayabilityAuditResponse {
