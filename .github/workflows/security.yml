@@ -131,3 +131,51 @@ jobs:
       - name: Cleanup Docker container
         if: always()
         run: docker rm -f xuva-ci-smoke >/dev/null 2>&1 || true
+
+  windows-package-scripts:
+    name: Windows package script checks
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PowerShell syntax
+        shell: powershell
+        run: |
+          $files = @(
+            "packaging/windows/build-package.ps1",
+            "packaging/windows/verify-package.ps1"
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List *
+              throw "PowerShell syntax failed for $file"
+            }
+          }
+
+      - name: Test Windows package verifier
+        shell: powershell
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "xuva-package-fixture"
+          $app = Join-Path $root "app"
+          $bin = Join-Path $app "bin"
+          New-Item -ItemType Directory -Path $bin -Force | Out-Null
+          "readme" | Set-Content -LiteralPath (Join-Path $root "README.txt")
+          "ffmpeg notice" | Set-Content -LiteralPath (Join-Path $root "THIRD_PARTY_FFMPEG.txt")
+          "xuva" | Set-Content -LiteralPath (Join-Path $app "xuva.exe")
+          "start" | Set-Content -LiteralPath (Join-Path $app "Start-Xuva.ps1")
+          "ffmpeg" | Set-Content -LiteralPath (Join-Path $bin "ffmpeg.exe")
+          "ffprobe" | Set-Content -LiteralPath (Join-Path $bin "ffprobe.exe")
+
+          $zip = Join-Path $env:RUNNER_TEMP "xuva-fixture.zip"
+          Compress-Archive -Path (Join-Path $root "*") -DestinationPath $zip -Force
+          $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  xuva-fixture.zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding ASCII
+
+          ./packaging/windows/verify-package.ps1 -PackagePath $zip
+
+      - name: Validate release tag guard
+        run: node tools/validate-release-tag.cjs v0.0.1
