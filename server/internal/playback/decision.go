@@ -35,10 +35,8 @@ type Request struct {
 	SubtitleMode        string  `json:"subtitleMode,omitempty"`
 	SubtitleTrackActive bool    `json:"subtitleTrackActive,omitempty"`
 	SupportsAdaptive    bool    `json:"supportsAdaptive,omitempty"`
-	// PreferAdaptive signals that the client wants HLS segment-based playback
-	// regardless of network conditions (e.g. tvOS for precise Siri Remote
-	// seeking). The adaptive route is still exempt for Dolby Vision files
-	// where transcoding would strip DV metadata.
+	// Client requests HLS adaptive routing regardless of network conditions,
+	// giving instant segment-based seeking. Exempt: Dolby Vision pass-through.
 	PreferAdaptive      bool    `json:"preferAdaptive,omitempty"`
 	// Client capability whitelists (populated from the device profile or
 	// from a client-reported capability payload):
@@ -220,11 +218,9 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.SuggestedFixes = []string{"Use original quality on LAN", "Raise the network bitrate limit", "Use hardware acceleration for lower server impact"}
 		return finalizeDecision(request, source, decision)
 	}
-	// If the client explicitly prefers adaptive HLS (e.g. Apple TV for
-	// Siri Remote segment-based seeking), route to adaptive before the
-	// direct-play check so scrubbing always lands on a clean segment
-	// boundary. Dolby Vision pass-through is exempt: any transcode strips
-	// the DV metadata, so direct play is strictly better there.
+	// Client-requested adaptive HLS: force segment-based routing for instant
+	// seeking on Siri Remote scrubbing. Exempt: Dolby Vision pass-through
+	// because transcoding strips DV metadata and direct play is preferable.
 	if request.SupportsAdaptive && request.PreferAdaptive {
 		isDVPassThrough := source.DoviProfile != 0 && request.SupportsDolbyVision
 		if !isDVPassThrough {
