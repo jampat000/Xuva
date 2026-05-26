@@ -24,7 +24,7 @@
     subtitleTracks = [],
     encoderLabel,
     compact = false,
-  } = $props<Props>();
+  }: Props = $props();
 
   // ── Plain-language action helpers ─────────────────────────────────────────
 
