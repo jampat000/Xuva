@@ -1698,25 +1698,32 @@ func catalogCodecsHandler(deps Deps) http.HandlerFunc {
 // transcoding and why.
 func catalogPlayabilityAuditHandler(deps Deps) http.HandlerFunc {
 	type profileBreakdown struct {
-		DirectPlay     int `json:"directPlay"`
-		Remux          int `json:"remux"`
-		AudioTranscode int `json:"audioTranscode"`
-		VideoTranscode int `json:"videoTranscode"`
-		Other          int `json:"other"`
-		Total          int `json:"total"`
+		DirectPlay      int            `json:"directPlay"`
+		Remux           int            `json:"remux"`
+		AudioTranscode  int            `json:"audioTranscode"`
+		VideoTranscode  int            `json:"videoTranscode"`
+		Other           int            `json:"other"`
+		Total           int            `json:"total"`
+		VideoActions    map[string]int `json:"videoActions"`    // "direct","copy","transcode","adaptive"
+		AudioActions    map[string]int `json:"audioActions"`    // "direct","transcode","copy_or_transcode"
+		ContainerActions map[string]int `json:"containerActions"` // "direct","remux","transcode"
 	}
 
 	type reasonEntry struct {
-		ReasonCode string `json:"reasonCode"`
-		ReasonText string `json:"reasonText"`
-		Profile    string `json:"profile"`
-		Count      int    `json:"count"`
+		ReasonCode      string `json:"reasonCode"`
+		ReasonText      string `json:"reasonText"`
+		Profile         string `json:"profile"`
+		Count           int    `json:"count"`
+		VideoAction     string `json:"videoAction,omitempty"`
+		AudioAction     string `json:"audioAction,omitempty"`
+		ContainerAction string `json:"containerAction,omitempty"`
+		ComponentLabel  string `json:"componentLabel,omitempty"`
 	}
 
 	type auditResponse struct {
-		TotalProbed int                        `json:"totalProbed"`
+		TotalProbed int                          `json:"totalProbed"`
 		ByProfile   map[string]*profileBreakdown `json:"byProfile"`
-		TopReasons  []reasonEntry              `json:"topReasons"`
+		TopReasons  []reasonEntry                `json:"topReasons"`
 	}
 
 	profiles := []string{"web", "apple-tv", "android-tv"}
@@ -1732,7 +1739,11 @@ func catalogPlayabilityAuditHandler(deps Deps) http.HandlerFunc {
 			ByProfile: make(map[string]*profileBreakdown, len(profiles)),
 		}
 		for _, p := range profiles {
-			result.ByProfile[p] = &profileBreakdown{}
+			result.ByProfile[p] = &profileBreakdown{
+				VideoActions:     make(map[string]int),
+				AudioActions:     make(map[string]int),
+				ContainerActions: make(map[string]int),
+			}
 		}
 		// reason key = profile+"|"+reasonCode
 		reasonCounts := map[string]*reasonEntry{}
@@ -1772,16 +1783,31 @@ func catalogPlayabilityAuditHandler(deps Deps) http.HandlerFunc {
 				default:
 					bd.Other++
 				}
+				// Per-component action counts
+				if decision.VideoAction != "" {
+					bd.VideoActions[decision.VideoAction]++
+				}
+				if decision.AudioAction != "" {
+					bd.AudioActions[decision.AudioAction]++
+				}
+				if decision.ContainerAction != "" {
+					bd.ContainerActions[decision.ContainerAction]++
+				}
+				// Collect top reasons (only for non-direct decisions)
 				if decision.ReasonCode != "" && decision.Mode != playback.DirectPlay && decision.Mode != playback.AdaptiveStream && decision.Mode != playback.DecisionDeferred {
 					key := profile + "|" + decision.ReasonCode
 					if e, ok := reasonCounts[key]; ok {
 						e.Count++
 					} else {
 						reasonCounts[key] = &reasonEntry{
-							ReasonCode: decision.ReasonCode,
-							ReasonText: decision.ReasonText,
-							Profile:    profile,
-							Count:      1,
+							ReasonCode:      decision.ReasonCode,
+							ReasonText:      decision.ReasonText,
+							Profile:         profile,
+							Count:           1,
+							VideoAction:     decision.VideoAction,
+							AudioAction:     decision.AudioAction,
+							ContainerAction: decision.ContainerAction,
+							ComponentLabel:  auditComponentLabel(decision),
 						}
 					}
 				}
@@ -1802,6 +1828,29 @@ func catalogPlayabilityAuditHandler(deps Deps) http.HandlerFunc {
 		result.TopReasons = reasons
 
 		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+// auditComponentLabel returns a short plain-English summary of which
+// component(s) need work, e.g. "Audio only", "Container only", "Video + audio".
+func auditComponentLabel(d playback.Decision) string {
+	videoWork := d.VideoAction == "transcode"
+	audioWork := d.AudioAction == "transcode"
+	containerWork := d.ContainerAction == "remux" || d.ContainerAction == "transcode" ||
+		d.ContainerAction == "transcode_or_remux" || d.ContainerAction == "direct_or_remux"
+	switch {
+	case videoWork && audioWork:
+		return "Video + audio"
+	case videoWork:
+		return "Video only"
+	case audioWork && containerWork:
+		return "Audio + container"
+	case audioWork:
+		return "Audio only"
+	case containerWork:
+		return "Container only"
+	default:
+		return "Other"
 	}
 }
 
@@ -6547,16 +6596,36 @@ func enrichSessionStartRequest(deps Deps, ctx context.Context, request *sessions
 	if request.ServerImpact == "" {
 		request.ServerImpact = sessionServerImpact(request.Route, request.Mode)
 	}
-	if request.ReasonCode == "" || request.ReasonText == "" {
-		decision := deps.Playback.DecideSource(ctx, playback.Request{
+	// Populate reason code/text and per-component action fields from the
+	// playback decision. These power the granular "Video · Audio · Container"
+	// breakdown shown in NowPlayingCard and session detail views.
+	if request.ReasonCode == "" || request.ReasonText == "" ||
+		request.VideoAction == "" || request.AudioAction == "" || request.ContainerAction == "" {
+		pbReq := playback.Request{
 			MediaSourceID: request.MediaSourceID,
 			ClientProfile: request.ClientProfile,
-		}, playbackSourceFacts(ctx, deps, playback.Request{MediaSourceID: request.MediaSourceID, ClientProfile: request.ClientProfile}, source))
+		}
+		facts := playbackSourceFacts(ctx, deps, pbReq, source)
+		decision := deps.Playback.DecideSource(ctx, pbReq, facts)
 		if request.ReasonCode == "" {
 			request.ReasonCode = decision.ReasonCode
 		}
 		if request.ReasonText == "" {
 			request.ReasonText = decision.ReasonText
+		}
+		if request.VideoAction == "" {
+			request.VideoAction = decision.VideoAction
+		}
+		if request.AudioAction == "" {
+			request.AudioAction = decision.AudioAction
+		}
+		if request.ContainerAction == "" {
+			request.ContainerAction = decision.ContainerAction
+		}
+		// Carry the source audio codec into the session so NowPlayingCard
+		// can show "DTS → AAC" rather than just "Converting".
+		if request.AudioCodec == "" {
+			request.AudioCodec = facts.AudioCodec
 		}
 	}
 	// Tag the session with the encoder being used so Now Playing can show
