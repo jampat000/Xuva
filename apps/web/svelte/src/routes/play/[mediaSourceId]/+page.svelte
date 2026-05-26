@@ -13,6 +13,7 @@
     type MediaSourceItem,
   } from '$lib/api/details';
   import { buildCapabilityReport } from '$lib/api/capabilities';
+  import { appState } from '$lib/stores/appState.svelte';
 
   // ─── Route param ──────────────────────────────────────────────────────────
   const mediaSourceId = $derived($page.params.mediaSourceId ?? '');
@@ -262,7 +263,7 @@
 </script>
 
 <svelte:head>
-  <title>{displayTitle ? `${displayTitle} — Xuva` : 'Playing — Xuva'}</title>
+  <title>{displayTitle ? `${displayTitle} — ${appState.serverName || 'Xuva'}` : (appState.serverName || 'Xuva')}</title>
 </svelte:head>
 
 {#if loading}
