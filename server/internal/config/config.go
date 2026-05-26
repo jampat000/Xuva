@@ -23,6 +23,8 @@ type Config struct {
 	DiscoveryServiceType string `json:"-"`
 	// DataDir is resolved at startup and never persisted in settings.json
 	// (since the file itself lives inside DataDir). Override via XUVA_DATA_DIR.
+	RuntimeHome           string   `json:"-"`
+	RuntimeScope          string   `json:"-"`
 	DataDir               string   `json:"-"`
 	TranscodeDir          string   `json:"transcodeDir,omitempty"`
 	DownloadsDir          string   `json:"downloadsDir,omitempty"`
@@ -50,27 +52,27 @@ type Config struct {
 	// supplies full TV data (episodes, seasons, stills, credits, ratings).
 	// The field name is preserved on settings.json to allow forward-clean
 	// migration of any existing user file, but is no longer read.
-	EventBuffer       int      `json:"eventBuffer"`
-	ScanWorkers       int      `json:"scanWorkers"`
-	ProbeWorkers      int      `json:"probeWorkers"`
-	TranscodeWorkers  int      `json:"transcodeWorkers"`
-	GPUWorkers        int      `json:"gpuWorkers"`
-	HardwareUnlocked  bool     `json:"hardwareUnlocked,omitempty"`
-	PlaybackPolicy    string   `json:"playbackPolicy,omitempty"`
-	LibrarySyncMode   string   `json:"librarySyncMode,omitempty"`
-	SyncIntervalMins  int      `json:"syncIntervalMins,omitempty"`
-	WatchDebounceSecs int      `json:"watchDebounceSecs,omitempty"`
-	ProbeBatchLimit   int      `json:"probeBatchLimit,omitempty"`
+	EventBuffer       int    `json:"eventBuffer"`
+	ScanWorkers       int    `json:"scanWorkers"`
+	ProbeWorkers      int    `json:"probeWorkers"`
+	TranscodeWorkers  int    `json:"transcodeWorkers"`
+	GPUWorkers        int    `json:"gpuWorkers"`
+	HardwareUnlocked  bool   `json:"hardwareUnlocked,omitempty"`
+	PlaybackPolicy    string `json:"playbackPolicy,omitempty"`
+	LibrarySyncMode   string `json:"librarySyncMode,omitempty"`
+	SyncIntervalMins  int    `json:"syncIntervalMins,omitempty"`
+	WatchDebounceSecs int    `json:"watchDebounceSecs,omitempty"`
+	ProbeBatchLimit   int    `json:"probeBatchLimit,omitempty"`
 	// Per-job automation controls. "Disable..." naming keeps the zero value
 	// meaning "enabled", which is backwards-compatible with older settings.json
 	// files that predate these fields.
-	DisableScanAuto      bool `json:"disableScanAuto,omitempty"`      // set true to stop automated library scans
-	ScanIntervalMins     int  `json:"scanIntervalMins,omitempty"`     // scan cadence; default 15 min, min 5
-	DisableMetadataAuto  bool `json:"disableMetadataAuto,omitempty"`  // set true to stop automated metadata backfill
-	MetadataIntervalMins int  `json:"metadataIntervalMins,omitempty"` // metadata cadence; default 360 min (6 h)
-	MetadataBatchLimit   int  `json:"metadataBatchLimit,omitempty"`   // 0 = unlimited
-	DisableProbeAuto     bool `json:"disableProbeAuto,omitempty"`     // set true to stop auto-probe after scan
-	DisableJobPause      bool `json:"disableJobPause,omitempty"`      // set true to run jobs even during playback
+	DisableScanAuto      bool     `json:"disableScanAuto,omitempty"`      // set true to stop automated library scans
+	ScanIntervalMins     int      `json:"scanIntervalMins,omitempty"`     // scan cadence; default 15 min, min 5
+	DisableMetadataAuto  bool     `json:"disableMetadataAuto,omitempty"`  // set true to stop automated metadata backfill
+	MetadataIntervalMins int      `json:"metadataIntervalMins,omitempty"` // metadata cadence; default 360 min (6 h)
+	MetadataBatchLimit   int      `json:"metadataBatchLimit,omitempty"`   // 0 = unlimited
+	DisableProbeAuto     bool     `json:"disableProbeAuto,omitempty"`     // set true to stop auto-probe after scan
+	DisableJobPause      bool     `json:"disableJobPause,omitempty"`      // set true to run jobs even during playback
 	AllowedOrigins       []string `json:"allowedOrigins,omitempty"`
 	// Region / language settings — captured during the setup wizard.
 	Country          string `json:"country,omitempty"`          // ISO 3166-1 alpha-2, e.g. "AU"
@@ -97,8 +99,11 @@ type Config struct {
 	// Logging config — env-only, not persisted in settings.json.
 	// LogFormat: "text" (default) or "json" (machine-readable, e.g. for Loki/Datadog)
 	// LogLevel: "debug", "info" (default), "warn", "error"
-	LogFormat string `json:"-"`
-	LogLevel  string `json:"-"`
+	LogFormat   string `json:"-"`
+	LogLevel    string `json:"-"`
+	LogDir      string `json:"-"`
+	LogMaxMB    int    `json:"-"`
+	LogMaxFiles int    `json:"-"`
 }
 
 // defaultDataDir resolves the data directory to a stable absolute path that
@@ -137,19 +142,33 @@ func defaultDataDir() string {
 }
 
 func FromEnv() Config {
-	dataDir := envString("XUVA_DATA_DIR", defaultDataDir())
+	runtimeHome := strings.TrimSpace(os.Getenv("XUVA_RUNTIME_HOME"))
+	runtimeRoot := runtimeHome
+	dataDirDefault := defaultDataDir()
+	if runtimeRoot != "" {
+		dataDirDefault = filepath.Join(runtimeRoot, "data")
+	}
+	dataDir := envString("XUVA_DATA_DIR", dataDirDefault)
+	runtimeDir := func(name string) string {
+		if runtimeRoot != "" {
+			return filepath.Join(runtimeRoot, name)
+		}
+		return filepath.Join(dataDir, name)
+	}
 	cfg := Config{
 		ServerName:           envString("XUVA_SERVER_NAME", "Xuva"),
 		HTTPAddr:             envString("XUVA_HTTP_ADDR", "127.0.0.1:8097"),
 		CanonicalWebOrigin:   envString("XUVA_CANONICAL_WEB_ORIGIN", ""),
 		DiscoveryEnabled:     envBool("XUVA_DISCOVERY_ENABLED", true),
 		DiscoveryServiceType: envString("XUVA_DISCOVERY_SERVICE_TYPE", "_xuva._tcp"),
+		RuntimeHome:          runtimeHome,
+		RuntimeScope:         envString("XUVA_RUNTIME_SCOPE", ""),
 		DataDir:              dataDir,
-		TranscodeDir:         envString("XUVA_TRANSCODE_DIR", filepath.Join(dataDir, "transcode")),
-		DownloadsDir:         envString("XUVA_DOWNLOADS_DIR", filepath.Join(dataDir, "downloads")),
-		MetadataDir:          envString("XUVA_METADATA_DIR", filepath.Join(dataDir, "metadata")),
-		CacheDir:             envString("XUVA_CACHE_DIR", filepath.Join(dataDir, "cache")),
-		TempDir:              envString("XUVA_TEMP_DIR", filepath.Join(dataDir, "temp")),
+		TranscodeDir:         envString("XUVA_TRANSCODE_DIR", runtimeDir("transcode")),
+		DownloadsDir:         envString("XUVA_DOWNLOADS_DIR", runtimeDir("downloads")),
+		MetadataDir:          envString("XUVA_METADATA_DIR", runtimeDir("metadata")),
+		CacheDir:             envString("XUVA_CACHE_DIR", runtimeDir("cache")),
+		TempDir:              envString("XUVA_TEMP_DIR", runtimeDir("temp")),
 		MovieLibraryPath:     envString("XUVA_MOVIES_PATH", ""),
 		TVLibraryPath:        envString("XUVA_TV_PATH", ""),
 		FFprobePath:          envString("XUVA_FFPROBE_PATH", "ffprobe"),
@@ -181,7 +200,7 @@ func FromEnv() Config {
 		DefaultSubtitlesMovies: envBool("XUVA_DEFAULT_SUBTITLES_MOVIES", false),
 		DefaultSubtitlesTV:     envBool("XUVA_DEFAULT_SUBTITLES_TV", false),
 		TrailersEnabled:        envBool("XUVA_TRAILERS_ENABLED", true),
-		TrailersDir:            envString("XUVA_TRAILERS_DIR", filepath.Join(dataDir, "trailers")),
+		TrailersDir:            envString("XUVA_TRAILERS_DIR", runtimeDir("trailers")),
 		YTDLPPath:              envString("XUVA_YTDLP_PATH", "yt-dlp"),
 		TrailerWorkers:         envInt("XUVA_TRAILER_WORKERS", 1),
 		AllowedOrigins:         envCSV("XUVA_ALLOWED_ORIGINS", nil),
@@ -190,21 +209,27 @@ func FromEnv() Config {
 		AdminPassword:          envString("XUVA_ADMIN_PASSWORD", ""),
 		LogFormat:              envString("XUVA_LOG_FORMAT", "text"),
 		LogLevel:               envString("XUVA_LOG_LEVEL", "info"),
+		LogDir:                 envString("XUVA_LOG_DIR", runtimeDir("logs")),
+		LogMaxMB:               envInt("XUVA_LOG_MAX_MB", 25),
+		LogMaxFiles:            envInt("XUVA_LOG_MAX_FILES", 5),
 	}
 	if saved, err := LoadFile(dataDir); err == nil {
 		cfg = merge(cfg, saved)
 	}
+	cfg.RuntimeHome = envString("XUVA_RUNTIME_HOME", cfg.RuntimeHome)
+	cfg.RuntimeScope = envString("XUVA_RUNTIME_SCOPE", cfg.RuntimeScope)
+	runtimeRoot = cfg.RuntimeHome
 	cfg.HTTPAddr = envString("XUVA_HTTP_ADDR", cfg.HTTPAddr)
 	cfg.CanonicalWebOrigin = envString("XUVA_CANONICAL_WEB_ORIGIN", cfg.CanonicalWebOrigin)
 	cfg.DiscoveryEnabled = envBool("XUVA_DISCOVERY_ENABLED", cfg.DiscoveryEnabled)
 	cfg.DiscoveryServiceType = envString("XUVA_DISCOVERY_SERVICE_TYPE", defaultDiscoveryServiceType(cfg.DiscoveryServiceType))
 	cfg.ServerName = envString("XUVA_SERVER_NAME", defaultServerName(cfg.ServerName))
 	cfg.DataDir = envString("XUVA_DATA_DIR", cfg.DataDir)
-	cfg.TranscodeDir = envString("XUVA_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, cfg.DataDir, "transcode"))
-	cfg.DownloadsDir = envString("XUVA_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, cfg.DataDir, "downloads"))
-	cfg.MetadataDir = envString("XUVA_METADATA_DIR", defaultDir(cfg.MetadataDir, cfg.DataDir, "metadata"))
-	cfg.CacheDir = envString("XUVA_CACHE_DIR", defaultDir(cfg.CacheDir, cfg.DataDir, "cache"))
-	cfg.TempDir = envString("XUVA_TEMP_DIR", defaultDir(cfg.TempDir, cfg.DataDir, "temp"))
+	cfg.TranscodeDir = envString("XUVA_TRANSCODE_DIR", defaultDir(cfg.TranscodeDir, runtimeRoot, cfg.DataDir, "transcode"))
+	cfg.DownloadsDir = envString("XUVA_DOWNLOADS_DIR", defaultDir(cfg.DownloadsDir, runtimeRoot, cfg.DataDir, "downloads"))
+	cfg.MetadataDir = envString("XUVA_METADATA_DIR", defaultDir(cfg.MetadataDir, runtimeRoot, cfg.DataDir, "metadata"))
+	cfg.CacheDir = envString("XUVA_CACHE_DIR", defaultDir(cfg.CacheDir, runtimeRoot, cfg.DataDir, "cache"))
+	cfg.TempDir = envString("XUVA_TEMP_DIR", defaultDir(cfg.TempDir, runtimeRoot, cfg.DataDir, "temp"))
 	cfg.MovieLibraryPath = envString("XUVA_MOVIES_PATH", cfg.MovieLibraryPath)
 	cfg.TVLibraryPath = envString("XUVA_TV_PATH", cfg.TVLibraryPath)
 	cfg.FFprobePath = envString("XUVA_FFPROBE_PATH", cfg.FFprobePath)
@@ -256,13 +281,18 @@ func FromEnv() Config {
 	cfg.DefaultSubtitlesMovies = envBool("XUVA_DEFAULT_SUBTITLES_MOVIES", cfg.DefaultSubtitlesMovies)
 	cfg.DefaultSubtitlesTV = envBool("XUVA_DEFAULT_SUBTITLES_TV", cfg.DefaultSubtitlesTV)
 	cfg.TrailersEnabled = envBool("XUVA_TRAILERS_ENABLED", cfg.TrailersEnabled)
-	cfg.TrailersDir = envString("XUVA_TRAILERS_DIR", defaultDir(cfg.TrailersDir, cfg.DataDir, "trailers"))
+	cfg.TrailersDir = envString("XUVA_TRAILERS_DIR", defaultDir(cfg.TrailersDir, runtimeRoot, cfg.DataDir, "trailers"))
 	cfg.YTDLPPath = envString("XUVA_YTDLP_PATH", defaultString(cfg.YTDLPPath, "yt-dlp"))
 	cfg.TrailerWorkers = envInt("XUVA_TRAILER_WORKERS", defaultInt(cfg.TrailerWorkers, 1))
 	cfg.AllowedOrigins = envCSV("XUVA_ALLOWED_ORIGINS", cfg.AllowedOrigins)
 	cfg.AuthDisabled = envBool("XUVA_AUTH_DISABLED", cfg.AuthDisabled)
 	cfg.AdminUsername = envString("XUVA_ADMIN_USERNAME", cfg.AdminUsername)
 	cfg.AdminPassword = envString("XUVA_ADMIN_PASSWORD", cfg.AdminPassword)
+	cfg.LogFormat = envString("XUVA_LOG_FORMAT", cfg.LogFormat)
+	cfg.LogLevel = envString("XUVA_LOG_LEVEL", cfg.LogLevel)
+	cfg.LogDir = envString("XUVA_LOG_DIR", defaultDir(cfg.LogDir, runtimeRoot, cfg.DataDir, "logs"))
+	cfg.LogMaxMB = envInt("XUVA_LOG_MAX_MB", defaultInt(cfg.LogMaxMB, 25))
+	cfg.LogMaxFiles = envInt("XUVA_LOG_MAX_FILES", defaultInt(cfg.LogMaxFiles, 5))
 	return cfg
 }
 
@@ -563,20 +593,24 @@ func defaultInt(value int, fallback int) int {
 }
 
 // defaultDir resolves a configured storage directory:
-//   - empty value          -> <dataDir>/<name>
-//   - absolute value       -> used as-is
-//   - relative value       -> re-anchored to dataDir using just the leaf
+//   - empty value    -> <runtimeHome>/<name> when set, else <dataDir>/<name>
+//   - absolute value -> used as-is
+//   - relative value -> re-anchored to the runtime base using just the leaf
 //     component. This protects against historical settings.json files that
 //     stored cwd-relative paths like "data\\transcode" which would otherwise
 //     create stray empty directories under whichever cwd the server started in.
-func defaultDir(value string, dataDir string, name string) string {
+func defaultDir(value string, runtimeHome string, dataDir string, name string) string {
+	base := dataDir
+	if runtimeHome != "" {
+		base = runtimeHome
+	}
 	if value == "" {
-		return filepath.Join(dataDir, name)
+		return filepath.Join(base, name)
 	}
 	if filepath.IsAbs(value) {
 		return value
 	}
-	return filepath.Join(dataDir, filepath.Base(value))
+	return filepath.Join(base, filepath.Base(value))
 }
 
 func envString(key string, fallback string) string {

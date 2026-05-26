@@ -59,6 +59,8 @@ The first implementation should be one installable server process with separated
 
 Desktop installs should run as a user-launched tray/taskbar app by default, not as an always-on system service. Runtime folder browsing and selection should therefore use the signed-in user's permissions: local drives, mapped drives, and reachable NAS/UNC paths are available when that user can access them. Xuva should not require elevated service permissions just to choose media, metadata, cache, download, or transcode folders. Packaged desktop builds should expose a small web bridge for native folder picking and server restart controls; the browser-only folder API remains the fallback for dev, headless, and remote-admin use.
 
+Windows desktop runtime state is per device/server, not per Windows user. The preferred runtime home is `C:\ProgramData\Xuva`; `%LOCALAPPDATA%\Xuva` is fallback-only when the shared runtime home is unavailable. This keeps server identity, approved devices, users, libraries, backups, logs, metadata, cache, and upgrade state stable across app upgrades and Windows user sessions while preserving user-session NAS and mapped-drive access.
+
 Windows packages are expected to be unsigned until code signing is commercially viable. Release trust must therefore come from reproducible tagged builds, published SHA256 checksums, clear GitHub Release provenance, and installer/runtime verification, not from paid Authenticode signing.
 
 Storage must be library-path agnostic. Xuva should support local internal disks, removable USB disks, NAS/SMB/NFS/network shares, and mounted volumes. NAS safety is one tuning profile, not the only target.
