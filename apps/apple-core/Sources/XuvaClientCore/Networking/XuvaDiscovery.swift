@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import SwiftUI
+import os
 
 /// A single Xuva server discovered via Bonjour (`_xuva._tcp.local.`).
 public struct DiscoveredServer: Identifiable, Equatable, Hashable {
@@ -24,6 +25,7 @@ public struct DiscoveredServer: Identifiable, Equatable, Hashable {
 public final class XuvaDiscovery: ObservableObject {
     @Published public private(set) var servers: [DiscoveredServer] = []
     @Published public private(set) var isBrowsing: Bool = false
+    private let logger = Logger(subsystem: "com.xuva.client", category: "discovery")
 
     private var browser: NWBrowser?
     private var resolvers: [String: NWConnection] = [:]
@@ -33,7 +35,7 @@ public final class XuvaDiscovery: ObservableObject {
 
     public func start() {
         guard browser == nil else { return }
-        print("[XUVA] discovery.start() — looking for _xuva._tcp on .local")
+        logger.debug("start() — looking for _xuva._tcp on .local")
         let params = NWParameters()
         params.includePeerToPeer = true
         let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(type: "_xuva._tcp", domain: nil)
@@ -42,14 +44,13 @@ public final class XuvaDiscovery: ObservableObject {
         isBrowsing = true
 
         nb.stateUpdateHandler = { [weak self] state in
-            print("[XUVA] NWBrowser state -> \(state)")
             Task { @MainActor in
                 guard let self else { return }
                 switch state {
                 case .ready:
                     self.isBrowsing = true
                 case .failed(let err):
-                    print("[XUVA] NWBrowser failed: \(err)")
+                    self.logger.error("NWBrowser failed: \(err)")
                     self.isBrowsing = false
                 case .cancelled:
                     self.isBrowsing = false
@@ -59,11 +60,7 @@ public final class XuvaDiscovery: ObservableObject {
             }
         }
 
-        nb.browseResultsChangedHandler = { [weak self] results, changes in
-            print("[XUVA] NWBrowser results count=\(results.count) changes=\(changes.count)")
-            for r in results {
-                print("[XUVA]   endpoint=\(r.endpoint) metadata=\(r.metadata)")
-            }
+        nb.browseResultsChangedHandler = { [weak self] results, _ in
             Task { @MainActor in
                 self?.handleResults(Array(results))
             }
