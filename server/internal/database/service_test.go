@@ -87,6 +87,19 @@ func TestSchemaVersionReturnsLatestMigrationID(t *testing.T) {
 	}
 }
 
+func TestIntegrityCheckPassesForMigratedDatabase(t *testing.T) {
+	ctx := context.Background()
+	service, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer service.Close()
+
+	if err := service.integrityCheck(ctx, "test"); err != nil {
+		t.Fatalf("integrity check: %v", err)
+	}
+}
+
 func TestOpenBacksUpPreexistingDatabaseBeforeFirstSchemaMigration(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

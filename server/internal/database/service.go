@@ -106,6 +106,9 @@ func (s *Service) configure(ctx context.Context) error {
 }
 
 func (s *Service) migrate(ctx context.Context) error {
+	if err := s.integrityCheck(ctx, "before schema migrations"); err != nil {
+		return err
+	}
 	backupCreated := false
 	if s.preexisting {
 		ledgerExists, err := s.schemaMigrationLedgerExists(ctx)
@@ -140,6 +143,9 @@ func (s *Service) migrate(ctx context.Context) error {
 		if err := s.applyMigration(ctx, migration, checksum); err != nil {
 			return err
 		}
+	}
+	if err := s.integrityCheck(ctx, "after schema migrations"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -236,6 +242,30 @@ func (s *Service) backupBeforeSchemaMigration(ctx context.Context) error {
 		return fmt.Errorf("backup database before schema migration: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) integrityCheck(ctx context.Context, phase string) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA integrity_check`)
+	if err != nil {
+		return fmt.Errorf("sqlite integrity check %s: %w", phase, err)
+	}
+	defer rows.Close()
+
+	results := []string{}
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("sqlite integrity check %s: %w", phase, err)
+		}
+		results = append(results, strings.TrimSpace(result))
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("sqlite integrity check %s: %w", phase, err)
+	}
+	if len(results) == 1 && strings.EqualFold(results[0], "ok") {
+		return nil
+	}
+	return fmt.Errorf("sqlite integrity check %s failed: %s", phase, strings.Join(results, "; "))
 }
 
 var schemaMigrations = []schemaMigration{
