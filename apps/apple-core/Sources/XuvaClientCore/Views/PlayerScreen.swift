@@ -110,6 +110,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         private var heartbeatTask: Task<Void, Never>?
         private var errorObserver: NSObjectProtocol?
         private var statusObservation: NSKeyValueObservation?
+        private var timeControlObservation: NSKeyValueObservation?
 
         init(playback: PlaybackStartResponse, close: @escaping () -> Void, sendHeartbeat: @escaping (Int, Bool) async -> Void, stopPlayback: @escaping (Int) async -> Void) {
             self.playback = playback
@@ -149,6 +150,14 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
                 self?.statusObservation?.invalidate()
                 self?.statusObservation = nil
             }
+            // Log stall events so we can diagnose seek-induced buffer exhaustion.
+            // AVPlayer pauses automatically (automaticallyWaitsToMinimizeStalling)
+            // and resumes once the buffer refills — no manual recovery needed.
+            timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { p, _ in
+                if p.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                    logger.debug("AVPlayer stalling reason=\(p.reasonForWaitingToPlay?.rawValue ?? "unknown")")
+                }
+            }
         }
 
         func detach() {
@@ -158,6 +167,8 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             errorObserver = nil
             statusObservation?.invalidate()
             statusObservation = nil
+            timeControlObservation?.invalidate()
+            timeControlObservation = nil
         }
 
         private func applySubtitleSelection(to item: AVPlayerItem) {
@@ -314,6 +325,9 @@ struct XuvaVideoPlayer: View {
 
     private func skip(by seconds: Double) {
         let next = max(0, min(durationSeconds > 0 ? durationSeconds : .greatestFiniteMagnitude, currentSeconds + seconds))
+        // Cancel any in-flight seek before issuing a new one so rapid taps
+        // don't queue competing seeks that fight for the same playhead.
+        player.currentItem?.cancelPendingSeeks()
         player.seek(to: CMTime(seconds: next, preferredTimescale: 600))
     }
 
@@ -359,13 +373,20 @@ struct XuvaVideoPlayer: View {
 /// tokens for fan-out — the header here is principal auth.
 private func makePlayerItem(url: URL, authToken: String?) -> AVPlayerItem {
     let token = authToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard !token.isEmpty else {
-        return AVPlayerItem(url: url)
+    let item: AVPlayerItem
+    if token.isEmpty {
+        item = AVPlayerItem(url: url)
+    } else {
+        let asset = AVURLAsset(url: url, options: [
+            "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
+        ])
+        item = AVPlayerItem(asset: asset)
     }
-    let asset = AVURLAsset(url: url, options: [
-        "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
-    ])
-    return AVPlayerItem(asset: asset)
+    // 30 s forward buffer: seeks into already-buffered regions are instant
+    // and there's headroom to recover from an aggressive forward scrub without
+    // immediately exhausting the download pipeline and stalling.
+    item.preferredForwardBufferDuration = 30
+    return item
 }
 
 struct ErrorOverlay: View {

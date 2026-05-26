@@ -3,6 +3,7 @@ import SwiftUI
 public struct XuvaRootView: View {
     @StateObject private var store = XuvaClientStore()
     @StateObject private var watchlist = XuvaWatchlist()
+    @Environment(\.scenePhase) private var scenePhase
 
     public init() {}
 
@@ -64,6 +65,13 @@ public struct XuvaRootView: View {
             guard let kind = note.userInfo?["kind"] as? String,
                   let id = note.userInfo?["id"] as? String else { return }
             Task { await store.openDeepLink(kind: kind, id: id) }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Silently refresh home when the app returns to the foreground so
+            // Continue Watching and pending-request rows always reflect live state.
+            if newPhase == .active, store.connectionState == .paired {
+                Task { await store.loadHome() }
+            }
         }
     }
 }

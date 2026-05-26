@@ -606,3 +606,64 @@ public extension PlaybackDecision {
         return mode?.capitalized ?? "Route"
     }
 }
+
+// MARK: - Library browse responses (/api/movies, /api/series)
+
+public struct LibraryMoviesResponse: Codable {
+    public var movies: [LibraryMovieItem]?
+}
+
+public struct LibrarySeriesResponse: Codable {
+    public var series: [LibrarySeriesItem]?
+}
+
+public struct LibraryMovieItem: Codable {
+    public var id: String
+    public var title: String?
+    public var year: Int?
+    public var versionCount: Int?
+    public var watched: Bool?
+    public var metadata: MetadataRecord?
+
+    public func toHomeItem() -> HomeItem {
+        var item = HomeItem(
+            id: id,
+            kind: "movie",
+            title: metadata?.title ?? title,
+            year: year ?? metadata?.year,
+            genres: metadata?.genres,
+            overview: metadata?.overview
+        )
+        item.posterUrl = metadata?.posterUrl
+        item.backdropUrl = metadata?.backdropUrl
+        item.logoUrl = metadata?.logoUrl
+        item.voteAverage = metadata?.voteAverage
+        item.runtimeMinutes = metadata?.runtimeMinutes
+        item.versionCount = versionCount
+        return item
+    }
+}
+
+public struct LibrarySeriesItem: Codable {
+    public var id: String
+    public var title: String?
+    public var seasonCount: Int?
+    public var episodeCount: Int?
+    public var watched: Bool?
+    public var metadata: MetadataRecord?
+
+    public func toHomeItem() -> HomeItem {
+        var item = HomeItem(
+            id: id,
+            kind: "series",
+            title: metadata?.title ?? title,
+            genres: metadata?.genres,
+            overview: metadata?.overview
+        )
+        item.posterUrl = metadata?.posterUrl
+        item.backdropUrl = metadata?.backdropUrl
+        item.logoUrl = metadata?.logoUrl
+        item.voteAverage = metadata?.voteAverage
+        return item
+    }
+}
