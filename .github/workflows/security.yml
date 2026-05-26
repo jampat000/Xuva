@@ -162,13 +162,16 @@ jobs:
         shell: powershell
         run: |
           $root = Join-Path $env:RUNNER_TEMP "xuva-package-fixture"
-          $app = Join-Path $root "app"
-          $bin = Join-Path $app "bin"
+          $resources = Join-Path $root "resources"
+          $runtime = Join-Path $resources "runtime"
+          $bin = Join-Path $runtime "bin"
           New-Item -ItemType Directory -Path $bin -Force | Out-Null
-          "readme" | Set-Content -LiteralPath (Join-Path $root "README.txt")
-          "ffmpeg notice" | Set-Content -LiteralPath (Join-Path $root "THIRD_PARTY_FFMPEG.txt")
-          "xuva" | Set-Content -LiteralPath (Join-Path $app "xuva.exe")
-          "start" | Set-Content -LiteralPath (Join-Path $app "Start-Xuva.ps1")
+          "desktop" | Set-Content -LiteralPath (Join-Path $root "Xuva.exe")
+          "asar" | Set-Content -LiteralPath (Join-Path $resources "app.asar")
+          "server" | Set-Content -LiteralPath (Join-Path $runtime "xuva-server.exe")
+          "readme" | Set-Content -LiteralPath (Join-Path $runtime "README.txt")
+          "notes" | Set-Content -LiteralPath (Join-Path $runtime "PACKAGE-NOTES.txt")
+          "ffmpeg notice" | Set-Content -LiteralPath (Join-Path $runtime "THIRD_PARTY_FFMPEG.txt")
           "ffmpeg" | Set-Content -LiteralPath (Join-Path $bin "ffmpeg.exe")
           "ffprobe" | Set-Content -LiteralPath (Join-Path $bin "ffprobe.exe")
 

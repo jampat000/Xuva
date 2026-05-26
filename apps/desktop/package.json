@@ -3,14 +3,57 @@
   "version": "0.1.0",
   "private": true,
   "description": "Xuva desktop alpha shell",
+  "author": "Xuva",
   "main": "main.js",
   "scripts": {
-    "dev": "electron ."
+    "dev": "electron .",
+    "dist:win": "electron-builder --win nsis zip --x64"
   },
   "dependencies": {
     "bonjour-service": "^1.2.1"
   },
   "devDependencies": {
-    "electron": "^39.8.5"
+    "electron": "^39.8.5",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.xuva.desktop",
+    "productName": "Xuva",
+    "artifactName": "xuva-v${version}-win-x64.${ext}",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "setup.html",
+      "package.json",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "assets/xuva.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Xuva",
+      "uninstallDisplayName": "Xuva"
+    }
   }
 }
