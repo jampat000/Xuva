@@ -40,7 +40,7 @@ Ship Xuva as a user-launched desktop/tray shell that operates the local server r
 - [x] Choose desktop shell implementation.
 - [x] Implement native folder picker.
 - [x] Implement restart control.
-- [ ] Package Windows alpha installer.
+- [x] Package Windows alpha installer.
 
 ## Validation
 
@@ -57,3 +57,4 @@ Ship Xuva as a user-launched desktop/tray shell that operates the local server r
 - 2026-04-30: Desktop install should be taskbar/tray user-mode app, not service-first.
 - 2026-05-16: Desktop shell selected: Electron (Windows-first) for tray/taskbar UX, native folder picker bridge, and Go process supervision in one runtime.
 - 2026-05-16: Added `apps/desktop` Electron scaffold with Go process supervision and bridge handlers for `pickFolder` and `restartServer`; remaining work is packaging polish and production installer workflow.
+- 2026-05-26: Wired the Windows package build to produce an unsigned Electron desktop installer and portable `Xuva.exe` package with bundled `xuva-server.exe`, FFmpeg, and FFprobe.

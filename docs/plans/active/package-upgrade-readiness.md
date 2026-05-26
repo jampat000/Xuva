@@ -20,7 +20,8 @@ The release package contains the Xuva server, embedded web UI, runtime dependenc
 - Publish SHA256 checksums with every GitHub Release artifact.
 - Build from a tagged source tree with version metadata embedded into the server binary.
 - Include all normal-user prerequisites:
-  - `xuva.exe`.
+  - `Xuva.exe` desktop shell.
+  - `xuva-server.exe`.
   - Embedded Svelte web UI.
   - Desktop shell runtime.
   - `ffmpeg.exe` and `ffprobe.exe`.
@@ -87,7 +88,7 @@ MediaMop implementation details that should not be copied directly:
 1. Build versioned SQLite schema migration package.
 2. Add app/system version endpoint.
 3. Add pre-upgrade backup and restore/rollback rehearsal around real fixture DBs.
-4. Add Windows package script that builds web assets, compiles Go, vendors FFmpeg/FFprobe with checksum verification, and assembles the first package.
+4. Add Windows package script that builds web assets, compiles Go, vendors FFmpeg/FFprobe with checksum verification, and assembles the first desktop installer/package.
 5. Add release workflow artifacts for Windows installer/package and checksums.
 6. Add Docker healthcheck and container smoke test to CI/release.
 7. Document Windows filesystem access model for local disks, mapped drives, UNC paths, NAS, and removable media.

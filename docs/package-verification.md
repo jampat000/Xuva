@@ -10,12 +10,13 @@ Early package releases use `v0.0.x` tags. Do not tag `v1.0.0` until install, upg
 
 Artifact expectations:
 
-- Unsigned package zip exists on the GitHub Release.
+- Unsigned Windows installer `.exe` exists on the GitHub Release.
+- Unsigned portable desktop zip exists on the GitHub Release.
 - Matching `.sha256` file exists.
-- Package contains `app/xuva.exe`.
-- Package contains `app/Start-Xuva.ps1`.
-- Package contains `app/bin/ffmpeg.exe`.
-- Package contains `app/bin/ffprobe.exe`.
+- Portable package contains `Xuva.exe`.
+- Portable package contains `resources/runtime/xuva-server.exe`.
+- Portable package contains `resources/runtime/bin/ffmpeg.exe`.
+- Portable package contains `resources/runtime/bin/ffprobe.exe`.
 - Package does not contain Apple, Android, iOS, tvOS, or native client build outputs.
 
 Automated package verification:
@@ -29,8 +30,8 @@ Local package builds restore `server/internal/webapp/static-next` after compilin
 Clean install smoke:
 
 1. Verify package checksum.
-2. Extract to a clean directory.
-3. Run `powershell -ExecutionPolicy Bypass -File .\app\Start-Xuva.ps1`.
+2. Run the unsigned installer `.exe`, or extract the portable zip to a clean directory.
+3. Launch `Xuva.exe`.
 4. Open `http://localhost:8097/api/system/version`.
 5. Confirm `version` equals the release tag and `schemaVersion` is populated.
 6. Open `http://localhost:8097/`.
@@ -38,13 +39,14 @@ Clean install smoke:
 8. Add a local media folder.
 9. Add a mapped drive or UNC NAS media folder.
 10. Restart Xuva and verify settings/database persisted.
+11. Confirm the desktop runtime folders exist under `%LOCALAPPDATA%\Xuva\`: `data`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
 
 Upgrade smoke:
 
-1. Install/extract previous `v0.0.x` package.
+1. Install/extract previous `v0.0.x` desktop package.
 2. Complete setup and add at least one library.
 3. Stop Xuva.
-4. Start the newer package against the same `XUVA_DATA_DIR`.
+4. Start the newer package against the same default `%LOCALAPPDATA%\Xuva\data` directory or explicit `XUVA_DATA_DIR`.
 5. Confirm `/api/system/version` reports the newer tag.
 6. Confirm `data/backups/schema-upgrade-*.db` exists when a schema migration was pending.
 7. Confirm users, libraries, devices, settings, and playback state remain intact.
