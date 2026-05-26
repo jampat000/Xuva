@@ -41,6 +41,13 @@ jobs:
         run: |
           ./packaging/windows/build-package.ps1 -Version "${{ github.ref_name }}"
 
+      - name: Verify unsigned Windows package
+        shell: powershell
+        run: |
+          $package = Get-ChildItem -Path dist/windows -Filter "*.zip" | Select-Object -First 1
+          if (-not $package) { throw "Windows package zip was not produced." }
+          ./packaging/windows/verify-package.ps1 -PackagePath $package.FullName
+
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:

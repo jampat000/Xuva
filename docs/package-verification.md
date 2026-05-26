@@ -18,6 +18,12 @@ Artifact expectations:
 - Package contains `app/bin/ffprobe.exe`.
 - Package does not contain Apple, Android, iOS, tvOS, or native client build outputs.
 
+Automated package verification:
+
+```powershell
+./packaging/windows/verify-package.ps1 -PackagePath "dist/windows/xuva-v0.0.x-win-x64.zip"
+```
+
 Clean install smoke:
 
 1. Verify package checksum.
