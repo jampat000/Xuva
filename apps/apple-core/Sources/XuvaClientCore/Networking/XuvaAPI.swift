@@ -20,7 +20,8 @@ public enum XuvaAPIError: LocalizedError {
     }
 }
 
-public final class XuvaAPI: @unchecked Sendable {
+@MainActor
+public final class XuvaAPI {
     public let baseURL: URL
     public var authToken: String?
     private let session: URLSession
@@ -166,8 +167,8 @@ public final class XuvaAPI: @unchecked Sendable {
         guard (200..<300).contains(statusCode) else {
             throw XuvaAPIError.badStatus(statusCode, String(data: data, encoding: .utf8) ?? "")
         }
-        if Response.self == EmptyResponse.self {
-            return EmptyResponse() as! Response
+        if Response.self == EmptyResponse.self, let empty = EmptyResponse() as? Response {
+            return empty
         }
         return try decoder.decode(Response.self, from: data)
     }
