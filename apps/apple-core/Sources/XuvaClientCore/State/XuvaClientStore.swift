@@ -569,7 +569,7 @@ public final class XuvaClientStore: ObservableObject {
             UserDefaults(suiteName: Self.topShelfAppGroup)?.set(data, forKey: Self.topShelfPayloadKey)
         }
         #if os(tvOS)
-        TVTopShelfProvider.reportProviderUpdated()
+        TVTopShelfContentProvider.topShelfContentDidChange()
         #endif
     }
 
