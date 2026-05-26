@@ -46,9 +46,11 @@ Run before tagging a release:
 
 ```powershell
 ./tools/check.ps1 -Release -SkipFrontendInstall
+./tools/release-acceptance.ps1 -Version v0.0.x -Commit "<git-sha>"
 ```
 
 The canonical runner keeps monorepo working directories explicit; Go tests run from `server/`, not the repository root.
+The acceptance runner uses shipped artifacts, not dev mocks, and covers Windows portable, Windows installer, Docker, first-run setup, library scan, restart persistence, runtime logs, and version metadata.
 
 ## 7) Installation And Upgrade
 

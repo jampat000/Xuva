@@ -26,6 +26,14 @@ Automated package verification:
 ./packaging/windows/verify-package.ps1 -PackagePath "dist/windows/xuva-v0.0.x-win-x64.zip"
 ```
 
+Release acceptance:
+
+```powershell
+./tools/release-acceptance.ps1 -Version v0.0.x -Commit "<git-sha>"
+```
+
+This is the required shipped-artifact E2E gate for prod-test releases. It validates Windows portable, Windows installer, and Docker from blank runtime state through first admin creation, setup completion, library creation, scan completion, restart persistence, version metadata, and structured log creation.
+
 Local package builds restore `server/internal/webapp/static-next` after compiling the Go binary so release rehearsal does not leave generated web assets in the working tree. Use `-LeavePublishedStatic` only when intentionally refreshing committed embedded assets.
 
 Clean install smoke:
@@ -112,6 +120,7 @@ Upgrade smoke:
 
 ```powershell
 ./tools/check.ps1 -Release -SkipFrontendInstall
+./tools/release-acceptance.ps1 -Version v0.0.x -Commit "<git-sha>"
 ```
 
 The check runner intentionally executes Go commands from `server/`, because that is the Go module root.
