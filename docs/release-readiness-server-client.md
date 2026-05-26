@@ -2,6 +2,8 @@
 
 This checklist gates releases for Xuva as a server/client system.
 
+Early release tags use the `v0.0.x` track until Windows/Docker install and upgrade behavior is proven enough for `v1.0.0`. See [Release versioning](release-versioning.md).
+
 ## 1) Runtime Reliability
 
 - Server boots cleanly with persisted settings and runtime directories.
@@ -35,6 +37,7 @@ This checklist gates releases for Xuva as a server/client system.
 - Native folder picker covers local, mapped, and UNC paths for signed-in user scope.
 - Restart actions are explicit and visible to operators.
 - Desktop logs include restart and bridge action audit events.
+- Packaged Windows runtime includes Xuva, embedded web assets, desktop shell runtime, FFmpeg, FFprobe, CA certificates, and default runtime directory creation.
 
 ## 6) Verification Suite
 
@@ -54,6 +57,11 @@ git diff --check
 - Upgrade from previous build verified with settings and data retained.
 - Uninstall/reinstall verified without orphaning critical runtime state.
 - Rollback procedure documented and rehearsed.
+- Unsigned Windows artifact trust is covered by GitHub Release provenance plus published SHA256 checksums.
+- No user-facing package assumes Go, Node.js, npm, SQLite tooling, FFmpeg, or FFprobe are already installed.
+- Docker images include runtime prerequisites and expose a healthcheck suitable for orchestrators.
+- Filesystem access is validated for local disks, mapped drives, UNC/NAS paths, and Docker bind mounts. See [Filesystem access](filesystem-access.md).
+- Package install, upgrade, and rollback checks follow [Package verification](package-verification.md).
 
 Rehearsal automation command:
 

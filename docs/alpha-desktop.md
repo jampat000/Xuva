@@ -33,7 +33,18 @@ The desktop shell also exposes `window.xuvaDesktop.restartServer()` for explicit
 - Restart Xuva restarts the supervised server process.
 - Native folder picker fills library and runtime folder fields.
 - Web fallback remains available for dev/headless/local browser usage.
+- Package bundles every runtime dependency needed by normal users: Xuva server binary, embedded web UI, desktop shell runtime, FFmpeg, FFprobe, CA certificates, and default runtime directory creation.
 - No vendor relay infrastructure is introduced.
+- No Apple, Android, iOS, tvOS, or native mobile/TV client builds are included in the Windows desktop package.
+
+## Windows Package Policy
+
+- Release packages are unsigned unless/until signing is affordable.
+- Publish SHA256 checksums and GitHub Release provenance for every installer/package artifact.
+- Do not require users to install Go, Node.js, npm, FFmpeg, FFprobe, or a database engine.
+- Prefer per-user install and user-session execution so mapped drives, removable disks, SMB shares, and UNC paths work under the same permissions the operator sees in File Explorer.
+- Keep writable runtime state outside the application install directory: database, settings, logs, backups, cache, transcode work, and generated metadata.
+- If Windows SmartScreen warns because the installer is unsigned, document that clearly rather than pretending the warning will not happen.
 
 ## Shell Choice (Alpha)
 

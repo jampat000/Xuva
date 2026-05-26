@@ -417,11 +417,7 @@ public struct PairingScreen: View {
     }
 
     private var introCopy: String {
-        #if os(tvOS)
-        return "Pick your Xuva server below — we'll auto-request a pairing code. Approve it once from your computer and the library opens straight to movies and shows."
-        #else
-        return "Pick your Xuva server below — we'll auto-request a pairing code. Approve it once from your computer and the library opens straight to movies and shows."
-        #endif
+        "Pick your Xuva server below — we'll auto-request a pairing code. Approve it once from your computer and the library opens straight to movies and shows."
     }
 
     private func pollPairingWhilePending() async {

@@ -70,6 +70,15 @@ public final class XuvaAPI: @unchecked Sendable {
         return try await send("GET", path: "/api/client/\(segment)/\(id)/similar")
     }
 
+
+    public func libraryMovies() async throws -> LibraryMoviesResponse {
+        try await send("GET", path: "/api/movies")
+    }
+
+    public func librarySeries() async throws -> LibrarySeriesResponse {
+        try await send("GET", path: "/api/series")
+    }
+
     /// Permanently deletes the media source file from the server (admin only).
     public func deleteMediaSource(id: String) async throws {
         let _: EmptyResponse = try await send("DELETE", path: "/api/media-sources/\(id)")
@@ -89,7 +98,8 @@ public final class XuvaAPI: @unchecked Sendable {
             audioTrackIndex: audioTrackIndex,
             subtitleTrackIndex: subtitleTrackIndex,
             subtitleTrackActive: subtitleTrackActive,
-            supportsAdaptive: true
+            supportsAdaptive: true,
+            preferAdaptive: true
         )
         return try await send("POST", path: "/api/client/playback/start", body: body)
     }

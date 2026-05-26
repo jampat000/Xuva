@@ -102,6 +102,7 @@
   } from '$lib/api/browse';
   import { createEventStream } from '$lib/events/stream';
   import ActivityRing from '$lib/components/ActivityRing.svelte';
+  import NowPlayingCard from '$lib/components/NowPlayingCard.svelte';
   import { getAuthSession, logout, type AuthSessionUser } from '$lib/api/auth';
   import { updateProfileSettings, setProfilePin, RATING_OPTIONS, AVATAR_PRESETS } from '$lib/api/profiles';
 
@@ -1156,13 +1157,14 @@
     dashLoading = true;
     dashError = null;
     try {
-      const [statusRes, summaryRes, scansRes, sessionsRes, settingsRes] =
+      const [statusRes, summaryRes, scansRes, sessionsRes, settingsRes, usersRes] =
         await Promise.allSettled([
           getSystemStatus(),
           getCatalogSummary(),
           getScans(),
           getSessions(),
-          getSettings()
+          getSettings(),
+          getUsers(),
         ]);
       if (statusRes.status === 'fulfilled') sysStatus = statusRes.value;
       if (summaryRes.status === 'fulfilled') catalogSummary = summaryRes.value;
@@ -1176,12 +1178,19 @@
         if (libraries.length === 0)
           libraries = (settingsRes.value.libraries ?? []).map((l) => ({ ...l }));
       }
+      if (usersRes.status === 'fulfilled' && usersList.length === 0)
+        usersList = usersRes.value.users ?? [];
       if (statusRes.status === 'rejected' && summaryRes.status === 'rejected')
         dashError = 'Server unreachable';
     } finally {
       dashLoading = false;
     }
   }
+
+  // Map userId → display name for Now Playing cards
+  const userNameMap = $derived(
+    Object.fromEntries(usersList.map(u => [u.id ?? '', u.displayName || u.username || u.id || '']))
+  );
 
   // ─── Library loading ───────────────────────────────────────────────────────
   async function loadLibraries() {
@@ -2057,7 +2066,18 @@
 
             <!-- Network I/O -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
-              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
+              <!-- Header: title + link-speed badge -->
+              <div class="mb-3 flex items-center justify-between gap-2">
+                <span class="font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</span>
+                {#if sysStatus?.network}
+                  {@const linkLabel = formatLinkSpeed(sysStatus.network.linkSpeedBps)}
+                  {#if linkLabel}
+                    <span class="rounded-md bg-foreground/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums tracking-wide text-foreground/60">{linkLabel}</span>
+                  {:else}
+                    <span class="text-[10px] italic text-muted-foreground/30">speed unknown</span>
+                  {/if}
+                {/if}
+              </div>
               <div class="space-y-3.5">
                 {#if true}
                 {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
@@ -2923,20 +2943,10 @@
               </div>
             </div>
             {#if hasLive}
-              <div class="divide-y" style="border-color: oklch(0.72 0.55 160 / 0.08);">
+              <div class="space-y-0 divide-y" style="border-color: oklch(0.72 0.55 160 / 0.08);">
                 {#each activeSessions as session (session.id)}
-                  <div class="flex items-center gap-4 px-5 py-3.5">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-400/[0.1] ring-1 ring-emerald-400/20">
-                      <Play class="h-4 w-4 fill-emerald-400 text-emerald-400" />
-                    </div>
-                    <div class="min-w-0 flex-1">
-                      <div class="truncate text-[13px] font-semibold text-foreground/90">{session.title ?? session.sourceName ?? 'Unknown'}</div>
-                      <div class="mt-0.5 text-[12.5px] text-foreground/55">
-                        {session.mode ?? session.route ?? 'Direct Play'}{session.deviceId ? ` · ${session.deviceId}` : ''}
-                      </div>
-                    </div>
-                    <span class="shrink-0 rounded border border-emerald-400/25 bg-emerald-400/[0.1] px-2.5 py-0.5 text-[11px] font-medium tracking-wide text-emerald-300"
-                      style="text-shadow: 0 0 8px oklch(0.78 0.2 145 / 0.3);">Live</span>
+                  <div class="px-4 py-3">
+                    <NowPlayingCard {session} userName={userNameMap[session.userId ?? ''] ?? ''} />
                   </div>
                 {/each}
               </div>
