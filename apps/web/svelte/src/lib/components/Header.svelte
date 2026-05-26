@@ -487,7 +487,7 @@
                     </div>
                     {#if item.mediaSourceId}
                       <a
-                        href={`/play/${item.mediaSourceId}`}
+                        href={`/play/${item.mediaSourceId}?title=${encodeURIComponent(friendlyName(item))}&back=/`}
                         class="shrink-0 rounded-full bg-foreground/[0.06] px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.12] hover:text-foreground"
                       >
                         Resume
