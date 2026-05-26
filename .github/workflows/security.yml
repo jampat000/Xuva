@@ -103,3 +103,31 @@ jobs:
         # /api/health, and asserts Content-Security-Policy img-src permits the
         # known artwork hosts. Catches the class of regression behind #67.
         run: node tools/built-bundle-smoke.cjs
+
+  docker-smoke:
+    name: Docker package smoke check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t xuva-ci-smoke .
+
+      - name: Run Docker image
+        run: |
+          docker run -d --name xuva-ci-smoke -p 18097:8097 xuva-ci-smoke
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18097/api/system/version >/tmp/xuva-version.json; then
+              cat /tmp/xuva-version.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs xuva-ci-smoke
+          exit 1
+
+      - name: Cleanup Docker container
+        if: always()
+        run: docker rm -f xuva-ci-smoke >/dev/null 2>&1 || true
