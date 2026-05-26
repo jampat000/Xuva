@@ -14,31 +14,35 @@ import (
 )
 
 type Session struct {
-	ID             string            `json:"id"`
-	UserID         string            `json:"userId"`
-	DeviceID       string            `json:"deviceId"`
-	MediaSourceID  string            `json:"mediaSourceId"`
-	Title          string            `json:"title,omitempty"`
-	ArtworkURL     string            `json:"artworkUrl,omitempty"`
-	SourceName     string            `json:"sourceName,omitempty"`
-	QualityLabel   string            `json:"qualityLabel,omitempty"`
-	Container      string            `json:"container,omitempty"`
-	VideoCodec     string            `json:"videoCodec,omitempty"`
-	Bitrate        int64             `json:"bitrate,omitempty"`
-	ClientProfile  string            `json:"clientProfile,omitempty"`
-	Route          string            `json:"route,omitempty"`
-	ServerImpact   string            `json:"serverImpact,omitempty"`
-	Mode           string            `json:"mode"`
-	ReasonCode     string            `json:"reasonCode,omitempty"`
-	ReasonText     string            `json:"reasonText,omitempty"`
-	EncoderLabel   string            `json:"encoderLabel,omitempty"`
-	SelectedTracks map[string]string `json:"selectedTracks,omitempty"`
-	RouteHistory   []RouteChange     `json:"routeHistory,omitempty"`
-	Status         string            `json:"status"`
-	Progress       float64           `json:"progressSeconds"`
-	Duration       float64           `json:"durationSeconds"`
-	StartedAt      time.Time         `json:"startedAt"`
-	UpdatedAt      time.Time         `json:"updatedAt"`
+	ID              string            `json:"id"`
+	UserID          string            `json:"userId"`
+	DeviceID        string            `json:"deviceId"`
+	MediaSourceID   string            `json:"mediaSourceId"`
+	Title           string            `json:"title,omitempty"`
+	ArtworkURL      string            `json:"artworkUrl,omitempty"`
+	SourceName      string            `json:"sourceName,omitempty"`
+	QualityLabel    string            `json:"qualityLabel,omitempty"`
+	Container       string            `json:"container,omitempty"`
+	VideoCodec      string            `json:"videoCodec,omitempty"`
+	AudioCodec      string            `json:"audioCodec,omitempty"`
+	Bitrate         int64             `json:"bitrate,omitempty"`
+	ClientProfile   string            `json:"clientProfile,omitempty"`
+	Route           string            `json:"route,omitempty"`
+	ServerImpact    string            `json:"serverImpact,omitempty"`
+	Mode            string            `json:"mode"`
+	VideoAction     string            `json:"videoAction,omitempty"`
+	AudioAction     string            `json:"audioAction,omitempty"`
+	ContainerAction string            `json:"containerAction,omitempty"`
+	ReasonCode      string            `json:"reasonCode,omitempty"`
+	ReasonText      string            `json:"reasonText,omitempty"`
+	EncoderLabel    string            `json:"encoderLabel,omitempty"`
+	SelectedTracks  map[string]string `json:"selectedTracks,omitempty"`
+	RouteHistory    []RouteChange     `json:"routeHistory,omitempty"`
+	Status          string            `json:"status"`
+	Progress        float64           `json:"progressSeconds"`
+	Duration        float64           `json:"durationSeconds"`
+	StartedAt       time.Time         `json:"startedAt"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
 }
 
 type RouteChange struct {
@@ -79,11 +83,15 @@ type StartRequest struct {
 	QualityLabel    string            `json:"qualityLabel"`
 	Container       string            `json:"container"`
 	VideoCodec      string            `json:"videoCodec"`
+	AudioCodec      string            `json:"audioCodec"`
 	Bitrate         int64             `json:"bitrate"`
 	ClientProfile   string            `json:"clientProfile"`
 	Route           string            `json:"route"`
 	ServerImpact    string            `json:"serverImpact"`
 	Mode            string            `json:"mode"`
+	VideoAction     string            `json:"videoAction"`
+	AudioAction     string            `json:"audioAction"`
+	ContainerAction string            `json:"containerAction"`
 	ReasonCode      string            `json:"reasonCode"`
 	ReasonText      string            `json:"reasonText"`
 	EncoderLabel    string            `json:"encoderLabel,omitempty"`
@@ -139,30 +147,34 @@ func (s *Service) Start(request StartRequest) (Session, error) {
 	}
 	now := time.Now().UTC()
 	session := Session{
-		ID:             s.nextSessionID(),
-		UserID:         request.UserID,
-		DeviceID:       request.DeviceID,
-		MediaSourceID:  request.MediaSourceID,
-		Title:          request.Title,
-		ArtworkURL:     request.ArtworkURL,
-		SourceName:     request.SourceName,
-		QualityLabel:   request.QualityLabel,
-		Container:      request.Container,
-		VideoCodec:     request.VideoCodec,
-		Bitrate:        request.Bitrate,
-		ClientProfile:  request.ClientProfile,
-		Route:          request.Route,
-		ServerImpact:   request.ServerImpact,
-		Mode:           request.Mode,
-		ReasonCode:     request.ReasonCode,
-		ReasonText:     request.ReasonText,
-		EncoderLabel:   request.EncoderLabel,
-		SelectedTracks: cloneMap(request.SelectedTracks),
-		Status:         "playing",
-		Progress:       nonNegative(request.ProgressSeconds),
-		Duration:       nonNegative(request.DurationSeconds),
-		StartedAt:      now,
-		UpdatedAt:      now,
+		ID:              s.nextSessionID(),
+		UserID:          request.UserID,
+		DeviceID:        request.DeviceID,
+		MediaSourceID:   request.MediaSourceID,
+		Title:           request.Title,
+		ArtworkURL:      request.ArtworkURL,
+		SourceName:      request.SourceName,
+		QualityLabel:    request.QualityLabel,
+		Container:       request.Container,
+		VideoCodec:      request.VideoCodec,
+		AudioCodec:      request.AudioCodec,
+		Bitrate:         request.Bitrate,
+		ClientProfile:   request.ClientProfile,
+		Route:           request.Route,
+		ServerImpact:    request.ServerImpact,
+		Mode:            request.Mode,
+		VideoAction:     request.VideoAction,
+		AudioAction:     request.AudioAction,
+		ContainerAction: request.ContainerAction,
+		ReasonCode:      request.ReasonCode,
+		ReasonText:      request.ReasonText,
+		EncoderLabel:    request.EncoderLabel,
+		SelectedTracks:  cloneMap(request.SelectedTracks),
+		Status:          "playing",
+		Progress:        nonNegative(request.ProgressSeconds),
+		Duration:        nonNegative(request.DurationSeconds),
+		StartedAt:       now,
+		UpdatedAt:       now,
 	}
 	s.remember(session)
 	_ = s.persist(context.Background(), session)

@@ -2780,6 +2780,44 @@
                             {#if bd.audioTranscode > 0}<span style="color: oklch(0.85 0.22 75)">Audio {pct(bd.audioTranscode)}%</span>{/if}
                             {#if bd.videoTranscode > 0}<span style="color: oklch(0.68 0.26 22)">Video {pct(bd.videoTranscode)}%</span>{/if}
                           </div>
+                          <!-- Per-component breakdown -->
+                          {#if bd.videoActions || bd.audioActions || bd.containerActions}
+                            {@const actionLabel = (a: string) =>
+                              a === 'direct' ? 'Direct' :
+                              a === 'transcode' ? 'Transcode' :
+                              a === 'copy' ? 'Stream copy' :
+                              a === 'copy_or_transcode' ? 'Convert' :
+                              a === 'remux' ? 'Remux' :
+                              a === 'transcode_or_remux' ? 'Repackage' :
+                              a === 'direct_or_remux' ? 'Direct/Remux' :
+                              a}
+                            <div class="mt-2 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5 border-t border-foreground/[0.05] pt-2 text-[10px]">
+                              {#if bd.videoActions && Object.keys(bd.videoActions).length > 0}
+                                <span class="text-foreground/35 self-start pt-px">Video</span>
+                                <span class="text-foreground/55 flex flex-wrap gap-x-2">
+                                  {#each Object.entries(bd.videoActions).sort((a,b) => b[1]-a[1]) as [act, cnt]}
+                                    <span class="{act === 'direct' || act === 'copy' ? 'text-emerald-400/60' : 'text-amber-300/70'}">{actionLabel(act)} {pct(cnt)}%</span>
+                                  {/each}
+                                </span>
+                              {/if}
+                              {#if bd.audioActions && Object.keys(bd.audioActions).length > 0}
+                                <span class="text-foreground/35 self-start pt-px">Audio</span>
+                                <span class="text-foreground/55 flex flex-wrap gap-x-2">
+                                  {#each Object.entries(bd.audioActions).sort((a,b) => b[1]-a[1]) as [act, cnt]}
+                                    <span class="{act === 'direct' ? 'text-emerald-400/60' : 'text-amber-300/70'}">{actionLabel(act)} {pct(cnt)}%</span>
+                                  {/each}
+                                </span>
+                              {/if}
+                              {#if bd.containerActions && Object.keys(bd.containerActions).length > 0}
+                                <span class="text-foreground/35 self-start pt-px">Container</span>
+                                <span class="text-foreground/55 flex flex-wrap gap-x-2">
+                                  {#each Object.entries(bd.containerActions).sort((a,b) => b[1]-a[1]) as [act, cnt]}
+                                    <span class="{act === 'direct' || act === 'direct_or_remux' ? 'text-emerald-400/60' : 'text-amber-300/70'}">{actionLabel(act)} {pct(cnt)}%</span>
+                                  {/each}
+                                </span>
+                              {/if}
+                            </div>
+                          {/if}
                         </div>
                       {/if}
                     {/each}
@@ -2795,7 +2833,21 @@
                         <div class="flex items-center gap-3">
                           <div class="min-w-0 flex-1">
                             <div class="truncate text-[12px] font-medium text-foreground/70">{reason.reasonText || reason.reasonCode}</div>
-                            <div class="text-[10px] capitalize text-foreground/40">{reason.profile}</div>
+                            <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              {#if reason.componentLabel}
+                                <span class="rounded bg-amber-400/10 px-1.5 py-px text-[9px] font-medium text-amber-300/80 ring-1 ring-amber-400/20">{reason.componentLabel}</span>
+                              {/if}
+                              {#if reason.videoAction && reason.videoAction !== 'direct'}
+                                <span class="rounded bg-foreground/[0.05] px-1.5 py-px text-[9px] text-foreground/40">Video: {reason.videoAction}</span>
+                              {/if}
+                              {#if reason.audioAction && reason.audioAction !== 'direct'}
+                                <span class="rounded bg-foreground/[0.05] px-1.5 py-px text-[9px] text-foreground/40">Audio: {reason.audioAction}</span>
+                              {/if}
+                              {#if reason.containerAction && reason.containerAction !== 'direct'}
+                                <span class="rounded bg-foreground/[0.05] px-1.5 py-px text-[9px] text-foreground/40">Container: {reason.containerAction}</span>
+                              {/if}
+                              <span class="text-[10px] capitalize text-foreground/35">{reason.profile}</span>
+                            </div>
                           </div>
                           <div class="shrink-0 rounded border border-foreground/[0.08] bg-foreground/[0.04] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/55">
                             {reason.count.toLocaleString()}
@@ -2876,7 +2928,13 @@
                   <div class="flex items-center gap-4 px-5 py-2.5">
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-2">
-                        <span class="text-[13px] font-medium text-foreground/75 capitalize">{scan.kind ?? 'Scan'}</span>
+                        <span class="text-[13px] font-medium text-foreground/75">
+                          {scan.kind === 'all' ? 'Full Library Scan' :
+                           scan.kind === 'movies' ? 'Movies Scan' :
+                           scan.kind === 'tv' ? 'TV Scan' :
+                           scan.kind === 'episodes' ? 'Episodes Scan' :
+                           scan.kind ? (scan.kind.charAt(0).toUpperCase() + scan.kind.slice(1).replace(/_/g, ' ')) : 'Scan'}
+                        </span>
                         {#if scan.libraryId}
                           <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-foreground/45">{scan.libraryId.slice(0, 8)}</code>
                         {/if}
@@ -3332,7 +3390,13 @@
                     <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-4 py-3">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 text-sm">
-                          <span class="font-medium capitalize">{scan.kind ?? 'Scan'}</span>
+                          <span class="font-medium">
+                            {scan.kind === 'all' ? 'Full Library Scan' :
+                             scan.kind === 'movies' ? 'Movies Scan' :
+                             scan.kind === 'tv' ? 'TV Scan' :
+                             scan.kind === 'episodes' ? 'Episodes Scan' :
+                             scan.kind ? (scan.kind.charAt(0).toUpperCase() + scan.kind.slice(1).replace(/_/g, ' ')) : 'Scan'}
+                          </span>
                           {#if scan.libraryId}<span class="font-mono text-[11px] text-muted-foreground">{scan.libraryId.slice(0,8)}</span>{/if}
                         </div>
                         <div class="mt-0.5 text-[11px] text-muted-foreground">{scan.status ?? ''}
