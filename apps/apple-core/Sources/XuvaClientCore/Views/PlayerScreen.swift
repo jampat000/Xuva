@@ -1,5 +1,8 @@
 import AVKit
 import SwiftUI
+import os
+
+private let logger = Logger(subsystem: "com.xuva.client", category: "player")
 
 public struct PlayerScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
@@ -65,7 +68,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
             try AVAudioSession.sharedInstance().setActive(true, options: [])
         } catch {
-            print("[XUVA] AVAudioSession setup failed: \(error)")
+            logger.error("AVAudioSession setup failed: \(error)")
         }
 
         let item = makePlayerItem(url: url, authToken: authToken)
@@ -81,7 +84,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         vc.view.backgroundColor = .black
         context.coordinator.attach(to: player, resumeAt: playback.clientStartPositionSeconds)
         player.play()
-        print("[XUVA] AVPlayerViewController created url=\(url.absoluteString) resume=\(playback.clientStartPositionSeconds ?? 0)")
+        logger.debug("AVPlayerViewController created resume=\(playback.clientStartPositionSeconds ?? 0)")
         return vc
     }
 
@@ -131,16 +134,15 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             }
             errorObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
                 if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
-                    print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
+                    logger.error("AVPlayer FAILED: \(err) code=\(err.code)")
                 }
             }
             statusObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
-                print("[XUVA] AVPlayerItem.status -> \(item.status.rawValue) error=\(String(describing: item.error))")
                 guard item.status == .readyToPlay else { return }
                 if let s = seconds, s > 0 {
                     let target = CMTime(seconds: Double(s), preferredTimescale: 600)
                     item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
-                        print("[XUVA] resume seek to \(s)s done")
+                        logger.debug("resume seek to \(s)s done")
                     }
                 }
                 self?.applySubtitleSelection(to: item)
@@ -164,12 +166,10 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             Task { @MainActor in
                 do {
                     guard let group = try await item.asset.loadMediaSelectionGroup(for: .legible) else {
-                        print("[XUVA] no legible media selection group — subtitle pre-selection skipped")
                         return
                     }
                     if track == nil {
                         item.select(nil, in: group)
-                        print("[XUVA] subtitle disabled by user selection")
                         return
                     }
                     let option = group.options.first { opt in
@@ -183,12 +183,9 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
                     }
                     if let option {
                         item.select(option, in: group)
-                        print("[XUVA] subtitle pre-selected: \(option.displayName)")
-                    } else {
-                        print("[XUVA] no matching subtitle option for track \(track?.language ?? "?")/\(track?.title ?? "?")")
                     }
                 } catch {
-                    print("[XUVA] failed to load legible media selection group: \(error)")
+                    logger.error("failed to load legible media selection group: \(error)")
                 }
             }
         }
@@ -234,7 +231,7 @@ struct XuvaVideoPlayer: View {
             VideoPlayer(player: player)
                 .ignoresSafeArea()
                 .onAppear {
-                    print("[XUVA] VideoPlayer.onAppear url=\(url.absoluteString)")
+                    logger.debug("VideoPlayer.onAppear")
                     addTimeObserver()
                     addErrorObservers()
                     player.play()
@@ -292,7 +289,7 @@ struct XuvaVideoPlayer: View {
         let center = NotificationCenter.default
         let failed = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
             if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
-                print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
+                logger.error("AVPlayer FAILED: \(err) code=\(err.code)")
                 loadError = "Playback failed: \(err.localizedDescription) (code \(err.code))"
             } else {
                 loadError = "Playback failed to reach end of stream."
