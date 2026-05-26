@@ -87,7 +87,7 @@
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {#each items as item (item.mediaSourceId)}
           <a
-            href={`/play/${item.mediaSourceId}`}
+            href={`/play/${item.mediaSourceId}?title=${encodeURIComponent(friendlyName(item))}&back=/continue-watching`}
             class="hairline group flex flex-col gap-3 rounded-2xl bg-surface/40 p-4 transition-colors hover:bg-surface/70"
           >
             <div class="flex items-center gap-3">

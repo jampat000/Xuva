@@ -1118,6 +1118,18 @@
   // the single fastest NIC speed (a common measurement artefact on multi-adapter or
   // high-speed-NIC machines where GetIfTable caps at 4.29 Gbps). In that case we
   // fall back to green rather than showing a misleading alarm.
+  // Format a link speed in networking units (bps input → "100 Mbps" / "1 Gbps").
+  // Returns an empty string when the speed is unknown (0 or undefined).
+  function formatLinkSpeed(bps: number | undefined): string {
+    if (!bps || bps <= 0) return '';
+    if (bps >= 1_000_000_000) {
+      const gbps = bps / 1_000_000_000;
+      return `${Number.isInteger(gbps) ? gbps : gbps.toFixed(1)} Gbps`;
+    }
+    const mbps = bps / 1_000_000;
+    return `${Number.isInteger(mbps) ? mbps : mbps.toFixed(0)} Mbps`;
+  }
+
   function netRagColor(bps: number | undefined, linkBps: number | undefined): string {
     const green = 'oklch(0.78 0.22 145)';
     if (!linkBps || bps == null || bps <= 0) return green;
@@ -2045,7 +2057,18 @@
 
             <!-- Network I/O -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
-              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
+              <!-- Header: title + link-speed badge -->
+              <div class="mb-3 flex items-center justify-between gap-2">
+                <span class="font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</span>
+                {#if sysStatus?.network}
+                  {@const linkLabel = formatLinkSpeed(sysStatus.network.linkSpeedBps)}
+                  {#if linkLabel}
+                    <span class="rounded-md bg-foreground/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums tracking-wide text-foreground/60">{linkLabel}</span>
+                  {:else}
+                    <span class="text-[10px] italic text-muted-foreground/30">speed unknown</span>
+                  {/if}
+                {/if}
+              </div>
               <div class="space-y-3.5">
                 {#if true}
                 {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
@@ -2111,19 +2134,27 @@
                 {#if gpuAdapterName}
                   <div class="mt-2 truncate text-center text-[11px] font-medium leading-snug text-foreground/70" title={gpuAdapterName}>{gpuAdapterName}</div>
                 {/if}
-                <!-- VRAM bar -->
+                <!-- VRAM bar — only show live used/total when we have real usage data (NVIDIA).
+                     For AMD/Intel via WMIC, vramUsedBytes is 0; show total capacity only. -->
                 {#if gpuHW && gpuHW.vramTotalBytes && gpuHW.vramTotalBytes > 0}
-                  {@const vramPct = Math.min(100, ((gpuHW.vramUsedBytes ?? 0) / gpuHW.vramTotalBytes) * 100)}
-                  <div class="mt-2 space-y-1">
-                    <div class="flex justify-between text-[10px] text-foreground/45">
+                  {#if gpuHW.vramUsedBytes && gpuHW.vramUsedBytes > 0}
+                    {@const vramPct = Math.min(100, (gpuHW.vramUsedBytes / gpuHW.vramTotalBytes) * 100)}
+                    <div class="mt-2 space-y-1">
+                      <div class="flex justify-between text-[10px] text-foreground/45">
+                        <span>VRAM</span>
+                        <span class="tabular-nums">{formatBytes(gpuHW.vramUsedBytes)} / {formatBytes(gpuHW.vramTotalBytes)}</span>
+                      </div>
+                      <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div class="h-full rounded-full transition-[width] duration-1000"
+                          style="width: {vramPct}%; background: {dashHudColor(vramPct, 75, 90)};"></div>
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="mt-2 flex justify-between text-[10px] text-foreground/45">
                       <span>VRAM</span>
-                      <span class="tabular-nums">{formatBytes(gpuHW.vramUsedBytes)} / {formatBytes(gpuHW.vramTotalBytes)}</span>
+                      <span class="tabular-nums">{formatBytes(gpuHW.vramTotalBytes)}</span>
                     </div>
-                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
-                      <div class="h-full rounded-full transition-[width] duration-1000"
-                        style="width: {vramPct}%; background: {dashHudColor(vramPct, 75, 90)};"></div>
-                    </div>
-                  </div>
+                  {/if}
                 {/if}
                 <!-- Temperature + fan compact row -->
                 {#if gpuHW?.temperatureC != null || gpuHW?.fanSpeedPct != null}
