@@ -45,8 +45,8 @@
   );
 
   const impactBadge = $derived(
-    session.serverImpact === 'high'   ? { label: 'High CPU',    cls: 'text-red-400 ring-red-400/20 bg-red-400/10' }   :
-    session.serverImpact === 'medium' ? { label: 'Medium CPU',  cls: 'text-amber-400 ring-amber-400/20 bg-amber-400/10' } :
+    session.serverImpact === 'high'   ? { label: 'High CPU',   cls: 'text-red-400 ring-red-400/20 bg-red-400/10' }      :
+    session.serverImpact === 'medium' ? { label: 'Medium CPU', cls: 'text-amber-400 ring-amber-400/20 bg-amber-400/10' } :
     null
   );
 
@@ -60,6 +60,60 @@
         : 'text-amber-300 ring-amber-400/20 bg-amber-400/10',
     };
   });
+
+  // ── Per-component breakdown ─────────────────────────────────────────────
+  type ComponentRow = { label: string; text: string; isDirect: boolean };
+
+  const componentRows = $derived.by((): ComponentRow[] => {
+    if (!session.videoAction && !session.audioAction && !session.containerAction) return [];
+
+    const rows: ComponentRow[] = [];
+
+    // Video
+    if (session.videoAction) {
+      const codec = session.videoCodec ? formatCodec(session.videoCodec) : '';
+      const isDirect = session.videoAction === 'direct' || session.videoAction === 'copy';
+      const text =
+        session.videoAction === 'direct'    ? `Direct play${codec ? ` · ${codec}` : ''}` :
+        session.videoAction === 'copy'      ? `Stream copy${codec ? ` · ${codec}` : ''}` :
+        session.videoAction === 'transcode' ? `Transcoding${codec ? ` ${codec}` : ''}` :
+        session.videoAction === 'adaptive'  ? 'Adaptive stream' :
+        session.videoAction;
+      rows.push({ label: 'Video', text, isDirect });
+    }
+
+    // Audio
+    if (session.audioAction) {
+      const codec = session.audioCodec ? formatCodec(session.audioCodec) : '';
+      const isDirect = session.audioAction === 'direct';
+      const text =
+        session.audioAction === 'direct'            ? `Direct${codec ? ` · ${codec}` : ''}` :
+        session.audioAction === 'transcode'         ? `Converting${codec ? ` ${codec}` : ''}` :
+        session.audioAction === 'copy_or_transcode' ? `Converting${codec ? ` ${codec}` : ''}` :
+        session.audioAction;
+      rows.push({ label: 'Audio', text, isDirect });
+    }
+
+    // Container
+    if (session.containerAction) {
+      const cont = session.container ? session.container.toUpperCase() : '';
+      const isDirect = session.containerAction === 'direct' || session.containerAction === 'direct_or_remux';
+      const text =
+        session.containerAction === 'direct'             ? `${cont || 'Original'}` :
+        session.containerAction === 'remux'              ? `Remuxed${cont ? ` to ${cont}` : ''}` :
+        session.containerAction === 'transcode'          ? `Converted${cont ? ` to ${cont}` : ''}` :
+        session.containerAction === 'transcode_or_remux' ? `Repackaged${cont ? ` to ${cont}` : ''}` :
+        session.containerAction === 'direct_or_remux'   ? `${cont || 'Original'}` :
+        session.containerAction;
+      rows.push({ label: 'Container', text, isDirect });
+    }
+
+    return rows;
+  });
+
+  // Only expand the breakdown when at least one component is non-direct;
+  // pure direct-play sessions stay compact with just the tech pills.
+  const hasNonDirect = $derived(componentRows.some(r => !r.isDirect));
 </script>
 
 <div class="hairline overflow-hidden rounded-xl bg-surface/50">
@@ -111,8 +165,19 @@
         </div>
       {/if}
 
-      <!-- Transcode reason -->
-      {#if isTranscoding && session.reasonText}
+      <!-- Per-component breakdown — only when something is being converted -->
+      {#if hasNonDirect}
+        <div class="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-0.5 pt-1 text-[11px] leading-snug">
+          {#each componentRows as row}
+            <span class="text-muted-foreground/45 self-start pt-px">{row.label}</span>
+            <span class="{row.isDirect ? 'text-emerald-400/70' : 'text-amber-300/85'}">{row.text}</span>
+          {/each}
+        </div>
+        {#if session.reasonText}
+          <div class="text-[11px] text-muted-foreground/40 leading-snug italic pt-0.5">{session.reasonText}</div>
+        {/if}
+      {:else if isTranscoding && session.reasonText}
+        <!-- Fallback: no action fields, show reason text the old way -->
         <div class="text-[11px] text-amber-300/60 leading-snug">{session.reasonText}</div>
       {/if}
     </div>

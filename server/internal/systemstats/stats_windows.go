@@ -3,9 +3,13 @@
 package systemstats
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"math"
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -180,6 +184,15 @@ func networkStats() NetworkStats {
 			total.LinkSpeedBps = after.linkSpeedBps
 		}
 	}
+	// If the summed traffic across all interfaces exceeds the single-interface max
+	// speed reported by GetIfTable (uint32 Speed field, capped at ~4.29 Gbps), it
+	// means one or more high-speed NICs (10/25/40 Gbps) returned Speed=0xFFFFFFFF
+	// and were excluded from the max. Signal "unknown" so the UI doesn't show a
+	// misleading red alert.
+	if total.LinkSpeedBps > 0 &&
+		(total.ReceiveBps > total.LinkSpeedBps || total.TransmitBps > total.LinkSpeedBps) {
+		total.LinkSpeedBps = 0
+	}
 	return total
 }
 
@@ -231,39 +244,86 @@ func rateBps(after uint64, before uint64, seconds float64) uint64 {
 }
 
 func gpuStats() *GPUStats {
-	// Try nvidia-smi first (gives full metrics for NVIDIA GPUs).
+	// nvidia-smi gives full real-time metrics (NVIDIA cards, incl. path search).
 	if s := nvidiaGPUStats(); s != nil {
 		return s
 	}
-	// Fall back to WMI for the adapter name (no utilization data).
-	name := wmicGPUName()
-	if name == "" {
-		return nil
+	// For AMD / Intel discrete GPUs on Windows: try wmic then PowerShell CIM.
+	// These don't give live utilisation, but we surface adapter name + VRAM.
+	if s := wmicGPUStats(); s != nil {
+		return s
 	}
-	return &GPUStats{AdapterName: name}
+	return psGPUStats()
 }
 
-// wmicGPUName returns the primary discrete GPU adapter name via WMI.
-// Returns "" when wmic is unavailable or no suitable adapter is found.
-func wmicGPUName() string {
+// wmicGPUStats queries Win32_VideoController via wmic for the adapter name
+// and VRAM (AdapterRAM — uint32 field, capped at ~4 GB for cards that only
+// report via legacy BIOS; accurate for most integrated and older discrete GPUs).
+// wmic is deprecated in Windows 11 but still present on most machines.
+func wmicGPUStats() *GPUStats {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx,
-		"wmic", "path", "Win32_VideoController", "get", "Name", "/format:list",
+		"wmic", "path", "Win32_VideoController",
+		"get", "Name,AdapterRAM", "/format:list",
 	).Output()
 	if err != nil {
-		return ""
+		return nil
 	}
-	// Pick the first non-empty name that isn't the Microsoft fallback adapter.
+	var name string
+	var vramBytes uint64
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "Name=") {
-			continue
+		if strings.HasPrefix(line, "Name=") {
+			n := strings.TrimSpace(strings.TrimPrefix(line, "Name="))
+			if n != "" && !strings.Contains(n, "Microsoft Basic") && name == "" {
+				name = n
+			}
 		}
-		name := strings.TrimSpace(strings.TrimPrefix(line, "Name="))
-		if name != "" && !strings.Contains(name, "Microsoft Basic") {
-			return name
+		if strings.HasPrefix(line, "AdapterRAM=") && vramBytes == 0 {
+			r, _ := strconv.ParseUint(strings.TrimSpace(strings.TrimPrefix(line, "AdapterRAM=")), 10, 64)
+			if r > 0 {
+				vramBytes = r
+			}
 		}
 	}
-	return ""
+	if name == "" {
+		return nil
+	}
+	return &GPUStats{AdapterName: name, VRAMTotalBytes: vramBytes}
+}
+
+// psGPUStats is a fallback for machines where wmic is not available (e.g. a
+// stripped Windows 11 install). It shells out to PowerShell CIM cmdlets.
+func psGPUStats() *GPUStats {
+	// Guard: only attempt if powershell.exe exists.
+	if _, err := os.Stat(`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`); err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := `Get-CimInstance -ClassName Win32_VideoController | ` +
+		`Where-Object {$_.Name -notlike '*Microsoft*'} | ` +
+		`Select-Object -First 1 Name,AdapterRAM | ` +
+		`ConvertTo-Json -Compress`
+	out, err := exec.CommandContext(ctx,
+		"powershell", "-NoProfile", "-NonInteractive", "-Command", cmd,
+	).Output()
+	if err != nil {
+		return nil
+	}
+	var result struct {
+		Name       string  `json:"Name"`
+		AdapterRAM float64 `json:"AdapterRAM"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out), &result); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(result.Name) == "" {
+		return nil
+	}
+	return &GPUStats{
+		AdapterName:    strings.TrimSpace(result.Name),
+		VRAMTotalBytes: uint64(result.AdapterRAM),
+	}
 }

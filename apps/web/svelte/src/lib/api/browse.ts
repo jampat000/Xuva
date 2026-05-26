@@ -46,6 +46,7 @@ export interface MovieListItem {
 	year?: number;
 	sortTitle?: string;
 	needsReview?: boolean;
+	probed?: boolean;
 	versionCount?: number;
 	addedAt?: string;
 	watched?: boolean;

@@ -55,6 +55,7 @@
     scanLibrary,
     browseFolders,
     getPerformanceSettings,
+    getCatalogPlayabilityAudit,
     getDiscoveryStatus,
     getPairingRequests,
     approvePairingRequest,
@@ -82,6 +83,7 @@
     type LibraryItem,
     type FolderEntry,
     type PerformanceSettingsResponse,
+    type PlayabilityAuditResponse,
     type DiscoveryStatusResponse,
     type PairingRequestItem,
     type ApprovedDeviceItem,
@@ -793,6 +795,43 @@
     try { perfSettings = await getPerformanceSettings(); } catch { /* ignore */ } finally { perfLoading = false; }
   }
 
+  // ─── GPU derived values (ported from orphan /dashboard) ───────────────────
+  // Uses sysStatus (polled every 5s) for real hardware metrics and
+  // perfSettings for worker-queue counts / encoder metadata.
+  const gpuHW         = $derived(sysStatus?.gpu ?? null);
+  const gpuHasAny     = $derived(gpuHW != null);
+  const gpuHasReal    = $derived(gpuHW != null && (gpuHW.utilizationPct ?? 0) > 0);
+  const gpuQueue      = $derived(perfSettings?.queues?.find(q => q.name === 'gpu') ?? null);
+  const gpuWorkers    = $derived(gpuQueue?.workers ?? perfSettings?.limits?.gpuWorkers ?? 0);
+  const gpuActive     = $derived(gpuQueue?.active ?? 0);
+  const hwAvail       = $derived(perfSettings?.hardwareAcceleration?.available ?? false);
+  const hwEncoder     = $derived(
+    perfSettings?.hardwareAcceleration?.selectedEncoder?.label ??
+    perfSettings?.hardwareAcceleration?.encoders?.[0]?.label ??
+    null
+  );
+  const gpuUtil = $derived.by(() => {
+    if (gpuHasReal) return Math.round(gpuHW!.utilizationPct!);
+    return gpuWorkers > 0 ? Math.round((gpuActive / gpuWorkers) * 100) : 0;
+  });
+  const gpuAdapterName = $derived(
+    gpuHW?.adapterName ??
+    perfSettings?.hardwareAcceleration?.selectedEncoder?.label ??
+    null
+  );
+
+  // ─── Playability audit state (ported from orphan /dashboard) ──────────────
+  let dashAudit        = $state<PlayabilityAuditResponse | null>(null);
+  let dashAuditLoading = $state(false);
+
+  async function loadDashAudit() {
+    if (dashAuditLoading) return;
+    dashAuditLoading = true;
+    try { dashAudit = await getCatalogPlayabilityAudit(); }
+    catch { /* silent */ }
+    finally { dashAuditLoading = false; }
+  }
+
   async function runHwTest() {
     hwTestRunning = true;
     hwTestResult = null;
@@ -1073,6 +1112,22 @@
     return `${bps} B/s`;
   }
 
+  // RAG colour for network throughput relative to link capacity.
+  // Returns green when idle/unknown, amber at ≥50%, red at ≥80%.
+  // When the ratio exceeds 1.0 it means total multi-NIC traffic is summed against
+  // the single fastest NIC speed (a common measurement artefact on multi-adapter or
+  // high-speed-NIC machines where GetIfTable caps at 4.29 Gbps). In that case we
+  // fall back to green rather than showing a misleading alarm.
+  function netRagColor(bps: number | undefined, linkBps: number | undefined): string {
+    const green = 'oklch(0.78 0.22 145)';
+    if (!linkBps || bps == null || bps <= 0) return green;
+    const pct = bps / linkBps;
+    if (pct > 1.0) return green; // ratio > 100 % = measurement artefact, don't alarm
+    if (pct >= 0.8) return 'oklch(0.68 0.26 22)';
+    if (pct >= 0.5) return 'oklch(0.85 0.22 75)';
+    return green;
+  }
+
   function computeParentPath(p: string): string | undefined {
     if (!p) return undefined;
     const hasBackslash = p.includes('\\');
@@ -1245,7 +1300,7 @@
     if (active === 'pending-approvals' && !pairingLoaded && !pairingLoading) loadPairingRequests();
     if (active === 'approved-devices' && !devicesLoaded && !devicesLoading) loadApprovedDevices();
     if (active === 'playback' && deviceProfiles.length === 0) loadDeviceProfiles();
-    if ((active === 'transcoding' || active === 'playback' || active === 'scanning') && !perfSettings && !perfLoading) loadPerf();
+    if ((active === 'dashboard' || active === 'transcoding' || active === 'playback' || active === 'scanning') && !perfSettings && !perfLoading) loadPerf();
     if (active !== current.id) sectionError = null;
   });
 
@@ -1944,7 +1999,7 @@
           </div>
 
           <!-- ── Instrument Cluster ──────────────────────────────────────────── -->
-          <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
 
             <!-- CPU Gauge — full-circle ring, % in middle -->
             {#if true}
@@ -1992,21 +2047,25 @@
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
               <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
               <div class="space-y-3.5">
+                {#if true}
+                {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
+                {@const xmitColor = netRagColor(sysStatus?.network?.transmitBps, sysStatus?.network?.linkSpeedBps)}
                 <div>
-                  <div class="mb-1 text-[11px] font-medium tracking-wide text-emerald-300/75">RECV ↓</div>
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground">RECV ↓</div>
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
-                    style="color: oklch(0.78 0.22 145); text-shadow: 0 0 10px oklch(0.78 0.22 145 / 0.22);">
+                    style="color: {recvColor};">
                     {sysStatus?.network ? formatBps(sysStatus.network.receiveBps) : '—'}
                   </div>
                 </div>
                 <div class="h-px bg-foreground/[0.08]"></div>
                 <div>
-                  <div class="mb-1 text-[11px] font-medium tracking-wide text-accent/85">XMIT ↑</div>
+                  <div class="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground">XMIT ↑</div>
                   <div class="font-serif-display text-2xl font-medium leading-none tabular-nums tracking-tight"
-                    style="color: oklch(0.72 0.16 255); text-shadow: 0 0 10px oklch(0.72 0.16 255 / 0.22);">
+                    style="color: {xmitColor};">
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
+                {/if}
               </div>
             </div>
 
@@ -2031,7 +2090,167 @@
                 </div>
               </div>
             </div>
+
+            <!-- GPU -->
+            <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
+              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">GPU</div>
+              {#if hwAvail || gpuHasAny}
+                <!-- Utilisation gauge: real hardware % when available, worker-slot % otherwise -->
+                {@const gpuOffset = _RING_CIRC * (1 - gpuUtil / 100)}
+                <div class="flex flex-col items-center">
+                  <svg viewBox="0 0 100 100" class="w-full max-w-[90px]" style="aspect-ratio: 1 / 1;">
+                    <circle cx="50" cy="50" r={_RING_R} fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="8"/>
+                    <circle cx="50" cy="50" r={_RING_R} fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 50 50)"
+                      style="stroke: {dashHudColor(gpuUtil)}; stroke-dasharray: {_RING_CIRC}; stroke-dashoffset: {gpuOffset}; filter: drop-shadow(0 0 5px {dashHudColor(gpuUtil)}); transition: stroke-dashoffset 1s ease, stroke 0.5s ease;" />
+                    <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                      font-family='Geist, ui-sans-serif, system-ui, sans-serif' font-size="26" font-weight="600" letter-spacing="-1.2"
+                      style="fill: {dashHudColor(gpuUtil)}; transition: fill 0.5s ease;">{gpuUtil}<tspan font-size="13" dx="1" dy="-4">%</tspan></text>
+                  </svg>
+                  <div class="mt-1.5 text-center text-[10px] text-foreground/45">{gpuHasReal ? 'live' : 'workers'}</div>
+                </div>
+                {#if gpuAdapterName}
+                  <div class="mt-2 truncate text-center text-[11px] font-medium leading-snug text-foreground/70" title={gpuAdapterName}>{gpuAdapterName}</div>
+                {/if}
+                <!-- VRAM bar -->
+                {#if gpuHW && gpuHW.vramTotalBytes && gpuHW.vramTotalBytes > 0}
+                  {@const vramPct = Math.min(100, ((gpuHW.vramUsedBytes ?? 0) / gpuHW.vramTotalBytes) * 100)}
+                  <div class="mt-2 space-y-1">
+                    <div class="flex justify-between text-[10px] text-foreground/45">
+                      <span>VRAM</span>
+                      <span class="tabular-nums">{formatBytes(gpuHW.vramUsedBytes)} / {formatBytes(gpuHW.vramTotalBytes)}</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full transition-[width] duration-1000"
+                        style="width: {vramPct}%; background: {dashHudColor(vramPct, 75, 90)};"></div>
+                    </div>
+                  </div>
+                {/if}
+                <!-- Temperature + fan compact row -->
+                {#if gpuHW?.temperatureC != null || gpuHW?.fanSpeedPct != null}
+                  <div class="mt-2 flex items-center justify-between text-[10px]">
+                    {#if gpuHW?.temperatureC != null}
+                      <span class="tabular-nums font-semibold"
+                        style="color: {(gpuHW.temperatureC) >= 85 ? 'oklch(0.68 0.26 22)' : (gpuHW.temperatureC) >= 70 ? 'oklch(0.85 0.22 75)' : 'oklch(0.78 0.22 145)'}"
+                      >{Math.round(gpuHW.temperatureC)}°C</span>
+                    {/if}
+                    {#if gpuHW?.fanSpeedPct != null}
+                      <span class="tabular-nums text-foreground/45">{Math.round(gpuHW.fanSpeedPct)}% fan</span>
+                    {/if}
+                  </div>
+                {/if}
+                <!-- P-state + encoder badge row -->
+                {#if gpuHW?.performanceState || hwEncoder}
+                  <div class="mt-2 flex flex-wrap items-center justify-center gap-1">
+                    {#if gpuHW?.performanceState}
+                      <span class="rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-mono text-foreground/50">{gpuHW.performanceState}</span>
+                    {/if}
+                    {#if hwEncoder}
+                      <span class="rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] text-foreground/45">{hwEncoder}</span>
+                    {/if}
+                  </div>
+                {/if}
+              {:else}
+                <div class="flex flex-1 flex-col items-center justify-center gap-2 py-4 text-center">
+                  <svg class="h-7 w-7 text-foreground/15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
+                  </svg>
+                  <div class="text-[11px] text-foreground/35">Not available</div>
+                </div>
+              {/if}
+            </div>
           </div>
+
+          <!-- ── GPU Details ─────────────────────────────────────────────────── -->
+          {#if gpuHW && (gpuHW.powerDrawW != null || gpuHW.encoderPct != null || gpuHW.clockGraphicsMHz != null || gpuHW.decoderPct != null || gpuHW.clockMemoryMHz != null || gpuHW.encoderSessions != null || gpuHW.fanSpeedPct != null || !!gpuHW.performanceState)}
+            <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">
+              <div class="mb-4 font-serif-display text-[15px] tracking-tight text-foreground/75">GPU Details</div>
+              <div class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+                {#if gpuHW.powerDrawW != null}
+                  {#if true}
+                    {@const powerPct = gpuHW.powerLimitW ? Math.min(100, (gpuHW.powerDrawW / gpuHW.powerLimitW) * 100) : 0}
+                    <div>
+                      <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                        <span class="text-foreground/50">Power</span>
+                        <span class="tabular-nums font-medium text-foreground/70">
+                          {gpuHW.powerDrawW.toFixed(1)} W{gpuHW.powerLimitW != null ? ` / ${Math.round(gpuHW.powerLimitW)} W` : ''}
+                        </span>
+                      </div>
+                      {#if gpuHW.powerLimitW != null}
+                        <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                          <div class="h-full rounded-full transition-[width] duration-1000"
+                            style="width: {powerPct}%; background: {dashHudColor(powerPct, 75, 90)};"></div>
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                {/if}
+                {#if gpuHW.encoderPct != null}
+                  <div>
+                    <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                      <span class="text-foreground/50">Encoder</span>
+                      <span class="tabular-nums font-medium text-foreground/70">{Math.round(gpuHW.encoderPct)}%</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full transition-[width] duration-1000"
+                        style="width: {Math.max(1, Math.round(gpuHW.encoderPct))}%; background: oklch(0.74 0.2 280);"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.decoderPct != null}
+                  <div>
+                    <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                      <span class="text-foreground/50">Decoder</span>
+                      <span class="tabular-nums font-medium text-foreground/70">{Math.round(gpuHW.decoderPct)}%</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full transition-[width] duration-1000"
+                        style="width: {Math.max(1, Math.round(gpuHW.decoderPct))}%; background: oklch(0.74 0.2 280);"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.clockGraphicsMHz != null}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">Core clock</div>
+                    <div class="tabular-nums text-[13px] font-semibold text-foreground/75">
+                      {gpuHW.clockGraphicsMHz.toLocaleString()} <span class="text-[10px] font-normal text-foreground/40">MHz</span>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.clockMemoryMHz != null}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">Mem clock</div>
+                    <div class="tabular-nums text-[13px] font-semibold text-foreground/75">
+                      {gpuHW.clockMemoryMHz.toLocaleString()} <span class="text-[10px] font-normal text-foreground/40">MHz</span>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.encoderSessions != null}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">Enc. sessions</div>
+                    <div class="tabular-nums text-[13px] font-semibold text-foreground/75">{gpuHW.encoderSessions}</div>
+                  </div>
+                {/if}
+                {#if gpuHW.fanSpeedPct != null}
+                  <div>
+                    <div class="mb-1 flex items-baseline justify-between text-[11px]">
+                      <span class="text-foreground/50">Fan</span>
+                      <span class="tabular-nums font-medium text-foreground/70">{Math.round(gpuHW.fanSpeedPct)}%</span>
+                    </div>
+                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div class="h-full rounded-full bg-foreground/25 transition-[width] duration-1000"
+                        style="width: {Math.round(gpuHW.fanSpeedPct)}%;"></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if gpuHW.performanceState}
+                  <div>
+                    <div class="mb-0.5 text-[11px] text-foreground/50">P-state</div>
+                    <div class="font-mono text-[13px] font-semibold text-foreground/75">{gpuHW.performanceState}</div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
 
           <!-- ── Library Manifest ────────────────────────────────────────────── -->
           <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 px-5 py-4">
@@ -2107,9 +2326,10 @@
                     <div class="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[0.05] px-3 py-2">
                       <div class="flex items-center gap-2">
                         <span class="text-[14px] text-amber-400">⚠</span>
-                        <span class="text-[12.5px] text-amber-300/85">
+                        <a href="/movies?unprobed=1"
+                          class="text-[12.5px] text-amber-300/85 underline-offset-2 hover:text-amber-300 hover:underline">
                           {dashUnprobed.toLocaleString()} files awaiting analysis
-                        </span>
+                        </a>
                       </div>
                       {#if !dashProbeRunning}
                         <button type="button" onclick={handleDashProbeNow} disabled={dashProbeBusy}
@@ -2497,6 +2717,155 @@
             </div>
           {/if}
 
+          <!-- ── Playability Audit ──────────────────────────────────────────── -->
+          <div class="mb-4 rounded-xl border border-foreground/[0.12] bg-surface/20 p-5">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div class="font-serif-display text-[15px] tracking-tight text-foreground/75">Playability Audit</div>
+              <button
+                type="button"
+                onclick={loadDashAudit}
+                disabled={dashAuditLoading}
+                class="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-1 text-[11px] text-foreground/55 transition-colors hover:border-foreground/15 hover:text-foreground/80 disabled:opacity-40"
+              >
+                {#if dashAuditLoading}
+                  <span class="h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent"></span>
+                  Analysing…
+                {:else}
+                  Run Audit
+                {/if}
+              </button>
+            </div>
+
+            {#if !dashAudit && !dashAuditLoading}
+              <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                <svg class="h-7 w-7 text-foreground/15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
+                </svg>
+                <div class="text-[12px] text-foreground/40">
+                  Click <span class="font-medium text-foreground/60">Run Audit</span> to analyse playback compatibility across device profiles
+                </div>
+              </div>
+            {:else if dashAudit}
+              {@const profiles = [
+                { id: 'web',         label: 'Web Browser' },
+                { id: 'apple-tv',    label: 'Apple TV' },
+                { id: 'android-tv',  label: 'Android TV' },
+              ]}
+              <div class="grid gap-4 md:grid-cols-2">
+                <!-- Profile breakdown cards -->
+                <div>
+                  <div class="mb-3 text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40">By Device Profile</div>
+                  <div class="space-y-4">
+                    {#each profiles as { id, label }}
+                      {@const bd = dashAudit.byProfile[id]}
+                      {#if bd && bd.total > 0}
+                        {@const pct = (n: number) => Math.round((n / bd.total) * 100)}
+                        <div>
+                          <div class="mb-1.5 flex items-center justify-between text-[12px]">
+                            <span class="font-medium text-foreground/70">{label}</span>
+                            <span class="tabular-nums text-foreground/40">{bd.total.toLocaleString()} files</span>
+                          </div>
+                          <div class="flex h-2.5 w-full overflow-hidden rounded-full">
+                            {#if bd.directPlay > 0}
+                              <div class="h-full" style="width:{pct(bd.directPlay)}%; background: oklch(0.78 0.22 145);" title="Direct play: {pct(bd.directPlay)}%"></div>
+                            {/if}
+                            {#if bd.remux > 0}
+                              <div class="h-full" style="width:{pct(bd.remux)}%; background: oklch(0.62 0.22 285);" title="Remux: {pct(bd.remux)}%"></div>
+                            {/if}
+                            {#if bd.audioTranscode > 0}
+                              <div class="h-full" style="width:{pct(bd.audioTranscode)}%; background: oklch(0.85 0.22 75);" title="Audio transcode: {pct(bd.audioTranscode)}%"></div>
+                            {/if}
+                            {#if bd.videoTranscode > 0}
+                              <div class="h-full" style="width:{pct(bd.videoTranscode)}%; background: oklch(0.68 0.26 22);" title="Video transcode: {pct(bd.videoTranscode)}%"></div>
+                            {/if}
+                          </div>
+                          <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums">
+                            <span style="color: oklch(0.78 0.22 145)">Direct {pct(bd.directPlay)}%</span>
+                            {#if bd.remux > 0}<span style="color: oklch(0.72 0.20 285)">Remux {pct(bd.remux)}%</span>{/if}
+                            {#if bd.audioTranscode > 0}<span style="color: oklch(0.85 0.22 75)">Audio {pct(bd.audioTranscode)}%</span>{/if}
+                            {#if bd.videoTranscode > 0}<span style="color: oklch(0.68 0.26 22)">Video {pct(bd.videoTranscode)}%</span>{/if}
+                          </div>
+                          <!-- Per-component breakdown -->
+                          {#if bd.videoActions || bd.audioActions || bd.containerActions}
+                            {@const actionLabel = (a: string) =>
+                              a === 'direct' ? 'Direct' :
+                              a === 'transcode' ? 'Transcode' :
+                              a === 'copy' ? 'Stream copy' :
+                              a === 'copy_or_transcode' ? 'Convert' :
+                              a === 'remux' ? 'Remux' :
+                              a === 'transcode_or_remux' ? 'Repackage' :
+                              a === 'direct_or_remux' ? 'Direct/Remux' :
+                              a}
+                            <div class="mt-2 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5 border-t border-foreground/[0.05] pt-2 text-[10px]">
+                              {#if bd.videoActions && Object.keys(bd.videoActions).length > 0}
+                                <span class="text-foreground/35 self-start pt-px">Video</span>
+                                <span class="text-foreground/55 flex flex-wrap gap-x-2">
+                                  {#each Object.entries(bd.videoActions).sort((a,b) => b[1]-a[1]) as [act, cnt]}
+                                    <span class="{act === 'direct' || act === 'copy' ? 'text-emerald-400/60' : 'text-amber-300/70'}">{actionLabel(act)} {pct(cnt)}%</span>
+                                  {/each}
+                                </span>
+                              {/if}
+                              {#if bd.audioActions && Object.keys(bd.audioActions).length > 0}
+                                <span class="text-foreground/35 self-start pt-px">Audio</span>
+                                <span class="text-foreground/55 flex flex-wrap gap-x-2">
+                                  {#each Object.entries(bd.audioActions).sort((a,b) => b[1]-a[1]) as [act, cnt]}
+                                    <span class="{act === 'direct' ? 'text-emerald-400/60' : 'text-amber-300/70'}">{actionLabel(act)} {pct(cnt)}%</span>
+                                  {/each}
+                                </span>
+                              {/if}
+                              {#if bd.containerActions && Object.keys(bd.containerActions).length > 0}
+                                <span class="text-foreground/35 self-start pt-px">Container</span>
+                                <span class="text-foreground/55 flex flex-wrap gap-x-2">
+                                  {#each Object.entries(bd.containerActions).sort((a,b) => b[1]-a[1]) as [act, cnt]}
+                                    <span class="{act === 'direct' || act === 'direct_or_remux' ? 'text-emerald-400/60' : 'text-amber-300/70'}">{actionLabel(act)} {pct(cnt)}%</span>
+                                  {/each}
+                                </span>
+                              {/if}
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+                    {/each}
+                  </div>
+                </div>
+
+                <!-- Top transcode triggers -->
+                {#if dashAudit.topReasons && dashAudit.topReasons.length > 0}
+                  <div>
+                    <div class="mb-3 text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40">Top Transcode Triggers</div>
+                    <div class="space-y-2">
+                      {#each dashAudit.topReasons.slice(0, 8) as reason}
+                        <div class="flex items-center gap-3">
+                          <div class="min-w-0 flex-1">
+                            <div class="truncate text-[12px] font-medium text-foreground/70">{reason.reasonText || reason.reasonCode}</div>
+                            <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              {#if reason.componentLabel}
+                                <span class="rounded bg-amber-400/10 px-1.5 py-px text-[9px] font-medium text-amber-300/80 ring-1 ring-amber-400/20">{reason.componentLabel}</span>
+                              {/if}
+                              {#if reason.videoAction && reason.videoAction !== 'direct'}
+                                <span class="rounded bg-foreground/[0.05] px-1.5 py-px text-[9px] text-foreground/40">Video: {reason.videoAction}</span>
+                              {/if}
+                              {#if reason.audioAction && reason.audioAction !== 'direct'}
+                                <span class="rounded bg-foreground/[0.05] px-1.5 py-px text-[9px] text-foreground/40">Audio: {reason.audioAction}</span>
+                              {/if}
+                              {#if reason.containerAction && reason.containerAction !== 'direct'}
+                                <span class="rounded bg-foreground/[0.05] px-1.5 py-px text-[9px] text-foreground/40">Container: {reason.containerAction}</span>
+                              {/if}
+                              <span class="text-[10px] capitalize text-foreground/35">{reason.profile}</span>
+                            </div>
+                          </div>
+                          <div class="shrink-0 rounded border border-foreground/[0.08] bg-foreground/[0.04] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/55">
+                            {reason.count.toLocaleString()}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+
           <!-- ── Now Playing ─────────────────────────────────────────────────── -->
           <!-- Always visible: shows an empty state when idle so people can spot the panel. -->
           {#if true}
@@ -2564,7 +2933,13 @@
                   <div class="flex items-center gap-4 px-5 py-2.5">
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-2">
-                        <span class="text-[13px] font-medium text-foreground/75 capitalize">{scan.kind ?? 'Scan'}</span>
+                        <span class="text-[13px] font-medium text-foreground/75">
+                          {scan.kind === 'all' ? 'Full Library Scan' :
+                           scan.kind === 'movies' ? 'Movies Scan' :
+                           scan.kind === 'tv' ? 'TV Scan' :
+                           scan.kind === 'episodes' ? 'Episodes Scan' :
+                           scan.kind ? (scan.kind.charAt(0).toUpperCase() + scan.kind.slice(1).replace(/_/g, ' ')) : 'Scan'}
+                        </span>
                         {#if scan.libraryId}
                           <code class="rounded bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-foreground/45">{scan.libraryId.slice(0, 8)}</code>
                         {/if}
@@ -3020,7 +3395,13 @@
                     <div class="hairline flex items-center gap-3 rounded-xl bg-surface/40 px-4 py-3">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 text-sm">
-                          <span class="font-medium capitalize">{scan.kind ?? 'Scan'}</span>
+                          <span class="font-medium">
+                            {scan.kind === 'all' ? 'Full Library Scan' :
+                             scan.kind === 'movies' ? 'Movies Scan' :
+                             scan.kind === 'tv' ? 'TV Scan' :
+                             scan.kind === 'episodes' ? 'Episodes Scan' :
+                             scan.kind ? (scan.kind.charAt(0).toUpperCase() + scan.kind.slice(1).replace(/_/g, ' ')) : 'Scan'}
+                          </span>
                           {#if scan.libraryId}<span class="font-mono text-[11px] text-muted-foreground">{scan.libraryId.slice(0,8)}</span>{/if}
                         </div>
                         <div class="mt-0.5 text-[11px] text-muted-foreground">{scan.status ?? ''}
