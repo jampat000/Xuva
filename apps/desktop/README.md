@@ -6,6 +6,7 @@ Current scaffold includes:
 
 - Tray/taskbar shell window.
 - Local server process supervision (start, stop, restart).
+- First launch defaults to the bundled local server and opens the web setup flow.
 - `window.xuvaDesktop.pickFolder(request)` bridge.
 - `window.xuvaDesktop.restartServer()` bridge.
 - Open Xuva action to `http://127.0.0.1:8097`.
@@ -22,10 +23,27 @@ npm run dev
 Notes:
 
 - Default server command is `go run ./cmd/Xuva` with cwd `server/`.
+- Packaged builds launch the bundled `resources/runtime/xuva-server.exe`.
+- Packaged builds default `XUVA_HTTP_ADDR` to `0.0.0.0:8097`.
+- Packaged builds create per-user runtime folders under `%LOCALAPPDATA%\Xuva`: `data`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
 - Override using:
   - `XUVA_SERVER_CMD`
   - `XUVA_SERVER_ARGS`
   - `XUVA_SERVER_CWD`
+
+## Windows package build
+
+The repository package script builds the server runtime, bundles FFmpeg/FFprobe,
+and then runs Electron Builder:
+
+```powershell
+./packaging/windows/build-package.ps1 -Version v0.0.x
+```
+
+Outputs:
+
+- `dist/windows/xuva-v0.0.x-win-x64.exe` unsigned per-user installer.
+- `dist/windows/xuva-v0.0.x-win-x64.zip` portable desktop package.
 
 ## Server discovery — when does this app need it?
 

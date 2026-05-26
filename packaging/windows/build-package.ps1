@@ -2,6 +2,7 @@ param(
 	[string]$Version = "dev",
 	[string]$OutputRoot = "dist/windows",
 	[switch]$SkipWebInstall,
+	[switch]$SkipDesktopInstall,
 	[switch]$LeavePublishedStatic
 )
 
@@ -47,6 +48,18 @@ function Get-GitValue {
 		if ($LASTEXITCODE -eq 0) { return ([string]$value).Trim() }
 	} catch {}
 	return ""
+}
+
+function Get-DesktopVersion {
+	param([Parameter(Mandatory = $true)][string]$ReleaseVersion)
+	$normalized = $ReleaseVersion.Trim()
+	if ($normalized.StartsWith("v")) {
+		$normalized = $normalized.Substring(1)
+	}
+	if ($normalized -match "^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$") {
+		return $normalized
+	}
+	return "0.0.0-dev"
 }
 
 function Test-GitWorkTree {
@@ -141,16 +154,25 @@ if ([string]::IsNullOrWhiteSpace($gitCommit)) { $gitCommit = "unknown" }
 $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 $outputBase = if ([System.IO.Path]::IsPathRooted($OutputRoot)) { $OutputRoot } else { Join-Path $repoRoot $OutputRoot }
-$stageRoot = Join-Path $outputBase "stage"
-$packageName = "xuva-$Version-win-x64"
-$packageRoot = Join-Path $stageRoot $packageName
-$appRoot = Join-Path $packageRoot "app"
-$binRoot = Join-Path $appRoot "bin"
-Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $binRoot -Force | Out-Null
+$desktopRoot = Join-Path $repoRoot "apps\desktop"
+$desktopRuntimeRoot = Join-Path $desktopRoot "runtime"
+$runtimeBinRoot = Join-Path $desktopRuntimeRoot "bin"
+$electronOutput = Join-Path $outputBase "electron"
+$desktopVersion = Get-DesktopVersion -ReleaseVersion $Version
+
+New-Item -ItemType Directory -Path $outputBase -Force | Out-Null
+Remove-Item -LiteralPath $desktopRuntimeRoot -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $electronOutput -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath $outputBase -File -ErrorAction SilentlyContinue |
+	Where-Object { $_.Name -like "xuva-v*-win-x64.*" } |
+	Remove-Item -Force
+New-Item -ItemType Directory -Path $runtimeBinRoot -Force | Out-Null
 
 if (-not $SkipWebInstall) {
 	Invoke-Native -FilePath $npm -ArgumentList @("ci") -WorkingDirectory (Join-Path $repoRoot "apps\web\svelte")
+}
+if (-not $SkipDesktopInstall) {
+	Invoke-Native -FilePath $npm -ArgumentList @("ci") -WorkingDirectory $desktopRoot
 }
 if (-not $LeavePublishedStatic) {
 	Assert-StaticNextClean -RepoRoot $repoRoot
@@ -161,44 +183,39 @@ try {
 	$publishedStatic = $true
 
 	$ldflags = "-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=$Version -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=$gitCommit -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=$buildDate"
-	Invoke-Native -FilePath $go -ArgumentList @("build", "-trimpath", "-ldflags=$ldflags", "-o", (Join-Path $appRoot "xuva.exe"), ".\cmd\Xuva") -WorkingDirectory (Join-Path $repoRoot "server")
+	Invoke-Native -FilePath $go -ArgumentList @("build", "-trimpath", "-ldflags=$ldflags", "-o", (Join-Path $desktopRuntimeRoot "xuva-server.exe"), ".\cmd\Xuva") -WorkingDirectory (Join-Path $repoRoot "server")
 } finally {
 	if (-not $LeavePublishedStatic -and $publishedStatic) {
 		Restore-StaticNext -RepoRoot $repoRoot
 	}
 }
 
-Save-VerifiedFFmpeg -DestinationDir $binRoot
+Save-VerifiedFFmpeg -DestinationDir $runtimeBinRoot
 
 @"
-param()
+Xuva Runtime
 
-`$root = Split-Path -Parent `$MyInvocation.MyCommand.Path
-if (-not `$env:XUVA_DATA_DIR) {
-	`$env:XUVA_DATA_DIR = Join-Path `$env:LOCALAPPDATA "Xuva\data"
-}
-if (-not `$env:XUVA_HTTP_ADDR) {
-	`$env:XUVA_HTTP_ADDR = "0.0.0.0:8097"
-}
-`$env:XUVA_FFMPEG_PATH = Join-Path `$root "bin\ffmpeg.exe"
-`$env:XUVA_FFPROBE_PATH = Join-Path `$root "bin\ffprobe.exe"
+This directory is managed by the packaged Xuva desktop app.
 
-& (Join-Path `$root "xuva.exe")
-"@ | Set-Content -LiteralPath (Join-Path $appRoot "Start-Xuva.ps1") -Encoding UTF8
+Normal users should launch Xuva.exe from the Start Menu, desktop shortcut,
+or extracted portable package root. Do not launch xuva-server.exe directly
+unless you are debugging the server runtime.
+"@ | Set-Content -LiteralPath (Join-Path $desktopRuntimeRoot "README.txt") -Encoding UTF8
 
 @"
 Xuva Windows Package
 
-This is an unsigned portable package.
+This build produces unsigned Windows desktop artifacts:
 
-Run:
-  powershell -ExecutionPolicy Bypass -File .\Start-Xuva.ps1
+  - xuva-v$desktopVersion-win-x64.exe: per-user installer
+  - xuva-v$desktopVersion-win-x64.zip: portable desktop package
 
-Then open:
-  http://localhost:8097/
+Run Xuva.exe from the installed app or extracted zip. The desktop app starts
+and supervises the bundled server runtime.
 
 Included runtime dependencies:
-  - xuva.exe
+  - Xuva.exe desktop shell
+  - xuva-server.exe
   - embedded web UI
   - ffmpeg.exe
   - ffprobe.exe
@@ -206,14 +223,28 @@ Included runtime dependencies:
 Default data directory:
   %LOCALAPPDATA%\Xuva\data
 
+Default runtime directories:
+  %LOCALAPPDATA%\Xuva\transcode
+  %LOCALAPPDATA%\Xuva\downloads
+  %LOCALAPPDATA%\Xuva\metadata
+  %LOCALAPPDATA%\Xuva\cache
+  %LOCALAPPDATA%\Xuva\temp
+  %LOCALAPPDATA%\Xuva\trailers
+
 Override with environment variables before launch:
   XUVA_DATA_DIR
+  XUVA_TRANSCODE_DIR
+  XUVA_DOWNLOADS_DIR
+  XUVA_METADATA_DIR
+  XUVA_CACHE_DIR
+  XUVA_TEMP_DIR
+  XUVA_TRAILERS_DIR
   XUVA_HTTP_ADDR
   XUVA_FFMPEG_PATH
   XUVA_FFPROBE_PATH
 
 The package is unsigned. Verify the SHA256 checksum published with the GitHub Release.
-"@ | Set-Content -LiteralPath (Join-Path $packageRoot "README.txt") -Encoding UTF8
+"@ | Set-Content -LiteralPath (Join-Path $desktopRuntimeRoot "PACKAGE-NOTES.txt") -Encoding UTF8
 
 @"
 FFmpeg and FFprobe are bundled from BtbN FFmpeg Builds:
@@ -221,15 +252,31 @@ https://github.com/BtbN/FFmpeg-Builds
 
 The build script downloads the LGPL Windows archive and verifies it against
 the upstream checksums.sha256 manifest before packaging.
-"@ | Set-Content -LiteralPath (Join-Path $packageRoot "THIRD_PARTY_FFMPEG.txt") -Encoding UTF8
+"@ | Set-Content -LiteralPath (Join-Path $desktopRuntimeRoot "THIRD_PARTY_FFMPEG.txt") -Encoding UTF8
 
-$zipPath = Join-Path $outputBase "$packageName.zip"
-Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipPath -Force
+try {
+	Invoke-Native -FilePath $npm -ArgumentList @(
+		"run",
+		"dist:win",
+		"--",
+		"--config.directories.output=$electronOutput",
+		"--config.extraMetadata.version=$desktopVersion"
+	) -WorkingDirectory $desktopRoot
 
-$shaPath = "$zipPath.sha256"
-$sha = Get-Sha256 -Path $zipPath
-"$sha  $(Split-Path -Leaf $zipPath)" | Set-Content -LiteralPath $shaPath -Encoding ASCII
+	$artifacts = Get-ChildItem -LiteralPath $electronOutput -File -ErrorAction Stop |
+		Where-Object { $_.Extension -in @(".exe", ".zip") }
+	if (-not $artifacts) {
+		throw "Electron build did not produce a Windows installer or portable zip."
+	}
 
-Write-Host "Package: $zipPath"
-Write-Host "SHA256:  $shaPath"
+	foreach ($artifact in $artifacts) {
+		$dest = Join-Path $outputBase $artifact.Name
+		Copy-Item -LiteralPath $artifact.FullName -Destination $dest -Force
+		$sha = Get-Sha256 -Path $dest
+		"$sha  $($artifact.Name)" | Set-Content -LiteralPath "$dest.sha256" -Encoding ASCII
+		Write-Host "Package: $dest"
+		Write-Host "SHA256:  $dest.sha256"
+	}
+} finally {
+	Remove-Item -LiteralPath $desktopRuntimeRoot -Recurse -Force -ErrorAction SilentlyContinue
+}

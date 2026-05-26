@@ -37,16 +37,19 @@ New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 try {
 	Expand-Archive -LiteralPath $resolvedPackage -DestinationPath $tempRoot -Force
 
-	Assert-Exists -Path (Join-Path $tempRoot "README.txt")
-	Assert-Exists -Path (Join-Path $tempRoot "THIRD_PARTY_FFMPEG.txt")
-	Assert-Exists -Path (Join-Path $tempRoot "app\xuva.exe")
-	Assert-Exists -Path (Join-Path $tempRoot "app\Start-Xuva.ps1")
-	Assert-Exists -Path (Join-Path $tempRoot "app\bin\ffmpeg.exe")
-	Assert-Exists -Path (Join-Path $tempRoot "app\bin\ffprobe.exe")
+	Assert-Exists -Path (Join-Path $tempRoot "Xuva.exe")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\app.asar")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\runtime\xuva-server.exe")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\runtime\README.txt")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\runtime\PACKAGE-NOTES.txt")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\runtime\THIRD_PARTY_FFMPEG.txt")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\runtime\bin\ffmpeg.exe")
+	Assert-Exists -Path (Join-Path $tempRoot "resources\runtime\bin\ffprobe.exe")
 
 	Assert-Absent -Path (Join-Path $tempRoot "apps")
 	Assert-Absent -Path (Join-Path $tempRoot "server\data")
 	Assert-Absent -Path (Join-Path $tempRoot ".git")
+	Assert-Absent -Path (Join-Path $tempRoot "app\Start-Xuva.ps1")
 
 	$forbiddenSwift = Get-ChildItem -LiteralPath $tempRoot -Recurse -Filter "*.swift" -ErrorAction SilentlyContinue | Select-Object -First 1
 	if ($forbiddenSwift) {
