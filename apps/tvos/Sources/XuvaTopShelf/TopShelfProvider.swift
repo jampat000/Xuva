@@ -1,7 +1,7 @@
 import TVServices
 
 @objc(TopShelfProvider)
-class TopShelfProvider: NSObject, TVTopShelfContentProvider {
+class TopShelfProvider: TVTopShelfContentProvider {
     func topShelfItems(completionHandler: @escaping (TVTopShelfContent?) -> Void) {
         guard let defaults = UserDefaults(suiteName: topShelfAppGroup),
               let data = defaults.data(forKey: topShelfPayloadKey),
