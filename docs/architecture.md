@@ -38,7 +38,7 @@ Preferred starting stack:
 - Media probing: ffprobe.
 - Media processing: FFmpeg.
 - API: HTTP/JSON for commands and reads, SSE for live server-to-client events, WebSocket only for future two-way realtime control.
-- Packaging: Windows installer, Linux packages, Docker.
+- Packaging: unsigned Windows installer/package, Linux packages, Docker.
 
 Go is the pragmatic default because it is fast enough, easy to distribute, straightforward to operate, and simpler to hire for than more specialized stacks.
 
@@ -58,6 +58,8 @@ Core server services:
 The first implementation should be one installable server process with separated internal services. This keeps installation light while preventing unrelated workloads from sharing uncontrolled queues.
 
 Desktop installs should run as a user-launched tray/taskbar app by default, not as an always-on system service. Runtime folder browsing and selection should therefore use the signed-in user's permissions: local drives, mapped drives, and reachable NAS/UNC paths are available when that user can access them. Xuva should not require elevated service permissions just to choose media, metadata, cache, download, or transcode folders. Packaged desktop builds should expose a small web bridge for native folder picking and server restart controls; the browser-only folder API remains the fallback for dev, headless, and remote-admin use.
+
+Windows packages are expected to be unsigned until code signing is commercially viable. Release trust must therefore come from reproducible tagged builds, published SHA256 checksums, clear GitHub Release provenance, and installer/runtime verification, not from paid Authenticode signing.
 
 Storage must be library-path agnostic. Xuva should support local internal disks, removable USB disks, NAS/SMB/NFS/network shares, and mounted volumes. NAS safety is one tuning profile, not the only target.
 
