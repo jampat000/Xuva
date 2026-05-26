@@ -20,8 +20,7 @@ public enum XuvaAPIError: LocalizedError {
     }
 }
 
-@MainActor
-public final class XuvaAPI {
+public final class XuvaAPI: @unchecked Sendable {
     public let baseURL: URL
     public var authToken: String?
     private let session: URLSession
@@ -71,14 +70,6 @@ public final class XuvaAPI {
         return try await send("GET", path: "/api/client/\(segment)/\(id)/similar")
     }
 
-    public func libraryMovies() async throws -> LibraryMoviesResponse {
-        try await send("GET", path: "/api/movies")
-    }
-
-    public func librarySeries() async throws -> LibrarySeriesResponse {
-        try await send("GET", path: "/api/series")
-    }
-
     /// Permanently deletes the media source file from the server (admin only).
     public func deleteMediaSource(id: String) async throws {
         let _: EmptyResponse = try await send("DELETE", path: "/api/media-sources/\(id)")
@@ -98,7 +89,8 @@ public final class XuvaAPI {
             audioTrackIndex: audioTrackIndex,
             subtitleTrackIndex: subtitleTrackIndex,
             subtitleTrackActive: subtitleTrackActive,
-            supportsAdaptive: true
+            supportsAdaptive: true,
+            preferAdaptive: true
         )
         return try await send("POST", path: "/api/client/playback/start", body: body)
     }
@@ -175,8 +167,8 @@ public final class XuvaAPI {
         guard (200..<300).contains(statusCode) else {
             throw XuvaAPIError.badStatus(statusCode, String(data: data, encoding: .utf8) ?? "")
         }
-        if Response.self == EmptyResponse.self, let empty = EmptyResponse() as? Response {
-            return empty
+        if Response.self == EmptyResponse.self {
+            return EmptyResponse() as! Response
         }
         return try decoder.decode(Response.self, from: data)
     }
