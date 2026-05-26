@@ -1,7 +1,8 @@
 param(
 	[string]$Version = "dev",
 	[string]$OutputRoot = "dist/windows",
-	[switch]$SkipWebInstall
+	[switch]$SkipWebInstall,
+	[switch]$LeavePublishedStatic
 )
 
 Set-StrictMode -Version Latest
@@ -46,6 +47,42 @@ function Get-GitValue {
 		if ($LASTEXITCODE -eq 0) { return ([string]$value).Trim() }
 	} catch {}
 	return ""
+}
+
+function Test-GitWorkTree {
+	param([Parameter(Mandatory = $true)][string]$RepoRoot)
+	& git -C $RepoRoot rev-parse --is-inside-work-tree *> $null
+	return $LASTEXITCODE -eq 0
+}
+
+function Assert-StaticNextClean {
+	param([Parameter(Mandatory = $true)][string]$RepoRoot)
+	if (-not (Test-GitWorkTree -RepoRoot $RepoRoot)) { return }
+	& git -C $RepoRoot diff --quiet -- server/internal/webapp/static-next
+	if ($LASTEXITCODE -ne 0) {
+		throw "server/internal/webapp/static-next has tracked changes. Commit/stash them before packaging, or rerun with -LeavePublishedStatic."
+	}
+	$untracked = & git -C $RepoRoot ls-files --others --exclude-standard -- server/internal/webapp/static-next
+	if ($LASTEXITCODE -ne 0) {
+		throw "Could not inspect static-next untracked files."
+	}
+	if ($untracked) {
+		throw "server/internal/webapp/static-next has untracked files. Clean them before packaging, or rerun with -LeavePublishedStatic."
+	}
+}
+
+function Restore-StaticNext {
+	param([Parameter(Mandatory = $true)][string]$RepoRoot)
+	if (-not (Test-GitWorkTree -RepoRoot $RepoRoot)) { return }
+	Write-Host "Restoring generated static web assets in working tree..."
+	& git -C $RepoRoot restore --worktree --staged -- server/internal/webapp/static-next
+	if ($LASTEXITCODE -ne 0) {
+		throw "Failed to restore tracked static-next files after packaging."
+	}
+	& git -C $RepoRoot clean -fdx -- server/internal/webapp/static-next
+	if ($LASTEXITCODE -ne 0) {
+		throw "Failed to clean generated static-next files after packaging."
+	}
 }
 
 function Save-VerifiedFFmpeg {
@@ -115,10 +152,21 @@ New-Item -ItemType Directory -Path $binRoot -Force | Out-Null
 if (-not $SkipWebInstall) {
 	Invoke-Native -FilePath $npm -ArgumentList @("ci") -WorkingDirectory (Join-Path $repoRoot "apps\web\svelte")
 }
-Invoke-Native -FilePath $npm -ArgumentList @("run", "publish:go-static") -WorkingDirectory (Join-Path $repoRoot "apps\web\svelte")
+if (-not $LeavePublishedStatic) {
+	Assert-StaticNextClean -RepoRoot $repoRoot
+}
+$publishedStatic = $false
+try {
+	Invoke-Native -FilePath $npm -ArgumentList @("run", "publish:go-static") -WorkingDirectory (Join-Path $repoRoot "apps\web\svelte")
+	$publishedStatic = $true
 
-$ldflags = "-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=$Version -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=$gitCommit -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=$buildDate"
-Invoke-Native -FilePath $go -ArgumentList @("build", "-trimpath", "-ldflags=$ldflags", "-o", (Join-Path $appRoot "xuva.exe"), ".\cmd\Xuva") -WorkingDirectory (Join-Path $repoRoot "server")
+	$ldflags = "-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=$Version -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=$gitCommit -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=$buildDate"
+	Invoke-Native -FilePath $go -ArgumentList @("build", "-trimpath", "-ldflags=$ldflags", "-o", (Join-Path $appRoot "xuva.exe"), ".\cmd\Xuva") -WorkingDirectory (Join-Path $repoRoot "server")
+} finally {
+	if (-not $LeavePublishedStatic -and $publishedStatic) {
+		Restore-StaticNext -RepoRoot $repoRoot
+	}
+}
 
 Save-VerifiedFFmpeg -DestinationDir $binRoot
 

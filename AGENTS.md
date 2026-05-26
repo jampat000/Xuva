@@ -42,17 +42,16 @@ This file is the short entry point for agent work. Do not turn it into a full ma
 Before merging normal server/web changes:
 
 ```powershell
-node tools/agent-check.cjs
-node --test server/internal/webapp/frontend_tests/*.test.cjs
-go test ./... 
-git diff --check
+./tools/check.ps1 -SkipFrontendInstall
 ```
 
 For security-sensitive or release work also run:
 
 ```powershell
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+./tools/check.ps1 -Release -SkipFrontendInstall
 ```
+
+The Go module root is `server/`. Do not run `go test ./...` from the repository root unless a root `go.work` is intentionally added later.
 
 ## Operating Rules
 

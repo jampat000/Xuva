@@ -44,12 +44,10 @@ Early release tags use the `v0.0.x` track until Windows/Docker install and upgra
 Run before tagging a release:
 
 ```powershell
-node tools/agent-check.cjs
-node --test server/internal/webapp/frontend_tests/*.test.cjs
-npm --prefix apps/web/svelte run check
-go test ./...
-git diff --check
+./tools/check.ps1 -Release -SkipFrontendInstall
 ```
+
+The canonical runner keeps monorepo working directories explicit; Go tests run from `server/`, not the repository root.
 
 ## 7) Installation And Upgrade
 

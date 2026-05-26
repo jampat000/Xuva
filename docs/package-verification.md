@@ -24,6 +24,8 @@ Automated package verification:
 ./packaging/windows/verify-package.ps1 -PackagePath "dist/windows/xuva-v0.0.x-win-x64.zip"
 ```
 
+Local package builds restore `server/internal/webapp/static-next` after compiling the Go binary so release rehearsal does not leave generated web assets in the working tree. Use `-LeavePublishedStatic` only when intentionally refreshing committed embedded assets.
+
 Clean install smoke:
 
 1. Verify package checksum.
@@ -54,6 +56,14 @@ Rollback smoke:
 3. Restore the data directory or database backup.
 4. Start the previous package.
 5. Confirm setup does not reappear for an established install.
+
+Local rollback rehearsal:
+
+```powershell
+./tools/rehearse-install-upgrade-rollback.ps1 -DataDir "data"
+```
+
+If `xuva.db-wal` exists, stop Xuva before running a full database rehearsal. Use `-SkipDatabase` only when validating settings rollback while the server is still running.
 
 ## Docker Package
 
@@ -97,15 +107,18 @@ Upgrade smoke:
 ## Required Local Checks Before Tagging
 
 ```powershell
-node tools/agent-check.cjs
-node --test server/internal/webapp/frontend_tests/*.test.cjs
-npm --prefix apps/web/svelte run check
-go test ./...
-git diff --check
+./tools/check.ps1 -Release -SkipFrontendInstall
 ```
 
-For security-sensitive releases:
+The check runner intentionally executes Go commands from `server/`, because that is the Go module root.
+
+## Release Dry Run
+
+Before creating a real tag, run the Release workflow manually with:
 
 ```powershell
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+gh workflow run Release --ref main -f version=v0.0.1 -f dry_run=true
+gh run watch --exit-status
 ```
+
+The dry run builds and verifies the unsigned Windows package and builds/smokes the Docker image without publishing a GitHub Release or pushing GHCR tags.

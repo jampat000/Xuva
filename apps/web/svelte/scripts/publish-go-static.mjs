@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import process from 'node:process';
@@ -54,8 +54,11 @@ async function snapshotExistingStaticNext() {
 	try {
 		await rename(staticNextDir, staticNextBackupDir);
 	} catch (error) {
-		const maybeMissing = String(error?.code || '').toUpperCase();
-		if (maybeMissing !== 'ENOENT') throw error;
+		const code = String(error?.code || '').toUpperCase();
+		if (code === 'ENOENT') return;
+		if (code !== 'EXDEV') throw error;
+		await cp(staticNextDir, staticNextBackupDir, { recursive: true, force: true });
+		await rm(staticNextDir, { recursive: true, force: true });
 	}
 }
 
@@ -64,8 +67,11 @@ async function restoreStaticNextSnapshot() {
 	try {
 		await rename(staticNextBackupDir, staticNextDir);
 	} catch (error) {
-		const maybeMissing = String(error?.code || '').toUpperCase();
-		if (maybeMissing !== 'ENOENT') throw error;
+		const code = String(error?.code || '').toUpperCase();
+		if (code === 'ENOENT') return;
+		if (code !== 'EXDEV') throw error;
+		await cp(staticNextBackupDir, staticNextDir, { recursive: true, force: true });
+		await rm(staticNextBackupDir, { recursive: true, force: true });
 	}
 }
 
