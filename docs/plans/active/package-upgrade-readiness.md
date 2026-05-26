@@ -8,6 +8,8 @@ Make Xuva releasable as a server/client product with robust upgrades and predict
 - Docker image.
 - Later Linux bare-metal packages.
 
+Early package releases use `v0.0.x` tags. `v1.0.0` is reserved until install, upgrade, rollback, and local file/NAS workflows are proven.
+
 The release package contains the Xuva server, embedded web UI, runtime dependencies, and desktop shell where applicable. It does not contain Apple, Android, iOS, tvOS, or other native app builds.
 
 ## Packaging Direction

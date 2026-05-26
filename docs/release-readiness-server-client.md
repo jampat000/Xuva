@@ -2,6 +2,8 @@
 
 This checklist gates releases for Xuva as a server/client system.
 
+Early release tags use the `v0.0.x` track until Windows/Docker install and upgrade behavior is proven enough for `v1.0.0`. See [Release versioning](release-versioning.md).
+
 ## 1) Runtime Reliability
 
 - Server boots cleanly with persisted settings and runtime directories.
