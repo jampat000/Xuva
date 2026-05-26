@@ -16,9 +16,10 @@ import (
 )
 
 type Service struct {
-	DataDir string
-	Path    string
-	db      *sql.DB
+	DataDir     string
+	Path        string
+	db          *sql.DB
+	preexisting bool
 }
 
 func Open(ctx context.Context, dataDir string) (*Service, error) {
@@ -30,15 +31,21 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "xuva.db")
+	_, statErr := os.Stat(dbPath)
+	preexisting := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, statErr
+	}
 	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, err
 	}
 
 	service := &Service{
-		DataDir: dataDir,
-		Path:    dbPath,
-		db:      db,
+		DataDir:     dataDir,
+		Path:        dbPath,
+		db:          db,
+		preexisting: preexisting,
 	}
 	if err := service.configure(ctx); err != nil {
 		db.Close()
@@ -99,6 +106,19 @@ func (s *Service) configure(ctx context.Context) error {
 }
 
 func (s *Service) migrate(ctx context.Context) error {
+	backupCreated := false
+	if s.preexisting {
+		ledgerExists, err := s.schemaMigrationLedgerExists(ctx)
+		if err != nil {
+			return err
+		}
+		if !ledgerExists {
+			if err := s.backupBeforeSchemaMigration(ctx); err != nil {
+				return err
+			}
+			backupCreated = true
+		}
+	}
 	if err := s.ensureMigrationLedger(ctx); err != nil {
 		return err
 	}
@@ -111,11 +131,28 @@ func (s *Service) migrate(ctx context.Context) error {
 		if applied {
 			continue
 		}
+		if s.preexisting && !backupCreated {
+			if err := s.backupBeforeSchemaMigration(ctx); err != nil {
+				return err
+			}
+			backupCreated = true
+		}
 		if err := s.applyMigration(ctx, migration, checksum); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *Service) schemaMigrationLedgerExists(ctx context.Context) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+		AND name = 'schema_migrations'
+	`).Scan(&count)
+	return count > 0, err
 }
 
 type schemaMigration struct {
@@ -185,6 +222,18 @@ func (s *Service) applyMigration(ctx context.Context, migration schemaMigration,
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit schema migration %s: %w", migration.ID, err)
+	}
+	return nil
+}
+
+func (s *Service) backupBeforeSchemaMigration(ctx context.Context) error {
+	backupDir := filepath.Join(s.DataDir, "backups")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return err
+	}
+	backupPath := filepath.Join(backupDir, "schema-upgrade-"+time.Now().UTC().Format("20060102T150405Z")+".db")
+	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", backupPath); err != nil {
+		return fmt.Errorf("backup database before schema migration: %w", err)
 	}
 	return nil
 }
