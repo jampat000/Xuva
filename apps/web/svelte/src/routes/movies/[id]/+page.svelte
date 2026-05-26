@@ -15,6 +15,7 @@
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
   import { getPerformanceSettings } from '$lib/api/operator';
   import { formatResolution, formatBitrate, formatChannels, formatCodec, formatLanguage, formatFileSize, audioSummary, playabilityBadge, playabilityShortLabel } from '$lib/utils/mediaFormat';
+  import PlayabilityMatrix from '$lib/components/PlayabilityMatrix.svelte';
   import type { MovieDetailResponse } from '$lib/api/home';
   import type { MetadataRecord, MetadataCredit, TMDBCandidate } from '$lib/api/browse';
 
@@ -514,28 +515,22 @@
                     </span>
                   {/each}
                 </div>
-                <!-- Multi-device playability matrix — shows Web / Apple TV / Android TV -->
+                <!-- Per-device playability breakdown — Video / Audio / Container / Subtitles -->
                 {#if mediaSourceId && versionPlayability[mediaSourceId]}
-                  {@const decisions = versionPlayability[mediaSourceId]}
-                  <div class="mt-4 grid grid-cols-3 gap-2">
-                    {#each deviceProfiles as profile}
-                      {@const d = decisions[profile]}
-                      {@const b = playabilityBadge(d?.mode)}
-                      <div class="rounded-lg p-2.5 text-center" style={`background: ${b.color.replace(')', ' / 0.07)')}; border: 1px solid ${b.color.replace(')', ' / 0.2)')};`} title={d?.reasonText || b.blurb}>
-                        <div class="mb-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{deviceLabels[profile]}</div>
-                        <div class="flex items-center justify-center gap-1">
-                          <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background: ${b.color};`}></span>
-                          <span class="text-[11px] font-medium" style={`color: ${b.color};`}>{playabilityShortLabel(d?.mode)}</span>
-                        </div>
-                        {#if (d?.mode === 'transcode' || d?.mode === 'adaptive') && selectedEncoderLabel}
-                          <div class="mt-1 text-[9px] text-muted-foreground/60">{selectedEncoderLabel}</div>
-                        {/if}
-                      </div>
-                    {/each}
+                  <div class="mt-6">
+                    <div class="mb-2.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/50">
+                      Playback per device
+                    </div>
+                    <PlayabilityMatrix
+                      decisions={versionPlayability[mediaSourceId]}
+                      {deviceProfiles}
+                      {deviceLabels}
+                      {mediaSource}
+                      {audioTracks}
+                      {subtitleTracks}
+                      encoderLabel={selectedEncoderLabel}
+                    />
                   </div>
-                  {#if decisions.web?.reasonText}
-                    <p class="mt-2 text-[11.5px] italic text-muted-foreground/70">{decisions.web.reasonText}</p>
-                  {/if}
                 {/if}
               </div>
             {/if}
