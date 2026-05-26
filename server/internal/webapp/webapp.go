@@ -1,3 +1,4 @@
+// Package webapp serves the embedded SvelteKit SPA and static assets.
 package webapp
 
 import (
