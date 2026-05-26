@@ -3,19 +3,22 @@
 # Source:  C:\Projects\Xuva
 # Dest:    \\storage-city\data\Projects\Xuva
 #
-# Excluded:
+# Excluded directories:
+#   .git\          — git objects live on GitHub, not the NAS backup
 #   node_modules\  — 100k+ files, fully reproducible via npm install
-#   .air\          — compiled binaries, rebuilt per machine
-#   .svelte-kit\   — vite cache, rebuilds automatically
-#   *.log          — transient log files
+#   .air\          — compiled Go binaries, rebuilt per machine
+#   .svelte-kit\   — vite/SvelteKit cache, rebuilds automatically
+#
+# NOTE: /MIR is NOT used here so that directories existing only on the NAS
+# (legacy native app projects: apps/android-tv, apps/apple-core, apps/desktop,
+# apps/ios, apps/tvos) are preserved until explicitly removed by the user.
+# Switch to /MIR once you've confirmed nothing valuable lives on the NAS only.
 
 $src  = "C:\Projects\Xuva"
 $dest = "\\storage-city\data\Projects\Xuva"
 $log  = "C:\Projects\Xuva\tools\nas-sync.log"
 
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-
-# Keep last 500 lines of log (trim on each run)
+# Keep last 500 lines of log
 if (Test-Path $log) {
     $lines = Get-Content $log
     if ($lines.Count -gt 500) {
@@ -24,14 +27,15 @@ if (Test-Path $log) {
 }
 
 robocopy $src $dest `
-    /MIR /R:2 /W:5 /MT:4 `
-    /XD node_modules .air .svelte-kit `
+    /E /R:2 /W:5 /MT:4 `
+    /XD .git node_modules .air .svelte-kit `
     /XF "*.log" "*.tmp" `
     /NP /NFL /NDL /NJH /NJS
 
-$rc = $LASTEXITCODE
-# Robocopy exit codes: 0=nothing to do, 1=files copied, 2=extras deleted,
-# 3=both, 4+=errors. Only log when something happened or errored.
+$rc        = $LASTEXITCODE
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+# 0 = nothing to do, 1 = files copied — only log interesting results
 if ($rc -ge 1) {
     $verb = if ($rc -ge 8) { "ERROR" } elseif ($rc -ge 4) { "WARN" } else { "SYNC" }
     Add-Content -Path $log -Value "$timestamp [$verb] robocopy exit $rc" -Encoding UTF8
