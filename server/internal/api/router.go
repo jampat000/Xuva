@@ -5184,6 +5184,9 @@ func systemStatusHandler(deps Deps) http.HandlerFunc {
 			"network":     snap.Network,
 			"disks":       snap.Disks,
 		}
+		if snap.GPU != nil {
+			payload["gpu"] = snap.GPU
+		}
 		if !deps.StartedAt.IsZero() {
 			payload["serverStartedAt"] = deps.StartedAt.Format(time.RFC3339)
 		}
