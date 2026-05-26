@@ -64,6 +64,26 @@ func TestHealthUsesStableStartedAt(t *testing.T) {
 	}
 }
 
+func TestSystemVersionIsPublicAndIncludesSchemaVersion(t *testing.T) {
+	startedAt := time.Date(2026, 5, 26, 1, 2, 3, 0, time.UTC)
+	router := NewRouter(testDeps(t, startedAt))
+
+	payload := getJSON(t, router, "/api/system/version")
+
+	if payload["product"] != "xuva" || payload["version"] != "dev" {
+		t.Fatalf("expected product/version identity, got %#v", payload)
+	}
+	if payload["schemaVersion"] != "0001_legacy_inline_schema" {
+		t.Fatalf("expected schema version, got %#v", payload)
+	}
+	if payload["startedAt"] != startedAt.Format(time.RFC3339) {
+		t.Fatalf("expected stable startedAt, got %#v", payload)
+	}
+	if _, ok := payload["goVersion"].(string); !ok {
+		t.Fatalf("expected go version, got %#v", payload)
+	}
+}
+
 func TestRootServesWebApp(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -3598,6 +3618,7 @@ func testDeps(t *testing.T, startedAt time.Time) Deps {
 	return Deps{
 		Config:    cfg,
 		StartedAt: startedAt,
+		Database:  db,
 		Events:    eventBus,
 		Observe:   observe,
 		Resources: manager,
@@ -3640,6 +3661,7 @@ func testDepsWithAuth(t *testing.T, startedAt time.Time) Deps {
 		}
 	})
 	deps.Catalog = catalog.NewService(db)
+	deps.Database = db
 	deps.Metadata = metaprovider.NewService(deps.Config, deps.Catalog, deps.Events)
 	deps.Scans = scans.NewService(deps.Config, deps.Events, deps.Jobs.Scan, deps.Libraries, deps.Scanner, deps.Catalog, deps.Metadata, deps.Movies, deps.TV)
 	deps.Probes = probes.NewService(deps.Events, deps.Jobs.Probe, deps.Catalog, probe.NewService("ffprobe"))
@@ -3671,6 +3693,7 @@ func testDepsWithAuthNoBootstrap(t *testing.T, startedAt time.Time) Deps {
 		}
 	})
 	deps.Catalog = catalog.NewService(db)
+	deps.Database = db
 	deps.Metadata = metaprovider.NewService(deps.Config, deps.Catalog, deps.Events)
 	deps.Scans = scans.NewService(deps.Config, deps.Events, deps.Jobs.Scan, deps.Libraries, deps.Scanner, deps.Catalog, deps.Metadata, deps.Movies, deps.TV)
 	deps.Probes = probes.NewService(deps.Events, deps.Jobs.Probe, deps.Catalog, probe.NewService("ffprobe"))

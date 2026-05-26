@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	_ "image/png"
 	"io"
 	"log/slog"
-	cryptorand "crypto/rand"
 	"math/rand"
 	"net"
 	"net/http"
@@ -33,6 +33,7 @@ import (
 
 	"github.com/jampat000/Xuva/server/internal/adaptive"
 	"github.com/jampat000/Xuva/server/internal/auth"
+	"github.com/jampat000/Xuva/server/internal/buildinfo"
 	"github.com/jampat000/Xuva/server/internal/catalog"
 	"github.com/jampat000/Xuva/server/internal/chapters"
 	"github.com/jampat000/Xuva/server/internal/config"
@@ -67,8 +68,8 @@ import (
 	"github.com/jampat000/Xuva/server/internal/trailers"
 	"github.com/jampat000/Xuva/server/internal/transcode"
 	"github.com/jampat000/Xuva/server/internal/trending"
-	"github.com/jampat000/Xuva/server/internal/watchlist"
 	"github.com/jampat000/Xuva/server/internal/tv"
+	"github.com/jampat000/Xuva/server/internal/watchlist"
 	"github.com/jampat000/Xuva/server/internal/webapp"
 	qrcode "github.com/skip2/go-qrcode"
 )
@@ -130,18 +131,19 @@ func NewRouter(deps Deps) http.Handler {
 	// anonymous. The rationale for each one is documented inline; do not
 	// expand this list without a security review.
 	//
-	mux.HandleFunc("GET /api/health", healthHandler(deps))                          // liveness probe, no PII
-	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                        // readiness probe, no PII
-	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))       // pre-login server identity
-	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))       // mDNS / local discovery info
-	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))    // unpaired clients poll their own request
-	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))        // unpaired clients submit a request
-	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps)) // client withdraws its own pending request
-	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))          // first-run admin create
-	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))                  // sign in
-	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))               // first-run wizard gate, no PII
-	mux.HandleFunc("GET /api/pairing/qr/{token}/image.png", pairingQRImageHandler(deps))  // QR PNG — serves to any device pre-auth
-	mux.HandleFunc("POST /api/pairing/qr/{token}/claim", pairingQRClaimHandler(deps))     // device claims QR token
+	mux.HandleFunc("GET /api/health", healthHandler(deps))                               // liveness probe, no PII
+	mux.HandleFunc("GET /api/ready", readinessHandler(deps))                             // readiness probe, no PII
+	mux.HandleFunc("GET /api/system/version", systemVersionHandler(deps))                // release/upgrade identity, no PII
+	mux.HandleFunc("GET /api/client/bootstrap", clientBootstrapHandler(deps))            // pre-login server identity
+	mux.HandleFunc("GET /api/discovery/status", discoveryStatusHandler(deps))            // mDNS / local discovery info
+	mux.HandleFunc("GET /api/pairing/requests/{id}", pairingStatusHandler(deps))         // unpaired clients poll their own request
+	mux.HandleFunc("POST /api/pairing/requests", pairingCreateHandler(deps))             // unpaired clients submit a request
+	mux.HandleFunc("DELETE /api/pairing/requests/{id}", pairingCancelHandler(deps))      // client withdraws its own pending request
+	mux.HandleFunc("POST /api/auth/bootstrap", authBootstrapHandler(deps))               // first-run admin create
+	mux.HandleFunc("POST /api/auth/login", authLoginHandler(deps))                       // sign in
+	mux.HandleFunc("GET /api/setup/status", setupStatusHandler(deps))                    // first-run wizard gate, no PII
+	mux.HandleFunc("GET /api/pairing/qr/{token}/image.png", pairingQRImageHandler(deps)) // QR PNG — serves to any device pre-auth
+	mux.HandleFunc("POST /api/pairing/qr/{token}/claim", pairingQRClaimHandler(deps))    // device claims QR token
 
 	// === Authenticated endpoints ===
 	handleProtected(mux, deps, "GET /api/auth/session", authSessionHandler(deps))
@@ -1272,6 +1274,31 @@ func readinessHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+func systemVersionHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		info := buildinfo.Current()
+		schemaVersion := ""
+		if deps.Database != nil {
+			if value, err := deps.Database.SchemaVersion(r.Context()); err == nil {
+				schemaVersion = value
+			}
+		}
+		startedAt := deps.StartedAt
+		if startedAt.IsZero() {
+			startedAt = time.Now().UTC()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"product":       "xuva",
+			"version":       info.Version,
+			"commit":        info.Commit,
+			"buildDate":     info.Date,
+			"schemaVersion": schemaVersion,
+			"goVersion":     runtime.Version(),
+			"startedAt":     startedAt.UTC().Format(time.RFC3339),
+		})
+	}
+}
+
 func metricsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requests := []observability.RequestMetric{}
@@ -1699,14 +1726,14 @@ func catalogCodecsHandler(deps Deps) http.HandlerFunc {
 // transcoding and why.
 func catalogPlayabilityAuditHandler(deps Deps) http.HandlerFunc {
 	type profileBreakdown struct {
-		DirectPlay      int            `json:"directPlay"`
-		Remux           int            `json:"remux"`
-		AudioTranscode  int            `json:"audioTranscode"`
-		VideoTranscode  int            `json:"videoTranscode"`
-		Other           int            `json:"other"`
-		Total           int            `json:"total"`
-		VideoActions    map[string]int `json:"videoActions"`    // "direct","copy","transcode","adaptive"
-		AudioActions    map[string]int `json:"audioActions"`    // "direct","transcode","copy_or_transcode"
+		DirectPlay       int            `json:"directPlay"`
+		Remux            int            `json:"remux"`
+		AudioTranscode   int            `json:"audioTranscode"`
+		VideoTranscode   int            `json:"videoTranscode"`
+		Other            int            `json:"other"`
+		Total            int            `json:"total"`
+		VideoActions     map[string]int `json:"videoActions"`     // "direct","copy","transcode","adaptive"
+		AudioActions     map[string]int `json:"audioActions"`     // "direct","transcode","copy_or_transcode"
 		ContainerActions map[string]int `json:"containerActions"` // "direct","remux","transcode"
 	}
 
@@ -2029,8 +2056,8 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 			})
 		}
 		rows = append(rows,
-			map[string]any{"id": "tv",             "title": "TV Shows",       "items": tvSeriesItems(seriesItems)},
-			map[string]any{"id": "movies",         "title": "Movies",         "items": tvMovieItems(movieItems)},
+			map[string]any{"id": "tv", "title": "TV Shows", "items": tvSeriesItems(seriesItems)},
+			map[string]any{"id": "movies", "title": "Movies", "items": tvMovieItems(movieItems)},
 			map[string]any{"id": "recently-added", "title": "Recently Added", "items": tvRecentlyAddedItems(movieItems, seriesItems, limit)},
 		)
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -2468,8 +2495,8 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 				q := "?sessionId=" + url.QueryEscape(session.ID) +
 					"&deviceId=" + url.QueryEscape(session.DeviceID) +
 					"&token=" + url.QueryEscape(t)
-				streamTokQuery   = q
-				streamTokURL     = "/api/media-sources/" + session.MediaSourceID + "/stream" + q
+				streamTokQuery = q
+				streamTokURL = "/api/media-sources/" + session.MediaSourceID + "/stream" + q
 				streamTokSubBase = "/api/media-sources/" + session.MediaSourceID + "/subtitles/"
 			}
 		}
@@ -2487,8 +2514,8 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 		}
 		if streamTokQuery != "" {
 			resp["streamTokenQuery"] = streamTokQuery
-			resp["streamUrl"]        = streamTokURL
-			resp["subtitleBaseUrl"]  = streamTokSubBase
+			resp["streamUrl"] = streamTokURL
+			resp["subtitleBaseUrl"] = streamTokSubBase
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
@@ -7403,7 +7430,6 @@ func applyClientProfile(deps Deps, request playback.Request) playback.Request {
 	request.SupportsAdaptive = request.SupportsAdaptive || profile.SupportsHLS
 	return request
 }
-
 
 func playbackSourceFacts(ctx context.Context, deps Deps, request playback.Request, source catalog.MediaSourceItem) playback.SourceFacts {
 	tracks, _, _ := deps.Catalog.GetMediaSourceTracks(ctx, request.MediaSourceID)

@@ -19,6 +19,10 @@ RUN npm run publish:go-static
 # ─── Stage 2: Build Go binary (with embedded frontend) ───────────────────────
 FROM golang:1.26-alpine AS go-builder
 
+ARG XUVA_VERSION=dev
+ARG XUVA_COMMIT=unknown
+ARG XUVA_BUILD_DATE=
+
 RUN apk add --no-cache git
 
 WORKDIR /app/server
@@ -33,7 +37,7 @@ COPY --from=frontend-builder /app/server/internal/webapp/static-next ./internal/
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
-    -ldflags="-s -w" \
+    -ldflags="-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=${XUVA_VERSION} -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=${XUVA_COMMIT} -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=${XUVA_BUILD_DATE}" \
     -o /xuva ./cmd/Xuva
 
 # ─── Stage 3: Minimal runtime image ──────────────────────────────────────────

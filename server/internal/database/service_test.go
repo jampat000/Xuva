@@ -67,6 +67,23 @@ func TestOpenReusesSchemaMigrationLedger(t *testing.T) {
 	}
 }
 
+func TestSchemaVersionReturnsLatestMigrationID(t *testing.T) {
+	ctx := context.Background()
+	service, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer service.Close()
+
+	version, err := service.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version != "0001_legacy_inline_schema" {
+		t.Fatalf("expected latest schema version, got %q", version)
+	}
+}
+
 func TestOpenRejectsSchemaMigrationChecksumMismatch(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
