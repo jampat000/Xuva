@@ -27,6 +27,8 @@ This index is the repository map for humans and agents. Keep it short, current, 
 - [Operations runbook](operations-runbook.md)
 - [Server/client release readiness](release-readiness-server-client.md)
 - [Release versioning](release-versioning.md)
+- [Package verification](package-verification.md)
+- [Filesystem access](filesystem-access.md)
 - [Development mode](development-mode.md)
 - [Local discovery](local-discovery.md)
 - [Runtime recovery](runtime-recovery.md)

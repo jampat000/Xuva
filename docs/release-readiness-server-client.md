@@ -60,6 +60,8 @@ git diff --check
 - Unsigned Windows artifact trust is covered by GitHub Release provenance plus published SHA256 checksums.
 - No user-facing package assumes Go, Node.js, npm, SQLite tooling, FFmpeg, or FFprobe are already installed.
 - Docker images include runtime prerequisites and expose a healthcheck suitable for orchestrators.
+- Filesystem access is validated for local disks, mapped drives, UNC/NAS paths, and Docker bind mounts. See [Filesystem access](filesystem-access.md).
+- Package install, upgrade, and rollback checks follow [Package verification](package-verification.md).
 
 Rehearsal automation command:
 

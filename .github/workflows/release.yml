@@ -88,6 +88,24 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+      - name: Smoke test published Docker image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/xuva:${{ github.ref_name }}"
+          docker run -d --name xuva-release-smoke -p 18097:8097 "$IMAGE"
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18097/api/system/version >/tmp/xuva-version.json; then
+              cat /tmp/xuva-version.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs xuva-release-smoke
+          exit 1
+
+      - name: Cleanup release Docker smoke
+        if: always()
+        run: docker rm -f xuva-release-smoke >/dev/null 2>&1 || true
+
   release:
     name: Create GitHub release
     runs-on: ubuntu-latest
