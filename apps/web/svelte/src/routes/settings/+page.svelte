@@ -1118,6 +1118,18 @@
   // the single fastest NIC speed (a common measurement artefact on multi-adapter or
   // high-speed-NIC machines where GetIfTable caps at 4.29 Gbps). In that case we
   // fall back to green rather than showing a misleading alarm.
+  // Format a link speed in networking units (bps input → "100 Mbps" / "1 Gbps").
+  // Returns an empty string when the speed is unknown (0 or undefined).
+  function formatLinkSpeed(bps: number | undefined): string {
+    if (!bps || bps <= 0) return '';
+    if (bps >= 1_000_000_000) {
+      const gbps = bps / 1_000_000_000;
+      return `${Number.isInteger(gbps) ? gbps : gbps.toFixed(1)} Gbps`;
+    }
+    const mbps = bps / 1_000_000;
+    return `${Number.isInteger(mbps) ? mbps : mbps.toFixed(0)} Mbps`;
+  }
+
   function netRagColor(bps: number | undefined, linkBps: number | undefined): string {
     const green = 'oklch(0.78 0.22 145)';
     if (!linkBps || bps == null || bps <= 0) return green;
@@ -2065,6 +2077,14 @@
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
+                {#if sysStatus?.network}
+                  {@const linkLabel = formatLinkSpeed(sysStatus.network.linkSpeedBps)}
+                  {#if linkLabel}
+                    <div class="pt-1 text-[10px] text-muted-foreground/45 tabular-nums">link: {linkLabel}</div>
+                  {:else}
+                    <div class="pt-1 text-[10px] text-muted-foreground/30 italic">link speed unknown</div>
+                  {/if}
+                {/if}
                 {/if}
               </div>
             </div>
@@ -2111,19 +2131,27 @@
                 {#if gpuAdapterName}
                   <div class="mt-2 truncate text-center text-[11px] font-medium leading-snug text-foreground/70" title={gpuAdapterName}>{gpuAdapterName}</div>
                 {/if}
-                <!-- VRAM bar -->
+                <!-- VRAM bar — only show live used/total when we have real usage data (NVIDIA).
+                     For AMD/Intel via WMIC, vramUsedBytes is 0; show total capacity only. -->
                 {#if gpuHW && gpuHW.vramTotalBytes && gpuHW.vramTotalBytes > 0}
-                  {@const vramPct = Math.min(100, ((gpuHW.vramUsedBytes ?? 0) / gpuHW.vramTotalBytes) * 100)}
-                  <div class="mt-2 space-y-1">
-                    <div class="flex justify-between text-[10px] text-foreground/45">
+                  {#if gpuHW.vramUsedBytes && gpuHW.vramUsedBytes > 0}
+                    {@const vramPct = Math.min(100, (gpuHW.vramUsedBytes / gpuHW.vramTotalBytes) * 100)}
+                    <div class="mt-2 space-y-1">
+                      <div class="flex justify-between text-[10px] text-foreground/45">
+                        <span>VRAM</span>
+                        <span class="tabular-nums">{formatBytes(gpuHW.vramUsedBytes)} / {formatBytes(gpuHW.vramTotalBytes)}</span>
+                      </div>
+                      <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div class="h-full rounded-full transition-[width] duration-1000"
+                          style="width: {vramPct}%; background: {dashHudColor(vramPct, 75, 90)};"></div>
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="mt-2 flex justify-between text-[10px] text-foreground/45">
                       <span>VRAM</span>
-                      <span class="tabular-nums">{formatBytes(gpuHW.vramUsedBytes)} / {formatBytes(gpuHW.vramTotalBytes)}</span>
+                      <span class="tabular-nums">{formatBytes(gpuHW.vramTotalBytes)}</span>
                     </div>
-                    <div class="h-1 overflow-hidden rounded-full bg-white/[0.06]">
-                      <div class="h-full rounded-full transition-[width] duration-1000"
-                        style="width: {vramPct}%; background: {dashHudColor(vramPct, 75, 90)};"></div>
-                    </div>
-                  </div>
+                  {/if}
                 {/if}
                 <!-- Temperature + fan compact row -->
                 {#if gpuHW?.temperatureC != null || gpuHW?.fanSpeedPct != null}
