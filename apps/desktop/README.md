@@ -25,7 +25,10 @@ Notes:
 - Default server command is `go run ./cmd/Xuva` with cwd `server/`.
 - Packaged builds launch the bundled `resources/runtime/xuva-server.exe`.
 - Packaged builds default `XUVA_HTTP_ADDR` to `0.0.0.0:8097`.
-- Packaged builds create per-user runtime folders under `%LOCALAPPDATA%\Xuva`: `data`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+- Packaged builds prefer the machine runtime home `C:\ProgramData\Xuva` so one device has one durable server identity.
+- If `C:\ProgramData\Xuva` cannot be created or written, packaged builds fall back to `%LOCALAPPDATA%\Xuva` and set `XUVA_RUNTIME_SCOPE=user-fallback`.
+- Runtime folders are `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+- Override the runtime home with `XUVA_RUNTIME_HOME` when testing migrations or custom installs.
 - Override using:
   - `XUVA_SERVER_CMD`
   - `XUVA_SERVER_ARGS`

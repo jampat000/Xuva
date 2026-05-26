@@ -17,6 +17,7 @@ let discoveredServers = [];
 let bonjourBrowser = null;
 let currentMode = "local";
 let currentRemoteUrl = "";
+let currentRuntimeHome = "";
 
 function logEvent(event, fields = {}) {
   const payload = { ts: new Date().toISOString(), component: "desktop-shell", event, ...fields };
@@ -63,19 +64,76 @@ function packagedServerPath() {
 function ensureDir(dir) {
   try {
     fs.mkdirSync(dir, { recursive: true });
+    return true;
   } catch (err) {
     logEvent("directory.create_error", { dir, error: String(err) });
+    return false;
   }
+}
+
+function canWriteDir(dir) {
+  if (!ensureDir(dir)) return false;
+  const probe = path.join(dir, ".xuva-write-test");
+  try {
+    fs.writeFileSync(probe, String(Date.now()), "utf8");
+    fs.unlinkSync(probe);
+    return true;
+  } catch (err) {
+    logEvent("directory.write_probe_failed", { dir, error: String(err) });
+    return false;
+  }
+}
+
+function defaultLocalAppData(env) {
+  return env.LOCALAPPDATA || app.getPath("appData");
+}
+
+function defaultProgramData(env) {
+  if (env.PROGRAMDATA) return env.PROGRAMDATA;
+  return process.platform === "win32" ? "C:\\ProgramData" : defaultLocalAppData(env);
+}
+
+function resolveRuntimeHome(env) {
+  const explicit = String(env.XUVA_RUNTIME_HOME || "").trim();
+  if (explicit) {
+    const root = path.resolve(explicit);
+    if (!canWriteDir(root)) {
+      logEvent("runtime_home.explicit_unavailable", { root });
+      currentRuntimeHome = root;
+      return { root, scope: "explicit-unavailable" };
+    }
+    currentRuntimeHome = root;
+    return { root, scope: "explicit" };
+  }
+  const candidates = [
+    { root: path.join(defaultProgramData(env), "Xuva"), scope: "machine" },
+    { root: path.join(defaultLocalAppData(env), "Xuva"), scope: "user" },
+  ];
+
+  for (const candidate of candidates) {
+    if (canWriteDir(candidate.root)) {
+      currentRuntimeHome = candidate.root;
+      return candidate;
+    }
+  }
+
+  const fallback = path.join(defaultLocalAppData(env), "Xuva");
+  ensureDir(fallback);
+  currentRuntimeHome = fallback;
+  return { root: fallback, scope: "user-fallback" };
 }
 
 function serverEnv() {
   const env = { ...process.env };
   const root = runtimeRoot();
-  const localAppData = env.LOCALAPPDATA || app.getPath("appData");
-  const xuvaRoot = path.join(localAppData, "Xuva");
+  const runtime = resolveRuntimeHome(env);
+  const xuvaRoot = runtime.root;
+  env.XUVA_RUNTIME_HOME = xuvaRoot;
+  env.XUVA_RUNTIME_SCOPE = runtime.scope;
   if (!env.XUVA_DATA_DIR) {
     env.XUVA_DATA_DIR = path.join(xuvaRoot, "data");
   }
+  if (!env.XUVA_LOG_DIR) env.XUVA_LOG_DIR = path.join(xuvaRoot, "logs");
   if (!env.XUVA_TRANSCODE_DIR) env.XUVA_TRANSCODE_DIR = path.join(xuvaRoot, "transcode");
   if (!env.XUVA_DOWNLOADS_DIR) env.XUVA_DOWNLOADS_DIR = path.join(xuvaRoot, "downloads");
   if (!env.XUVA_METADATA_DIR) env.XUVA_METADATA_DIR = path.join(xuvaRoot, "metadata");
@@ -95,6 +153,7 @@ function serverEnv() {
   }
   for (const dir of [
     env.XUVA_DATA_DIR,
+    env.XUVA_LOG_DIR,
     env.XUVA_TRANSCODE_DIR,
     env.XUVA_DOWNLOADS_DIR,
     env.XUVA_METADATA_DIR,
@@ -295,6 +354,7 @@ function refreshTrayMenu() {
   const menu = Menu.buildFromTemplate([
     { label: "Open Xuva", click: showWindow },
     { label: "Open in Browser", click: () => shell.openExternal(activeAppURL()) },
+    { label: "Open Runtime Folder", click: () => currentRuntimeHome && shell.openPath(currentRuntimeHome) },
     { type: "separator" },
     { label: modeLabel, enabled: false },
     { label: "Change Server...", click: () => createSetupWindow() },
