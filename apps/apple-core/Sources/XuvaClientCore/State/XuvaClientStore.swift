@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import Security
 import os
+#if os(tvOS)
+import TVServices
+#endif
 
 @MainActor
 public final class XuvaClientStore: ObservableObject {
@@ -114,6 +117,9 @@ public final class XuvaClientStore: ObservableObject {
             persistCurrentAuthToken()
             connectionState = .paired
             screen = .home
+        }
+        if let snapshot = home, let currentAPI = api {
+            scheduleTopShelfRefresh(home: snapshot, api: currentAPI)
         }
         if UserDefaults.standard.bool(forKey: "xuva.dev.autoOpenFirstItem") {
             if let first = home?.rows?.flatMap({ $0.items ?? [] }).first {
@@ -512,6 +518,94 @@ public final class XuvaClientStore: ObservableObject {
         ]
         SecItemDelete(query as CFDictionary)
     }
+
+    // MARK: - Deep links
+
+    public func openDeepLink(kind: String, id: String) async {
+        guard connectionState == .paired, api != nil else { return }
+        await run {
+            guard let api else { throw XuvaAPIError.invalidURL }
+            selectedDetail = try await api.detail(kind: kind, id: id)
+            persistCurrentAuthToken()
+            screen = .detail
+        }
+    }
+
+    // MARK: - Top Shelf
+
+    private static let topShelfAppGroup = "group.com.xuva.tvos"
+    private static let topShelfPayloadKey = "xuva.topShelf.payload"
+
+    func scheduleTopShelfRefresh(home: ClientHomeResponse, api: XuvaAPI) {
+        Task.detached { [weak self] in
+            await self?.refreshTopShelf(home: home, api: api)
+        }
+    }
+
+    private func refreshTopShelf(home: ClientHomeResponse, api: XuvaAPI) async {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Self.topShelfAppGroup) else { return }
+        let imagesDir = container.appendingPathComponent("topshelf-images")
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
+
+        let (items, sectionTitle) = topShelfCandidates(from: home)
+        guard !items.isEmpty else { return }
+
+        var entries: [TopShelfEntryData] = []
+        for item in items.prefix(10) {
+            let filename = await downloadTopShelfImage(item: item, api: api, into: imagesDir)
+            entries.append(TopShelfEntryData(
+                id: item.id,
+                title: item.title ?? "",
+                detailKind: item.resolvedDetailKind,
+                detailId: item.resolvedDetailId,
+                imageFilename: filename,
+                progress: item.progress
+            ))
+        }
+
+        let payload = TopShelfPayloadData(items: entries, sectionTitle: sectionTitle)
+        if let data = try? JSONEncoder().encode(payload) {
+            UserDefaults(suiteName: Self.topShelfAppGroup)?.set(data, forKey: Self.topShelfPayloadKey)
+        }
+        #if os(tvOS)
+        TVTopShelfProvider.reportProviderUpdated()
+        #endif
+    }
+
+    private func topShelfCandidates(from home: ClientHomeResponse) -> ([HomeItem], String) {
+        let rows = home.rows ?? []
+        let cwRow = rows.first {
+            $0.id.lowercased() == "continue" || ($0.kind ?? "").lowercased().contains("continue")
+        }
+        if let items = cwRow?.items, !items.isEmpty {
+            return (items, "Continue Watching")
+        }
+        let newItems = rows.flatMap { $0.items ?? [] }.filter { ($0.progress ?? 0) == 0 }
+        if !newItems.isEmpty { return (Array(newItems.prefix(10)), "Recently Added") }
+        return (Array(rows.flatMap { $0.items ?? [] }.prefix(10)), "From Your Library")
+    }
+
+    private func downloadTopShelfImage(item: HomeItem, api: XuvaAPI, into dir: URL) async -> String? {
+        let urlStr = item.backdropUrl ?? item.posterUrl ?? item.imageUrl
+        guard let urlStr, let url = api.resolvedURL(urlStr) else { return nil }
+        let filename = "\(item.id).jpg"
+        let dest = dir.appendingPathComponent(filename)
+        if FileManager.default.fileExists(atPath: dest.path) { return filename }
+        var req = URLRequest(url: url)
+        if let token = api.authToken { req.setValue(token, forHTTPHeaderField: "X-Auth-Token") }
+        guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
+        try? data.write(to: dest)
+        return FileManager.default.fileExists(atPath: dest.path) ? filename : nil
+    }
+}
+
+private struct TopShelfEntryData: Codable {
+    let id: String; let title: String; let detailKind: String
+    let detailId: String; let imageFilename: String?; let progress: Double?
+}
+private struct TopShelfPayloadData: Codable {
+    let items: [TopShelfEntryData]; let sectionTitle: String
 }
 
 public enum XuvaScreen {

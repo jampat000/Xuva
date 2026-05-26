@@ -60,8 +60,15 @@ public struct XuvaRootView: View {
             watchlist.api = api
             await watchlist.syncFromServer()
         }
+        .onReceive(NotificationCenter.default.publisher(for: deepLinkNotification)) { note in
+            guard let kind = note.userInfo?["kind"] as? String,
+                  let id = note.userInfo?["id"] as? String else { return }
+            Task { await store.openDeepLink(kind: kind, id: id) }
+        }
     }
 }
+
+private let deepLinkNotification = Notification.Name("xuva.openDeepLink")
 
 /// Wraps `.focusEffectDisabled()` in a back-compat guard. Available
 /// iOS 17 / tvOS 17 / macOS 14+; on older targets just passes through.
