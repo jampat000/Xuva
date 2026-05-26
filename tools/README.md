@@ -50,6 +50,22 @@ When Xuva is actively running and the database file is locked, run settings-only
 ./tools/rehearse-install-upgrade-rollback.ps1 -DataDir "server/data" -SkipDatabase
 ```
 
+## Release Acceptance
+
+Run the shipped-artifact acceptance gate after building Windows and Docker release artifacts:
+
+```powershell
+./tools/release-acceptance.ps1 -Version v0.0.x -Commit "<git-sha>"
+```
+
+The acceptance gate launches the packaged Windows app and Docker image from blank runtime state, creates the first admin account, completes setup, saves libraries, scans sample media, verifies restart persistence, checks version metadata, and confirms structured logs.
+
+When GHCR publishing is unavailable, test the Docker tarball attached to the release:
+
+```powershell
+./tools/release-acceptance.ps1 -Version v0.0.x -Commit "<git-sha>" -DockerTar "dist/docker/xuva-v0.0.x-linux-amd64-docker.tar"
+```
+
 ## Media Scanner
 
 `xuva_scan.py` inventories a local or mapped NAS media folder and optionally runs `ffprobe` for stream metadata.
