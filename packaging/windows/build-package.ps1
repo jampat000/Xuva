@@ -220,19 +220,29 @@ Included runtime dependencies:
   - ffmpeg.exe
   - ffprobe.exe
 
+Default machine runtime home:
+  C:\ProgramData\Xuva
+
+If the machine runtime home cannot be created or written, the desktop shell
+falls back to:
+  %LOCALAPPDATA%\Xuva
+
 Default data directory:
-  %LOCALAPPDATA%\Xuva\data
+  <runtime-home>\data
 
 Default runtime directories:
-  %LOCALAPPDATA%\Xuva\transcode
-  %LOCALAPPDATA%\Xuva\downloads
-  %LOCALAPPDATA%\Xuva\metadata
-  %LOCALAPPDATA%\Xuva\cache
-  %LOCALAPPDATA%\Xuva\temp
-  %LOCALAPPDATA%\Xuva\trailers
+  <runtime-home>\logs
+  <runtime-home>\transcode
+  <runtime-home>\downloads
+  <runtime-home>\metadata
+  <runtime-home>\cache
+  <runtime-home>\temp
+  <runtime-home>\trailers
 
 Override with environment variables before launch:
+  XUVA_RUNTIME_HOME
   XUVA_DATA_DIR
+  XUVA_LOG_DIR
   XUVA_TRANSCODE_DIR
   XUVA_DOWNLOADS_DIR
   XUVA_METADATA_DIR

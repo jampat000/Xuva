@@ -31,12 +31,15 @@ The release package contains the Xuva server, embedded web UI, runtime dependenc
 - Run in the signed-in user session by default, not as a Windows service, so local disks, mapped drives, removable drives, SMB shares, and UNC paths match what the operator can browse.
 - Keep mutable state outside the install directory:
   - database
-  - settings
   - logs
+  - settings
   - backups
   - cache
   - transcode work
   - generated metadata
+- Preferred Windows runtime home is `C:\ProgramData\Xuva` so server identity, approvals, libraries, backups, logs, and upgrade state are per device/server rather than per Windows user. `%LOCALAPPDATA%\Xuva` is fallback-only when the shared runtime home is unavailable.
+- Windows desktop process remains a signed-in user session app by default so mapped drives, removable disks, and UNC/NAS paths match the operator's File Explorer access.
+- In-app upgrades should update application binaries through the desktop shell/update framework while preserving the runtime home and running pre-upgrade database backup/integrity checks before replacing the server binary.
 
 ### Docker
 
@@ -63,6 +66,7 @@ Replace the current ad-hoc SQL slice with a versioned migration ledger before pu
 - Automatic pre-upgrade database backup.
 - Fixture-based upgrade tests from older database snapshots.
 - Public version/status endpoint exposing app version, commit, schema version, data directory, and upgrade state.
+- Structured JSONL file logging under the runtime home for upgrade diagnostics and support bundles.
 
 ## MediaMop Findings To Reuse
 
