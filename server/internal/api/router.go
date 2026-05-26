@@ -2454,6 +2454,24 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 		case "episode":
 			defaultSubs = liveCfg.DefaultSubtitlesTV
 		}
+		// Issue a stream token atomically — the client can skip a separate
+		// getStreamToken round-trip when these fields are present in the response.
+		streamTokQuery, streamTokURL, streamTokSubBase := "", "", ""
+		if deps.Streaming != nil {
+			if t, _, tokErr := deps.Streaming.Issue(streaming.Expected{
+				MediaSourceID: session.MediaSourceID,
+				SessionID:     session.ID,
+				UserID:        session.UserID,
+				DeviceID:      session.DeviceID,
+			}, 0); tokErr == nil {
+				q := "?sessionId=" + url.QueryEscape(session.ID) +
+					"&deviceId=" + url.QueryEscape(session.DeviceID) +
+					"&token=" + url.QueryEscape(t)
+				streamTokQuery   = q
+				streamTokURL     = "/api/media-sources/" + session.MediaSourceID + "/stream" + q
+				streamTokSubBase = "/api/media-sources/" + session.MediaSourceID + "/subtitles/"
+			}
+		}
 		resp := map[string]any{
 			"sessionId":               session.ID,
 			"deviceId":                session.DeviceID,
@@ -2465,6 +2483,11 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			"decision":                decision,
 			"route":                   routePayload,
 			"defaultSubtitlesEnabled": defaultSubs,
+		}
+		if streamTokQuery != "" {
+			resp["streamTokenQuery"] = streamTokQuery
+			resp["streamUrl"]        = streamTokURL
+			resp["subtitleBaseUrl"]  = streamTokSubBase
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
