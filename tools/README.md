@@ -2,6 +2,18 @@
 
 ## Agent Harness Check
 
+Run the normal repository check suite from the root:
+
+```powershell
+./tools/check.ps1 -SkipFrontendInstall
+```
+
+Run the release-grade suite, including Go vulnerability scanning:
+
+```powershell
+./tools/check.ps1 -Release -SkipFrontendInstall
+```
+
 `agent-check.cjs` verifies that the repository remains legible to future agent runs:
 
 ```powershell

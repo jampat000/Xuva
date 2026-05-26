@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to dry-run or publish, for example v0.0.1'
+        required: true
+        default: 'v0.0.1'
+      dry_run:
+        description: 'Build and smoke artifacts without publishing GHCR tags or GitHub Release'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -13,11 +24,29 @@ jobs:
   version-policy:
     name: Validate release version policy
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      dry_run: ${{ steps.version.outputs.dry_run }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release inputs
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            DRY_RUN="${{ inputs.dry_run }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+            DRY_RUN="false"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"
+          echo "dry_run=${DRY_RUN}"
+
       - name: Validate release tag
-        run: node tools/validate-release-tag.cjs "${GITHUB_REF_NAME}"
+        run: node tools/validate-release-tag.cjs "${{ steps.version.outputs.version }}"
 
   windows:
     name: Build Windows package
@@ -39,7 +68,7 @@ jobs:
       - name: Build unsigned Windows package
         shell: powershell
         run: |
-          ./packaging/windows/build-package.ps1 -Version "${{ github.ref_name }}"
+          ./packaging/windows/build-package.ps1 -Version "${{ needs.version-policy.outputs.version }}"
 
       - name: Verify unsigned Windows package
         shell: powershell
@@ -69,46 +98,43 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: ${{ needs.version-policy.outputs.dry_run != 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/xuva
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest
-
       - name: Build date
         id: build_date
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build Docker image
         id: push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ needs.version-policy.outputs.dry_run != 'true' }}
+          load: ${{ needs.version-policy.outputs.dry_run == 'true' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/xuva:${{ needs.version-policy.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/xuva:latest
+          labels: |
+            org.opencontainers.image.title=Xuva
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version-policy.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
-            XUVA_VERSION=${{ github.ref_name }}
+            XUVA_VERSION=${{ needs.version-policy.outputs.version }}
             XUVA_COMMIT=${{ github.sha }}
             XUVA_BUILD_DATE=${{ steps.build_date.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.version-policy.outputs.dry_run == 'true' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
 
-      - name: Smoke test published Docker image
+      - name: Smoke test Docker image
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/xuva:${{ github.ref_name }}"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/xuva:${{ needs.version-policy.outputs.version }}"
           docker run -d --name xuva-release-smoke -p 18097:8097 "$IMAGE"
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:18097/api/system/version >/tmp/xuva-version.json; then
@@ -127,7 +153,9 @@ jobs:
   release:
     name: Create GitHub release
     runs-on: ubuntu-latest
+    if: ${{ needs.version-policy.outputs.dry_run != 'true' }}
     needs:
+      - version-policy
       - docker
       - windows
     steps:
@@ -143,7 +171,7 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        run: echo "tag=${{ needs.version-policy.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
         id: changelog
@@ -176,3 +204,17 @@ jobs:
           draft: false
           prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
           files: release-assets/*
+
+  dry-run-summary:
+    name: Release dry-run summary
+    runs-on: ubuntu-latest
+    if: ${{ needs.version-policy.outputs.dry_run == 'true' }}
+    needs:
+      - version-policy
+      - docker
+      - windows
+    steps:
+      - name: Summarize dry run
+        run: |
+          echo "Release dry run passed for ${{ needs.version-policy.outputs.version }}."
+          echo "No GitHub Release was created and no GHCR tags were pushed."
