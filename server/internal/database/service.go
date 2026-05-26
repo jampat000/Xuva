@@ -71,6 +71,18 @@ func (s *Service) Close() error {
 	return s.db.Close()
 }
 
+func (s *Service) SchemaVersion(ctx context.Context) (string, error) {
+	if s == nil || s.db == nil {
+		return "", nil
+	}
+	var id string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM schema_migrations ORDER BY id DESC LIMIT 1`).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return id, err
+}
+
 func (s *Service) configure(ctx context.Context) error {
 	statements := []string{
 		"PRAGMA foreign_keys = ON",
