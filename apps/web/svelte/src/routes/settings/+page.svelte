@@ -2057,7 +2057,18 @@
 
             <!-- Network I/O -->
             <div class="rounded-xl border border-foreground/[0.12] bg-surface/20 p-4">
-              <div class="mb-3 font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</div>
+              <!-- Header: title + link-speed badge -->
+              <div class="mb-3 flex items-center justify-between gap-2">
+                <span class="font-serif-display text-[15px] tracking-tight text-foreground/75">Network I/O</span>
+                {#if sysStatus?.network}
+                  {@const linkLabel = formatLinkSpeed(sysStatus.network.linkSpeedBps)}
+                  {#if linkLabel}
+                    <span class="rounded-md bg-foreground/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums tracking-wide text-foreground/60">{linkLabel}</span>
+                  {:else}
+                    <span class="text-[10px] italic text-muted-foreground/30">speed unknown</span>
+                  {/if}
+                {/if}
+              </div>
               <div class="space-y-3.5">
                 {#if true}
                 {@const recvColor = netRagColor(sysStatus?.network?.receiveBps, sysStatus?.network?.linkSpeedBps)}
@@ -2077,14 +2088,6 @@
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
-                {#if sysStatus?.network}
-                  {@const linkLabel = formatLinkSpeed(sysStatus.network.linkSpeedBps)}
-                  {#if linkLabel}
-                    <div class="pt-1 text-[10px] text-muted-foreground/45 tabular-nums">link: {linkLabel}</div>
-                  {:else}
-                    <div class="pt-1 text-[10px] text-muted-foreground/30 italic">link speed unknown</div>
-                  {/if}
-                {/if}
                 {/if}
               </div>
             </div>
