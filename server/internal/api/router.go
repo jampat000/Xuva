@@ -2417,6 +2417,7 @@ func clientPlaybackStartHandler(deps Deps) http.HandlerFunc {
 			SubtitleTrackIndex: payload.SubtitleTrackIndex,
 			SubtitleMode:       payload.SubtitleMode,
 			SubtitleActive:     payload.SubtitleActive,
+			PreferAdaptive:     payload.PreferAdaptive,
 			Capabilities:       payload.ClientCapabilities,
 		})
 		routePayload, status, err := clientPlaybackRoutePayload(deps, r, source, decision, payload)
@@ -2614,6 +2615,7 @@ type clientPlaybackOptions struct {
 	SubtitleTrackIndex int
 	SubtitleMode       string
 	SubtitleActive     bool
+	PreferAdaptive     bool
 	Capabilities       *clientCapabilities
 }
 
@@ -2631,6 +2633,7 @@ type clientPlaybackStartRequest struct {
 	// codec / container / HDR whitelist with values measured by the client
 	// at runtime (e.g. via MediaSource.isTypeSupported / canPlayType).
 	ClientCapabilities *clientCapabilities `json:"clientCapabilities,omitempty"`
+	PreferAdaptive     bool                `json:"preferAdaptive,omitempty"`
 }
 
 func clientMovieDetailPayload(ctx context.Context, deps Deps, r *http.Request, detail catalog.MovieDetail) map[string]any {
@@ -2808,6 +2811,7 @@ func clientPlaybackDecision(ctx context.Context, deps Deps, source catalog.Media
 		SubtitleTrackIndex:  options.SubtitleTrackIndex,
 		SubtitleMode:        options.SubtitleMode,
 		SubtitleTrackActive: options.SubtitleActive,
+		PreferAdaptive:      options.PreferAdaptive,
 	}
 	request = applyClientProfile(deps, request)
 	// Client-reported capabilities override profile fields when present (#64).

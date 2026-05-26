@@ -111,11 +111,17 @@ private struct QRCaptureView: UIViewRepresentable {
         func startSession(in view: UIView) {
             guard let device = AVCaptureDevice.default(for: .video),
                   let input = try? AVCaptureDeviceInput(device: device),
-                  session.canAddInput(input) else { return }
+                  session.canAddInput(input) else {
+                DispatchQueue.main.async { self.onPermissionDenied() }
+                return
+            }
             session.addInput(input)
 
             let output = AVCaptureMetadataOutput()
-            guard session.canAddOutput(output) else { return }
+            guard session.canAddOutput(output) else {
+                DispatchQueue.main.async { self.onPermissionDenied() }
+                return
+            }
             session.addOutput(output)
             output.setMetadataObjectsDelegate(self, queue: .main)
             output.metadataObjectTypes = [.qr]
