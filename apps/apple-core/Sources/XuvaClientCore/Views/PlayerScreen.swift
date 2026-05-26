@@ -1,5 +1,8 @@
 import AVKit
 import SwiftUI
+import os
+
+private let logger = Logger(subsystem: "com.xuva.client", category: "player")
 
 public struct PlayerScreen: View {
     @EnvironmentObject private var store: XuvaClientStore
@@ -65,7 +68,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
             try AVAudioSession.sharedInstance().setActive(true, options: [])
         } catch {
-            print("[XUVA] AVAudioSession setup failed: \(error)")
+            logger.error("AVAudioSession setup failed: \(error)")
         }
 
         let item = makePlayerItem(url: url, authToken: authToken)
@@ -81,7 +84,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         vc.view.backgroundColor = .black
         context.coordinator.attach(to: player, resumeAt: playback.clientStartPositionSeconds)
         player.play()
-        print("[XUVA] AVPlayerViewController created url=\(url.absoluteString) resume=\(playback.clientStartPositionSeconds ?? 0)")
+        logger.debug("AVPlayerViewController created resume=\(playback.clientStartPositionSeconds ?? 0)")
         return vc
     }
 
@@ -107,6 +110,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         private var heartbeatTask: Task<Void, Never>?
         private var errorObserver: NSObjectProtocol?
         private var statusObservation: NSKeyValueObservation?
+        private var timeControlObservation: NSKeyValueObservation?
 
         init(playback: PlaybackStartResponse, close: @escaping () -> Void, sendHeartbeat: @escaping (Int, Bool) async -> Void, stopPlayback: @escaping (Int) async -> Void) {
             self.playback = playback
@@ -131,21 +135,28 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             }
             errorObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
                 if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
-                    print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
+                    logger.error("AVPlayer FAILED: \(err) code=\(err.code)")
                 }
             }
             statusObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
-                print("[XUVA] AVPlayerItem.status -> \(item.status.rawValue) error=\(String(describing: item.error))")
                 guard item.status == .readyToPlay else { return }
                 if let s = seconds, s > 0 {
                     let target = CMTime(seconds: Double(s), preferredTimescale: 600)
                     item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
-                        print("[XUVA] resume seek to \(s)s done")
+                        logger.debug("resume seek to \(s)s done")
                     }
                 }
                 self?.applySubtitleSelection(to: item)
                 self?.statusObservation?.invalidate()
                 self?.statusObservation = nil
+            }
+            // Log stall events so we can diagnose seek-induced buffer exhaustion.
+            // AVPlayer pauses automatically (automaticallyWaitsToMinimizeStalling)
+            // and resumes once the buffer refills — no manual recovery needed.
+            timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { p, _ in
+                if p.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                    logger.debug("AVPlayer stalling reason=\(p.reasonForWaitingToPlay?.rawValue ?? "unknown")")
+                }
             }
         }
 
@@ -156,6 +167,8 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             errorObserver = nil
             statusObservation?.invalidate()
             statusObservation = nil
+            timeControlObservation?.invalidate()
+            timeControlObservation = nil
         }
 
         private func applySubtitleSelection(to item: AVPlayerItem) {
@@ -164,12 +177,10 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             Task { @MainActor in
                 do {
                     guard let group = try await item.asset.loadMediaSelectionGroup(for: .legible) else {
-                        print("[XUVA] no legible media selection group — subtitle pre-selection skipped")
                         return
                     }
                     if track == nil {
                         item.select(nil, in: group)
-                        print("[XUVA] subtitle disabled by user selection")
                         return
                     }
                     let option = group.options.first { opt in
@@ -183,12 +194,9 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
                     }
                     if let option {
                         item.select(option, in: group)
-                        print("[XUVA] subtitle pre-selected: \(option.displayName)")
-                    } else {
-                        print("[XUVA] no matching subtitle option for track \(track?.language ?? "?")/\(track?.title ?? "?")")
                     }
                 } catch {
-                    print("[XUVA] failed to load legible media selection group: \(error)")
+                    logger.error("failed to load legible media selection group: \(error)")
                 }
             }
         }
@@ -234,7 +242,7 @@ struct XuvaVideoPlayer: View {
             VideoPlayer(player: player)
                 .ignoresSafeArea()
                 .onAppear {
-                    print("[XUVA] VideoPlayer.onAppear url=\(url.absoluteString)")
+                    logger.debug("VideoPlayer.onAppear")
                     addTimeObserver()
                     addErrorObservers()
                     player.play()
@@ -292,7 +300,7 @@ struct XuvaVideoPlayer: View {
         let center = NotificationCenter.default
         let failed = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { note in
             if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError {
-                print("[XUVA] AVPlayer FAILED: \(err) code=\(err.code)")
+                logger.error("AVPlayer FAILED: \(err) code=\(err.code)")
                 loadError = "Playback failed: \(err.localizedDescription) (code \(err.code))"
             } else {
                 loadError = "Playback failed to reach end of stream."
@@ -317,6 +325,9 @@ struct XuvaVideoPlayer: View {
 
     private func skip(by seconds: Double) {
         let next = max(0, min(durationSeconds > 0 ? durationSeconds : .greatestFiniteMagnitude, currentSeconds + seconds))
+        // Cancel any in-flight seek before issuing a new one so rapid taps
+        // don't queue competing seeks that fight for the same playhead.
+        player.currentItem?.cancelPendingSeeks()
         player.seek(to: CMTime(seconds: next, preferredTimescale: 600))
     }
 
@@ -362,13 +373,20 @@ struct XuvaVideoPlayer: View {
 /// tokens for fan-out — the header here is principal auth.
 private func makePlayerItem(url: URL, authToken: String?) -> AVPlayerItem {
     let token = authToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard !token.isEmpty else {
-        return AVPlayerItem(url: url)
+    let item: AVPlayerItem
+    if token.isEmpty {
+        item = AVPlayerItem(url: url)
+    } else {
+        let asset = AVURLAsset(url: url, options: [
+            "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
+        ])
+        item = AVPlayerItem(asset: asset)
     }
-    let asset = AVURLAsset(url: url, options: [
-        "AVURLAssetHTTPHeaderFieldsKey": ["X-Auth-Token": token]
-    ])
-    return AVPlayerItem(asset: asset)
+    // 30 s forward buffer: seeks into already-buffered regions are instant
+    // and there's headroom to recover from an aggressive forward scrub without
+    // immediately exhausting the download pipeline and stalling.
+    item.preferredForwardBufferDuration = 30
+    return item
 }
 
 struct ErrorOverlay: View {

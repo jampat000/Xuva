@@ -35,6 +35,9 @@ type Request struct {
 	SubtitleMode        string  `json:"subtitleMode,omitempty"`
 	SubtitleTrackActive bool    `json:"subtitleTrackActive,omitempty"`
 	SupportsAdaptive    bool    `json:"supportsAdaptive,omitempty"`
+	// Client requests HLS adaptive routing regardless of network conditions,
+	// giving instant segment-based seeking. Exempt: Dolby Vision pass-through.
+	PreferAdaptive      bool    `json:"preferAdaptive,omitempty"`
 	// Client capability whitelists (populated from the device profile or
 	// from a client-reported capability payload):
 	Containers       []string
@@ -214,6 +217,25 @@ func (s *Service) DecideSource(_ context.Context, request Request, source Source
 		decision.EstimatedGPUCost = "optional"
 		decision.SuggestedFixes = []string{"Use original quality on LAN", "Raise the network bitrate limit", "Use hardware acceleration for lower server impact"}
 		return finalizeDecision(request, source, decision)
+	}
+	// Client-requested adaptive HLS: force segment-based routing for instant
+	// seeking on Siri Remote scrubbing. Exempt: Dolby Vision pass-through
+	// because transcoding strips DV metadata and direct play is preferable.
+	if request.SupportsAdaptive && request.PreferAdaptive {
+		isDVPassThrough := source.DoviProfile != 0 && request.SupportsDolbyVision
+		if !isDVPassThrough {
+			decision.Mode = AdaptiveStream
+			decision.ReasonCode = "adaptive_preferred"
+			decision.ReasonText = "Client requested adaptive HLS for segment-based seeking regardless of network conditions."
+			decision.ContainerAction = "adaptive_hls"
+			decision.VideoAction = "adaptive"
+			decision.AudioAction = audioAction
+			decision.SubtitleAction = subtitles
+			decision.EstimatedCPUCost = "medium"
+			decision.EstimatedGPUCost = "optional"
+			decision.SuggestedFixes = []string{"Switch to direct play to reduce server CPU", "Add hardware acceleration for lower server impact"}
+			return finalizeDecision(request, source, decision)
+		}
 	}
 	// Source-level capability checks: even when codec + container match the
 	// client whitelist, this client may not handle higher bit depths, HDR,

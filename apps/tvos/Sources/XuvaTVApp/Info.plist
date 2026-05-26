@@ -16,5 +16,16 @@
 	<array>
 		<string>_xuva._tcp</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.xuva.tvos</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>xuva</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
