@@ -283,6 +283,11 @@ export interface ClientPlaybackSession {
 	// The start response also embeds the resolved route — avoids a separate
 	// getPlaybackRoute call on the happy path.
 	route?: PlaybackRouteResponse;
+	// Inline stream token — when present the client skips a separate
+	// getStreamToken round-trip, saving one full HTTP RTT on every play.
+	streamTokenQuery?: string;  // "?sessionId=…&deviceId=…&token=…"
+	streamUrl?: string;         // pre-built direct-stream URL with token
+	subtitleBaseUrl?: string;   // base URL for sidecar subtitle tracks
 }
 
 export interface ClientCapabilities {

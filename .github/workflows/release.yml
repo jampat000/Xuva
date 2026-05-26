@@ -10,9 +10,56 @@ permissions:
   packages: write
 
 jobs:
+  version-policy:
+    name: Validate release version policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release tag
+        run: node tools/validate-release-tag.cjs "${GITHUB_REF_NAME}"
+
+  windows:
+    name: Build Windows package
+    runs-on: windows-latest
+    needs: version-policy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/web/svelte/package-lock.json
+
+      - name: Build unsigned Windows package
+        shell: powershell
+        run: |
+          ./packaging/windows/build-package.ps1 -Version "${{ github.ref_name }}"
+
+      - name: Verify unsigned Windows package
+        shell: powershell
+        run: |
+          $package = Get-ChildItem -Path dist/windows -Filter "*.zip" | Select-Object -First 1
+          if (-not $package) { throw "Windows package zip was not produced." }
+          ./packaging/windows/verify-package.ps1 -PackagePath $package.FullName
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: |
+            dist/windows/*.zip
+            dist/windows/*.sha256
+
   docker:
     name: Build & publish Docker image
     runs-on: ubuntu-latest
+    needs: version-policy
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
@@ -39,6 +86,10 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
+      - name: Build date
+        id: build_date
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         id: push
         uses: docker/build-push-action@v6
@@ -47,18 +98,48 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            XUVA_VERSION=${{ github.ref_name }}
+            XUVA_COMMIT=${{ github.sha }}
+            XUVA_BUILD_DATE=${{ steps.build_date.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+      - name: Smoke test published Docker image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/xuva:${{ github.ref_name }}"
+          docker run -d --name xuva-release-smoke -p 18097:8097 "$IMAGE"
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18097/api/system/version >/tmp/xuva-version.json; then
+              cat /tmp/xuva-version.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs xuva-release-smoke
+          exit 1
+
+      - name: Cleanup release Docker smoke
+        if: always()
+        run: docker rm -f xuva-release-smoke >/dev/null 2>&1 || true
+
   release:
     name: Create GitHub release
     runs-on: ubuntu-latest
-    needs: docker
+    needs:
+      - docker
+      - windows
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-package
+          path: release-assets
 
       - name: Extract version
         id: version
@@ -82,6 +163,9 @@ jobs:
           echo '```' >> "$GITHUB_OUTPUT"
           echo "docker pull ghcr.io/${{ github.repository_owner }}/xuva:${{ steps.version.outputs.tag }}" >> "$GITHUB_OUTPUT"
           echo '```' >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "## Windows" >> "$GITHUB_OUTPUT"
+          echo "Download the unsigned Windows package zip and verify it with the matching .sha256 file." >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create release
@@ -91,3 +175,4 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           draft: false
           prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+          files: release-assets/*

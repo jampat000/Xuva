@@ -118,8 +118,18 @@ public struct HomeScreen: View {
             .filter { !$0.id.lowercased().contains("recent") }
         switch store.activeSection {
         case "Movies":
+            // Prefer the full library from /api/movies; fall back to filtered
+            // home rows while the library is still loading.
+            if let lib = store.moviesLibrary, !lib.isEmpty {
+                let sorted = lib.sorted { ($0.title ?? "").localizedCompare($1.title ?? "") == .orderedAscending }
+                return [HomeRow(id: "library-movies", title: "All Movies", subtitle: "\(lib.count) titles", kind: "movie", items: sorted)]
+            }
             return populatedRows.filter { rowMatches($0, terms: ["movie"]) }
         case "TV":
+            if let lib = store.seriesLibrary, !lib.isEmpty {
+                let sorted = lib.sorted { ($0.title ?? "").localizedCompare($1.title ?? "") == .orderedAscending }
+                return [HomeRow(id: "library-series", title: "All TV Shows", subtitle: "\(lib.count) titles", kind: "series", items: sorted)]
+            }
             return populatedRows.filter { rowMatches($0, terms: ["tv", "series", "show", "episode"]) }
         case "Watchlist":
             let saved = watchlist.asHomeItems()

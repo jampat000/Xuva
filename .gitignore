@@ -37,6 +37,8 @@ server/.air/
 # in server/ directly will produce one of these.)
 server/xuva
 server/xuva.exe
+server/xuva-check.exe
+xuva.exe
 xuva-smoke
 xuva-smoke.exe
 

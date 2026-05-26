@@ -8,6 +8,7 @@ Public client bootstrap routes:
 
 | Pattern | Purpose |
 | --- | --- |
+| `GET /api/system/version` | Read-only release and schema identity for package and upgrade verification. |
 | `GET /api/client/bootstrap` | Read-only native-client bootstrap for server identity, auth requirement, feature flags, profiles, and endpoint templates. |
 | `POST /api/pairing/requests` | Creates a short-lived local pairing code for a TV/native app. |
 | `GET /api/pairing/requests/{id}` | Polls pairing status for the requesting TV/native app. |
@@ -55,6 +56,7 @@ Public client bootstrap routes:
 | `POST /api/remote/wan` | remote | `remote.wan.lookup` | admin |
 | `GET /api/settings/folders/browse` | settings | `settings.folders.browse` | admin |
 | `GET /api/media-sources/{id}/stream` | media | `media.stream` | admin, standard |
+| `GET /api/media-sources/{id}/remux-stream` | media | `media.remux.stream` | admin, standard |
 | `GET /api/media-sources/{id}/download` | media | `media.download` | admin, standard |
 | `GET /api/media-sources/{id}/adaptive/master.m3u8` | media | `media.adaptive.master` | admin, standard |
 | `GET /api/media-sources/{id}/adaptive/{variant}` | media | `media.adaptive.variant` | admin, standard |

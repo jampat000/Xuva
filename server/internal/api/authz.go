@@ -108,6 +108,7 @@ var routePolicies = map[string]routePolicy{
 	"POST /api/setup/complete":             route("POST /api/setup/complete", "setup", "setup.complete", roleAdmin),
 
 	"GET /api/media-sources/{id}/stream":                     route("GET /api/media-sources/{id}/stream", "media", "media.stream", roleAdmin, roleStandard),
+	"GET /api/media-sources/{id}/remux-stream":               route("GET /api/media-sources/{id}/remux-stream", "media", "media.remux.stream", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}/download":                   route("GET /api/media-sources/{id}/download", "media", "media.download", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}/adaptive/master.m3u8":       route("GET /api/media-sources/{id}/adaptive/master.m3u8", "media", "media.adaptive.master", roleAdmin, roleStandard),
 	"GET /api/media-sources/{id}/adaptive/{variant}":         route("GET /api/media-sources/{id}/adaptive/{variant}", "media", "media.adaptive.variant", roleAdmin, roleStandard),

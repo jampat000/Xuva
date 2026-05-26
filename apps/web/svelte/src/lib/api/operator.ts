@@ -120,6 +120,7 @@ export interface DownloadJobItem {
 
 export interface SessionItem {
 	id?: string;
+	userId?: string;
 	mediaSourceId?: string;
 	title?: string;
 	sourceName?: string;
@@ -143,6 +144,7 @@ export interface SessionItem {
 	containerAction?: string;
 	progressSeconds?: number;
 	durationSeconds?: number;
+	startedAt?: string;
 	updatedAt?: string;
 }
 
