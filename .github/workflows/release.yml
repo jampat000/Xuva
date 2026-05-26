@@ -82,6 +82,7 @@ jobs:
         with:
           name: windows-package
           path: |
+            dist/windows/*.exe
             dist/windows/*.zip
             dist/windows/*.sha256
 
