@@ -33,7 +33,6 @@ func RootHandler() http.Handler {
 	fileServer := http.FileServer(http.FS(staticFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") ||
-			strings.HasPrefix(r.URL.Path, "/play/") ||
 			strings.HasPrefix(r.URL.Path, "/legacy/") ||
 			r.URL.Path == "/legacy" ||
 			strings.HasPrefix(r.URL.Path, "/next/") ||
@@ -136,7 +135,6 @@ func devProxyHandler() http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") ||
-			strings.HasPrefix(r.URL.Path, "/play/") ||
 			strings.HasPrefix(r.URL.Path, "/legacy/") ||
 			r.URL.Path == "/legacy" ||
 			strings.HasPrefix(r.URL.Path, "/next/") ||
