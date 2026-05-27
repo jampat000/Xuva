@@ -39,6 +39,7 @@
       }
     ],
     "win": {
+      "icon": "assets/xuva.ico",
       "target": [
         "nsis",
         "zip"
@@ -46,6 +47,8 @@
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
+      "installerIcon": "assets/xuva.ico",
+      "uninstallerIcon": "assets/xuva.ico",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

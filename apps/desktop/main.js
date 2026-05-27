@@ -269,7 +269,11 @@ async function loadAppWindow(win) {
 }
 
 function appIconPath() {
-  return "";
+  const candidates = [
+    path.join(__dirname, "assets", "xuva.ico"),
+    path.resolve(__dirname, "..", "web", "svelte", "static", "favicon.ico"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
 }
 
 function createMainWindow() {

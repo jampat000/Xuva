@@ -16,6 +16,7 @@ import (
 //go:embed all:static-next/avatars
 //go:embed static-next/index.html
 //go:embed static-next/robots.txt
+//go:embed static-next/*.ico static-next/*.svg static-next/*.png static-next/*.webmanifest
 var assets embed.FS
 
 func RootHandler() http.Handler {

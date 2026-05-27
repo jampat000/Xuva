@@ -1,24 +1,31 @@
 # Xuva Icon Pack Surfaces
 
-Status: no approved icon pack is currently wired.
+Source pack:
 
-The previous MediaMop and legacy Xuva chevron icon files were removed because they are not applicable to the current product branding.
+- `C:\Users\User\Downloads\xuva-branding.zip`
 
-Removed surfaces:
+Repository source of truth:
 
-- Windows desktop package icon: `apps/desktop/assets/xuva.ico`
-- Browser favicons under `apps/web/svelte/static/`
-- Generated server web copies under `server/internal/webapp/static-next/`
-- Temporary MediaMop icons under `.tmp/MediaMop/`
+- `assets/brand/`
 
-Before the next Windows release, add a new approved icon pack and wire it deliberately:
+Current wired surfaces:
 
-- Windows executable, installer, uninstaller, tray, and shortcuts.
-- Browser favicon SVG/ICO/PNG.
-- Apple touch icon if web install support is desired.
-- Generated server web static copy.
+- Windows executable/taskbar/installer icon: `apps/desktop/assets/xuva.ico`
+- Windows tile/installer support images: `apps/desktop/assets/Square*.png`, `apps/desktop/assets/Wide310x150Logo.png`, `apps/desktop/assets/installer-256.png`
+- Browser favicons and PWA assets: `apps/web/svelte/static/favicon*`, `apps/web/svelte/static/apple-touch-icon.png`, `apps/web/svelte/static/site.webmanifest`
+- Browser tab/social metadata: `apps/web/svelte/src/app.html`
+- Embedded server web assets: `server/internal/webapp/static-next/`
+
+Brand assets available for docs, installers, and marketing:
+
+- `assets/brand/raw/og-image-cinematic.png`
+- `assets/brand/raw/wordmark-dark.png`
+- `assets/brand/svg/mark.svg`
+- `assets/brand/svg/wordmark.svg`
+- `assets/brand/social/og-1200x630.png`
+- `assets/brand/social/twitter-card-1200x600.png`
 
 Guardrail:
 
 - Do not reintroduce MediaMop icons or the removed legacy Xuva chevron icon.
-- Do not modify Apple client assets from this server/package task.
+- Do not modify Apple client assets from server/package work. Apple app icons must be handled by the Apple-side owner.
