@@ -79,6 +79,10 @@ function handleServerEvent(event: ServerEvent): void {
 		scheduleHomeRefresh();
 		return;
 	}
+	// Note: pairing.request.* events are handled by the Settings page directly
+	// via its own EventStream subscription (lib/events/stream.ts), not here —
+	// the approvals list is an admin-only view and shouldn't fight a global
+	// SWR-cache layer for ownership of "pending approvals" state.
 }
 
 /**
