@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,6 +41,7 @@ type Status struct {
 type AdvertiseConfig struct {
 	ServiceName string
 	ServiceType string
+	HostName    string
 	Port        int
 	IPs         []net.IP
 	TXTRecords  []string
@@ -93,7 +94,6 @@ func NewService(cfg config.Config) *Service {
 			Enabled:     cfg.DiscoveryEnabled,
 			ServiceName: displayServiceName(cfg.ServerName),
 			ServiceType: fullServiceType(cfg.DiscoveryServiceType),
-			HostName:    networkHostName(),
 		},
 	}
 }
@@ -109,7 +109,6 @@ func (s *Service) Start(ctx context.Context) {
 		Enabled:     s.cfg.DiscoveryEnabled,
 		ServiceName: displayServiceName(s.cfg.ServerName),
 		ServiceType: fullServiceType(s.cfg.DiscoveryServiceType),
-		HostName:    networkHostName(),
 	}
 	if !s.cfg.DiscoveryEnabled {
 		status.Note = "Local discovery is turned off."
@@ -146,6 +145,7 @@ func (s *Service) Start(ctx context.Context) {
 	status.AdvertiseIPs = ipStrings(ips)
 	status.Interfaces = interfaceNamesForIPs(ips)
 	status.WebURL = discoveryWebURL(s.cfg, status.HostName, port, ips)
+	status.HostName = discoveryConnectionHost(status.WebURL)
 
 	txtRecords := []string{
 		"app=xuva",
@@ -164,6 +164,7 @@ func (s *Service) Start(ctx context.Context) {
 	instance := AdvertiseConfig{
 		ServiceName: status.ServiceName,
 		ServiceType: normalizedServiceType(s.cfg.DiscoveryServiceType),
+		HostName:    discoveryHostRecord(status.ServiceName),
 		Port:        port,
 		IPs:         ips,
 		TXTRecords:  txtRecords,
@@ -270,7 +271,7 @@ func newMDNSServer(cfg AdvertiseConfig, iface *net.Interface, ips []net.IP) (ann
 		cfg.ServiceName,
 		cfg.ServiceType,
 		serviceDomain,
-		localHostRecord(),
+		cfg.HostName,
 		cfg.Port,
 		ips,
 		cfg.TXTRecords,
@@ -375,26 +376,40 @@ func displayServiceName(value string) string {
 	return normalized
 }
 
-func localHostRecord() string {
-	trimmed := networkHostName()
-	if trimmed == "" {
-		return ""
-	}
-	if strings.HasSuffix(trimmed, ".") {
-		return trimmed
-	}
-	if strings.Contains(trimmed, ".") {
-		return trimmed + "."
-	}
-	return trimmed + ".local."
+func discoveryHostRecord(serviceName string) string {
+	return discoveryHostLabel(serviceName) + ".local."
 }
 
-func networkHostName() string {
-	name, err := os.Hostname()
-	if err != nil {
-		return ""
+func discoveryHostLabel(serviceName string) string {
+	source := strings.ToLower(strings.TrimSpace(serviceName))
+	var builder strings.Builder
+	lastWasDash := false
+	for _, char := range source {
+		isAlphaNum := (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9')
+		if isAlphaNum {
+			builder.WriteRune(char)
+			lastWasDash = false
+			continue
+		}
+		if !lastWasDash && builder.Len() > 0 {
+			builder.WriteByte('-')
+			lastWasDash = true
+		}
 	}
-	return strings.TrimSpace(name)
+	label := strings.Trim(builder.String(), "-")
+	if label == "" {
+		label = "xuva"
+	}
+	if label != "xuva" && !strings.Contains(label, "xuva") {
+		label += "-xuva"
+	}
+	if len(label) > 63 {
+		label = strings.Trim(label[:63], "-")
+	}
+	if label == "" {
+		return "xuva"
+	}
+	return label
 }
 
 func discoveryWebURL(cfg config.Config, hostName string, port int, ips []net.IP) string {
@@ -408,6 +423,18 @@ func discoveryWebURL(cfg config.Config, hostName string, port int, ips []net.IP)
 		return ""
 	}
 	return "http://" + hostName + ":" + strconv.Itoa(port)
+}
+
+func discoveryConnectionHost(webURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(webURL))
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return ""
+	}
+	return host
 }
 
 func preferredWebIP(ips []net.IP) string {
