@@ -1530,6 +1530,14 @@
       ) {
         refreshDashJobs();
       }
+      // Pending approvals view: re-fetch the list whenever the backend
+      // publishes a pairing lifecycle event so the operator sees new
+      // requests / cancellations / expiries live, without manual reload.
+      // Skipped before the user has opened the approvals tab once
+      // (pairingLoaded gates the initial fetch path elsewhere).
+      if (type.startsWith('pairing.request.') && pairingLoaded) {
+        void loadPairingRequests();
+      }
     });
     return unsub;
   });
