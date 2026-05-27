@@ -21,6 +21,22 @@
   Pop $0
 !macroend
 
+!macro customInit
+  ${IfNot} ${UAC_IsAdmin}
+    !insertmacro UAC_RunElevated
+    ${Switch} $0
+      ${Case} 0
+        ${Break}
+      ${Case} 1223
+        Quit
+      ${Default}
+        MessageBox mb_IconStop|mb_TopMost|mb_SetForeground "Unable to request administrator rights for Xuva setup. Windows Firewall rules cannot be provisioned."
+        Quit
+    ${EndSwitch}
+    Quit
+  ${EndIf}
+!macroend
+
 !macro customInstall
   !insertmacro XuvaAddFirewallRules
 !macroend
