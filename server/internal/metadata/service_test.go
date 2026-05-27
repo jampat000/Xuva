@@ -1,4 +1,4 @@
-﻿package metadata
+package metadata
 
 import (
 	"context"
@@ -431,6 +431,28 @@ func TestManagedProviderRateLimitFallsBackAndSetsHealth(t *testing.T) {
 	}
 }
 
+func TestStartBackfillReturnsNotConfiguredWhenTMDBKeyMissing(t *testing.T) {
+	origDefault := config.DefaultTMDBAPIKey
+	config.DefaultTMDBAPIKey = ""
+	t.Cleanup(func() {
+		config.DefaultTMDBAPIKey = origDefault
+	})
+	t.Setenv("XUVA_MANAGED_TMDB_API_KEY", "")
+	t.Setenv("XUVA_TMDB_API_KEY", "")
+
+	service, _, _ := newMetadataTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+
+	err := service.StartBackfill(context.Background(), "tmdb")
+	if err == nil {
+		t.Fatalf("expected missing key error")
+	}
+	if !IsBackfillProviderNotConfigured(err) {
+		t.Fatalf("expected ErrBackfillProviderNotConfigured, got %v", err)
+	}
+}
+
 func newMetadataTestService(t *testing.T, handler http.Handler) (*Service, *catalog.Service, string) {
 	t.Helper()
 
@@ -572,6 +594,3 @@ func writeFile(t *testing.T, path string, value string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
-
-
-

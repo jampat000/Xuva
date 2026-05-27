@@ -2281,6 +2281,32 @@ func TestMetadataProvidersEndpointUsesStrictManagedModeHealth(t *testing.T) {
 	}
 }
 
+func TestMetadataBackfillStartReturnsAcceptedWhenProviderNotConfigured(t *testing.T) {
+	origDefault := config.DefaultTMDBAPIKey
+	config.DefaultTMDBAPIKey = ""
+	t.Cleanup(func() {
+		config.DefaultTMDBAPIKey = origDefault
+	})
+	t.Setenv("XUVA_MANAGED_TMDB_API_KEY", "")
+	t.Setenv("XUVA_TMDB_API_KEY", "")
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := requestJSON(t, router, http.MethodPost, "/api/metadata/backfill", map[string]any{
+		"provider": "tmdb",
+	})
+
+	if payload["accepted"] != false {
+		t.Fatalf("expected accepted=false when tmdb key missing, got %#v", payload)
+	}
+	if payload["reason"] != "not_configured" {
+		t.Fatalf("expected reason=not_configured, got %#v", payload)
+	}
+	status, _ := payload["status"].(map[string]any)
+	if status == nil || status["running"] != false {
+		t.Fatalf("expected idle backfill status, got %#v", payload)
+	}
+}
+
 // TestPlayerPageIncludesDirectStreamRecoveryFlow used to assert that the
 // legacy hardcoded HTML player (playerHandler) included specific JS fragments
 // for stream-recovery flow. That handler has been deleted — /play/{id} now
