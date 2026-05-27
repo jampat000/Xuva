@@ -1,17 +1,25 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
   import ErrorState from '$lib/components/ErrorState.svelte';
   import { getMovies, subscribeMovies } from '$lib/api/browse';
   import { movieToMedia } from '$lib/api/adapters';
+  import type { Media } from '$lib/mock-data';
 
   let { data } = $props();
 
-  let items = $state(data.items);
+  // Local overrides for prop-derived values. `null` means "fall through to the
+  // load() prop"; once set, the override wins. This avoids the Svelte 5
+  // state_referenced_locally warning that fires when $state(prop.x) shadows a
+  // prop value (the prop would not propagate further changes into the state).
+  let swrItems = $state<Media[] | null>(null);
+  let userError = $state<string | null | undefined>(undefined);
   let loading = $state(false);
-  let error = $state<string | null>(data.loadError);
+
+  const items = $derived(swrItems ?? data.items);
+  const error = $derived(userError === undefined ? data.loadError : userError);
 
   // Background-merge the rest of the library (the first-page paint already
   // mounted the page with FIRST_PAGE items) and stay subscribed so a later
@@ -24,29 +32,31 @@
       void getMovies(undefined, 0).then((resp) => {
         if (cancelled) return;
         const full = (resp.movies ?? []).map(movieToMedia);
-        if (full.length > untrack(() => items.length)) items = full;
+        // Only replace if the full list is materially larger.
+        if (full.length > items.length) swrItems = full;
       }).catch(() => { /* keep the first page on failure */ });
     }
     const unsubscribe = subscribeMovies(0, (resp) => {
       if (cancelled) return;
-      items = (resp.movies ?? []).map(movieToMedia);
+      swrItems = (resp.movies ?? []).map(movieToMedia);
     });
     return () => { cancelled = true; unsubscribe(); };
   });
 
   // Only used by the "Try again" button — re-runs the full fetch
   async function reload() {
-    error = null;
+    userError = null;
     loading = true;
     try {
       const resp = await getMovies();
-      items = (resp.movies ?? []).map(movieToMedia);
+      swrItems = (resp.movies ?? []).map(movieToMedia);
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load movies';
+      userError = e instanceof Error ? e.message : 'Failed to load movies';
     } finally {
       loading = false;
     }
   }
+
 </script>
 
 <svelte:head>
