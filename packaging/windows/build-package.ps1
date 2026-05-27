@@ -247,8 +247,9 @@ In-app Windows updates:
   Xuva, runs the installer, and restarts the web app in the default browser.
 
 Windows Firewall:
-  The installer requests administrator rights so it can allow the packaged
-  xuva-server.exe on trusted LAN networks:
+  The installer requests administrator rights, while Xuva.exe remains a normal
+  non-elevated user app. Installer elevation allows the packaged xuva-server.exe
+  on trusted LAN networks:
     - inbound TCP 8097 for the web/API server
     - inbound UDP 5353 for Bonjour/mDNS local discovery
   Rules are scoped to Private and Domain network profiles and are removed by

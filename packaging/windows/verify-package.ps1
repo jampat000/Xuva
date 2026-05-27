@@ -33,8 +33,8 @@ function Assert-DesktopIconConfig {
 	if ($appIcon -ne "assets/xuva.ico") {
 		throw "Desktop package config must set build.win.icon to assets/xuva.ico."
 	}
-	if ($requestedExecutionLevel -ne "requireAdministrator") {
-		throw "Desktop package config must request administrator rights so the installer can provision Windows Firewall rules."
+	if ($requestedExecutionLevel -ne "asInvoker") {
+		throw "Desktop package config must keep Xuva.exe asInvoker. Elevation belongs to the installer, not the launcher."
 	}
 	if ($installerIcon -ne $appIcon) {
 		throw "Desktop package config must set build.nsis.installerIcon to $appIcon."
