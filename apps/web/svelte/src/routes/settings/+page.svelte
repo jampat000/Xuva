@@ -116,6 +116,11 @@
     hint?: string;
   };
 
+  type DesktopFolderBridge = {
+    pickFolder?: (request: { title?: string; currentPath?: string; purpose?: string }) => Promise<{ path?: string } | string | null | undefined>;
+    getSettings?: () => Promise<{ mode?: string; remoteUrl?: string } | null | undefined>;
+  };
+
   const sections: Section[] = [
     { id: "account", label: "My Account", icon: User, group: "Account", hint: "Profile, password & sign-out" },
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, group: "Server", hint: "Overview & health" },
@@ -465,7 +470,10 @@
   let browserCurrentPath = $state('');
   let browserParentPath = $state<string | undefined>(undefined);
   let browserEntries = $state<FolderEntry[]>([]);
+  let browserRoots = $state<FolderEntry[]>([]);
   let browserLoading = $state(false);
+  let browserError = $state<string | null>(null);
+  let browserMessage = $state<string | null>(null);
 
   // ─── Derived: server name for h1 ──────────────────────────────────────────
   const serverNameParts = $derived.by(() => {
@@ -1063,6 +1071,23 @@
     await navigateFolder(currentVal || '');
   }
 
+  async function chooseStorageFolder(field: string, label: string) {
+    sectionError = null;
+    const currentVal = editConfig[field as keyof typeof editConfig] as string;
+    try {
+      const picked = await pickNativeFolder(`Choose ${label}`, currentVal || '', `storage:${field}`);
+      if (picked.supported) {
+        if (picked.path) {
+          editConfig[field as keyof typeof editConfig] = picked.path as never;
+        }
+        return;
+      }
+    } catch (e) {
+      sectionError = e instanceof Error ? e.message : 'Native folder picker failed; using server browser instead.';
+    }
+    await openStorageBrowser(field);
+  }
+
   function filtered(group: Group): Section[] {
     return sections
       .filter((section) => section.group === group)
@@ -1150,6 +1175,32 @@
     if (idx < 0) return undefined;
     const parent = trimmed.slice(0, idx) || sep;
     return parent === p ? undefined : parent;
+  }
+
+  function desktopFolderBridge(): DesktopFolderBridge | null {
+    const root = globalThis as typeof globalThis & {
+      xuvaDesktop?: DesktopFolderBridge;
+      XuvaDesktop?: DesktopFolderBridge;
+    };
+    const bridge = root.xuvaDesktop ?? root.XuvaDesktop;
+    return typeof bridge?.pickFolder === 'function' ? bridge : null;
+  }
+
+  function normalizePickedPath(result: { path?: string } | string | null | undefined): string {
+    if (!result) return '';
+    if (typeof result === 'string') return result.trim();
+    return typeof result.path === 'string' ? result.path.trim() : '';
+  }
+
+  async function pickNativeFolder(title: string, currentPath: string, purpose: string) {
+    const bridge = desktopFolderBridge();
+    if (!bridge?.pickFolder) return { supported: false, path: '' };
+    if (bridge.getSettings) {
+      const settings = await bridge.getSettings();
+      if (settings?.mode === 'remote') return { supported: false, path: '' };
+    }
+    const result = await bridge.pickFolder({ title, currentPath, purpose });
+    return { supported: true, path: normalizePickedPath(result) };
   }
 
   // ─── Dashboard loading ─────────────────────────────────────────────────────
@@ -1280,18 +1331,40 @@
     browserContext = 'library';
     storageBrowserField = '';
     showFolderBrowser = true;
-    await navigateFolder('');
+    await navigateFolder(newLibPath.trim());
+  }
+
+  async function chooseLibraryFolder() {
+    libError = null;
+    try {
+      const picked = await pickNativeFolder('Choose library folder', newLibPath.trim(), 'library');
+      if (picked.supported) {
+        if (picked.path) {
+          newLibPath = picked.path;
+        }
+        return;
+      }
+    } catch (e) {
+      libError = e instanceof Error ? e.message : 'Native folder picker failed; using server browser instead.';
+    }
+    await openFolderBrowser();
   }
 
   async function navigateFolder(path: string) {
     browserLoading = true;
+    browserError = null;
+    browserMessage = null;
     try {
       const resp = await browseFolders(path || undefined);
-      browserCurrentPath = resp.currentPath ?? path;
-      browserParentPath = resp.parentPath ?? computeParentPath(browserCurrentPath);
+      browserCurrentPath = resp.currentPath ?? resp.path ?? path;
+      browserParentPath = resp.parentPath ?? resp.parent ?? computeParentPath(browserCurrentPath);
       browserEntries = (resp.entries ?? []).filter((e) => e.isDir !== false);
-    } catch {
+      browserRoots = (resp.roots ?? []).filter((e) => e.isDir !== false);
+      browserError = resp.error ?? null;
+      browserMessage = resp.message ?? null;
+    } catch (e) {
       browserEntries = [];
+      browserError = e instanceof Error ? e.message : 'Failed to browse folders';
     } finally {
       browserLoading = false;
     }
@@ -3079,7 +3152,7 @@
                     />
                     <button
                       type="button"
-                      onclick={openFolderBrowser}
+                      onclick={chooseLibraryFolder}
                       class="hairline flex h-11 items-center gap-1.5 rounded-xl bg-foreground/[0.06] px-4 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.10] hover:text-foreground"
                     >
                       <Folder class="h-3.5 w-3.5" /> Browse
@@ -3092,11 +3165,12 @@
                       <!-- Browser toolbar -->
                       <div class="flex items-center gap-2 border-b border-border px-3 py-2">
                         <FolderOpen class="h-3.5 w-3.5 shrink-0 text-primary-glow" />
-                        <span class="min-w-0 flex-1 truncate font-mono text-xs text-foreground/80">{browserCurrentPath || '/'}</span>
+                        <span class="min-w-0 flex-1 truncate font-mono text-xs text-foreground/80">{browserCurrentPath || 'Computer'}</span>
                         <button
                           type="button"
+                          disabled={!browserCurrentPath}
                           onclick={() => { newLibPath = browserCurrentPath; showFolderBrowser = false; }}
-                          class="shrink-0 rounded-full bg-primary-glow/10 px-3 py-1 text-[11px] font-semibold text-primary-glow transition-colors hover:bg-primary-glow/20"
+                          class="shrink-0 rounded-full bg-primary-glow/10 px-3 py-1 text-[11px] font-semibold text-primary-glow transition-colors hover:bg-primary-glow/20 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Select
                         </button>
@@ -3114,6 +3188,24 @@
                           <div class="h-5 w-5 animate-spin rounded-full border border-border border-t-primary-glow"></div>
                         </div>
                       {:else}
+                        {#if browserError}
+                          <div class="border-b border-border bg-red-400/10 px-3 py-2 text-xs text-red-300">{browserError}</div>
+                        {:else if browserMessage}
+                          <div class="border-b border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">{browserMessage}</div>
+                        {/if}
+                        {#if browserRoots.length > 0}
+                          <div class="flex flex-wrap gap-1.5 border-b border-border px-3 py-2">
+                            {#each browserRoots as root (root.path ?? root.name)}
+                              <button
+                                type="button"
+                                onclick={() => navigateFolder(root.path ?? '')}
+                                class="rounded-full bg-foreground/[0.05] px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-foreground/[0.09] hover:text-foreground"
+                              >
+                                {root.name ?? root.path}
+                              </button>
+                            {/each}
+                          </div>
+                        {/if}
                         <ul class="max-h-52 overflow-y-auto py-1">
                           <!-- Up one level -->
                           {#if browserParentPath !== undefined}
@@ -3153,15 +3245,19 @@
                 <!-- Storage type -->
                 <div>
                   <div class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">Storage type</div>
+                  <p class="mt-1 text-xs text-muted-foreground/70">
+                    This labels the library for scanning and diagnostics. It does not switch the browser mode; pick the actual server-visible path above.
+                  </p>
                   <div class="mt-2 flex flex-wrap gap-2">
                     {#each ([
-                      { id: 'local', label: 'Local' },
-                      { id: 'network', label: 'Network' },
-                      { id: 'removable', label: 'Removable' },
-                      { id: 'mounted', label: 'Mounted' }
+                      { id: 'local', label: 'Local', title: 'Internal disk or directly attached storage' },
+                      { id: 'network', label: 'Network', title: 'NAS, SMB, NFS, or mapped network share' },
+                      { id: 'removable', label: 'Removable', title: 'USB or removable disk' },
+                      { id: 'mounted', label: 'Mounted', title: 'Linux/macOS mount point or Docker bind mount' }
                     ] as const) as opt (opt.id)}
                       <button
                         type="button"
+                        title={opt.title}
                         onclick={() => (newLibStorageType = opt.id)}
                         class="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors {newLibStorageType === opt.id ? 'border-primary/60 bg-primary-glow/10 text-foreground' : 'border-border bg-surface/40 text-muted-foreground hover:text-foreground'}"
                       >
@@ -3654,7 +3750,7 @@
                       <input id={`dir-${row.field}`} type="text" bind:value={editConfig[row.field]}
                         placeholder="Default"
                         class="h-11 flex-1 rounded-xl border border-border bg-background/40 px-4 font-mono text-sm outline-none placeholder:font-sans placeholder:text-muted-foreground/50 focus:border-primary/60 focus:bg-background/70" />
-                      <button type="button" onclick={() => openStorageBrowser(row.field)}
+                      <button type="button" onclick={() => chooseStorageFolder(row.field, row.label)}
                         class="hairline flex h-11 items-center gap-1.5 rounded-xl bg-foreground/[0.06] px-4 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.10] hover:text-foreground">
                         <Folder class="h-3.5 w-3.5" /> Browse
                       </button>
@@ -3664,16 +3760,32 @@
                       <div class="mt-2 hairline overflow-hidden rounded-xl bg-background/40">
                         <div class="flex items-center gap-2 border-b border-border px-3 py-2">
                           <FolderOpen class="h-3.5 w-3.5 shrink-0 text-primary-glow" />
-                          <span class="min-w-0 flex-1 truncate font-mono text-xs text-foreground/80">{browserCurrentPath || '/'}</span>
+                          <span class="min-w-0 flex-1 truncate font-mono text-xs text-foreground/80">{browserCurrentPath || 'Computer'}</span>
                           <button type="button"
+                            disabled={!browserCurrentPath}
                             onclick={() => { editConfig[row.field as keyof typeof editConfig] = browserCurrentPath as never; showFolderBrowser = false; }}
-                            class="shrink-0 rounded-full bg-primary-glow/10 px-3 py-1 text-[11px] font-semibold text-primary-glow transition-colors hover:bg-primary-glow/20">Select</button>
+                            class="shrink-0 rounded-full bg-primary-glow/10 px-3 py-1 text-[11px] font-semibold text-primary-glow transition-colors hover:bg-primary-glow/20 disabled:cursor-not-allowed disabled:opacity-40">Select</button>
                           <button type="button" onclick={() => (showFolderBrowser = false)}
                             class="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground">✕</button>
                         </div>
                         {#if browserLoading}
                           <div class="flex items-center justify-center py-5"><div class="h-5 w-5 animate-spin rounded-full border border-border border-t-primary-glow"></div></div>
                         {:else}
+                          {#if browserError}
+                            <div class="border-b border-border bg-red-400/10 px-3 py-2 text-xs text-red-300">{browserError}</div>
+                          {:else if browserMessage}
+                            <div class="border-b border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">{browserMessage}</div>
+                          {/if}
+                          {#if browserRoots.length > 0}
+                            <div class="flex flex-wrap gap-1.5 border-b border-border px-3 py-2">
+                              {#each browserRoots as root (root.path ?? root.name)}
+                                <button type="button" onclick={() => navigateFolder(root.path ?? '')}
+                                  class="rounded-full bg-foreground/[0.05] px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-foreground/[0.09] hover:text-foreground">
+                                  {root.name ?? root.path}
+                                </button>
+                              {/each}
+                            </div>
+                          {/if}
                           <ul class="max-h-48 overflow-y-auto py-1">
                             {#if browserParentPath !== undefined}
                               <li><button type="button" onclick={() => navigateFolder(browserParentPath!)}

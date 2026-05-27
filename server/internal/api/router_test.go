@@ -3066,12 +3066,34 @@ func TestSettingsFolderBrowseListsDirectories(t *testing.T) {
 	if response["path"] == "" || response["parent"] == "" {
 		t.Fatalf("expected current path and parent, got %#v", response)
 	}
+	if response["currentPath"] != response["path"] || response["parentPath"] != response["parent"] {
+		t.Fatalf("expected modern and legacy path fields to match, got %#v", response)
+	}
 	entries := response["entries"].([]any)
 	if len(entries) != 1 || entries[0].(map[string]any)["name"] != "Movies" {
 		t.Fatalf("expected only child folders, got %#v", response)
 	}
+	if entries[0].(map[string]any)["isDir"] != true {
+		t.Fatalf("expected entries to be marked as directories, got %#v", response)
+	}
 	if response["writable"] != true {
 		t.Fatalf("expected writable temp folder, got %#v", response)
+	}
+}
+
+func TestSettingsFolderBrowseWithoutPathReturnsRoots(t *testing.T) {
+	router := NewRouter(testDeps(t, time.Now()))
+
+	response := requestJSON(t, router, http.MethodGet, "/api/settings/folders/browse", nil)
+	if response["currentPath"] != "" {
+		t.Fatalf("expected root browser to have empty current path, got %#v", response)
+	}
+	entries := response["entries"].([]any)
+	if len(entries) == 0 {
+		t.Fatalf("expected root entries, got %#v", response)
+	}
+	if response["message"] == "" {
+		t.Fatalf("expected server-visible path guidance, got %#v", response)
 	}
 }
 
