@@ -125,7 +125,33 @@ export async function logout(client: ApiClient = apiClient): Promise<{ status: s
 		return await client.send<{ status: string }, Record<string, never>>('/api/auth/logout', {}, 'POST');
 	} finally {
 		clearAuthToken();
+		// Wipe the offline caches so a different user signing into the same
+		// browser doesn't inherit the previous session's library data.
+		// We invalidate the SWR layer asynchronously (errors are swallowed —
+		// logout must not be blocked on cleanup).
+		void purgeOfflineCaches();
 	}
+}
+
+/**
+ * Best-effort: clear every layer that might hold previously-authenticated
+ * data — the in-memory + IDB SWR cache, the service worker's stale-while-
+ * revalidate cache, and any other Cache API store this build owns.
+ *
+ * Failures are silent. Logout still completes, and the next read pulls
+ * fresh authenticated data from the server.
+ */
+async function purgeOfflineCaches(): Promise<void> {
+	try {
+		const { invalidateSwrPrefix } = await import('./cache/swr-cache.js');
+		await invalidateSwrPrefix('');
+	} catch { /* swr-cache module unavailable in this build */ }
+
+	try {
+		if (typeof caches === 'undefined') return;
+		const keys = await caches.keys();
+		await Promise.all(keys.filter((k) => k.startsWith('xuva-')).map((k) => caches.delete(k)));
+	} catch { /* Cache API blocked by browser settings */ }
 }
 
 export async function getUsers(client: ApiClient = apiClient): Promise<ListUsersResponse> {

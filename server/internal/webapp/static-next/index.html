@@ -21,21 +21,21 @@
 			rel="stylesheet"
 			href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&display=swap"
 		/>
-		<link href="/_app/immutable/entry/start.D7EH9P54.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BRxW3BWv.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/start.DTmYyLnb.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/VFhXBGMk.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/DKxj0SL-.js" rel="modulepreload">
-		<link href="/_app/immutable/entry/app.MhTKnnxo.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/app.C68p8zW_.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/C3H0jj1q.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/BFbU5qhn.js" rel="modulepreload">
-		<link href="/_app/immutable/nodes/0.BWzWZYIL.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/DMKzKr_d.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BAct6KkG.js" rel="modulepreload">
+		<link href="/_app/immutable/nodes/0.C4OCOeUg.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CTXgWJGR.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BMh9o5qi.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/bp6GiMx_.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BKGkSivD.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BB7j7Yrb.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BxLzIxLw.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CiNAOITZ.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/DAXPDWlg.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/Cp6pDEtB.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/OULyNIHR.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/cJofQgXm.js" rel="modulepreload">
 
 		<link href="/_app/immutable/assets/0.wqjWr2l4.css" rel="stylesheet">
 	</head>
@@ -43,18 +43,30 @@
 		<div style="display: contents">
 			<script>
 				{
-					__sveltekit_xfock5 = {
+					__sveltekit_7ys4gk = {
 						base: ""
 					};
 
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("/_app/immutable/entry/start.D7EH9P54.js"),
-						import("/_app/immutable/entry/app.MhTKnnxo.js")
+						import("/_app/immutable/entry/start.DTmYyLnb.js"),
+						import("/_app/immutable/entry/app.C68p8zW_.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element);
 					});
+
+					if ('serviceWorker' in navigator) {
+						const script_url = '/service-worker.js';
+						const policy = globalThis?.window?.trustedTypes?.createPolicy(
+							'sveltekit-trusted-url',
+							{ createScriptURL(url) { return url; } }
+						);
+						const sanitised = policy?.createScriptURL(script_url) ?? script_url;
+						addEventListener('load', function () {
+							navigator.serviceWorker.register(sanitised);
+						});
+					}
 				}
 			</script>
 		</div>
