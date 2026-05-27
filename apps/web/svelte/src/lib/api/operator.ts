@@ -718,9 +718,15 @@ export interface FolderEntry {
 }
 
 export interface FolderBrowseResponse {
+	path?: string;
 	currentPath?: string;
+	parent?: string;
 	parentPath?: string;
+	roots?: FolderEntry[];
 	entries?: FolderEntry[];
+	writable?: boolean;
+	message?: string;
+	error?: string;
 }
 
 export function getLibraries(client: ApiClient = apiClient): Promise<LibrariesResponse> {
