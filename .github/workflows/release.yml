@@ -68,6 +68,10 @@ jobs:
 
       - name: Build unsigned Windows package
         shell: powershell
+        env:
+          XUVA_DEFAULT_TMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_TMDB_API_KEY }}
+          XUVA_DEFAULT_FANARTTV_API_KEY: ${{ secrets.XUVA_DEFAULT_FANARTTV_API_KEY }}
+          XUVA_DEFAULT_OMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_OMDB_API_KEY }}
         run: |
           ./packaging/windows/build-package.ps1 -Version "${{ needs.version-policy.outputs.version }}"
 
@@ -130,6 +134,9 @@ jobs:
             XUVA_VERSION=${{ needs.version-policy.outputs.version }}
             XUVA_COMMIT=${{ github.sha }}
             XUVA_BUILD_DATE=${{ steps.build_date.outputs.date }}
+            XUVA_DEFAULT_TMDB_API_KEY=${{ secrets.XUVA_DEFAULT_TMDB_API_KEY }}
+            XUVA_DEFAULT_FANARTTV_API_KEY=${{ secrets.XUVA_DEFAULT_FANARTTV_API_KEY }}
+            XUVA_DEFAULT_OMDB_API_KEY=${{ secrets.XUVA_DEFAULT_OMDB_API_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ needs.version-policy.outputs.dry_run == 'true' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}

@@ -22,6 +22,9 @@ FROM golang:1.26-alpine AS go-builder
 ARG XUVA_VERSION=dev
 ARG XUVA_COMMIT=unknown
 ARG XUVA_BUILD_DATE=
+ARG XUVA_DEFAULT_TMDB_API_KEY=
+ARG XUVA_DEFAULT_FANARTTV_API_KEY=
+ARG XUVA_DEFAULT_OMDB_API_KEY=
 
 RUN apk add --no-cache git
 
@@ -37,7 +40,7 @@ COPY --from=frontend-builder /app/server/internal/webapp/static-next ./internal/
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
-    -ldflags="-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=${XUVA_VERSION} -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=${XUVA_COMMIT} -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=${XUVA_BUILD_DATE}" \
+    -ldflags="-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=${XUVA_VERSION} -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=${XUVA_COMMIT} -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=${XUVA_BUILD_DATE} -X github.com/jampat000/Xuva/server/internal/config.DefaultTMDBAPIKey=${XUVA_DEFAULT_TMDB_API_KEY} -X github.com/jampat000/Xuva/server/internal/config.DefaultFanartTVAPIKey=${XUVA_DEFAULT_FANARTTV_API_KEY} -X github.com/jampat000/Xuva/server/internal/config.DefaultOMDbAPIKey=${XUVA_DEFAULT_OMDB_API_KEY}" \
     -o /xuva ./cmd/Xuva
 
 # Stage 3: minimal runtime image
