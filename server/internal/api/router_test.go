@@ -831,11 +831,44 @@ func TestConfiguredCanonicalWebOriginRedirectsLANBrowserRequests(t *testing.T) {
 	}
 }
 
-func TestLANBoundServerCanonicalizesRawIPToMachineHost(t *testing.T) {
+func TestLANBoundServerDoesNotRedirectRawIPToHostname(t *testing.T) {
+	// Bare LAN-IP requests must NOT be canonicalized to the OS hostname —
+	// that broke Apple TV / mobile clients which resolved the server via
+	// mDNS-advertised IP and then chased a redirect to a name they couldn't
+	// resolve. Operators who want a forced canonical hostname can still set
+	// XUVA_CANONICAL_WEB_ORIGIN explicitly. (Auth-flow redirects to /signin
+	// on the same host are fine; we only assert no host-change.)
 	deps := testDepsWithAuth(t, time.Now())
 	deps.Config.HTTPAddr = "0.0.0.0:8097"
 	router := NewRouter(deps)
 	request := httptest.NewRequest(http.MethodGet, "http://10.1.1.99:8097/", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	location := response.Header().Get("Location")
+	if location == "" {
+		return // No redirect at all — also fine.
+	}
+	// A redirect IS allowed (auth, etc.), but it must stay on the same host.
+	parsed, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("parse Location %q: %v", location, err)
+	}
+	if parsed.Host != "" && parsed.Host != "10.1.1.99:8097" {
+		t.Fatalf("LAN-IP request should not redirect to a different host; got %q", location)
+	}
+}
+
+func TestLANBoundServerStillRedirectsLocalhost(t *testing.T) {
+	// `http://localhost:8097/` is a cosmetic case — when the server is bound
+	// non-loopback and somebody hits localhost, redirect to the OS hostname
+	// so the URL bar reads sensibly. Bare IPs (handled by the test above)
+	// stay put.
+	deps := testDepsWithAuth(t, time.Now())
+	deps.Config.HTTPAddr = "0.0.0.0:8097"
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://localhost:8097/", nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -845,7 +878,7 @@ func TestLANBoundServerCanonicalizesRawIPToMachineHost(t *testing.T) {
 		t.Skip("host name unavailable")
 	}
 	if response.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected redirect, got %d: %s", response.Code, response.Body.String())
+		t.Fatalf("expected redirect for localhost, got %d: %s", response.Code, response.Body.String())
 	}
 	expected := "http://" + net.JoinHostPort(host, "8097") + "/"
 	if location := response.Header().Get("Location"); location != expected {

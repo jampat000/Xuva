@@ -158,7 +158,13 @@ func FromEnv() Config {
 	}
 	cfg := Config{
 		ServerName:           envString("XUVA_SERVER_NAME", "Xuva"),
-		HTTPAddr:             envString("XUVA_HTTP_ADDR", "127.0.0.1:8097"),
+		// Default bind to all interfaces so the personal-media-server use case
+		// works out of the box on a LAN. Users who want loopback-only can set
+		// XUVA_HTTP_ADDR=127.0.0.1:8097 explicitly. Previously we defaulted to
+		// loopback for safety, but that broke autodiscovery (mDNS advertised a
+		// LAN IP that the server wasn't actually listening on) and remote LAN
+		// browsers, surprising users who never intended a single-machine setup.
+		HTTPAddr:             envString("XUVA_HTTP_ADDR", "0.0.0.0:8097"),
 		CanonicalWebOrigin:   envString("XUVA_CANONICAL_WEB_ORIGIN", ""),
 		DiscoveryEnabled:     envBool("XUVA_DISCOVERY_ENABLED", true),
 		DiscoveryServiceType: envString("XUVA_DISCOVERY_SERVICE_TYPE", "_xuva._tcp"),

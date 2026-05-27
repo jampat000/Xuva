@@ -7,7 +7,7 @@ Xuva can advertise itself on the local network with mDNS / Bonjour so nearby cli
 - Advertises a custom service on the local network: `_xuva._tcp.local.`
 - Uses the configured **Xuva Server Name** as the advertised instance name
 - Advertises the current HTTP port
-- Prefers real LAN adapters (Ethernet/Wi-Fi) and avoids virtual adapters (WSL/Docker/Hyper-V/Tailscale) unless no physical adapter is available.
+- Advertises on every multicast-capable interface, with real LAN adapters (Ethernet/Wi-Fi) ordered ahead of virtual ones (WSL/Docker/Hyper-V/Tailscale) so native clients try LAN first; virtual adapters are still announced because they may be the only reachable path to the client (e.g. an Apple TV reaching the server over Tailscale, or via a Hyper-V Default Switch).
 - Publishes only safe TXT records:
   - `app=xuva`
   - `api=/api/client/bootstrap`
