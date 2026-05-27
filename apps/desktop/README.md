@@ -1,15 +1,15 @@
-# Xuva Desktop (Alpha Scaffold)
+﻿# Xuva Desktop (Alpha Scaffold)
 
-Windows-first Electron shell for Desktop Alpha.
+Windows-first launcher/tray shell for Desktop Alpha. The primary UI opens in the user's default browser; Electron is only used for tray/server supervision and small utility windows.
 
 Current scaffold includes:
 
-- Tray/taskbar shell window.
+- Tray/taskbar launcher.
 - Local server process supervision (start, stop, restart).
-- First launch defaults to the bundled local server and opens the web setup flow.
-- `window.xuvaDesktop.pickFolder(request)` bridge.
-- `window.xuvaDesktop.restartServer()` bridge.
-- Open Xuva action to `http://127.0.0.1:8097`.
+- First launch defaults to the bundled local server and opens the browser-based web setup flow.
+- Browser-only folder browsing through the server filesystem API.
+- Tray restart control for the supervised server process.
+- Open Xuva action to `http://127.0.0.1:8097` in the default browser.
 
 ## Dev run
 
@@ -48,12 +48,12 @@ Outputs:
 - `dist/windows/xuva-v0.0.x-win-x64.exe` unsigned per-user installer.
 - `dist/windows/xuva-v0.0.x-win-x64.zip` portable desktop package.
 
-## Server discovery — when does this app need it?
+## Server discovery â€” when does this app need it?
 
-This Electron shell **spawns the Xuva server itself** and points to
-`http://127.0.0.1:8097`. In the default single-machine install there is
-no other server to discover — the one running on this box is the one
-you want.
+This launcher **spawns the Xuva server itself** and opens
+`http://127.0.0.1:8097` in the default browser. In the default single-machine
+install there is no other server to discover; the one running on this box is
+the one you want.
 
 When the desktop app gains a multi-machine mode (connect to a Xuva on
 the network instead of launching one locally), implement discovery using
