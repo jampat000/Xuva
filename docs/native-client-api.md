@@ -29,13 +29,14 @@ Discovery TXT records:
 - `app=xuva`
 - `api=/api/client/bootstrap`
 - `serverName=<configured Xuva display name>`
-- `hostName=<operating-system hostname>`
+- `hostName=<reachable connection host>`
 - `web=<canonical or derived web origin>`
 
 Naming rule:
 - `serverName` is a friendly Xuva instance name for humans.
-- `hostName`, the resolved mDNS target, manual URL, or `server.webUrl` are the connectivity authorities.
+- `web`, `hostName`, the resolved mDNS target, manual URL, or `server.webUrl` are the connectivity authorities.
 - Clients must not assume `serverName` is DNS-resolvable.
+- Clients should prefer the `web` TXT record when present. The mDNS SRV target is a Xuva-branded `.local.` host label, not the operating-system hostname.
 
 Manual fallback:
 - clients can always use manual URL entry and call `GET /api/client/bootstrap`.
@@ -72,7 +73,7 @@ Safe example response shape:
   "server": {
     "name": "Xuva",
     "displayName": "Xuva",
-    "hostName": "media-server",
+    "hostName": "media-server.local",
     "baseUrl": "http://127.0.0.1:8097",
     "webUrl": "http://media-server.local:8097",
     "httpAddr": "127.0.0.1:8097"
