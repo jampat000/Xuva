@@ -36,6 +36,7 @@
 		"vitest": "^3.2.4"
 	},
 	"dependencies": {
+		"blurhash": "^2.0.5",
 		"hls.js": "^1.6.16",
 		"idb-keyval": "^6.2.4",
 		"lucide-svelte": "^1.0.1"
