@@ -79,11 +79,40 @@ function checkPlanStructure(errors) {
   }
 }
 
+function checkGithubActionRuntimePins(errors) {
+  const deprecatedActionPins = [
+    "actions/checkout@v4",
+    "actions/setup-go@v5",
+    "actions/setup-node@v4",
+    "actions/upload-artifact@v4",
+    "actions/download-artifact@v4",
+    "docker/setup-buildx-action@v3",
+    "docker/login-action@v3",
+    "docker/build-push-action@v6",
+    "softprops/action-gh-release@v2",
+  ];
+  const workflowsDir = path.join(root, ".github", "workflows");
+  if (!fs.existsSync(workflowsDir)) return;
+  for (const file of fs.readdirSync(workflowsDir).filter(name => /\.ya?ml$/i.test(name))) {
+    const relativePath = path.join(".github", "workflows", file);
+    const text = read(relativePath);
+    for (const pin of deprecatedActionPins) {
+      if (text.includes(pin)) {
+        errors.push(`${relativePath} uses deprecated Node 20 action pin: ${pin}`);
+      }
+    }
+    if (/runs-on:\s*windows-latest\b/.test(text)) {
+      errors.push(`${relativePath} uses implicit windows-latest; pin a concrete Windows runner image`);
+    }
+  }
+}
+
 const errors = [];
 checkRequiredFiles(errors);
 checkAgentsMap(errors);
 checkPlanStructure(errors);
 checkRoutePolicy(errors);
+checkGithubActionRuntimePins(errors);
 
 if (errors.length) {
   for (const error of errors) console.error(`agent-check: ${error}`);
