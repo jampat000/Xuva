@@ -44,7 +44,7 @@
         "nsis",
         "zip"
       ],
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "installerIcon": "assets/xuva.ico",
@@ -55,7 +55,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Xuva",
-      "uninstallDisplayName": "Xuva"
+      "uninstallDisplayName": "Xuva",
+      "include": "installer.nsh"
     }
   }
 }

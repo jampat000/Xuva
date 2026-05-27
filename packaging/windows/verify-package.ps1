@@ -28,8 +28,13 @@ function Assert-DesktopIconConfig {
 	$appIcon = [string]$config.build.win.icon
 	$installerIcon = [string]$config.build.nsis.installerIcon
 	$uninstallerIcon = [string]$config.build.nsis.uninstallerIcon
+	$requestedExecutionLevel = [string]$config.build.win.requestedExecutionLevel
+	$installerInclude = [string]$config.build.nsis.include
 	if ($appIcon -ne "assets/xuva.ico") {
 		throw "Desktop package config must set build.win.icon to assets/xuva.ico."
+	}
+	if ($requestedExecutionLevel -ne "requireAdministrator") {
+		throw "Desktop package config must request administrator rights so the installer can provision Windows Firewall rules."
 	}
 	if ($installerIcon -ne $appIcon) {
 		throw "Desktop package config must set build.nsis.installerIcon to $appIcon."
@@ -37,8 +42,12 @@ function Assert-DesktopIconConfig {
 	if ($uninstallerIcon -ne $appIcon) {
 		throw "Desktop package config must set build.nsis.uninstallerIcon to $appIcon."
 	}
+	if ($installerInclude -ne "installer.nsh") {
+		throw "Desktop package config must include installer.nsh for Windows Firewall provisioning."
+	}
 
 	Assert-Exists -Path (Join-Path (Split-Path -Parent $packageJsonPath) $appIcon)
+	Assert-Exists -Path (Join-Path (Split-Path -Parent $packageJsonPath) $installerInclude)
 }
 
 Assert-DesktopIconConfig

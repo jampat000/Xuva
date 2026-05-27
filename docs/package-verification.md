@@ -20,6 +20,7 @@ Artifact expectations:
 - Package does not contain Apple, Android, iOS, tvOS, or native client build outputs.
 - Packaged runtime state is outside the install directory. Preferred runtime home is `C:\ProgramData\Xuva`; `%LOCALAPPDATA%\Xuva` is fallback-only.
 - `Xuva.exe` starts the server/tray launcher and opens the web UI in the default browser rather than presenting the web UI as an embedded desktop app.
+- The installer requests administrator rights and provisions Windows Firewall rules for trusted LAN use: inbound TCP `8097` and inbound UDP `5353` to the packaged `xuva-server.exe`, scoped to Private/Domain profiles.
 
 Automated package verification:
 
@@ -54,6 +55,8 @@ Clean install smoke:
 13. Restart Xuva and verify settings/database persisted.
 14. Confirm the desktop runtime folders exist under the resolved runtime home: `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
 15. Confirm `logs/xuva.ndjson` exists and contains structured JSON log lines.
+16. On Windows, confirm Firewall rules exist for `Xuva Server HTTP` and `Xuva Local Discovery mDNS`, scoped to Private/Domain profiles.
+17. From another LAN device, confirm `http://<server-ip>:8097/api/health` responds and native client discovery can see `_xuva._tcp.local.`.
 
 Upgrade smoke:
 
