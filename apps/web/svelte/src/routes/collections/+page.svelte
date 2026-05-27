@@ -28,8 +28,13 @@
 
   // ── Data state ─────────────────────────────────────────────────────────────
   let { data } = $props();
-  let items   = $state<CollectionListItem[]>(data.items);
-  let error   = $state<string | null>(data.loadError);
+  // Local overrides — `null` / `undefined` means "fall through to load() data".
+  // See routes/movies/+page.svelte for rationale (avoids the
+  // state_referenced_locally warning that fires when $state shadows props).
+  let userItems = $state<CollectionListItem[] | null>(null);
+  let userError = $state<string | null | undefined>(undefined);
+  const items = $derived(userItems ?? data.items);
+  const error = $derived(userError === undefined ? data.loadError : userError);
 
   // ── Control state ──────────────────────────────────────────────────────────
   let q          = $state('');
@@ -84,12 +89,12 @@
 
   // ── Reload (error retry) ───────────────────────────────────────────────────
   async function reload() {
-    error = null;
+    userError = null;
     try {
       const resp = await getCollections();
-      items = resp.collections ?? [];
+      userItems = resp.collections ?? [];
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load collections';
+      userError = e instanceof Error ? e.message : 'Failed to load collections';
     }
   }
 
