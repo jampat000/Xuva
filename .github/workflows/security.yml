@@ -18,6 +18,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
 
       - name: Agent harness check
         run: node tools/agent-check.cjs
@@ -85,6 +86,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -134,7 +136,7 @@ jobs:
 
   windows-package-scripts:
     name: Windows package script checks
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - name: Checkout
         uses: actions/checkout@v6
