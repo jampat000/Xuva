@@ -7,6 +7,7 @@
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
   import { getAuthSession } from '$lib/api/auth';
   import { updateUserPreferences } from '$lib/api/operator';
+  import { artworkSrc, artworkSrcset } from '$lib/api/artwork-url';
 
   let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "", showHero = true } = $props<{
     eyebrow: string;
@@ -358,9 +359,11 @@
     {#if featured?.backdrop}
       {#key featured.id}
         <img
-          src={featured.backdrop}
+          src={artworkSrc(featured, 'backdrop', 720, featured.backdrop)}
+          srcset={artworkSrcset(featured, 'backdrop', 720)}
           alt=""
           aria-hidden="true"
+          decoding="async"
           class="pointer-events-none absolute inset-x-0 top-0 -z-20 h-full w-full object-cover object-top"
           style="opacity: 0.35;"
           onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
@@ -395,7 +398,14 @@
           style={`background: linear-gradient(135deg, ${featured.palette[0]}, ${featured.palette[1]})`}
         >
           {#if featured.poster}
-            <img src={featured.poster} alt={featured.title} class="absolute inset-0 h-full w-full object-cover" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+            <img
+              src={artworkSrc(featured, 'poster', 320, featured.poster)}
+              srcset={artworkSrcset(featured, 'poster', 320)}
+              alt={featured.title}
+              decoding="async"
+              class="absolute inset-0 h-full w-full object-cover"
+              onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+            />
           {:else}
             <div class="absolute inset-0 opacity-40 mix-blend-overlay" style="background-image: radial-gradient(circle at 25% 15%, rgba(255,255,255,0.45), transparent 50%), radial-gradient(circle at 80% 85%, rgba(0,0,0,0.6), transparent 60%);"></div>
           {/if}
@@ -816,10 +826,13 @@
               style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
             >
               {#if media.poster}
+                {@const cardWidth = density === 'S' ? 140 : density === 'M' ? 180 : 240}
                 <img
-                  src={media.poster}
+                  src={artworkSrc(media, 'poster', cardWidth, media.poster)}
+                  srcset={artworkSrcset(media, 'poster', cardWidth)}
                   alt={media.title}
                   loading="lazy"
+                  decoding="async"
                   class="absolute inset-0 h-full w-full object-cover"
                   onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                 />
