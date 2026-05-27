@@ -2224,14 +2224,6 @@
                     {sysStatus?.network ? formatBps(sysStatus.network.transmitBps) : '—'}
                   </div>
                 </div>
-                {#if sysStatus?.network}
-                  {@const linkLabel = formatLinkSpeed(sysStatus.network.linkSpeedBps)}
-                  {#if linkLabel}
-                    <div class="pt-1 text-[10px] text-muted-foreground/45 tabular-nums">link: {linkLabel}</div>
-                  {:else}
-                    <div class="pt-1 text-[10px] text-muted-foreground/30 italic">link speed unknown</div>
-                  {/if}
-                {/if}
                 {/if}
               </div>
             </div>

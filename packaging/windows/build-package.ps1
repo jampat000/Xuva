@@ -182,7 +182,23 @@ try {
 	Invoke-Native -FilePath $npm -ArgumentList @("run", "publish:go-static") -WorkingDirectory (Join-Path $repoRoot "apps\web\svelte")
 	$publishedStatic = $true
 
-	$ldflags = "-s -w -X github.com/jampat000/Xuva/server/internal/buildinfo.Version=$Version -X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=$gitCommit -X github.com/jampat000/Xuva/server/internal/buildinfo.Date=$buildDate"
+	$ldflagsParts = @(
+		"-s",
+		"-w",
+		"-X github.com/jampat000/Xuva/server/internal/buildinfo.Version=$Version",
+		"-X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=$gitCommit",
+		"-X github.com/jampat000/Xuva/server/internal/buildinfo.Date=$buildDate"
+	)
+	if (-not [string]::IsNullOrWhiteSpace($env:XUVA_DEFAULT_TMDB_API_KEY)) {
+		$ldflagsParts += "-X github.com/jampat000/Xuva/server/internal/config.DefaultTMDBAPIKey=$($env:XUVA_DEFAULT_TMDB_API_KEY)"
+	}
+	if (-not [string]::IsNullOrWhiteSpace($env:XUVA_DEFAULT_FANARTTV_API_KEY)) {
+		$ldflagsParts += "-X github.com/jampat000/Xuva/server/internal/config.DefaultFanartTVAPIKey=$($env:XUVA_DEFAULT_FANARTTV_API_KEY)"
+	}
+	if (-not [string]::IsNullOrWhiteSpace($env:XUVA_DEFAULT_OMDB_API_KEY)) {
+		$ldflagsParts += "-X github.com/jampat000/Xuva/server/internal/config.DefaultOMDbAPIKey=$($env:XUVA_DEFAULT_OMDB_API_KEY)"
+	}
+	$ldflags = $ldflagsParts -join " "
 	Invoke-Native -FilePath $go -ArgumentList @("build", "-trimpath", "-ldflags=$ldflags", "-o", (Join-Path $desktopRuntimeRoot "xuva-server.exe"), ".\cmd\Xuva") -WorkingDirectory (Join-Path $repoRoot "server")
 } finally {
 	if (-not $LeavePublishedStatic -and $publishedStatic) {
