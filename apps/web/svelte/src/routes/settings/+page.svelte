@@ -74,6 +74,7 @@
     exportBackup,
     importBackup,
     getUpdateStatus,
+    applyUpdate,
     type SystemStatusResponse,
     type CatalogSummaryResponse,
     type ScanJobItem,
@@ -94,6 +95,7 @@
     type DeviceProfile,
     type BackupImportResponse,
     type UpdateStatusResponse,
+    type UpdateApplyResponse,
     generateQRPairToken,
     type QRTokenResponse,
   } from '$lib/api/operator';
@@ -221,6 +223,9 @@
   let updateStatus = $state<UpdateStatusResponse | null>(null);
   let updateChecking = $state(false);
   let updateError = $state<string | null>(null);
+  let updateApplying = $state(false);
+  let updateApplyResult = $state<UpdateApplyResponse | null>(null);
+  let updateApplyError = $state<string | null>(null);
 
   const installerAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-installer'));
   const portableAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-portable'));
@@ -241,12 +246,26 @@
   async function checkUpdates() {
     updateChecking = true;
     updateError = null;
+    updateApplyError = null;
     try {
       updateStatus = await getUpdateStatus();
     } catch (err) {
       updateError = err instanceof Error ? err.message : 'Update check failed';
     } finally {
       updateChecking = false;
+    }
+  }
+
+  async function applyAvailableUpdate() {
+    updateApplying = true;
+    updateApplyError = null;
+    updateApplyResult = null;
+    try {
+      updateApplyResult = await applyUpdate();
+    } catch (err) {
+      updateApplyError = err instanceof Error ? err.message : 'Update apply failed';
+    } finally {
+      updateApplying = false;
     }
   }
 
@@ -4862,10 +4881,36 @@
                   </div>
 
                   <div class="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
-                    <div class="font-semibold">Apply step</div>
-                    <p class="mt-1 text-amber-100/80">
-                      Automatic self-apply is intentionally disabled until Xuva has a separate updater supervisor. Download the installer here, run it, then restart Xuva. This avoids replacing the running server process mid-request.
-                    </p>
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div class="font-semibold">Apply update</div>
+                        <p class="mt-1 text-amber-100/80">
+                          {#if updateStatus.applySupported}
+                            Xuva will download and verify the installer, then the Windows launcher will stop the server, apply the update, and reopen the web app.
+                          {:else}
+                            {updateStatus.applyUnsupportedReason ?? 'Automatic apply is not available for this install type. Use the package download above.'}
+                          {/if}
+                        </p>
+                      </div>
+                      {#if updateStatus.updateAvailable && updateStatus.applySupported}
+                        <button
+                          type="button"
+                          class="inline-flex items-center gap-2 rounded-xl bg-amber-300 px-4 py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                          disabled={updateApplying}
+                          onclick={applyAvailableUpdate}>
+                          <Download class="h-4 w-4" />
+                          {updateApplying ? 'Staging...' : 'Apply update'}
+                        </button>
+                      {/if}
+                    </div>
+                    {#if updateApplyResult}
+                      <p class="mt-4 rounded-xl border border-green-400/25 bg-green-400/10 px-4 py-3 text-sm text-green-100">
+                        {updateApplyResult.message ?? 'Update staged. Xuva will restart to complete the update.'}
+                      </p>
+                    {/if}
+                    {#if updateApplyError}
+                      <p class="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{updateApplyError}</p>
+                    {/if}
                   </div>
                 {/if}
               </div>

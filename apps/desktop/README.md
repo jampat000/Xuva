@@ -10,6 +10,7 @@ Current scaffold includes:
 - Browser-only folder browsing through the server filesystem API.
 - Tray restart control for the supervised server process.
 - Open Xuva action to `http://127.0.0.1:8097` in the default browser.
+- Windows update handoff: the server stages a verified installer request and the launcher runs a detached updater to apply it after Xuva exits.
 
 ## Dev run
 
@@ -28,6 +29,7 @@ Notes:
 - Packaged builds prefer the machine runtime home `C:\ProgramData\Xuva` so one device has one durable server identity.
 - If `C:\ProgramData\Xuva` cannot be created or written, packaged builds fall back to `%LOCALAPPDATA%\Xuva` and set `XUVA_RUNTIME_SCOPE=user-fallback`.
 - Runtime folders are `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+- Staged update installers and handoff files live under `<runtime-home>\updates`.
 - Override the runtime home with `XUVA_RUNTIME_HOME` when testing migrations or custom installs.
 - Override using:
   - `XUVA_SERVER_CMD`

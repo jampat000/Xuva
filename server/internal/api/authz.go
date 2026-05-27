@@ -153,6 +153,7 @@ var routePolicies = map[string]routePolicy{
 	"GET /api/architecture":              route("GET /api/architecture", "system", "system.architecture", roleAdmin),
 	"GET /api/system/status":             route("GET /api/system/status", "system", "system.status", roleAdmin),
 	"GET /api/system/updates":            route("GET /api/system/updates", "system", "system.updates.read", roleAdmin),
+	"POST /api/system/updates/apply":     route("POST /api/system/updates/apply", "system", "system.updates.apply", roleAdmin),
 	"GET /api/remote/access":             route("GET /api/remote/access", "remote", "remote.access.read", roleAdmin),
 	"GET /api/libraries":                 route("GET /api/libraries", "libraries", "library.list", roleAdmin),
 	"GET /api/catalog/summary":           route("GET /api/catalog/summary", "catalog", "catalog.summary", roleAdmin),
