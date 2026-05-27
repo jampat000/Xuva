@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" font-family="Geist, Inter, system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="240" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="55%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#60A5FA"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(20,20) scale(0.39)">
+    <path d="M128 96 L272 256 L128 416" stroke="url(#g)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M224 96 L368 256 L224 416" stroke="url(#g)" stroke-opacity="0.6" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <text x="240" y="168" font-size="180" font-weight="600" letter-spacing="-6" fill="#FFFFFF">
+    <tspan fill="url(#g)">X</tspan><tspan>uva</tspan>
+  </text>
+</svg>
