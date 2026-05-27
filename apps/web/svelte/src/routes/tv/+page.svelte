@@ -4,7 +4,7 @@
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
   import ErrorState from '$lib/components/ErrorState.svelte';
-  import { getSeries } from '$lib/api/browse';
+  import { getSeries, subscribeSeries } from '$lib/api/browse';
   import { seriesToMedia } from '$lib/api/adapters';
 
   let { data } = $props();
@@ -13,17 +13,23 @@
   let loading = $state(false);
   let error = $state<string | null>(data.loadError);
 
-  // Background-merge the rest of the library after the first-page paint —
-  // same pattern as /movies. See movies/+page.svelte for rationale.
+  // Background-merge full list and stay subscribed to SWR refreshes — same
+  // pattern as /movies. See movies/+page.svelte for rationale.
   onMount(() => {
-    if (!data.hasMore || error) return;
+    if (error) return;
     let cancelled = false;
-    void getSeries(undefined, 0).then((resp) => {
+    if (data.hasMore) {
+      void getSeries(undefined, 0).then((resp) => {
+        if (cancelled) return;
+        const full = (resp.series ?? []).map(seriesToMedia);
+        if (full.length > untrack(() => items.length)) items = full;
+      }).catch(() => { /* keep first page on failure */ });
+    }
+    const unsubscribe = subscribeSeries(0, (resp) => {
       if (cancelled) return;
-      const full = (resp.series ?? []).map(seriesToMedia);
-      if (full.length > untrack(() => items.length)) items = full;
-    }).catch(() => { /* keep first page on failure */ });
-    return () => { cancelled = true; };
+      items = (resp.series ?? []).map(seriesToMedia);
+    });
+    return () => { cancelled = true; unsubscribe(); };
   });
 
   // Only used by the "Try again" button — re-runs the full fetch

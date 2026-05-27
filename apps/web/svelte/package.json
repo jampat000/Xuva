@@ -37,6 +37,7 @@
 	},
 	"dependencies": {
 		"hls.js": "^1.6.16",
+		"idb-keyval": "^6.2.4",
 		"lucide-svelte": "^1.0.1"
 	}
 }
