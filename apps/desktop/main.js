@@ -17,6 +17,8 @@ let bonjourBrowser = null;
 let currentMode = "local";
 let currentRemoteUrl = "";
 let currentRuntimeHome = "";
+let updateWatchTimer = null;
+let updateApplying = false;
 
 function logEvent(event, fields = {}) {
   const payload = { ts: new Date().toISOString(), component: "desktop-shell", event, ...fields };
@@ -129,6 +131,9 @@ function serverEnv() {
   const xuvaRoot = runtime.root;
   env.XUVA_RUNTIME_HOME = xuvaRoot;
   env.XUVA_RUNTIME_SCOPE = runtime.scope;
+  env.XUVA_DESKTOP_EXE_PATH = process.execPath;
+  env.XUVA_DESKTOP_PID = String(process.pid);
+  env.XUVA_DESKTOP_UPDATE_REQUEST = path.join(xuvaRoot, "updates", "pending-update.json");
   if (!env.XUVA_DATA_DIR) {
     env.XUVA_DATA_DIR = path.join(xuvaRoot, "data");
   }
@@ -163,6 +168,113 @@ function serverEnv() {
     ensureDir(dir);
   }
   return env;
+}
+
+function updateRequestPath() {
+  return currentRuntimeHome ? path.join(currentRuntimeHome, "updates", "pending-update.json") : "";
+}
+
+function escapePowerShellSingleQuoted(value) {
+  return String(value || "").replace(/'/g, "''");
+}
+
+function writeUpdaterScript(request) {
+  const updatesDir = path.dirname(updateRequestPath());
+  ensureDir(updatesDir);
+  const scriptPath = path.join(updatesDir, "xuva-apply-update.ps1");
+  const logPath = path.join(updatesDir, "xuva-update.log");
+  const installerPath = request.installerPath || "";
+  const launcherPath = process.execPath;
+  const pendingPath = updateRequestPath();
+  const script = `
+$ErrorActionPreference = 'Stop'
+$launcherPid = ${process.pid}
+$installerPath = '${escapePowerShellSingleQuoted(installerPath)}'
+$launcherPath = '${escapePowerShellSingleQuoted(launcherPath)}'
+$pendingPath = '${escapePowerShellSingleQuoted(pendingPath)}'
+$logPath = '${escapePowerShellSingleQuoted(logPath)}'
+
+function Write-XuvaUpdateLog([string]$Message) {
+  $line = (Get-Date).ToUniversalTime().ToString('o') + ' ' + $Message
+  Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
+}
+
+try {
+  Write-XuvaUpdateLog "waiting for launcher process $launcherPid to exit"
+  Wait-Process -Id $launcherPid -Timeout 90 -ErrorAction SilentlyContinue
+  if (-not (Test-Path -LiteralPath $installerPath)) {
+    throw "installer not found: $installerPath"
+  }
+  Write-XuvaUpdateLog "starting installer $installerPath"
+  $proc = Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
+  if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
+    throw "installer exited with code $($proc.ExitCode)"
+  }
+  Remove-Item -LiteralPath $pendingPath -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  if (Test-Path -LiteralPath $launcherPath) {
+    Write-XuvaUpdateLog "restarting launcher $launcherPath"
+    Start-Process -FilePath $launcherPath | Out-Null
+  } else {
+    Write-XuvaUpdateLog "launcher path no longer exists: $launcherPath"
+  }
+  Write-XuvaUpdateLog "update apply complete"
+} catch {
+  Write-XuvaUpdateLog ("update apply failed: " + $_.Exception.Message)
+  exit 1
+}
+`;
+  fs.writeFileSync(scriptPath, script.trimStart(), "utf8");
+  return scriptPath;
+}
+
+async function applyPendingUpdate(request) {
+  if (updateApplying) return;
+  updateApplying = true;
+  try {
+    const installerPath = String(request.installerPath || "");
+    if (!installerPath || !fs.existsSync(installerPath)) {
+      logEvent("update.apply_skipped", { reason: "installer_missing", installerPath });
+      updateApplying = false;
+      return;
+    }
+    const scriptPath = writeUpdaterScript(request);
+    logEvent("update.apply_requested", { version: request.version || "", installerPath, scriptPath });
+    const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      shell: false,
+    });
+    child.unref();
+    app.isQuiting = true;
+    await stopServer();
+    app.quit();
+  } catch (err) {
+    logEvent("update.apply_error", { error: String(err) });
+    updateApplying = false;
+  }
+}
+
+function pollPendingUpdate() {
+  const pending = updateRequestPath();
+  if (!pending || updateApplying || process.platform !== "win32") return;
+  fs.readFile(pending, "utf8", (err, raw) => {
+    if (err || updateApplying) return;
+    try {
+      const request = JSON.parse(raw);
+      void applyPendingUpdate(request);
+    } catch (parseErr) {
+      logEvent("update.request_parse_error", { error: String(parseErr), path: pending });
+    }
+  });
+}
+
+function startUpdateWatcher() {
+  if (updateWatchTimer || process.platform !== "win32") return;
+  updateWatchTimer = setInterval(pollPendingUpdate, 3000);
+  if (typeof updateWatchTimer.unref === "function") updateWatchTimer.unref();
+  setTimeout(pollPendingUpdate, 1000);
 }
 
 function serverCommand() {
@@ -462,6 +574,7 @@ app.whenReady().then(() => {
     openAppInBrowser().catch((err) => logEvent("browser.open_unhandled_error", { error: String(err) }));
   }
 
+  startUpdateWatcher();
   createTray();
 
   app.on("activate", () => {
@@ -477,6 +590,10 @@ app.on("before-quit", () => {
     } catch {
       // Ignore discovery shutdown races.
     }
+  }
+  if (updateWatchTimer) {
+    clearInterval(updateWatchTimer);
+    updateWatchTimer = null;
   }
 });
 

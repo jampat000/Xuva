@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -131,6 +133,72 @@ func TestSystemUpdatesCheckComparesLatestRelease(t *testing.T) {
 	if asset["packageType"] != "windows-installer" {
 		t.Fatalf("expected installer asset classification, got %#v", asset)
 	}
+}
+
+func TestSystemUpdatesApplyStagesVerifiedInstaller(t *testing.T) {
+	previousVersion := buildinfo.Version
+	buildinfo.Version = "v0.0.4"
+	t.Cleanup(func() { buildinfo.Version = previousVersion })
+
+	installerBytes := []byte("fake xuva installer")
+	sum := sha256.Sum256(installerBytes)
+	sha := hex.EncodeToString(sum[:])
+	release := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/latest":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"tag_name":     "v0.0.5",
+				"html_url":     "https://github.com/jampat000/Xuva/releases/tag/v0.0.5",
+				"published_at": "2026-05-27T04:00:00Z",
+				"assets": []map[string]any{
+					{
+						"name":                 "xuva-v0.0.5-win-x64.exe",
+						"browser_download_url": releaseURL(r, "/xuva-v0.0.5-win-x64.exe"),
+						"size":                 len(installerBytes),
+						"digest":               "sha256:" + sha,
+					},
+				},
+			})
+		case "/xuva-v0.0.5-win-x64.exe":
+			_, _ = w.Write(installerBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer release.Close()
+	t.Setenv("XUVA_UPDATE_RELEASE_API", release.URL+"/latest")
+	t.Setenv("XUVA_UPDATE_APPLY_SUPPORTED", "1")
+
+	deps := testDeps(t, time.Now())
+	deps.Config.RuntimeHome = t.TempDir()
+	router := NewRouter(deps)
+	response := requestJSON(t, router, http.MethodPost, "/api/system/updates/apply", nil)
+
+	if response["status"] != "staged" || response["version"] != "v0.0.5" {
+		t.Fatalf("expected staged update response, got %#v", response)
+	}
+	pendingPath, _ := response["pendingPath"].(string)
+	if pendingPath == "" {
+		t.Fatalf("expected pending path, got %#v", response)
+	}
+	raw, err := os.ReadFile(pendingPath)
+	if err != nil {
+		t.Fatalf("read pending update: %v", err)
+	}
+	var pending map[string]any
+	if err := json.Unmarshal(raw, &pending); err != nil {
+		t.Fatalf("decode pending update: %v", err)
+	}
+	if pending["installerSha256"] != sha {
+		t.Fatalf("expected staged sha %q, got %#v", sha, pending)
+	}
+	if _, err := os.Stat(pending["installerPath"].(string)); err != nil {
+		t.Fatalf("expected staged installer: %v", err)
+	}
+}
+
+func releaseURL(r *http.Request, path string) string {
+	return "http://" + r.Host + path
 }
 
 func TestRootServesWebApp(t *testing.T) {

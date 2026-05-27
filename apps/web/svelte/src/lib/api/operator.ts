@@ -969,10 +969,30 @@ export interface UpdateStatusResponse {
 	checkedAt?: string;
 }
 
+export interface UpdateApplyResponse {
+	status?: string;
+	version?: string;
+	installerPath?: string;
+	installerSha256?: string;
+	pendingPath?: string;
+	requiresRestart?: boolean;
+	message?: string;
+}
+
 export function getUpdateStatus(
 	client: ApiClient = apiClient
 ): Promise<UpdateStatusResponse> {
 	return client.request<UpdateStatusResponse>('/api/system/updates');
+}
+
+export function applyUpdate(
+	client: ApiClient = apiClient
+): Promise<UpdateApplyResponse> {
+	return client.send<UpdateApplyResponse, Record<string, never>>(
+		'/api/system/updates/apply',
+		{} as Record<string, never>,
+		'POST'
+	);
 }
 
 // Notifications

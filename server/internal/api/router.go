@@ -214,6 +214,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "PUT /api/settings/metadata-sources", metadataSourceSettingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
 	handleProtected(mux, deps, "GET /api/system/updates", updatesCheckHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/system/updates/apply", updatesApplyHandler(deps))
 	handleProtected(mux, deps, "GET /api/backup/export", backupExportHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/backup/import", backupImportHandler(deps))
 	handleProtected(mux, deps, "GET /api/notifications", notificationsListHandler(deps))

@@ -240,6 +240,11 @@ Default runtime directories:
   <runtime-home>\cache
   <runtime-home>\temp
   <runtime-home>\trailers
+  <runtime-home>\updates
+
+In-app Windows updates:
+  Settings -> Updates can stage a verified installer. The launcher then stops
+  Xuva, runs the installer, and restarts the web app in the default browser.
 
 Override with environment variables before launch:
   XUVA_RUNTIME_HOME
