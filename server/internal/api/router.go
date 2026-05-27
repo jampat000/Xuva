@@ -1169,6 +1169,21 @@ func canonicalWebOriginString(r *http.Request, cfg config.Config) string {
 	return origin.String()
 }
 
+func clientWebOriginString(r *http.Request, cfg config.Config) string {
+	if explicit, err := config.NormalizeWebOrigin(cfg.CanonicalWebOrigin); err == nil && explicit != "" {
+		return explicit
+	}
+	return requestBaseURL(r, cfg.HTTPAddr)
+}
+
+func clientConnectionHostName(r *http.Request, cfg config.Config) string {
+	parsed, err := url.Parse(clientWebOriginString(r, cfg))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Hostname())
+}
+
 func sameOrigin(a url.URL, b url.URL) bool {
 	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
 }
@@ -1368,9 +1383,9 @@ func clientBootstrapHandler(deps Deps) http.HandlerFunc {
 				"product":            "xuva",
 				"name":               configDisplayName(cfg.ServerName),
 				"displayName":        configDisplayName(cfg.ServerName),
-				"hostName":           osHostnameForURL(),
+				"hostName":           clientConnectionHostName(r, cfg),
 				"baseUrl":            requestBaseURL(r, cfg.HTTPAddr),
-				"webUrl":             canonicalWebOriginString(r, cfg),
+				"webUrl":             clientWebOriginString(r, cfg),
 				"canonicalWebOrigin": cfg.CanonicalWebOrigin,
 				"httpAddr":           cfg.HTTPAddr,
 				"lanAddresses":       lanAddresses(cfg.HTTPAddr),
@@ -1432,30 +1447,32 @@ func discoveryStatusHandler(deps Deps) http.HandlerFunc {
 			Enabled:     cfg.DiscoveryEnabled,
 			ServiceName: configDisplayName(cfg.ServerName),
 			ServiceType: "_xuva._tcp.local.",
-			HostName:    osHostnameForURL(),
-			WebURL:      canonicalWebOriginString(r, cfg),
+			HostName:    clientConnectionHostName(r, cfg),
+			WebURL:      clientWebOriginString(r, cfg),
 			Note:        "Local discovery is not running.",
 		}
 		if deps.Discovery != nil {
 			status = deps.Discovery.Status()
 			if status.HostName == "" {
-				status.HostName = osHostnameForURL()
+				status.HostName = clientConnectionHostName(r, cfg)
 			}
 			if status.WebURL == "" {
-				status.WebURL = canonicalWebOriginString(r, cfg)
+				status.WebURL = clientWebOriginString(r, cfg)
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"enabled":     status.Enabled,
-			"running":     status.Running,
-			"serviceName": status.ServiceName,
-			"serviceType": status.ServiceType,
-			"hostName":    status.HostName,
-			"webUrl":      status.WebURL,
-			"port":        status.Port,
-			"txtRecords":  status.TXTRecords,
-			"lastError":   status.LastError,
-			"note":        status.Note,
+			"enabled":      status.Enabled,
+			"running":      status.Running,
+			"serviceName":  status.ServiceName,
+			"serviceType":  status.ServiceType,
+			"hostName":     status.HostName,
+			"webUrl":       status.WebURL,
+			"port":         status.Port,
+			"interfaces":   status.Interfaces,
+			"advertiseIps": status.AdvertiseIPs,
+			"txtRecords":   status.TXTRecords,
+			"lastError":    status.LastError,
+			"note":         status.Note,
 		})
 	}
 }

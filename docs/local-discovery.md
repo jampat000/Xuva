@@ -11,7 +11,7 @@ Xuva can advertise itself on the local network with mDNS / Bonjour so nearby cli
 - Publishes only safe TXT records:
   - `app=xuva`
   - `api=/api/client/bootstrap`
-  - `hostName=<operating-system hostname>`
+  - `hostName=<reachable connection host>`
   - `serverName=<configured name>`
   - `web=<canonical web origin, or a derived LAN IP URL>`
 
@@ -22,7 +22,7 @@ Xuva does not advertise secrets, tokens, credentials, filesystem paths, or runti
 Xuva has two separate names:
 
 - **Xuva Server Name** is the friendly instance/display name. It appears in browser titles, setup screens, client discovery lists, and `/api/client/bootstrap`.
-- **Network host name / canonical web address** is the routable address clients use to connect. It comes from the operating system, local DNS, mDNS, a reverse proxy, Docker/container networking, or the configured canonical web origin.
+- **Connection host / canonical web address** is the routable address clients use to connect. It comes from an explicitly configured canonical web origin or a derived LAN IP URL. It is not inferred from the Windows/Linux machine name for native clients.
 
 The saved **Xuva Server Name** is used for:
 
@@ -61,6 +61,8 @@ Normal installs should keep the default service type.
 If a canonical web address is configured, discovery advertises that address in the `web=` TXT record.
 
 If it is blank, discovery now prefers a reachable advertised LAN IP such as `http://10.1.1.103:8097` instead of a bare Windows hostname. This avoids Apple/TV clients failing when they cannot resolve `DESKTOP-...` style hostnames.
+
+The mDNS SRV target also uses a Xuva-branded `.local.` host label derived from the configured server name, for example `family-room-xuva.local.`, rather than the operating-system hostname. This prevents native clients from displaying development or bare-metal machine names as the server URL.
 
 `GET /api/discovery/status` exposes the active discovery interfaces and advertised IPs so installer and LAN diagnostics can confirm which adapters are being used.
 
