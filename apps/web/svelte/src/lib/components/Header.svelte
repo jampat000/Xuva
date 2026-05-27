@@ -264,7 +264,11 @@
 
     <a href="/" class="shrink-0"><Logo /></a>
 
-    <nav class="hidden items-center gap-1 lg:flex">
+    <nav
+      class="hidden items-center gap-1 lg:flex"
+      data-sveltekit-preload-code="eager"
+      data-sveltekit-preload-data="hover"
+    >
       {#each nav as item (item.href)}
         <a
           href={item.href}
@@ -607,7 +611,11 @@
     data-mobile-menu
     class="fixed inset-x-0 top-16 z-40 border-b border-border bg-surface-elevated shadow-xl backdrop-blur-xl lg:hidden"
   >
-    <nav class="px-5 py-3">
+    <nav
+      class="px-5 py-3"
+      data-sveltekit-preload-code="eager"
+      data-sveltekit-preload-data="tap"
+    >
       {#each nav as item (item.href)}
         <a
           href={item.href}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
@@ -12,7 +13,24 @@
   let loading = $state(false);
   let error = $state<string | null>(data.loadError);
 
-  // Only used by the "Try again" button — re-runs the same fetch
+  // Background-merge the rest of the library. The first-page load already
+  // mounted the page with FIRST_PAGE items so the user sees content
+  // immediately; this expands the grid in place once the full list arrives.
+  // Skipped when the first page already represents the whole library.
+  onMount(() => {
+    if (!data.hasMore || error) return;
+    let cancelled = false;
+    void getMovies(undefined, 0).then((resp) => {
+      if (cancelled) return;
+      const full = (resp.movies ?? []).map(movieToMedia);
+      // Only replace if the full list is materially larger — avoids a no-op
+      // re-render when the server returned <FIRST_PAGE items as a complete set.
+      if (full.length > untrack(() => items.length)) items = full;
+    }).catch(() => { /* keep the first page on failure */ });
+    return () => { cancelled = true; };
+  });
+
+  // Only used by the "Try again" button — re-runs the full fetch
   async function reload() {
     error = null;
     loading = true;

@@ -6,6 +6,7 @@
   import { syncWatchlistFromServer } from '$lib/stores/watchlistStore.svelte';
   import { listProfiles } from '$lib/api/profiles';
   import WhoIsWatching from '$lib/components/WhoIsWatching.svelte';
+  import NavProgress from '$lib/components/NavProgress.svelte';
   import type { ProfileCard } from '$lib/api/profiles';
 
   let { children } = $props();
@@ -17,55 +18,43 @@
   // but resets when the tab is closed — correct "who's watching" semantics.
   const PROFILE_SESSION_KEY = 'xuva-profile-card';
 
-  onMount(async () => {
+  onMount(() => {
     if (typeof window === 'undefined') return;
     const path = window.location.pathname;
     if (path.startsWith('/setup') || path.startsWith('/signin')) return;
 
-    try {
-      const [setupResp, bootstrapResp] = await Promise.all([
-        fetch('/api/setup/status'),
-        fetch('/api/client/bootstrap'),
-      ]);
-
-      if (setupResp.ok) {
-        const data = await setupResp.json() as { requiresSetup?: boolean };
-        if (data.requiresSetup) { window.location.href = '/setup'; return; }
-      }
-
-      if (bootstrapResp.ok) {
-        const data = await bootstrapResp.json() as { server?: { name?: string }; features?: { trailers?: boolean } };
-        if (data.server?.name) appState.serverName = data.server.name;
-        if (data.features?.trailers === false) appState.trailersEnabled = false;
-        // Sync watchlist from server after bootstrap succeeds
-        syncWatchlistFromServer();
-      }
-    } catch {
-      // Server unreachable — stay on current page.
-    }
-
-    // If a profile was already selected this browser tab session, restore it
-    // silently without showing the picker again.
+    // Restore active profile synchronously from sessionStorage so the picker
+    // never flashes on subsequent navigations in the same tab.
     try {
       const stored = sessionStorage.getItem(PROFILE_SESSION_KEY);
-      if (stored) {
-        const card = JSON.parse(stored) as ProfileCard;
-        profileStore.setActiveProfile(card);
-        return;
-      }
+      if (stored) profileStore.setActiveProfile(JSON.parse(stored) as ProfileCard);
     } catch {
       try { sessionStorage.removeItem(PROFILE_SESSION_KEY); } catch { /* ignore */ }
     }
 
-    // First visit in this tab — show picker if profiles exist and auth is on.
-    try {
-      const profiles = await listProfiles();
-      if (profiles.length > 0) {
-        profileStore.openPicker();
-      }
-    } catch {
-      // Profiles endpoint unavailable (auth disabled or single-user) — skip.
-    }
+    // Fire bootstrap, setup-check, and profile discovery in parallel without
+    // awaiting — first paint is no longer gated on the network. Each handler
+    // updates app state when its response lands.
+    void fetch('/api/setup/status').then(async (resp) => {
+      if (!resp.ok) return;
+      const data = await resp.json() as { requiresSetup?: boolean };
+      if (data.requiresSetup) window.location.href = '/setup';
+    }).catch(() => { /* server unreachable — stay put */ });
+
+    void fetch('/api/client/bootstrap').then(async (resp) => {
+      if (!resp.ok) return;
+      const data = await resp.json() as { server?: { name?: string }; features?: { trailers?: boolean } };
+      if (data.server?.name) appState.serverName = data.server.name;
+      if (data.features?.trailers === false) appState.trailersEnabled = false;
+      syncWatchlistFromServer();
+    }).catch(() => { /* server unreachable — stay put */ });
+
+    // Skip the picker if a profile was already chosen this tab session.
+    if (profileStore.activeProfile) return;
+
+    void listProfiles().then((profiles) => {
+      if (profiles.length > 0 && !profileStore.activeProfile) profileStore.openPicker();
+    }).catch(() => { /* auth disabled or endpoint unavailable */ });
   });
 
   function handleProfileSelected(profile: ProfileCard) {
@@ -77,6 +66,8 @@
 <svelte:head>
   <title>{appState.serverName}</title>
 </svelte:head>
+
+<NavProgress />
 
 {#if showPicker}
   <WhoIsWatching onselect={handleProfileSelected} />
