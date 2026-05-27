@@ -1,0 +1,43 @@
+{
+  "buildID": "20260527011608-8791ec04412511c5",
+  "publishedAt": "2026-05-27T01:16:08.186Z",
+  "basePath": "/",
+  "sourceApp": "apps/web/svelte",
+  "staticOutput": "server/internal/webapp/static-next",
+  "gitCommit": "4923fddd",
+  "indexHash": "8791ec04412511c5",
+  "routePatterns": [
+    "/",
+    "/about",
+    "/apps",
+    "/collections",
+    "/collections/[id]",
+    "/continue-watching",
+    "/movies",
+    "/movies/[id]",
+    "/people/[name]",
+    "/play/[mediaSourceId]",
+    "/privacy",
+    "/search",
+    "/settings",
+    "/settings/activity",
+    "/setup",
+    "/signin",
+    "/support",
+    "/terms",
+    "/tv",
+    "/tv/[id]",
+    "/watchlist"
+  ],
+  "requiredSmokeRoutes": [
+    "/",
+    "/signin",
+    "/setup",
+    "/movies",
+    "/tv",
+    "/settings",
+    "/admin",
+    "/movies/[id]",
+    "/tv/[id]"
+  ]
+}

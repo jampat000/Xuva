@@ -20,6 +20,29 @@ function Assert-Absent {
 	}
 }
 
+function Assert-DesktopIconConfig {
+	$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")).Path
+	$packageJsonPath = Join-Path $repoRoot "apps\desktop\package.json"
+	$config = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
+
+	$appIcon = [string]$config.build.win.icon
+	$installerIcon = [string]$config.build.nsis.installerIcon
+	$uninstallerIcon = [string]$config.build.nsis.uninstallerIcon
+	if ($appIcon -ne "assets/xuva.ico") {
+		throw "Desktop package config must set build.win.icon to assets/xuva.ico."
+	}
+	if ($installerIcon -ne $appIcon) {
+		throw "Desktop package config must set build.nsis.installerIcon to $appIcon."
+	}
+	if ($uninstallerIcon -ne $appIcon) {
+		throw "Desktop package config must set build.nsis.uninstallerIcon to $appIcon."
+	}
+
+	Assert-Exists -Path (Join-Path (Split-Path -Parent $packageJsonPath) $appIcon)
+}
+
+Assert-DesktopIconConfig
+
 $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
 if ([string]::IsNullOrWhiteSpace($ChecksumPath)) {
 	$ChecksumPath = "$resolvedPackage.sha256"
