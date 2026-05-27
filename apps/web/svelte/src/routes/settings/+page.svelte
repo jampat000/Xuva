@@ -7,6 +7,7 @@
     ChevronLeft,
     ChevronRight,
     Database,
+    Download,
     Film,
     Folder,
     FolderOpen,
@@ -72,6 +73,7 @@
     runHardwareTest,
     exportBackup,
     importBackup,
+    getUpdateStatus,
     type SystemStatusResponse,
     type CatalogSummaryResponse,
     type ScanJobItem,
@@ -91,6 +93,7 @@
     type HardwareTestResponse,
     type DeviceProfile,
     type BackupImportResponse,
+    type UpdateStatusResponse,
     generateQRPairToken,
     type QRTokenResponse,
   } from '$lib/api/operator';
@@ -132,6 +135,7 @@
     { id: "transcoding", label: "Transcoding", icon: Sliders, group: "Server", hint: "Hardware acceleration & workers" },
     { id: "storage", label: "Storage", icon: HardDrive, group: "Server", hint: "Directories & disk usage" },
     { id: "backup", label: "Backup", icon: ArchiveRestore, group: "Server", hint: "Export & restore your catalog database" },
+    { id: "updates", label: "Updates", icon: Download, group: "Server", hint: "Check and download Xuva releases" },
     { id: "network", label: "Network", icon: Wifi, group: "Server", hint: "Ports, mDNS discovery, remote access" },
     { id: "watchlist-services", label: "Watchlist Services", icon: BookMarked, group: "Server", hint: "Sync with Trakt, Letterboxd & more" },
     { id: "users", label: "Users", icon: Users, group: "Server", hint: "Accounts & access roles" },
@@ -214,6 +218,37 @@
   let backupImporting = $state(false);
   let backupImportResult = $state<BackupImportResponse | null>(null);
   let backupImportError = $state<string | null>(null);
+  let updateStatus = $state<UpdateStatusResponse | null>(null);
+  let updateChecking = $state(false);
+  let updateError = $state<string | null>(null);
+
+  const installerAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-installer'));
+  const portableAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-portable'));
+  const installerChecksumAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-installer-checksum'));
+
+  function formatUpdateBytes(value?: number): string {
+    if (!value || value < 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = value;
+    let unit = 0;
+    while (size >= 1024 && unit < units.length - 1) {
+      size /= 1024;
+      unit += 1;
+    }
+    return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+  }
+
+  async function checkUpdates() {
+    updateChecking = true;
+    updateError = null;
+    try {
+      updateStatus = await getUpdateStatus();
+    } catch (err) {
+      updateError = err instanceof Error ? err.message : 'Update check failed';
+    } finally {
+      updateChecking = false;
+    }
+  }
 
   async function handleExport() {
     backupExporting = true;
@@ -4720,6 +4755,119 @@
                     <p class="mt-1 text-xs text-muted-foreground">{theme.sub}</p>
                   </div>
                 {/each}
+              </div>
+            </section>
+          </div>
+
+        {:else if active === "updates"}
+          <div class="space-y-8">
+            <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
+              <div>
+                <h3 class="font-serif-display text-lg tracking-tight">Release updates</h3>
+                <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  Check the published Xuva releases and download the Windows or Docker package from inside the web app.
+                </p>
+              </div>
+              <div class="hairline rounded-2xl bg-surface/45 p-5">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div class="text-sm font-semibold">
+                      {#if updateStatus?.updateAvailable}
+                        Update available: {updateStatus.latestVersion}
+                      {:else if updateStatus}
+                        Xuva is up to date
+                      {:else}
+                        Check for the latest release
+                      {/if}
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                      Current version: <span class="font-mono">{updateStatus?.currentVersion ?? 'unknown'}</span>
+                      {#if updateStatus?.checkedAt}
+                        <span class="mx-1 text-foreground/30">·</span>
+                        Checked {new Date(updateStatus.checkedAt).toLocaleString()}
+                      {/if}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                    disabled={updateChecking}
+                    onclick={checkUpdates}>
+                    <RefreshCw class={`h-4 w-4 ${updateChecking ? 'animate-spin' : ''}`} />
+                    {updateChecking ? 'Checking...' : 'Check now'}
+                  </button>
+                </div>
+
+                {#if updateError}
+                  <p class="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{updateError}</p>
+                {/if}
+
+                {#if updateStatus}
+                  <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-xl border border-border bg-background/35 p-4">
+                      <div class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Latest release</div>
+                      <div class="mt-2 font-mono text-lg">{updateStatus.latestVersion ?? 'unknown'}</div>
+                      {#if updateStatus.publishedAt}
+                        <p class="mt-1 text-xs text-muted-foreground">Published {new Date(updateStatus.publishedAt).toLocaleString()}</p>
+                      {/if}
+                    </div>
+                    <div class="rounded-xl border border-border bg-background/35 p-4">
+                      <div class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Docker</div>
+                      <div class="mt-2 truncate font-mono text-sm">{updateStatus.dockerImage ?? 'No Docker image reported'}</div>
+                      {#if updateStatus.dockerImage}
+                        <p class="mt-1 text-xs text-muted-foreground">Use this tag when upgrading a Docker install.</p>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <div class="mt-5 space-y-3">
+                    {#if installerAsset?.url}
+                      <a
+                        href={installerAsset.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-foreground/[0.08] px-4 py-3 text-sm transition-colors hover:bg-foreground/[0.14]">
+                        <span>
+                          <span class="font-semibold">Download Windows installer</span>
+                          <span class="ml-2 text-muted-foreground">{formatUpdateBytes(installerAsset.size)}</span>
+                        </span>
+                        <span class="font-mono text-xs text-primary">{installerAsset.name}</span>
+                      </a>
+                    {/if}
+                    {#if portableAsset?.url}
+                      <a
+                        href={portableAsset.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-foreground/[0.06] px-4 py-3 text-sm transition-colors hover:bg-foreground/[0.12]">
+                        <span>
+                          <span class="font-semibold">Download portable ZIP</span>
+                          <span class="ml-2 text-muted-foreground">{formatUpdateBytes(portableAsset.size)}</span>
+                        </span>
+                        <span class="font-mono text-xs text-primary">{portableAsset.name}</span>
+                      </a>
+                    {/if}
+                    {#if installerChecksumAsset?.url}
+                      <a href={installerChecksumAsset.url} target="_blank" rel="noreferrer" class="inline-flex text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                        Download installer SHA256 checksum
+                      </a>
+                    {/if}
+                    {#if updateStatus.releaseUrl}
+                      <div>
+                        <a href={updateStatus.releaseUrl} target="_blank" rel="noreferrer" class="inline-flex text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                          View release notes
+                        </a>
+                      </div>
+                    {/if}
+                  </div>
+
+                  <div class="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
+                    <div class="font-semibold">Apply step</div>
+                    <p class="mt-1 text-amber-100/80">
+                      Automatic self-apply is intentionally disabled until Xuva has a separate updater supervisor. Download the installer here, run it, then restart Xuva. This avoids replacing the running server process mid-request.
+                    </p>
+                  </div>
+                {/if}
               </div>
             </section>
           </div>

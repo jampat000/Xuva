@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/auth"
+	"github.com/jampat000/Xuva/server/internal/buildinfo"
 	"github.com/jampat000/Xuva/server/internal/catalog"
 	"github.com/jampat000/Xuva/server/internal/config"
 	"github.com/jampat000/Xuva/server/internal/database"
@@ -81,6 +82,54 @@ func TestSystemVersionIsPublicAndIncludesSchemaVersion(t *testing.T) {
 	}
 	if _, ok := payload["goVersion"].(string); !ok {
 		t.Fatalf("expected go version, got %#v", payload)
+	}
+}
+
+func TestSystemUpdatesCheckComparesLatestRelease(t *testing.T) {
+	previousVersion := buildinfo.Version
+	buildinfo.Version = "v0.0.4"
+	t.Cleanup(func() { buildinfo.Version = previousVersion })
+
+	release := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("User-Agent") != "Xuva/v0.0.4" {
+			t.Fatalf("expected Xuva user agent, got %q", r.Header.Get("User-Agent"))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"tag_name":     "v0.0.5",
+			"html_url":     "https://github.com/jampat000/Xuva/releases/tag/v0.0.5",
+			"published_at": "2026-05-27T04:00:00Z",
+			"assets": []map[string]any{
+				{
+					"name":                 "xuva-v0.0.5-win-x64.exe",
+					"browser_download_url": "https://github.com/jampat000/Xuva/releases/download/v0.0.5/xuva-v0.0.5-win-x64.exe",
+					"size":                 123,
+					"digest":               "sha256:test",
+				},
+			},
+		})
+	}))
+	defer release.Close()
+	t.Setenv("XUVA_UPDATE_RELEASE_API", release.URL)
+
+	router := NewRouter(testDeps(t, time.Now()))
+	payload := getJSON(t, router, "/api/system/updates")
+
+	if payload["currentVersion"] != "v0.0.4" || payload["latestVersion"] != "v0.0.5" {
+		t.Fatalf("expected current/latest versions, got %#v", payload)
+	}
+	if payload["updateAvailable"] != true {
+		t.Fatalf("expected updateAvailable, got %#v", payload)
+	}
+	if payload["applySupported"] != false {
+		t.Fatalf("expected automatic apply to be unsupported until updater supervisor exists, got %#v", payload)
+	}
+	assets, ok := payload["assets"].([]any)
+	if !ok || len(assets) != 1 {
+		t.Fatalf("expected one update asset, got %#v", payload["assets"])
+	}
+	asset := assets[0].(map[string]any)
+	if asset["packageType"] != "windows-installer" {
+		t.Fatalf("expected installer asset classification, got %#v", asset)
 	}
 }
 
