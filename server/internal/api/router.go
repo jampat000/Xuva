@@ -1138,8 +1138,12 @@ func canonicalWebOriginForRequest(r *http.Request, cfg config.Config) (url.URL, 
 		port = "8097"
 	}
 
-	ip := net.ParseIP(host)
-	if !config.HTTPAddrLoopbackOnly(cfg.HTTPAddr) && (ip != nil || host == "localhost") {
+	// `localhost` over a non-loopback bind is rewritten to the OS hostname so
+	// the URL bar reads sensibly (e.g. http://media-server:8097). Bare-IP
+	// requests are intentionally NOT rewritten — a client that resolved the
+	// server via mDNS-advertised IP shouldn't be bounced to a hostname it
+	// might not be able to resolve. (This was breaking Apple TV discovery.)
+	if !config.HTTPAddrLoopbackOnly(cfg.HTTPAddr) && host == "localhost" {
 		name := osHostnameForURL()
 		if name == "" {
 			return url.URL{}, false
@@ -1147,18 +1151,17 @@ func canonicalWebOriginForRequest(r *http.Request, cfg config.Config) (url.URL, 
 		return url.URL{Scheme: requestScheme(r), Host: net.JoinHostPort(name, port)}, true
 	}
 
+	// Loopback shortcut: 127.0.0.1 → localhost so dev tools render a friendly
+	// URL. Only applied when the bind is loopback-only; otherwise the LAN-IP
+	// branch above already handled the visible case.
 	if host == "127.0.0.1" || host == "::1" {
 		return url.URL{Scheme: requestScheme(r), Host: net.JoinHostPort("localhost", port)}, true
 	}
 
-	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
-		return url.URL{}, false
-	}
-	name := osHostnameForURL()
-	if name == "" {
-		return url.URL{}, false
-	}
-	return url.URL{Scheme: requestScheme(r), Host: net.JoinHostPort(name, port)}, true
+	// Any other request — bare IP, hostname, ::1 already handled — passes
+	// through as-is. The canonicalWebOrigin override remains the escape
+	// hatch for operators who want a forced canonical hostname.
+	return url.URL{}, false
 }
 
 func canonicalWebOriginString(r *http.Request, cfg config.Config) string {
