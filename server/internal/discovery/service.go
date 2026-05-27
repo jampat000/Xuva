@@ -578,12 +578,16 @@ func advertisedIPs(httpAddr string) ([]net.IP, error) {
 }
 
 func activeLANIPs() ([]net.IP, error) {
-	// Prefer physical LAN adapters first. If none exist, fall back to virtual
-	// adapters so development-only environments can still advertise locally.
-	output := collectLANIPs(false)
-	if len(output) == 0 {
-		output = collectLANIPs(true)
-	}
+	// Advertise on EVERY multicast-capable interface — physical and virtual.
+	// The earlier behaviour preferred physical-only and only fell back to
+	// virtual when no physical NIC had an IP, but that suppressed reachable
+	// paths when a host had both kinds (e.g. a Tailscale interface that's
+	// the only route between server and Apple TV, or a Hyper-V Default
+	// Switch that the client is bridged through). The downstream
+	// advertisementInterfacesForIPs still sorts with physical-first via
+	// interfacePreference so clients try LAN before overlay networks; we
+	// just don't drop the overlay entries from the list any more.
+	output := collectLANIPs(true)
 	if len(output) == 0 {
 		return nil, errors.New("no local network address is available")
 	}
