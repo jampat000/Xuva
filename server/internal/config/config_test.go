@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -91,5 +92,24 @@ func TestNormalizeWebOrigin(t *testing.T) {
 	}
 	if got != "http://media-server.local:8097" {
 		t.Fatalf("expected normalized origin, got %q", got)
+	}
+}
+
+func TestLoadFileAcceptsUTF8BOM(t *testing.T) {
+	dataDir := t.TempDir()
+	payload := "\uFEFF{\n  \"serverName\": \"Media-Server-Test\",\n  \"httpAddr\": \"0.0.0.0:8097\"\n}\n"
+	if err := os.WriteFile(filepath.Join(dataDir, "settings.json"), []byte(payload), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	cfg, err := LoadFile(dataDir)
+	if err != nil {
+		t.Fatalf("load settings with BOM: %v", err)
+	}
+	if cfg.ServerName != "Media-Server-Test" {
+		t.Fatalf("expected serverName from settings, got %q", cfg.ServerName)
+	}
+	if cfg.HTTPAddr != "0.0.0.0:8097" {
+		t.Fatalf("expected httpAddr from settings, got %q", cfg.HTTPAddr)
 	}
 }
