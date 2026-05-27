@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
@@ -12,7 +13,20 @@
   let loading = $state(false);
   let error = $state<string | null>(data.loadError);
 
-  // Only used by the "Try again" button — re-runs the same fetch
+  // Background-merge the rest of the library after the first-page paint —
+  // same pattern as /movies. See movies/+page.svelte for rationale.
+  onMount(() => {
+    if (!data.hasMore || error) return;
+    let cancelled = false;
+    void getSeries(undefined, 0).then((resp) => {
+      if (cancelled) return;
+      const full = (resp.series ?? []).map(seriesToMedia);
+      if (full.length > untrack(() => items.length)) items = full;
+    }).catch(() => { /* keep first page on failure */ });
+    return () => { cancelled = true; };
+  });
+
+  // Only used by the "Try again" button — re-runs the full fetch
   async function reload() {
     error = null;
     loading = true;
