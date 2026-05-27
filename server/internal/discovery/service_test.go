@@ -114,6 +114,27 @@ func TestServiceUsesConfiguredCanonicalWebOrigin(t *testing.T) {
 	}
 }
 
+func TestDiscoveryWebURLPrefersAdvertisedIPv4WhenCanonicalOriginIsBlank(t *testing.T) {
+	got := discoveryWebURL(config.Config{}, "DESKTOP-TEST", 8097, []net.IP{
+		net.ParseIP("fdc1:b5ee:239a:4bf4::100"),
+		net.ParseIP("10.1.1.103"),
+	})
+
+	if got != "http://10.1.1.103:8097" {
+		t.Fatalf("expected reachable LAN IPv4 URL, got %q", got)
+	}
+}
+
+func TestDiscoveryWebURLKeepsConfiguredCanonicalOrigin(t *testing.T) {
+	got := discoveryWebURL(config.Config{CanonicalWebOrigin: "http://xuva.local:8097"}, "DESKTOP-TEST", 8097, []net.IP{
+		net.ParseIP("10.1.1.103"),
+	})
+
+	if got != "http://xuva.local:8097" {
+		t.Fatalf("expected canonical URL to win, got %q", got)
+	}
+}
+
 func TestServiceFallsBackToXuvaName(t *testing.T) {
 	var captured AdvertiseConfig
 	service := NewServiceForTest(config.Config{
@@ -133,6 +154,24 @@ func TestServiceFallsBackToXuvaName(t *testing.T) {
 	}
 	if captured.ServiceType != DefaultServiceType {
 		t.Fatalf("expected default service type, got %#v", captured)
+	}
+}
+
+func TestInterfacePreferenceRanksPhysicalBeforeVirtual(t *testing.T) {
+	if interfacePreference("Ethernet 2") >= interfacePreference("vEthernet (WSL)") {
+		t.Fatalf("expected physical Ethernet to rank before vEthernet")
+	}
+}
+
+func TestUsableAdvertiseIPRejectsLoopbackAndLinkLocal(t *testing.T) {
+	rejected := []string{"127.0.0.1", "169.254.1.20", "fe80::1"}
+	for _, value := range rejected {
+		if usableAdvertiseIP(net.ParseIP(value)) {
+			t.Fatalf("expected %s to be rejected for discovery advertisement", value)
+		}
+	}
+	if !usableAdvertiseIP(net.ParseIP("10.1.1.103")) {
+		t.Fatalf("expected RFC1918 LAN address to be usable")
 	}
 }
 

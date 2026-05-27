@@ -24,16 +24,18 @@ const (
 )
 
 type Status struct {
-	Enabled     bool     `json:"enabled"`
-	Running     bool     `json:"running"`
-	ServiceName string   `json:"serviceName,omitempty"`
-	ServiceType string   `json:"serviceType,omitempty"`
-	HostName    string   `json:"hostName,omitempty"`
-	WebURL      string   `json:"webUrl,omitempty"`
-	Port        int      `json:"port,omitempty"`
-	TXTRecords  []string `json:"txtRecords,omitempty"`
-	LastError   string   `json:"lastError,omitempty"`
-	Note        string   `json:"note,omitempty"`
+	Enabled      bool     `json:"enabled"`
+	Running      bool     `json:"running"`
+	ServiceName  string   `json:"serviceName,omitempty"`
+	ServiceType  string   `json:"serviceType,omitempty"`
+	HostName     string   `json:"hostName,omitempty"`
+	WebURL       string   `json:"webUrl,omitempty"`
+	Port         int      `json:"port,omitempty"`
+	Interfaces   []string `json:"interfaces,omitempty"`
+	AdvertiseIPs []string `json:"advertiseIps,omitempty"`
+	TXTRecords   []string `json:"txtRecords,omitempty"`
+	LastError    string   `json:"lastError,omitempty"`
+	Note         string   `json:"note,omitempty"`
 }
 
 type AdvertiseConfig struct {
@@ -49,6 +51,29 @@ type announcer interface {
 }
 
 type announcerFactory func(AdvertiseConfig) (announcer, error)
+
+type compositeAnnouncer []announcer
+
+func (a compositeAnnouncer) Shutdown() error {
+	var failures []string
+	for _, item := range a {
+		if item == nil {
+			continue
+		}
+		if err := item.Shutdown(); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+	if len(failures) > 0 {
+		return errors.New(strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+type interfaceAdvertisement struct {
+	Iface net.Interface
+	IPs   []net.IP
+}
 
 type Service struct {
 	cfg     config.Config
@@ -102,7 +127,6 @@ func (s *Service) Start(ctx context.Context) {
 		return
 	}
 	status.Port = port
-	status.WebURL = discoveryWebURL(s.cfg, status.HostName, port)
 
 	if config.HTTPAddrLoopbackOnly(s.cfg.HTTPAddr) {
 		status.Note = "This server is listening only on this device right now."
@@ -119,6 +143,9 @@ func (s *Service) Start(ctx context.Context) {
 		slog.Warn("Local discovery could not start: " + err.Error())
 		return
 	}
+	status.AdvertiseIPs = ipStrings(ips)
+	status.Interfaces = interfaceNamesForIPs(ips)
+	status.WebURL = discoveryWebURL(s.cfg, status.HostName, port, ips)
 
 	txtRecords := []string{
 		"app=xuva",
@@ -190,6 +217,12 @@ func (s *Service) Status() Status {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	status := s.status
+	if len(status.Interfaces) > 0 {
+		status.Interfaces = append([]string(nil), status.Interfaces...)
+	}
+	if len(status.AdvertiseIPs) > 0 {
+		status.AdvertiseIPs = append([]string(nil), status.AdvertiseIPs...)
+	}
 	if len(status.TXTRecords) > 0 {
 		status.TXTRecords = append([]string(nil), status.TXTRecords...)
 	}
@@ -203,34 +236,52 @@ func (s *Service) setStatus(status Status) {
 }
 
 func newMDNSAnnouncer(cfg AdvertiseConfig) (announcer, error) {
+	interfaces := advertisementInterfacesForIPs(cfg.IPs)
+	if len(interfaces) == 0 {
+		return newMDNSServer(cfg, nil, cfg.IPs)
+	}
+
+	var servers compositeAnnouncer
+	var failures []string
+	for _, candidate := range interfaces {
+		iface := candidate.Iface
+		server, err := newMDNSServer(cfg, &iface, candidate.IPs)
+		if err != nil {
+			failures = append(failures, iface.Name+": "+err.Error())
+			continue
+		}
+		slog.Info("Local discovery advertised on interface", "name", iface.Name, "ips", ipStrings(candidate.IPs))
+		servers = append(servers, server)
+	}
+	if len(servers) == 0 {
+		if len(failures) > 0 {
+			return nil, errors.New(strings.Join(failures, "; "))
+		}
+		return nil, errors.New("no multicast-capable network interface is available")
+	}
+	if len(failures) > 0 {
+		slog.Warn("Local discovery could not start on every interface", "errors", strings.Join(failures, "; "))
+	}
+	return servers, nil
+}
+
+func newMDNSServer(cfg AdvertiseConfig, iface *net.Interface, ips []net.IP) (announcer, error) {
 	service, err := mdns.NewMDNSService(
 		cfg.ServiceName,
 		cfg.ServiceType,
 		serviceDomain,
 		localHostRecord(),
 		cfg.Port,
-		cfg.IPs,
+		ips,
 		cfg.TXTRecords,
 	)
 	if err != nil {
 		return nil, err
 	}
-	// Pin to the network interface that owns one of cfg.IPs. On Windows hosts
-	// with multiple adapters (Hyper-V virtual switches, WSL, VPN tunnels)
-	// hashicorp/mdns' default "first multicast-capable interface" picks the
-	// wrong one — broadcasts go out on the virtual NIC and never reach the
-	// LAN. Explicitly binding fixes this.
-	pinnedIface := pickInterfaceForIPs(cfg.IPs)
-	if pinnedIface != nil {
-		slog.Info("Local discovery pinned to interface", "name", pinnedIface.Name)
-	}
-	return mdns.NewServer(&mdns.Config{Zone: service, Iface: pinnedIface})
+	return mdns.NewServer(&mdns.Config{Zone: service, Iface: iface})
 }
 
-// pickInterfaceForIPs returns the first net.Interface whose unicast addresses
-// include any of the given IPs. Returns nil if no match (then the library
-// falls back to its default multicast interface).
-func pickInterfaceForIPs(ips []net.IP) *net.Interface {
+func advertisementInterfacesForIPs(ips []net.IP) []interfaceAdvertisement {
 	if len(ips) == 0 {
 		return nil
 	}
@@ -244,18 +295,17 @@ func pickInterfaceForIPs(ips []net.IP) *net.Interface {
 	if err != nil {
 		return nil
 	}
+	var output []interfaceAdvertisement
 	for i := range interfaces {
 		iface := interfaces[i]
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		if iface.Flags&net.FlagMulticast == 0 {
+		if !usableMulticastInterface(iface) {
 			continue
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
+		var matched []net.IP
 		for _, addr := range addrs {
 			var ip net.IP
 			switch v := addr.(type) {
@@ -264,14 +314,59 @@ func pickInterfaceForIPs(ips []net.IP) *net.Interface {
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			if ip != nil && wanted[ip.String()] {
-				return &iface
+			if usableAdvertiseIP(ip) && wanted[ip.String()] {
+				matched = append(matched, ip)
 			}
 		}
+		if len(matched) > 0 {
+			output = append(output, interfaceAdvertisement{Iface: iface, IPs: dedupeIPs(matched)})
+		}
 	}
-	return nil
+	sort.SliceStable(output, func(i int, j int) bool {
+		return interfacePreference(output[i].Iface.Name) < interfacePreference(output[j].Iface.Name)
+	})
+	return output
 }
 
+func interfaceNamesForIPs(ips []net.IP) []string {
+	advertisements := advertisementInterfacesForIPs(ips)
+	names := make([]string, 0, len(advertisements))
+	for _, item := range advertisements {
+		names = append(names, item.Iface.Name)
+	}
+	return names
+}
+
+func usableMulticastInterface(iface net.Interface) bool {
+	if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		return false
+	}
+	return iface.Flags&net.FlagMulticast != 0
+}
+
+func usableAdvertiseIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+		return false
+	}
+	return true
+}
+
+func interfacePreference(name string) int {
+	lower := strings.ToLower(name)
+	virtualTerms := []string{"vethernet", "docker", "wsl", "hyper-v", "hyperv", "vmware", "virtualbox", "tailscale", "zerotier"}
+	for _, term := range virtualTerms {
+		if strings.Contains(lower, term) {
+			return 10
+		}
+	}
+	if strings.Contains(lower, "bluetooth") {
+		return 20
+	}
+	return 0
+}
 func displayServiceName(value string) string {
 	normalized, err := config.NormalizeServerName(value)
 	if err != nil {
@@ -302,14 +397,52 @@ func networkHostName() string {
 	return strings.TrimSpace(name)
 }
 
-func discoveryWebURL(cfg config.Config, hostName string, port int) string {
+func discoveryWebURL(cfg config.Config, hostName string, port int, ips []net.IP) string {
 	if webOrigin, err := config.NormalizeWebOrigin(cfg.CanonicalWebOrigin); err == nil && webOrigin != "" {
 		return webOrigin
+	}
+	if ip := preferredWebIP(ips); ip != "" {
+		return "http://" + ip + ":" + strconv.Itoa(port)
 	}
 	if strings.TrimSpace(hostName) == "" || port <= 0 {
 		return ""
 	}
 	return "http://" + hostName + ":" + strconv.Itoa(port)
+}
+
+func preferredWebIP(ips []net.IP) string {
+	for _, item := range advertisementInterfacesForIPs(ips) {
+		for _, ip := range item.IPs {
+			if ip == nil || ip.To4() == nil {
+				continue
+			}
+			if !usableAdvertiseIP(ip) {
+				continue
+			}
+			return ip.String()
+		}
+	}
+	for _, item := range advertisementInterfacesForIPs(ips) {
+		for _, ip := range item.IPs {
+			if ip != nil && usableAdvertiseIP(ip) {
+				return "[" + ip.String() + "]"
+			}
+		}
+	}
+	for _, ip := range ips {
+		if ip == nil || ip.To4() == nil {
+			continue
+		}
+		if usableAdvertiseIP(ip) {
+			return ip.String()
+		}
+	}
+	for _, ip := range ips {
+		if ip != nil && usableAdvertiseIP(ip) {
+			return "[" + ip.String() + "]"
+		}
+	}
+	return ""
 }
 
 func normalizedServiceType(value string) string {
@@ -386,7 +519,7 @@ func activeLANIPs() ([]net.IP, error) {
 	}
 	var output []net.IP
 	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		if !usableMulticastInterface(iface) {
 			continue
 		}
 		addrs, err := iface.Addrs()
@@ -401,7 +534,7 @@ func activeLANIPs() ([]net.IP, error) {
 			case *net.IPAddr:
 				ip = value.IP
 			}
-			if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
+			if !usableAdvertiseIP(ip) {
 				continue
 			}
 			output = append(output, ip)
@@ -431,5 +564,16 @@ func dedupeIPs(values []net.IP) []net.IP {
 	sort.Slice(output, func(i int, j int) bool {
 		return output[i].String() < output[j].String()
 	})
+	return output
+}
+
+func ipStrings(values []net.IP) []string {
+	output := make([]string, 0, len(values))
+	for _, ip := range values {
+		if ip != nil && ip.String() != "" {
+			output = append(output, ip.String())
+		}
+	}
+	sort.Strings(output)
 	return output
 }
