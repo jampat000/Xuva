@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { onNavigate } from '$app/navigation';
   import "../app.css";
   import { appState } from '$lib/stores/appState.svelte';
   import { profileStore } from '$lib/stores/profileStore.svelte';
@@ -9,6 +10,29 @@
   import NavProgress from '$lib/components/NavProgress.svelte';
   import { connectEventStream } from '$lib/api/events';
   import type { ProfileCard } from '$lib/api/profiles';
+
+  // View Transitions API: wraps every client-side navigation in a smooth
+  // crossfade between the outgoing and incoming page. The browser snapshots
+  // the old DOM, lets SvelteKit swap state, and animates between the two
+  // snapshots — so going from Home → Movies feels continuous instead of
+  // "blink then new content".
+  //
+  // Only Chromium-based engines implement document.startViewTransition today
+  // (Chrome / Edge / Tauri / current Electron). Safari, Firefox, and older
+  // Apple TV / smart-TV browsers fall through and navigate normally.
+  onNavigate((navigation) => {
+    if (typeof document === 'undefined') return;
+    const start = (document as Document & {
+      startViewTransition?: (cb: () => Promise<void> | void) => { finished: Promise<void> };
+    }).startViewTransition;
+    if (!start) return;
+    return new Promise<void>((resolve) => {
+      start.call(document, async () => {
+        resolve();
+        await navigation.complete;
+      });
+    });
+  });
 
   let { children } = $props();
 
