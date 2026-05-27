@@ -101,6 +101,9 @@ function checkGithubActionRuntimePins(errors) {
         errors.push(`${relativePath} uses deprecated Node 20 action pin: ${pin}`);
       }
     }
+    if (/runs-on:\s*windows-latest\b/.test(text)) {
+      errors.push(`${relativePath} uses implicit windows-latest; pin a concrete Windows runner image`);
+    }
   }
 }
 
