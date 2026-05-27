@@ -4,7 +4,7 @@
   import Header from "$lib/components/Header.svelte";
   import LibraryGrid from "$lib/components/LibraryGrid.svelte";
   import ErrorState from '$lib/components/ErrorState.svelte';
-  import { getMovies } from '$lib/api/browse';
+  import { getMovies, subscribeMovies } from '$lib/api/browse';
   import { movieToMedia } from '$lib/api/adapters';
 
   let { data } = $props();
@@ -13,21 +13,25 @@
   let loading = $state(false);
   let error = $state<string | null>(data.loadError);
 
-  // Background-merge the rest of the library. The first-page load already
-  // mounted the page with FIRST_PAGE items so the user sees content
-  // immediately; this expands the grid in place once the full list arrives.
-  // Skipped when the first page already represents the whole library.
+  // Background-merge the rest of the library (the first-page paint already
+  // mounted the page with FIRST_PAGE items) and stay subscribed so a later
+  // background SWR refresh — e.g. when a scan adds new movies — flows in
+  // without a manual reload.
   onMount(() => {
-    if (!data.hasMore || error) return;
+    if (error) return;
     let cancelled = false;
-    void getMovies(undefined, 0).then((resp) => {
+    if (data.hasMore) {
+      void getMovies(undefined, 0).then((resp) => {
+        if (cancelled) return;
+        const full = (resp.movies ?? []).map(movieToMedia);
+        if (full.length > untrack(() => items.length)) items = full;
+      }).catch(() => { /* keep the first page on failure */ });
+    }
+    const unsubscribe = subscribeMovies(0, (resp) => {
       if (cancelled) return;
-      const full = (resp.movies ?? []).map(movieToMedia);
-      // Only replace if the full list is materially larger — avoids a no-op
-      // re-render when the server returned <FIRST_PAGE items as a complete set.
-      if (full.length > untrack(() => items.length)) items = full;
-    }).catch(() => { /* keep the first page on failure */ });
-    return () => { cancelled = true; };
+      items = (resp.movies ?? []).map(movieToMedia);
+    });
+    return () => { cancelled = true; unsubscribe(); };
   });
 
   // Only used by the "Try again" button — re-runs the full fetch
