@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -39,20 +40,28 @@ type Service struct {
 	backfillCancel      context.CancelFunc
 }
 
+var (
+	// ErrBackfillProviderNotConfigured indicates the requested managed provider
+	// has no effective credential in the current runtime.
+	ErrBackfillProviderNotConfigured = errors.New("backfill provider not configured")
+	// ErrBackfillAlreadyRunning indicates a one-shot backfill is already active.
+	ErrBackfillAlreadyRunning = errors.New("backfill already running")
+)
+
 // BackfillStatus is a snapshot of the missing-provider backfill job.
 // Exposed via the API for the Settings UI's "library health" panel.
 type BackfillStatus struct {
-	Running     bool      `json:"running"`
-	Provider    string    `json:"provider,omitempty"`    // which provider we're filling in (e.g. "tmdb")
-	Kind        string    `json:"kind,omitempty"`        // current sweep: "movie" | "series"
-	StartedAt   time.Time `json:"startedAt,omitempty"`
-	FinishedAt  time.Time `json:"finishedAt,omitempty"`
-	Total       int       `json:"total"`                 // total items needing this provider (computed once at start)
-	Refreshed   int       `json:"refreshed"`             // successful refreshes so far
-	Failed      int       `json:"failed"`                // attempted but errored
-	Remaining   int       `json:"remaining"`             // live count from catalog (decreases as we go)
-	LastTitle   string    `json:"lastTitle,omitempty"`
-	LastError   string    `json:"lastError,omitempty"`
+	Running    bool      `json:"running"`
+	Provider   string    `json:"provider,omitempty"` // which provider we're filling in (e.g. "tmdb")
+	Kind       string    `json:"kind,omitempty"`     // current sweep: "movie" | "series"
+	StartedAt  time.Time `json:"startedAt,omitempty"`
+	FinishedAt time.Time `json:"finishedAt,omitempty"`
+	Total      int       `json:"total"`     // total items needing this provider (computed once at start)
+	Refreshed  int       `json:"refreshed"` // successful refreshes so far
+	Failed     int       `json:"failed"`    // attempted but errored
+	Remaining  int       `json:"remaining"` // live count from catalog (decreases as we go)
+	LastTitle  string    `json:"lastTitle,omitempty"`
+	LastError  string    `json:"lastError,omitempty"`
 }
 
 // SetTrailers wires the trailer downloader so post-refresh hooks can queue
@@ -63,17 +72,17 @@ func (s *Service) SetTrailers(t *trailers.Service) {
 }
 
 type RefreshRequest struct {
-	Kind           string `json:"kind"`
-	ID             string `json:"id"`
-	Title          string `json:"title,omitempty"`
-	Year           int    `json:"year,omitempty"`
+	Kind  string `json:"kind"`
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+	Year  int    `json:"year,omitempty"`
 	// TMDBOverrideID, when set, skips the search and fetches this TMDB ID directly.
 	// It can be extracted from the filename ({tmdb-12345} notation) or supplied
 	// by the user via the manual "Match by TMDB ID" UI.
-	TMDBOverrideID int    `json:"tmdbOverrideId,omitempty"`
+	TMDBOverrideID int `json:"tmdbOverrideId,omitempty"`
 	// Filename is the original media source filename. Used to extract embedded
 	// TMDB IDs ({tmdb-12345}) before falling back to the search-based path.
-	Filename       string `json:"filename,omitempty"`
+	Filename string `json:"filename,omitempty"`
 }
 
 type RefreshResult struct {
@@ -153,11 +162,11 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 		Kind: request.Kind,
 		ID:   request.ID,
 		Configured: map[string]bool{
-			"filename":  true,
-			"manual":    true,
-			"nfo":       true,
-			"artwork":   true,
-			"tvmaze":    true,
+			"filename": true,
+			"manual":   true,
+			"nfo":      true,
+			"artwork":  true,
+			"tvmaze":   true,
 			// TVDB is disabled at the provider level (subscription model
 			// incompatible with embedded keys). Code remains dormant.
 			"tvdb":      false,
@@ -691,13 +700,13 @@ func (s *Service) StartBackfill(parentCtx context.Context, provider string) erro
 	}
 	cfg := s.activeConfig()
 	if managedProviderCredential(provider, cfg) == "" {
-		return errors.New("provider " + provider + " is not configured; set its API key first")
+		return fmt.Errorf("%w: provider %s is not configured; set its API key first", ErrBackfillProviderNotConfigured, provider)
 	}
 
 	s.backfillMu.Lock()
 	if s.backfill.Running {
 		s.backfillMu.Unlock()
-		return errors.New("backfill already running")
+		return ErrBackfillAlreadyRunning
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.backfill = BackfillStatus{
@@ -710,6 +719,14 @@ func (s *Service) StartBackfill(parentCtx context.Context, provider string) erro
 
 	go s.runBackfill(ctx, parentCtx, provider)
 	return nil
+}
+
+func IsBackfillProviderNotConfigured(err error) bool {
+	return errors.Is(err, ErrBackfillProviderNotConfigured)
+}
+
+func IsBackfillAlreadyRunning(err error) bool {
+	return errors.Is(err, ErrBackfillAlreadyRunning)
 }
 
 // StopBackfill aborts the running backfill, if any. No-op if idle.

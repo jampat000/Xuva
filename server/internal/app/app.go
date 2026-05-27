@@ -706,9 +706,18 @@ func startMetadataAutomation(
 
 				err := metadataService.StartBackfill(ctx, "tmdb")
 				if err != nil {
-					// Already running is not a real error; log and skip.
-					slog.Debug("metadata automation: backfill skipped", "reason", err)
-					bus.Publish("automation.metadata.skipped", map[string]any{"reason": err.Error()})
+					if metadata.IsBackfillAlreadyRunning(err) {
+						slog.Debug("metadata automation: backfill already running")
+						bus.Publish("automation.metadata.skipped", map[string]any{"reason": "backfill already running"})
+						err = nil
+					} else if metadata.IsBackfillProviderNotConfigured(err) {
+						slog.Warn("metadata automation: TMDB provider not configured; metadata run skipped")
+						bus.Publish("automation.metadata.skipped", map[string]any{"reason": "provider tmdb is not configured"})
+						err = nil
+					} else {
+						slog.Debug("metadata automation: backfill skipped", "reason", err)
+						bus.Publish("automation.metadata.skipped", map[string]any{"reason": err.Error()})
+					}
 				} else {
 					bus.Publish("automation.metadata.started", nil)
 					slog.Debug("metadata automation: backfill started")
