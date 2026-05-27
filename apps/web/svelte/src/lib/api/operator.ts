@@ -283,6 +283,8 @@ export interface DiscoveryStatusResponse {
 	hostName?: string;
 	webUrl?: string;
 	port?: number;
+	interfaces?: string[];
+	advertiseIps?: string[];
 	txtRecords?: string[];
 	lastError?: string;
 	note?: string;
