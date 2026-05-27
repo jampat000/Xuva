@@ -20,28 +20,19 @@ function Assert-Absent {
 	}
 }
 
-function Assert-DesktopIconConfig {
+function Assert-NoLegacyDesktopIconConfig {
 	$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")).Path
 	$packageJsonPath = Join-Path $repoRoot "apps\desktop\package.json"
-	$config = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
+	$configText = Get-Content -LiteralPath $packageJsonPath -Raw
 
-	$appIcon = [string]$config.build.win.icon
-	$installerIcon = [string]$config.build.nsis.installerIcon
-	$uninstallerIcon = [string]$config.build.nsis.uninstallerIcon
-	if ([string]::IsNullOrWhiteSpace($appIcon)) {
-		throw "Desktop package config is missing build.win.icon."
+	$legacyIcon = "assets/xuva.ico"
+	if ($configText.Contains($legacyIcon)) {
+		throw "Desktop package config still references removed legacy icon $legacyIcon."
 	}
-	if ($installerIcon -ne $appIcon) {
-		throw "Desktop package config must set build.nsis.installerIcon to $appIcon."
-	}
-	if ($uninstallerIcon -ne $appIcon) {
-		throw "Desktop package config must set build.nsis.uninstallerIcon to $appIcon."
-	}
-
-	Assert-Exists -Path (Join-Path (Split-Path -Parent $packageJsonPath) $appIcon)
+	Assert-Absent -Path (Join-Path (Split-Path -Parent $packageJsonPath) $legacyIcon)
 }
 
-Assert-DesktopIconConfig
+Assert-NoLegacyDesktopIconConfig
 
 $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
 if ([string]::IsNullOrWhiteSpace($ChecksumPath)) {
