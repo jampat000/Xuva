@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"strings"
 	"testing"
 
 	"github.com/jampat000/Xuva/server/internal/config"
@@ -67,6 +66,9 @@ func TestServiceCapturesExpectedAdvertiseConfig(t *testing.T) {
 	if captured.ServiceType != DefaultServiceType {
 		t.Fatalf("expected service type %q, got %#v", DefaultServiceType, captured)
 	}
+	if captured.HostName != "family-room-xuva.local." {
+		t.Fatalf("expected product mDNS host name, got %#v", captured)
+	}
 	if captured.Port != 8097 {
 		t.Fatalf("expected advertised port 8097, got %#v", captured)
 	}
@@ -79,13 +81,13 @@ func TestServiceCapturesExpectedAdvertiseConfig(t *testing.T) {
 	if !hasTXTRecord(captured.TXTRecords, "serverName=Family Room") {
 		t.Fatalf("expected Xuva display name in TXT records, got %#v", captured.TXTRecords)
 	}
-	if !hasTXTPrefix(captured.TXTRecords, "hostName=") {
-		t.Fatalf("expected network host name in TXT records, got %#v", captured.TXTRecords)
+	if !hasTXTRecord(captured.TXTRecords, "hostName=192.168.1.20") {
+		t.Fatalf("expected reachable connection host in TXT records, got %#v", captured.TXTRecords)
 	}
-	if !hasTXTPrefix(captured.TXTRecords, "web=http://") {
+	if !hasTXTRecord(captured.TXTRecords, "web=http://192.168.1.20:8097") {
 		t.Fatalf("expected derived web origin in TXT records, got %#v", captured.TXTRecords)
 	}
-	if status.HostName == "" || status.WebURL == "" {
+	if status.HostName != "192.168.1.20" || status.WebURL != "http://192.168.1.20:8097" {
 		t.Fatalf("expected network fields in status, got %#v", status)
 	}
 }
@@ -108,6 +110,9 @@ func TestServiceUsesConfiguredCanonicalWebOrigin(t *testing.T) {
 
 	if status.WebURL != "http://media.example.test:8097" {
 		t.Fatalf("expected configured canonical web origin in status, got %#v", status)
+	}
+	if status.HostName != "media.example.test" {
+		t.Fatalf("expected configured canonical host in status, got %#v", status)
 	}
 	if !hasTXTRecord(captured.TXTRecords, "web=http://media.example.test:8097") {
 		t.Fatalf("expected configured canonical web origin in TXT records, got %#v", captured.TXTRecords)
@@ -154,6 +159,15 @@ func TestServiceFallsBackToXuvaName(t *testing.T) {
 	}
 	if captured.ServiceType != DefaultServiceType {
 		t.Fatalf("expected default service type, got %#v", captured)
+	}
+}
+
+func TestDiscoveryHostRecordUsesProductNameNotOSHostName(t *testing.T) {
+	if got := discoveryHostRecord("Family Room"); got != "family-room-xuva.local." {
+		t.Fatalf("expected friendly product host record, got %q", got)
+	}
+	if got := discoveryHostRecord("Xuva"); got != "xuva.local." {
+		t.Fatalf("expected plain Xuva host record, got %q", got)
 	}
 }
 
@@ -227,15 +241,6 @@ func TestServiceDoesNotAdvertiseLoopbackOnlyBind(t *testing.T) {
 func hasTXTRecord(records []string, expected string) bool {
 	for _, record := range records {
 		if record == expected {
-			return true
-		}
-	}
-	return false
-}
-
-func hasTXTPrefix(records []string, prefix string) bool {
-	for _, record := range records {
-		if strings.HasPrefix(record, prefix) {
 			return true
 		}
 	}

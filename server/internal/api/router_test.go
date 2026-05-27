@@ -874,11 +874,37 @@ func TestClientBootstrapReportsCanonicalWebURL(t *testing.T) {
 	if server["name"] != "Family Room" || server["displayName"] != "Family Room" {
 		t.Fatalf("expected Xuva display name in bootstrap, got %#v", server)
 	}
-	if server["hostName"] == "" || server["hostName"] == "Family Room" {
-		t.Fatalf("expected network host name to stay separate from display name, got %#v", server)
+	if server["hostName"] != "media-server.local" {
+		t.Fatalf("expected canonical connection host in bootstrap, got %#v", server)
 	}
 	if server["webUrl"] != "http://media-server.local:8097" || server["canonicalWebOrigin"] != "http://media-server.local:8097" {
 		t.Fatalf("expected canonical web URL in bootstrap, got %#v", server)
+	}
+}
+
+func TestClientBootstrapKeepsReachableRequestURLWhenCanonicalOriginIsBlank(t *testing.T) {
+	deps := testDeps(t, time.Now())
+	deps.Config.HTTPAddr = "0.0.0.0:8097"
+	deps.Config.CanonicalWebOrigin = ""
+	router := NewRouter(deps)
+	request := httptest.NewRequest(http.MethodGet, "http://10.1.1.99:8097/api/client/bootstrap", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bootstrap 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+	server := payload["server"].(map[string]any)
+	if server["webUrl"] != "http://10.1.1.99:8097" {
+		t.Fatalf("expected reachable request URL in bootstrap, got %#v", server)
+	}
+	if server["hostName"] != "10.1.1.99" {
+		t.Fatalf("expected reachable request host in bootstrap, got %#v", server)
 	}
 }
 
@@ -917,6 +943,12 @@ func TestDiscoveryStatusReturnsSafeFields(t *testing.T) {
 	}
 	if _, ok := payload["txtRecords"]; !ok {
 		t.Fatalf("expected txtRecords field, got %#v", payload)
+	}
+	if _, ok := payload["interfaces"]; !ok {
+		t.Fatalf("expected interfaces field, got %#v", payload)
+	}
+	if _, ok := payload["advertiseIps"]; !ok {
+		t.Fatalf("expected advertiseIps field, got %#v", payload)
 	}
 }
 
