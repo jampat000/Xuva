@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Play, Star } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
+  import { artworkSrc, artworkSrcset } from "$lib/api/artwork-url";
 
   let { media, variant = "poster" } = $props<{
     media: Media;
@@ -9,7 +10,14 @@
 
   const isWide = $derived(variant === "wide");
   const gradient = $derived(`linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`);
-  const art = $derived(isWide ? (media.backdrop ?? media.poster) : (media.poster ?? media.backdrop));
+  // Route artwork through the resize proxy when we have a (kind, id) the
+  // backend can look up. Width matches the CSS card width across density tiers
+  // (~180px poster, ~360px wide-card); browsers pick 2x via srcset on retina.
+  const artWidth = $derived(isWide ? 360 : 180);
+  const rawArt = $derived(isWide ? (media.backdrop ?? media.poster) : (media.poster ?? media.backdrop));
+  const artType = $derived<'poster' | 'backdrop'>(isWide ? 'backdrop' : 'poster');
+  const art = $derived(artworkSrc(media, artType, artWidth, rawArt));
+  const artSrcset = $derived(artworkSrcset(media, artType, artWidth));
   // Continue-Watching items come keyed by media_source_id but the detail page
   // expects the parent movie/series id. Use parentId/parentKind when present.
   const href = $derived.by(() => {
@@ -35,8 +43,10 @@
     {#if art}
       <img
         src={art}
+        srcset={artSrcset}
         alt={media.title}
         loading="lazy"
+        decoding="async"
         class="absolute inset-0 h-full w-full object-cover"
         onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
       />
