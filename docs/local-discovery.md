@@ -63,6 +63,15 @@ Normal installs should keep the default service type.
   - UPnP
   - DLNA service discovery
 
+## Windows Firewall
+
+Windows installs must allow both the HTTP server and the discovery responder on trusted LAN networks:
+
+- TCP `8097` inbound to `xuva-server.exe` for web/API access from phones, TVs, and browsers on the LAN
+- UDP `5353` inbound to `xuva-server.exe` for Bonjour/mDNS discovery
+
+The Windows installer provisions these rules for Private and Domain profiles only. Xuva should not open Public network profiles automatically. If a machine is accidentally marked as Public in Windows network settings, discovery may fail until the network is changed to Private or equivalent firewall rules are added by the operator.
+
 ## Current Product Boundary
 
 Local discovery, device pairing, and the approved-device registry are separate.
