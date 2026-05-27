@@ -19,6 +19,7 @@ Artifact expectations:
 - Portable package contains `resources/runtime/bin/ffprobe.exe`.
 - Package does not contain Apple, Android, iOS, tvOS, or native client build outputs.
 - Packaged runtime state is outside the install directory. Preferred runtime home is `C:\ProgramData\Xuva`; `%LOCALAPPDATA%\Xuva` is fallback-only.
+- `Xuva.exe` starts the server/tray launcher and opens the web UI in the default browser rather than presenting the web UI as an embedded desktop app.
 
 Automated package verification:
 
@@ -41,15 +42,17 @@ Clean install smoke:
 1. Verify package checksum.
 2. Run the unsigned installer `.exe`, or extract the portable zip to a clean directory.
 3. Launch `Xuva.exe`.
-4. Open `http://localhost:8097/api/system/version`.
-5. Confirm `version` equals the release tag and `schemaVersion` is populated.
-6. Open `http://localhost:8097/`.
-7. Complete first-run setup.
-8. Add a local media folder.
-9. Add a mapped drive or UNC NAS media folder.
-10. Restart Xuva and verify settings/database persisted.
-11. Confirm the desktop runtime folders exist under the resolved runtime home: `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
-12. Confirm `logs/xuva.ndjson` exists and contains structured JSON log lines.
+4. Confirm the default browser opens the Xuva web app.
+5. Open `http://localhost:8097/api/system/version`.
+6. Confirm `version` equals the release tag and `schemaVersion` is populated.
+7. Open `http://localhost:8097/`.
+8. Complete first-run setup.
+9. Add a local media folder.
+10. Add a mapped drive or UNC NAS media folder.
+11. Open Settings -> Updates and confirm the update check returns current/latest release metadata.
+12. Restart Xuva and verify settings/database persisted.
+13. Confirm the desktop runtime folders exist under the resolved runtime home: `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
+14. Confirm `logs/xuva.ndjson` exists and contains structured JSON log lines.
 
 Upgrade smoke:
 

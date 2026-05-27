@@ -198,7 +198,8 @@ Xuva Runtime
 This directory is managed by the packaged Xuva desktop app.
 
 Normal users should launch Xuva.exe from the Start Menu, desktop shortcut,
-or extracted portable package root. Do not launch xuva-server.exe directly
+or extracted portable package root. Xuva.exe starts the local server and opens
+the web app in the default browser. Do not launch xuva-server.exe directly
 unless you are debugging the server runtime.
 "@ | Set-Content -LiteralPath (Join-Path $desktopRuntimeRoot "README.txt") -Encoding UTF8
 
@@ -210,11 +211,12 @@ This build produces unsigned Windows desktop artifacts:
   - xuva-v$desktopVersion-win-x64.exe: per-user installer
   - xuva-v$desktopVersion-win-x64.zip: portable desktop package
 
-Run Xuva.exe from the installed app or extracted zip. The desktop app starts
-and supervises the bundled server runtime.
+Run Xuva.exe from the installed app or extracted zip. The launcher starts and
+supervises the bundled server runtime, then opens the Xuva web app in the
+default browser.
 
 Included runtime dependencies:
-  - Xuva.exe desktop shell
+  - Xuva.exe browser launcher/tray shell
   - xuva-server.exe
   - embedded web UI
   - ffmpeg.exe

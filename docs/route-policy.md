@@ -90,6 +90,7 @@ Public client bootstrap routes:
 | `GET /api/events` | system | `system.events` | admin |
 | `GET /api/architecture` | system | `system.architecture` | admin |
 | `GET /api/system/status` | system | `system.status` | admin |
+| `GET /api/system/updates` | system | `system.updates.read` | admin |
 | `GET /api/remote/access` | remote | `remote.access.read` | admin |
 | `GET /api/libraries` | libraries | `library.list` | admin |
 | `GET /api/catalog/summary` | catalog | `catalog.summary` | admin |
