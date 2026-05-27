@@ -20,7 +20,7 @@ Artifact expectations:
 - Package does not contain Apple, Android, iOS, tvOS, or native client build outputs.
 - Packaged runtime state is outside the install directory. Preferred runtime home is `C:\ProgramData\Xuva`; `%LOCALAPPDATA%\Xuva` is fallback-only.
 - `Xuva.exe` starts the server/tray launcher and opens the web UI in the default browser rather than presenting the web UI as an embedded desktop app.
-- The installer requests administrator rights and provisions Windows Firewall rules for trusted LAN use: inbound TCP `8097` and inbound UDP `5353` to the packaged `xuva-server.exe`, scoped to Private/Domain profiles.
+- `Xuva.exe` remains a normal non-elevated launcher. The installer requests administrator rights only for setup/update work and provisions Windows Firewall rules for trusted LAN use: inbound TCP `8097` and inbound UDP `5353` to the packaged `xuva-server.exe`, scoped to Private/Domain profiles.
 
 Automated package verification:
 

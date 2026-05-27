@@ -44,7 +44,7 @@
         "nsis",
         "zip"
       ],
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "installerIcon": "assets/xuva.ico",
