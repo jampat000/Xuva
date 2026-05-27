@@ -1,4 +1,5 @@
 import { apiClient, type ApiClient } from './client';
+import { invalidateSwrPrefix, subscribeSwr, swrFetch } from './cache/swr-cache';
 
 export interface MetadataRecord {
 	kind?: string;
@@ -231,43 +232,66 @@ export function searchLibrary(
 }
 
 // ── Response cache ────────────────────────────────────────────────────────────
-// Short-lived TTL cache for the two heavy list endpoints so that navigating
-// away and back (Movies → Home → Movies) feels instant. The cache is
-// module-level so it persists across navigations within a session.
-// Mutation endpoints (scan, metadata refresh, etc.) are never cached here.
+// Stale-while-revalidate cache for the two heavy list endpoints, backed by
+// IndexedDB so cold starts after a tab close / hard refresh are also instant.
+//
+// Pages get the cached value synchronously on second-and-later access, even
+// when it is stale. A background refresh fires whenever a stale value is
+// served; subscribers (via subscribeMovies / subscribeSeries) receive the
+// fresh data and update the grid in place. Mutation endpoints invalidate via
+// invalidateListCache so the next browse fetches new data.
 
-const _listCache = new Map<string, { data: unknown; exp: number }>();
-const LIST_TTL_MS = 5 * 60_000; // 5 minutes
+const MOVIES_FRESH_MS  = 5 * 60_000;            // 5 min before triggering refresh
+const MOVIES_MAX_AGE   = 24 * 60 * 60_000;       // 24 h before discarding cache
+const SERIES_FRESH_MS  = MOVIES_FRESH_MS;
+const SERIES_MAX_AGE   = MOVIES_MAX_AGE;
 
-function getListCached<T>(key: string): T | undefined {
-	const entry = _listCache.get(key);
-	if (entry && Date.now() < entry.exp) return entry.data as T;
-	_listCache.delete(key);
-	return undefined;
-}
-
-function setListCached<T>(key: string, data: T): T {
-	_listCache.set(key, { data, exp: Date.now() + LIST_TTL_MS });
-	return data;
-}
+const MOVIES_KEY_PREFIX = '/api/movies';
+const SERIES_KEY_PREFIX = '/api/series';
 
 /** Invalidate the list cache (call after a scan or library change). */
-export function invalidateListCache(): void {
-	_listCache.clear();
+export function invalidateListCache(): Promise<void> {
+	return Promise.all([
+		invalidateSwrPrefix(MOVIES_KEY_PREFIX),
+		invalidateSwrPrefix(SERIES_KEY_PREFIX),
+	]).then(() => undefined);
 }
 
 export function getMovies(client: ApiClient = apiClient, limit = 0): Promise<MoviesResponse> {
 	const path = `/api/movies?limit=${encodeURIComponent(String(limit))}`;
-	const hit = getListCached<MoviesResponse>(path);
-	if (hit) return Promise.resolve(hit);
-	return client.request<MoviesResponse>(path).then(d => setListCached(path, d));
+	return swrFetch<MoviesResponse>(
+		path,
+		() => client.request<MoviesResponse>(path),
+		{ freshMs: MOVIES_FRESH_MS, maxAgeMs: MOVIES_MAX_AGE },
+	);
 }
 
 export function getSeries(client: ApiClient = apiClient, limit = 0): Promise<SeriesResponse> {
 	const path = `/api/series?limit=${encodeURIComponent(String(limit))}`;
-	const hit = getListCached<SeriesResponse>(path);
-	if (hit) return Promise.resolve(hit);
-	return client.request<SeriesResponse>(path).then(d => setListCached(path, d));
+	return swrFetch<SeriesResponse>(
+		path,
+		() => client.request<SeriesResponse>(path),
+		{ freshMs: SERIES_FRESH_MS, maxAgeMs: SERIES_MAX_AGE },
+	);
+}
+
+/**
+ * Subscribe to fresh /api/movies data for a given limit. Fires when a
+ * background SWR refresh succeeds. Return value is the unsubscribe handle —
+ * call it from onMount cleanup.
+ */
+export function subscribeMovies(
+	limit: number,
+	callback: (data: MoviesResponse) => void,
+): () => void {
+	return subscribeSwr<MoviesResponse>(`/api/movies?limit=${encodeURIComponent(String(limit))}`, callback);
+}
+
+export function subscribeSeries(
+	limit: number,
+	callback: (data: SeriesResponse) => void,
+): () => void {
+	return subscribeSwr<SeriesResponse>(`/api/series?limit=${encodeURIComponent(String(limit))}`, callback);
 }
 
 export function scanMovies(
