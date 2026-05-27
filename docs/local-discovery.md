@@ -7,7 +7,7 @@ Xuva can advertise itself on the local network with mDNS / Bonjour so nearby cli
 - Advertises a custom service on the local network: `_xuva._tcp.local.`
 - Uses the configured **Xuva Server Name** as the advertised instance name
 - Advertises the current HTTP port
-- Advertises on every usable multicast LAN adapter instead of pinning to a single Windows adapter. This matters on hosts with Docker, WSL, Hyper-V, VPNs, or multiple NICs.
+- Prefers real LAN adapters (Ethernet/Wi-Fi) and avoids virtual adapters (WSL/Docker/Hyper-V/Tailscale) unless no physical adapter is available.
 - Publishes only safe TXT records:
   - `app=xuva`
   - `api=/api/client/bootstrap`
@@ -61,6 +61,8 @@ Normal installs should keep the default service type.
 If a canonical web address is configured, discovery advertises that address in the `web=` TXT record.
 
 If it is blank, discovery now prefers a reachable advertised LAN IP such as `http://10.1.1.103:8097` instead of a bare Windows hostname. This avoids Apple/TV clients failing when they cannot resolve `DESKTOP-...` style hostnames.
+
+When Xuva listens on `0.0.0.0`, discovery advertises IPv4 LAN addresses only. This avoids IPv6-first client failures on networks where IPv6 routing is incomplete.
 
 The mDNS SRV target also uses a Xuva-branded `.local.` host label derived from the configured server name, for example `family-room-xuva.local.`, rather than the operating-system hostname. This prevents native clients from displaying development or bare-metal machine names as the server URL.
 
