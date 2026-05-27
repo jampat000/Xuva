@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { appState } from '$lib/stores/appState.svelte';
   import heroFeatured from "$lib/assets/hero-featured.jpg";
   import CollectionsBento from "$lib/components/CollectionsBento.svelte";
@@ -7,6 +8,8 @@
   import Hero from "$lib/components/Hero.svelte";
   import Logo from "$lib/components/Logo.svelte";
   import Top10Row from "$lib/components/Top10Row.svelte";
+  import { subscribeClientHome } from '$lib/api/home';
+  import { normalizeClientHome } from '$lib/api/home-normalize';
   import type { Collection } from '$lib/mock-data';
 
   const currentYear = new Date().getFullYear();
@@ -21,6 +24,22 @@
   let topRowTitle = $state(data.topRowTitle);
   let topRowEyebrow = $state(data.topRowEyebrow);
   let collections = $state<Collection[]>([]);
+
+  // SWR background-refresh push: when the cache reports fresh /api/client/home
+  // data (e.g. after a stale-cache return on first paint), update rows in
+  // place so the user sees current continue-watching / recent-additions
+  // without navigating away and back. Limit must match getClientHome()'s
+  // default (24).
+  onMount(() => subscribeClientHome(24, (resp) => {
+    const rows = normalizeClientHome(resp);
+    slides = rows.slides;
+    continueWatching = rows.continueWatching;
+    recentMovies = rows.recentMovies;
+    recentSeries = rows.recentSeries;
+    topTen = rows.topTen;
+    topRowTitle = rows.topRowTitle;
+    topRowEyebrow = rows.topRowEyebrow;
+  }));
 </script>
 
 <svelte:head>

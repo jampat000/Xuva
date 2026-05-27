@@ -1,4 +1,5 @@
 import { apiClient, type ApiClient } from './client';
+import { invalidateSwrPrefix, subscribeSwr, swrFetch } from './cache/swr-cache';
 
 export interface ClientHomeItem {
 	id?: string;
@@ -119,23 +120,42 @@ export interface SeriesDetailResponse {
 }
 
 // ── Home response cache ───────────────────────────────────────────────────────
-// The home page is visited frequently. Cache the response for 2 minutes so
-// navigating Home → Movies → Home feels instant without stale-data risk.
-let _homeCache: { data: ClientHomeResponse; exp: number } | null = null;
-const HOME_TTL_MS = 2 * 60_000; // 2 minutes
+// Stale-while-revalidate with IndexedDB persistence (see lib/api/cache/swr-cache).
+// The home page is visited frequently — return cached rows instantly even when
+// stale, then refresh in the background and push fresh data to subscribers so
+// the page updates in place. After a playback-stop or library mutation, callers
+// invalidate via invalidateHomeCache() to force a refetch.
+const HOME_FRESH_MS = 2 * 60_000;             // 2 min — short, since continue-watching shifts
+const HOME_MAX_AGE  = 24 * 60 * 60_000;        // 24 h — keep stale data usable for a day
+
+const HOME_KEY_PREFIX = '/api/client/home';
 
 /** Invalidate the home cache (call after playback stop so continue-watching refreshes). */
-export function invalidateHomeCache(): void {
-	_homeCache = null;
+export function invalidateHomeCache(): Promise<void> {
+	return invalidateSwrPrefix(HOME_KEY_PREFIX);
 }
 
 export function getClientHome(client: ApiClient = apiClient, limit = 24): Promise<ClientHomeResponse> {
-	if (_homeCache && Date.now() < _homeCache.exp) return Promise.resolve(_homeCache.data);
 	const path = `/api/client/home?limit=${encodeURIComponent(String(limit))}`;
-	return client.request<ClientHomeResponse>(path).then(data => {
-		_homeCache = { data, exp: Date.now() + HOME_TTL_MS };
-		return data;
-	});
+	return swrFetch<ClientHomeResponse>(
+		path,
+		() => client.request<ClientHomeResponse>(path),
+		{ freshMs: HOME_FRESH_MS, maxAgeMs: HOME_MAX_AGE },
+	);
+}
+
+/**
+ * Subscribe to fresh /api/client/home data. Fires when a background refresh
+ * succeeds — page should re-derive its rows / hero from the new response.
+ */
+export function subscribeClientHome(
+	limit: number,
+	callback: (data: ClientHomeResponse) => void,
+): () => void {
+	return subscribeSwr<ClientHomeResponse>(
+		`/api/client/home?limit=${encodeURIComponent(String(limit))}`,
+		callback,
+	);
 }
 
 export function getPlaybackRecent(
