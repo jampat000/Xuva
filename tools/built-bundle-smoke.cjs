@@ -10,12 +10,14 @@
 //
 // v1 scope (minimum viable):
 //   1. Build the Svelte frontend (publishes into server/internal/webapp/static-next).
-//   2. Build xuva (Go) into a temp executable.
-//   3. Boot xuva against a temp XUVA_DATA_DIR + non-default port.
+//   2. Build xuva (Go) into dist/smoke instead of the OS temp folder. Windows
+//      Defender ML is more likely to quarantine unsigned, freshly-built EXEs
+//      launched from %TEMP%.
+//   3. Boot xuva against an isolated smoke XUVA_DATA_DIR + non-default port.
 //   4. Poll /api/health until 200 (up to 30s).
 //   5. Curl / and assert Content-Security-Policy img-src permits https:
 //      (or at minimum the known artwork hosts).
-//   6. Clean up: kill process, remove temp dir + temp binary.
+//   6. Clean up: kill process, remove smoke runtime dir + smoke binary.
 //
 // Future iterations could add: headless browser, per-image CSP cross-check,
 // service-worker validation, base-path/MIME checks.
@@ -23,21 +25,23 @@
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
-const os = require("node:os");
 const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..");
 const svelteAppDir = path.join(repoRoot, "apps", "web", "svelte");
 const serverDir = path.join(repoRoot, "server");
 const isWindows = process.platform === "win32";
-const exeName = isWindows ? "xuva-smoke.exe" : "xuva-smoke";
+const exeName = isWindows ? "xuva-server-smoke.exe" : "xuva-server-smoke";
 // --skip-frontend-build is a local-dev escape hatch: on Windows the rename in
 // publish-go-static.mjs fails (EPERM) when an air-watched xuva.exe holds the
 // embedded static-next directory open. CI always runs the full pipeline.
 const skipFrontendBuild = process.argv.includes("--skip-frontend-build");
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xuva-smoke-"));
+const smokeRoot = path.join(repoRoot, "dist", "smoke");
+const smokeBinDir = path.join(smokeRoot, "bin");
+fs.mkdirSync(smokeBinDir, { recursive: true });
+const tempRoot = fs.mkdtempSync(path.join(smokeRoot, "run-"));
 const tempDataDir = path.join(tempRoot, "data");
-const tempExePath = path.join(tempRoot, exeName);
+const tempExePath = path.join(smokeBinDir, exeName);
 // Use localhost rather than 127.0.0.1: the server redirects raw 127.0.0.1
 // requests to localhost (canonical-origin middleware), which would cause every
 // smoke request to 307 before the redirect is followed.
@@ -74,9 +78,12 @@ function runSync(label, command, args, options) {
   log(`${label}: ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
-    shell: isWindows, // npm.cmd on Windows
+    shell: false,
     ...options,
   });
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     throw new Error(`${label} exited with status ${result.status}`);
   }
@@ -85,7 +92,7 @@ function runSync(label, command, args, options) {
 function buildFrontend() {
   // publish:go-static runs `npm run build` and copies output into
   // server/internal/webapp/static-next, which is what gets embedded.
-  runSync("frontend build", "npm", ["run", "publish:go-static"], {
+  runSync("frontend build", isWindows ? "cmd.exe" : "npm", isWindows ? ["/d", "/s", "/c", "npm", "run", "publish:go-static"] : ["run", "publish:go-static"], {
     cwd: svelteAppDir,
   });
 }
@@ -247,8 +254,8 @@ function stopServer() {
 function cleanup() {
   stopServer();
   try {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-    log(`removed ${tempRoot}`);
+    fs.rmSync(smokeRoot, { recursive: true, force: true });
+    log(`removed ${smokeRoot}`);
   } catch (err) {
     log(`cleanup error (ignored): ${err.message}`);
   }

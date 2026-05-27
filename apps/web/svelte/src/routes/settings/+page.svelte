@@ -4547,17 +4547,17 @@
                 </div>
                 <div>
                   <label for="canonical-web-origin" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-                    Canonical network web address
+                    Canonical web app address
                   </label>
                   <input
                     id="canonical-web-origin"
                     type="url"
                     bind:value={editConfig.canonicalWebOrigin}
-                    placeholder="http://DESKTOP-7UV0925:8097"
+                    placeholder="http://xuva-server.local:8097"
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
                   <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    This must be a real address for the machine, DNS name, mDNS name, reverse proxy, or container host that clients can reach. Browser visits through IP addresses redirect here so cookies, profile choice, and sign-in state stay consistent. Leave blank to use the operating-system hostname automatically when the server listens on the LAN.
+                    This is the single browser URL for the Xuva web app. Use a real DNS name, mDNS name, reverse proxy, or container host that devices on your network can reach. Requests through raw IP addresses redirect here so the web app has one stable origin for cookies, profile choice, and sign-in state. Leave blank to use the server machine hostname automatically when Xuva listens on the LAN.
                   </p>
                 </div>
                 <div>
