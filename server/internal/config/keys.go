@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 // Embedded provider keys.
 //
@@ -42,20 +45,31 @@ import "os"
 // xuva.exe like any other key-bearing artifact (don't ship debug builds with
 // real keys to public CI logs etc.).
 var (
-	DefaultTMDBAPIKey     = envOr("XUVA_DEFAULT_TMDB_API_KEY", "")
-	DefaultFanartTVAPIKey = envOr("XUVA_DEFAULT_FANARTTV_API_KEY", "")
-	DefaultOMDbAPIKey     = envOr("XUVA_DEFAULT_OMDB_API_KEY", "")
+	DefaultTMDBAPIKey     string
+	DefaultFanartTVAPIKey string
+	DefaultOMDbAPIKey     string
 )
 
-// envOr is the package-level helper used to seed DefaultXxxAPIKey from an
-// env var when ldflags wasn't used. Kept separate from envString in
-// config.go because that one is also used for non-key paths and we want
-// these key-resolution defaults to be evaluated once at package init.
-func envOr(key string, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func init() {
+	applyEmbeddedProviderDefaults()
+}
+
+// applyEmbeddedProviderDefaults keeps linker-injected defaults intact and only
+// falls back to process env vars when no build-time key is embedded.
+//
+// Note: cmd/link -X only works on uninitialized vars or constant-string
+// initializers. We intentionally keep these vars uninitialized so release
+// pipelines can inject keys reliably.
+func applyEmbeddedProviderDefaults() {
+	if strings.TrimSpace(DefaultTMDBAPIKey) == "" {
+		DefaultTMDBAPIKey = strings.TrimSpace(os.Getenv("XUVA_DEFAULT_TMDB_API_KEY"))
 	}
-	return fallback
+	if strings.TrimSpace(DefaultFanartTVAPIKey) == "" {
+		DefaultFanartTVAPIKey = strings.TrimSpace(os.Getenv("XUVA_DEFAULT_FANARTTV_API_KEY"))
+	}
+	if strings.TrimSpace(DefaultOMDbAPIKey) == "" {
+		DefaultOMDbAPIKey = strings.TrimSpace(os.Getenv("XUVA_DEFAULT_OMDB_API_KEY"))
+	}
 }
 
 // ProviderKeySource describes where a provider's API key resolved from, so

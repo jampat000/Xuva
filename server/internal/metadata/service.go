@@ -163,9 +163,9 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			"tvdb":      false,
 			"wikidata":  true,
 			"wikipedia": true,
-			"fanart":    cfg.FanartTVAPIKey != "",
-			"omdb":      cfg.OMDbAPIKey != "",
-			"tmdb":      cfg.TMDBAPIKey != "",
+			"fanart":    managedProviderConfigured("fanart", cfg),
+			"omdb":      managedProviderConfigured("omdb", cfg),
+			"tmdb":      managedProviderConfigured("tmdb", cfg),
 		},
 	}
 
