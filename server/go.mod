@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/buckket/go-blurhash v1.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
