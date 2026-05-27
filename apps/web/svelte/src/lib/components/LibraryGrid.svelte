@@ -815,11 +815,11 @@
         {/if}
       </div>
     {:else}
-      <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
+      <div class={`grid gap-x-5 gap-y-10 library-grid ${densityGrid[density]}`}>
         {#each filtered as media (media.id)}
           <a
             href={baseHref ? `${baseHref}/${media.id}` : (media.type === "Series" ? `/tv/${media.id}` : `/movies/${media.id}`)}
-            class="group block"
+            class="group block library-grid-item"
           >
             <div
               class="shadow-poster relative aspect-[2/3] overflow-hidden rounded-xl transition-all duration-500 group-hover:-translate-y-1.5 group-hover:shadow-glow"
@@ -875,3 +875,25 @@
     {/if}
   </section>
 </main>
+
+<style>
+  /*
+   * Off-screen grid items use content-visibility:auto so the browser skips
+   * layout, paint, and style recalc until they scroll into view. For a
+   * 5000-poster library this drops initial paint time from "the browser
+   * laid out every card" to "the browser laid out the visible 12-60 cards".
+   *
+   * The contain-intrinsic-size hint tells the browser the size each card
+   * would have if rendered — so the scrollbar is accurate, page height is
+   * stable, and anchor links / Find In Page still work even on items the
+   * browser hasn't laid out yet. The aspect ratio is 2:3 (poster) plus
+   * ~64px for the title/year text below the poster at M/L densities.
+   *
+   * Supported in Chromium 85+, Edge 85+, Safari 18+, Firefox 125+. Older
+   * browsers ignore the property and render normally — no regression.
+   */
+  .library-grid-item {
+    content-visibility: auto;
+    contain-intrinsic-size: 180px 334px;
+  }
+</style>
