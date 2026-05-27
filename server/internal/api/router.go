@@ -4481,7 +4481,9 @@ func settingsFolderBrowseHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimSpace(r.URL.Query().Get("path"))
 		if path == "" {
-			path = currentConfig(deps).DataDir
+			payload := browseRootPayload(currentConfig(deps).DataDir)
+			writeJSON(w, http.StatusOK, payload)
+			return
 		}
 		payload, status := browseFolderPayload(path)
 		writeJSON(w, status, payload)
@@ -4764,36 +4766,44 @@ func browseFolderPayload(path string) (map[string]any, int) {
 	resolved, err := resolveBrowsePath(path)
 	if err != nil {
 		return map[string]any{
-			"path":  path,
-			"roots": browseRoots(),
-			"error": err.Error(),
+			"path":        path,
+			"currentPath": path,
+			"roots":       browseRoots(),
+			"entries":     browseRootEntries(),
+			"error":       err.Error(),
 		}, http.StatusBadRequest
 	}
 	info, err := os.Stat(resolved)
 	if err != nil {
 		return map[string]any{
-			"path":   resolved,
-			"parent": parentFolder(resolved),
-			"roots":  browseRoots(),
-			"error":  err.Error(),
+			"path":        resolved,
+			"currentPath": resolved,
+			"parent":      parentFolder(resolved),
+			"parentPath":  parentFolder(resolved),
+			"roots":       browseRoots(),
+			"error":       err.Error(),
 		}, http.StatusOK
 	}
 	if !info.IsDir() {
 		return map[string]any{
-			"path":   resolved,
-			"parent": parentFolder(resolved),
-			"roots":  browseRoots(),
-			"error":  "path is not a folder",
+			"path":        resolved,
+			"currentPath": resolved,
+			"parent":      parentFolder(resolved),
+			"parentPath":  parentFolder(resolved),
+			"roots":       browseRoots(),
+			"error":       "path is not a folder",
 		}, http.StatusOK
 	}
 	entries, err := os.ReadDir(resolved)
 	if err != nil {
 		return map[string]any{
-			"path":     resolved,
-			"parent":   parentFolder(resolved),
-			"roots":    browseRoots(),
-			"writable": false,
-			"error":    err.Error(),
+			"path":        resolved,
+			"currentPath": resolved,
+			"parent":      parentFolder(resolved),
+			"parentPath":  parentFolder(resolved),
+			"roots":       browseRoots(),
+			"writable":    false,
+			"error":       err.Error(),
 		}, http.StatusOK
 	}
 	folders := make([]map[string]any, 0, len(entries))
@@ -4805,6 +4815,7 @@ func browseFolderPayload(path string) (map[string]any, int) {
 		folders = append(folders, map[string]any{
 			"name": name,
 			"path": filepath.Join(resolved, name),
+			"isDir": true,
 		})
 	}
 	sort.Slice(folders, func(i, j int) bool {
@@ -4812,13 +4823,30 @@ func browseFolderPayload(path string) (map[string]any, int) {
 	})
 	writable, message := pathReady(resolved)
 	return map[string]any{
-		"path":     resolved,
-		"parent":   parentFolder(resolved),
-		"roots":    browseRoots(),
-		"entries":  folders,
-		"writable": writable,
-		"message":  message,
+		"path":        resolved,
+		"currentPath": resolved,
+		"parent":      parentFolder(resolved),
+		"parentPath":  parentFolder(resolved),
+		"roots":       browseRoots(),
+		"entries":     folders,
+		"writable":    writable,
+		"message":     message,
 	}, http.StatusOK
+}
+
+func browseRootPayload(dataDir string) map[string]any {
+	roots := browseRoots()
+	return map[string]any{
+		"path":        "",
+		"currentPath": "",
+		"parent":      nil,
+		"parentPath":  nil,
+		"roots":       roots,
+		"entries":     browseRootEntries(),
+		"writable":    false,
+		"message":     "Choose a server-visible folder. For NAS paths, use a mapped drive or type a UNC path such as \\\\server\\share.",
+		"dataDir":     dataDir,
+	}
 }
 
 func resolveBrowsePath(path string) (string, error) {
@@ -4841,22 +4869,35 @@ func parentFolder(path string) string {
 	return parent
 }
 
-func browseRoots() []map[string]string {
-	roots := []map[string]string{}
+func browseRoots() []map[string]any {
+	roots := []map[string]any{}
 	if runtime.GOOS == "windows" {
 		for drive := 'A'; drive <= 'Z'; drive++ {
 			root := string(drive) + `:\`
 			if info, err := os.Stat(root); err == nil && info.IsDir() {
-				roots = append(roots, map[string]string{"name": strings.TrimSuffix(root, `\`), "path": root})
+				roots = append(roots, map[string]any{"name": strings.TrimSuffix(root, `\`), "path": root, "isDir": true})
 			}
 		}
 		return roots
 	}
-	roots = append(roots, map[string]string{"name": "Root", "path": string(filepath.Separator)})
+	roots = append(roots, map[string]any{"name": "Root", "path": string(filepath.Separator), "isDir": true})
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		roots = append(roots, map[string]string{"name": "Home", "path": home})
+		roots = append(roots, map[string]any{"name": "Home", "path": home, "isDir": true})
 	}
 	return roots
+}
+
+func browseRootEntries() []map[string]any {
+	roots := browseRoots()
+	entries := make([]map[string]any, 0, len(roots))
+	for _, root := range roots {
+		entries = append(entries, map[string]any{
+			"name":  root["name"],
+			"path":  root["path"],
+			"isDir": true,
+		})
+	}
+	return entries
 }
 
 func hardwareAccelerationStatus(cfg config.Config) map[string]any {
