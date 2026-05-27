@@ -3890,6 +3890,11 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid artwork type")
 			return
 		}
+		// Optional ?w=N: serve a resized JPEG variant cached on disk. Width
+		// is validated to a sane range; out-of-band values are treated as
+		// "no resize" so a request never errors solely on the query string.
+		resizeWidth := parseResizeWidth(r.URL.Query().Get("w"))
+
 		if deps.Catalog != nil {
 			if record, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id); err == nil && ok {
 				if record.Title != "" {
@@ -3898,15 +3903,9 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			}
 			if records, err := deps.Catalog.ListMetadataRecords(r.Context(), kind, id); err == nil {
 				candidates := metadataArtworkCandidates(records, artType)
-				for _, candidate := range candidates {
-					if serveArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, candidate, true) {
-						return
-					}
-				}
-				for _, candidate := range candidates {
-					if serveArtwork(w, r, deps.Config.MetadataDir, kind, id, artType, candidate, false) {
-						return
-					}
+				if path, ok := firstResolvedArtwork(r.Context(), deps.Config.MetadataDir, kind, id, artType, candidates); ok {
+					serveArtworkFile(w, r, path, resizeWidth)
+					return
 				}
 			}
 		}
@@ -3928,6 +3927,47 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = io.WriteString(w, fallbackArtworkSVG(title, artType))
 	}
+}
+
+// firstResolvedArtwork walks candidate URLs in priority order, trying the
+// strict quality gate first and falling back to the lenient gate, returning
+// the first on-disk path that matches. This lets the handler do one decision
+// pass over candidates instead of two.
+func firstResolvedArtwork(ctx context.Context, metadataDir, kind, id, artType string, candidates []string) (string, bool) {
+	for _, candidate := range candidates {
+		if path, ok := resolveArtwork(ctx, metadataDir, kind, id, artType, candidate, true); ok {
+			return path, true
+		}
+	}
+	for _, candidate := range candidates {
+		if path, ok := resolveArtwork(ctx, metadataDir, kind, id, artType, candidate, false); ok {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// serveArtworkFile streams an original or resized artwork file with an
+// immutable Cache-Control header. When width > 0 and the source is wider than
+// the target, the file is downscaled to a .wNNN.jpg sibling on first request
+// and reused thereafter. A resize failure falls back to serving the original
+// rather than erroring out — the user still sees a poster.
+func serveArtworkFile(w http.ResponseWriter, r *http.Request, originalPath string, width int) {
+	servePath := originalPath
+	if width > 0 {
+		sized := sizedArtworkPath(originalPath, width)
+		if _, err := os.Stat(sized); err != nil {
+			if rerr := resizeImageWidth(originalPath, sized, width); rerr == nil {
+				servePath = sized
+			}
+		} else {
+			servePath = sized
+		}
+	}
+	// 1 year, immutable. Hashes/source URL changes invalidate by switching
+	// to a different sized variant filename, not by client revalidation.
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeFile(w, r, servePath)
 }
 
 func metadataArtworkCandidates(records []catalog.MetadataRecord, artType string) []string {
@@ -4048,56 +4088,59 @@ func fallbackArtworkSVG(title string, artType string) string {
 </svg>`, safeTitle)
 }
 
-func serveArtwork(w http.ResponseWriter, r *http.Request, metadataDir string, kind string, id string, artType string, source string, strict bool) bool {
-	if serveLocalArtwork(w, r, source, artType, strict) {
-		return true
+// resolveArtwork returns the on-disk path for an artwork candidate, either a
+// local library file or a remote URL fetched into the metadata-dir cache.
+// Returns ("", false) when neither succeeds. Callers then decide whether to
+// serve the file as-is or pass it through the resize pipeline.
+func resolveArtwork(ctx context.Context, metadataDir string, kind string, id string, artType string, source string, strict bool) (string, bool) {
+	if path, ok := resolveLocalArtwork(source, artType, strict); ok {
+		return path, true
 	}
-	return serveCachedArtwork(w, r, metadataDir, kind, id, artType, source, strict)
+	return resolveCachedArtwork(ctx, metadataDir, kind, id, artType, source, strict)
 }
 
-func serveLocalArtwork(w http.ResponseWriter, r *http.Request, path string, artType string, strict bool) bool {
+func resolveLocalArtwork(path string, artType string, strict bool) (string, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return false
+		return "", false
 	}
 	lower := strings.ToLower(path)
 	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
-		return false
+		return "", false
 	}
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
-		return false
+		return "", false
 	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".jpg", ".jpeg", ".png", ".webp":
 		if !artworkPassesQualityGatePath(path, artType, strict) {
-			return false
+			return "", false
 		}
-		http.ServeFile(w, r, path)
-		return true
+		return path, true
 	default:
-		return false
+		return "", false
 	}
 }
 
-func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir string, kind string, id string, artType string, sourceURL string, strict bool) bool {
+func resolveCachedArtwork(ctx context.Context, metadataDir string, kind string, id string, artType string, sourceURL string, strict bool) (string, bool) {
 	if !strings.HasPrefix(strings.ToLower(sourceURL), "https://") && !strings.HasPrefix(strings.ToLower(sourceURL), "http://") {
-		return false
+		return "", false
 	}
 	if metadataDir == "" {
-		return false
+		return "", false
 	}
 	dir, ok := safeChildPath(metadataDir, "artwork", kind, id)
 	if !ok {
-		return false
+		return "", false
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false
+		return "", false
 	}
 	normalizedSource := strings.TrimSpace(sourceURL)
 	sourceMarkerPath, ok := safeChildPath(dir, artType+".source")
 	if !ok {
-		return false
+		return "", false
 	}
 	cachedSource := readCachedArtworkSource(sourceMarkerPath)
 	refreshBecauseSourceChanged := cachedSource != "" && !strings.EqualFold(cachedSource, normalizedSource)
@@ -4105,7 +4148,7 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 	for _, ext := range []string{".jpg", ".png", ".webp"} {
 		path, ok := safeChildPath(dir, artType+ext)
 		if !ok {
-			return false
+			return "", false
 		}
 		if _, err := os.Stat(path); err == nil {
 			if refreshBecauseSourceChanged || refreshTMDBCacheWithoutMarker {
@@ -4113,56 +4156,54 @@ func serveCachedArtwork(w http.ResponseWriter, r *http.Request, metadataDir stri
 				continue
 			}
 			if !artworkPassesQualityGatePath(path, artType, strict) {
-				return false
+				return "", false
 			}
-			http.ServeFile(w, r, path)
-			return true
+			return path, true
 		}
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	fetchCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	request, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return false
+		return "", false
 	}
 	request.Header.Set("User-Agent", "Xuva/0.1 (+https://github.com/xuvahq/xuva)")
 	request.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return false
+		return "", false
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return false
+		return "", false
 	}
 	ext := artworkExtension(response.Header.Get("Content-Type"), sourceURL)
 	path, ok := safeChildPath(dir, artType+ext)
 	if !ok {
-		return false
+		return "", false
 	}
 	payload, err := io.ReadAll(io.LimitReader(response.Body, 32*1024*1024))
 	if err != nil {
-		return false
+		return "", false
 	}
 	if !artworkPassesQualityGateBytes(payload, artType, sourceURL, strict) {
-		return false
+		return "", false
 	}
 	file, err := os.Create(path)
 	if err != nil {
-		return false
+		return "", false
 	}
 	if _, err := io.Copy(file, bytes.NewReader(payload)); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
-		return false
+		return "", false
 	}
 	if err := file.Close(); err != nil {
 		_ = os.Remove(path)
-		return false
+		return "", false
 	}
 	writeCachedArtworkSource(sourceMarkerPath, normalizedSource)
-	http.ServeFile(w, r, path)
-	return true
+	return path, true
 }
 
 func readCachedArtworkSource(path string) string {
