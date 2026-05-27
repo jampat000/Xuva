@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { decode } from "blurhash";
   import { Play, Star } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
-  import { artworkSrc, artworkSrcset } from "$lib/api/artwork-url";
+  import { artworkSrc, artworkSrcset, fetchBlurhash } from "$lib/api/artwork-url";
 
   let { media, variant = "poster" } = $props<{
     media: Media;
@@ -18,6 +20,45 @@
   const artType = $derived<'poster' | 'backdrop'>(isWide ? 'backdrop' : 'poster');
   const art = $derived(artworkSrc(media, artType, artWidth, rawArt));
   const artSrcset = $derived(artworkSrcset(media, artType, artWidth));
+
+  // Blurhash placeholder: fetched on mount, decoded to a 32x32 canvas, used
+  // as a data-URI background. We render this *behind* the poster img and
+  // fade it out once the img has loaded — so the user sees a soft blurred
+  // preview within ~150 ms instead of a flat palette gradient.
+  //
+  // If the backend doesn't have a hash yet (first ever view of this item)
+  // the fetch returns "" and we fall through to the gradient — no
+  // regression vs the previous behavior.
+  let blurhashDataUrl = $state<string>('');
+  let imgLoaded = $state(false);
+
+  onMount(() => {
+    let cancelled = false;
+    void fetchBlurhash(media, artType).then((hash) => {
+      if (cancelled || !hash) return;
+      try {
+        // 32x32 is enough resolution for a placeholder behind a poster card.
+        // Larger sizes mean more decode CPU per card and barely-visible gain.
+        const pixels = decode(hash, 32, 32);
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const imageData = ctx.createImageData(32, 32);
+        imageData.data.set(pixels);
+        ctx.putImageData(imageData, 0, 0);
+        blurhashDataUrl = canvas.toDataURL('image/png');
+      } catch {
+        // Malformed hash or decode bug — silently fall back to gradient.
+      }
+    });
+    return () => { cancelled = true; };
+  });
+
+  function onImageLoad() {
+    imgLoaded = true;
+  }
   // Continue-Watching items come keyed by media_source_id but the detail page
   // expects the parent movie/series id. Use parentId/parentKind when present.
   const href = $derived.by(() => {
@@ -40,6 +81,15 @@
     }`}
     style:background={gradient}
   >
+    {#if blurhashDataUrl}
+      <img
+        src={blurhashDataUrl}
+        alt=""
+        aria-hidden="true"
+        class={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-0' : 'opacity-100'}`}
+        style="filter: blur(10px); transform: scale(1.1);"
+      />
+    {/if}
     {#if art}
       <img
         src={art}
@@ -47,7 +97,8 @@
         alt={media.title}
         loading="lazy"
         decoding="async"
-        class="absolute inset-0 h-full w-full object-cover"
+        onload={onImageLoad}
+        class={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
         onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
       />
     {/if}
