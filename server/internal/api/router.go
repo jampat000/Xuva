@@ -3725,11 +3725,30 @@ func metadataBackfillStartHandler(deps Deps) http.HandlerFunc {
 			request.Provider = "tmdb"
 		}
 		if err := deps.Metadata.StartBackfill(r.Context(), request.Provider); err != nil {
+			if metaprovider.IsBackfillProviderNotConfigured(err) {
+				writeJSON(w, http.StatusAccepted, map[string]any{
+					"status":   deps.Metadata.BackfillStatus(),
+					"accepted": false,
+					"reason":   "not_configured",
+					"message":  err.Error(),
+				})
+				return
+			}
+			if metaprovider.IsBackfillAlreadyRunning(err) {
+				writeJSON(w, http.StatusAccepted, map[string]any{
+					"status":   deps.Metadata.BackfillStatus(),
+					"accepted": false,
+					"reason":   "already_running",
+					"message":  err.Error(),
+				})
+				return
+			}
 			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{
-			"status": deps.Metadata.BackfillStatus(),
+			"status":   deps.Metadata.BackfillStatus(),
+			"accepted": true,
 		})
 	}
 }
