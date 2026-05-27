@@ -3469,7 +3469,10 @@ func moviesHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "movie list failed")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"movies": items})
+		// ETag is content-derived: same library state yields the same hash
+		// per user, so SWR's background refresh hits 304 most of the time
+		// and skips the JSON.parse on the client.
+		writeCachedJSON(w, r, http.StatusOK, map[string]any{"movies": items})
 	}
 }
 
@@ -3495,7 +3498,9 @@ func seriesHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "series list failed")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"series": items})
+		// See moviesHandler — content-hash ETag so the SWR background refresh
+		// hits 304 when the library hasn't changed.
+		writeCachedJSON(w, r, http.StatusOK, map[string]any{"series": items})
 	}
 }
 
