@@ -1,40 +1,31 @@
 # Xuva Icon Pack Surfaces
 
-Source pack location used for this import:
+Source pack:
 
-- `C:\Users\User\Downloads\xuva-icons.zip`
+- `C:\Users\User\Downloads\xuva-branding.zip`
 
-Imported asset root:
+Repository source of truth:
 
-- `apps/web/svelte/static/icons/`
-
-Root lookup files promoted for browser and iOS:
-
-- `apps/web/svelte/static/favicon.ico`
-- `apps/web/svelte/static/favicon.svg`
-- `apps/web/svelte/static/favicon-16.png`
-- `apps/web/svelte/static/favicon-32.png`
-- `apps/web/svelte/static/favicon-48.png`
-- `apps/web/svelte/static/favicon-64.png`
-- `apps/web/svelte/static/apple-touch-icon.png`
+- `assets/brand/`
 
 Current wired surfaces:
 
-- Browser favicon via `<link rel="icon"...>` in `apps/web/svelte/src/routes/+layout.svelte`
-- iOS home screen icon via `<link rel="apple-touch-icon"...>` in `apps/web/svelte/src/routes/+layout.svelte`
-- Theme color via `<meta name="theme-color"...>` in `apps/web/svelte/src/routes/+layout.svelte`
+- Windows executable/taskbar/installer icon: `apps/desktop/assets/xuva.ico`
+- Windows tile/installer support images: `apps/desktop/assets/Square*.png`, `apps/desktop/assets/Wide310x150Logo.png`, `apps/desktop/assets/installer-256.png`
+- Browser favicons and PWA assets: `apps/web/svelte/static/favicon*`, `apps/web/svelte/static/apple-touch-icon.png`, `apps/web/svelte/static/site.webmanifest`
+- Browser tab/social metadata: `apps/web/svelte/src/app.html`
+- Embedded server web assets: `server/internal/webapp/static-next/`
 
-Future surfaces kept for later integration:
+Brand assets available for docs, installers, and marketing:
 
-- `apps/web/svelte/static/icons/pwa/`: web app install metadata and maskable icons
-- `apps/web/svelte/static/icons/ios-app-store/`: App Store and TestFlight app icon
-- `apps/web/svelte/static/icons/macos/`: dock and bundle icon assets
-- `apps/web/svelte/static/icons/windows/`: desktop/taskbar/store assets
-- `apps/web/svelte/static/icons/tray/`: tray/menu bar icons
-- `apps/web/svelte/static/icons/_source-svg/`: editable source vectors
+- `assets/brand/raw/og-image-cinematic.png`
+- `assets/brand/raw/wordmark-dark.png`
+- `assets/brand/svg/mark.svg`
+- `assets/brand/svg/wordmark.svg`
+- `assets/brand/social/og-1200x630.png`
+- `assets/brand/social/twitter-card-1200x600.png`
 
 Guardrail:
 
-- Do not modify the in-app brand components for this icon pack task:
-  `apps/web/svelte/src/lib/components/brand/XuvaLogo.svelte` and
-  `apps/web/svelte/src/lib/components/brand/XuvaWordmark.svelte`
+- Do not reintroduce MediaMop icons or the removed legacy Xuva chevron icon.
+- Do not modify Apple client assets from server/package work. Apple app icons must be handled by the Apple-side owner.
