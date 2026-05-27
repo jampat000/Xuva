@@ -56,7 +56,8 @@ Clean install smoke:
 14. Confirm the desktop runtime folders exist under the resolved runtime home: `data`, `logs`, `transcode`, `downloads`, `metadata`, `cache`, `temp`, and `trailers`.
 15. Confirm `logs/xuva.ndjson` exists and contains structured JSON log lines.
 16. On Windows, confirm Firewall rules exist for `Xuva Server HTTP` and `Xuva Local Discovery mDNS`, scoped to Private/Domain profiles.
-17. From another LAN device, confirm `http://<server-ip>:8097/api/health` responds and native client discovery can see `_xuva._tcp.local.`.
+17. Open `http://localhost:8097/api/discovery/status` and confirm `running` is `true`, `interfaces` includes the real LAN adapter, and `advertiseIps` includes the server LAN IP.
+18. From another LAN device, confirm `http://<server-ip>:8097/api/health` responds and native client discovery can see `_xuva._tcp.local.`.
 
 Upgrade smoke:
 
