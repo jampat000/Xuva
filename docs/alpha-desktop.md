@@ -55,5 +55,6 @@ Native picker bridges are optional utility-surface work only. They must not be r
 ## Upgrade Surface
 
 - The web settings UI exposes an Updates section that checks the latest GitHub Release and offers Windows/Docker downloads.
-- Automatic self-apply is deliberately deferred until a separate updater supervisor exists. A running server process should not replace its own executable or installer payload mid-request.
-- The durable updater design is: web UI requests update, server verifies metadata and checksum, launcher/updater stops Xuva, applies package, restarts Xuva, then the web UI verifies `/api/system/version`.
+- Windows launcher installs support in-app apply: the web UI requests the update, the server downloads and verifies the installer, and the launcher hands off to a detached updater process.
+- The updater process waits for Xuva to exit, runs the installer silently, removes the staged request, restarts Xuva, and the web UI verifies `/api/system/version` after the browser reconnects.
+- Docker and non-Windows installs do not self-apply. They should upgrade by replacing the container image or package.
