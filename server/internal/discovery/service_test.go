@@ -177,6 +177,39 @@ func TestInterfacePreferenceRanksPhysicalBeforeVirtual(t *testing.T) {
 	}
 }
 
+func TestFilterAdvertisedIPsByFamilyRespectsIPv4WildcardBind(t *testing.T) {
+	input := []net.IP{
+		net.ParseIP("10.1.1.103"),
+		net.ParseIP("fdc1:b5ee:239a:4bf4::100"),
+	}
+
+	filtered := filterAdvertisedIPsByFamily(input, listenerAddressFamily("0.0.0.0"))
+	if len(filtered) != 1 || filtered[0].To4() == nil || filtered[0].String() != "10.1.1.103" {
+		t.Fatalf("expected only IPv4 address for 0.0.0.0 bind, got %#v", filtered)
+	}
+}
+
+func TestFilterAdvertisedIPsByFamilyRespectsIPv6WildcardBind(t *testing.T) {
+	input := []net.IP{
+		net.ParseIP("10.1.1.103"),
+		net.ParseIP("fdc1:b5ee:239a:4bf4::100"),
+	}
+
+	filtered := filterAdvertisedIPsByFamily(input, listenerAddressFamily("::"))
+	if len(filtered) != 1 || filtered[0].To4() != nil || filtered[0].String() != "fdc1:b5ee:239a:4bf4::100" {
+		t.Fatalf("expected only IPv6 address for :: bind, got %#v", filtered)
+	}
+}
+
+func TestIsVirtualInterfaceNameRecognizesWindowsVeth(t *testing.T) {
+	if !isVirtualInterfaceName("vEthernet (WSL (Hyper-V firewall))") {
+		t.Fatalf("expected vEthernet adapter name to be treated as virtual")
+	}
+	if isVirtualInterfaceName("Ethernet 2") {
+		t.Fatalf("expected physical ethernet adapter to be treated as non-virtual")
+	}
+}
+
 func TestUsableAdvertiseIPRejectsLoopbackAndLinkLocal(t *testing.T) {
 	rejected := []string{"127.0.0.1", "169.254.1.20", "fe80::1"}
 	for _, value := range rejected {
