@@ -1,4 +1,4 @@
-import { apiClient, type ApiClient } from './client';
+﻿import { apiClient, type ApiClient } from './client';
 
 export interface CatalogSummaryResponse {
 	libraries?: number;
@@ -690,7 +690,7 @@ export function runHardwareTest(
 	);
 }
 
-// ─── Library management ────────────────────────────────────────────────────
+// â”€â”€â”€ Library management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface LibraryItem {
 	id?: string;
@@ -771,7 +771,7 @@ export function browseFolders(
 	return client.request<FolderBrowseResponse>(url);
 }
 
-// ─── Users ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface UserItem {
 	id?: string;
@@ -854,7 +854,7 @@ export function updateUserPassword(
 	);
 }
 
-// ─── Device profiles ──────────────────────────────────────────────────────
+// â”€â”€â”€ Device profiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface DeviceProfile {
 	id?: string;
@@ -878,7 +878,7 @@ export function getDeviceProfiles(
 	return client.request<DeviceProfilesResponse>('/api/devices/profiles');
 }
 
-// ─── Scan all libraries ───────────────────────────────────────────────────
+// â”€â”€â”€ Scan all libraries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function scanAllLibraries(
 	client: ApiClient = apiClient
@@ -890,7 +890,7 @@ export function scanAllLibraries(
 	);
 }
 
-// ─── Backup / export ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Backup / export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface BackupManifest {
 	version?: number;
@@ -944,8 +944,38 @@ export async function importBackup(file: File): Promise<BackupImportResponse> {
 	return resp.json();
 }
 
-// ─── Notifications ────────────────────────────────────────────────────────────
 
+// â”€â”€â”€ Updates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export interface UpdateAsset {
+	name?: string;
+	url?: string;
+	size?: number;
+	digest?: string;
+	packageType?: string;
+}
+
+export interface UpdateStatusResponse {
+	currentVersion?: string;
+	latestVersion?: string;
+	updateAvailable?: boolean;
+	releaseUrl?: string;
+	publishedAt?: string;
+	assets?: UpdateAsset[];
+	dockerImage?: string;
+	installMode?: string;
+	applySupported?: boolean;
+	applyUnsupportedReason?: string;
+	checkedAt?: string;
+}
+
+export function getUpdateStatus(
+	client: ApiClient = apiClient
+): Promise<UpdateStatusResponse> {
+	return client.request<UpdateStatusResponse>('/api/system/updates');
+}
+
+// Notifications
 export interface NotificationItem {
 	id?: string;
 	kind?: string;
@@ -1035,7 +1065,7 @@ export function updateUserPreferences(
 	);
 }
 
-// ─── Jobs status (GET /api/jobs) ──────────────────────────────────────────────
+// â”€â”€â”€ Jobs status (GET /api/jobs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface BackfillStatusSnapshot {
 	running: boolean;
@@ -1094,7 +1124,7 @@ export function getJobs(client: ApiClient = apiClient): Promise<JobsStatusRespon
 	return client.request<JobsStatusResponse>('/api/jobs');
 }
 
-/** POST /api/probes — trigger a bulk probe job. limit=0 probes all unprobed files. */
+/** POST /api/probes â€” trigger a bulk probe job. limit=0 probes all unprobed files. */
 export function startProbeJob(
 	limit = 0,
 	client: ApiClient = apiClient
@@ -1106,7 +1136,7 @@ export function startProbeJob(
 	);
 }
 
-// ── QR pair token ─────────────────────────────────────────────────────────────
+// â”€â”€ QR pair token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface QRTokenResponse {
 	token: string;

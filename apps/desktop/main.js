@@ -8,7 +8,6 @@ const LOCAL_APP_URL = process.env.XUVA_DESKTOP_LOCAL_URL || "http://127.0.0.1:80
 const SETTINGS_FILE = () => path.join(app.getPath("userData"), "xuva-settings.json");
 const serverCwdDefault = path.resolve(__dirname, "..", "..", "server");
 
-let mainWindow = null;
 let setupWindow = null;
 let tray = null;
 let serverProcess = null;
@@ -263,9 +262,18 @@ function waitForLocalServer(timeoutMs = 30000) {
   });
 }
 
-async function loadAppWindow(win) {
+async function openAppInBrowser() {
   await waitForLocalServer();
-  await win.loadURL(activeAppURL());
+  const url = activeAppURL();
+  logEvent("browser.open_requested", { url });
+  try {
+    await shell.openExternal(url);
+    logEvent("browser.opened", { url });
+    return { ok: true, url };
+  } catch (err) {
+    logEvent("browser.open_error", { url, error: String(err) });
+    return { ok: false, url, error: String(err) };
+  }
 }
 
 function appIconPath() {
@@ -274,30 +282,6 @@ function appIconPath() {
     path.resolve(__dirname, "..", "web", "svelte", "static", "favicon.ico"),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
-}
-
-function createMainWindow() {
-  const icon = appIconPath();
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    show: false,
-    autoHideMenuBar: true,
-    icon: icon || undefined,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  mainWindow.on("ready-to-show", () => mainWindow.show());
-  mainWindow.on("close", (event) => {
-    if (!app.isQuiting) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
-  });
-  loadAppWindow(mainWindow).catch((err) => logEvent("window.load_error", { error: String(err) }));
 }
 
 function createSetupWindow() {
@@ -327,13 +311,7 @@ function createSetupWindow() {
 }
 
 function showWindow() {
-  if (!mainWindow) {
-    createMainWindow();
-    return;
-  }
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  openAppInBrowser().catch((err) => logEvent("browser.open_unhandled_error", { error: String(err) }));
 }
 
 function createTray() {
@@ -353,7 +331,6 @@ function refreshTrayMenu() {
   const modeLabel = currentMode === "remote" ? `Server: ${currentRemoteUrl || "remote"}` : "Server: local";
   const menu = Menu.buildFromTemplate([
     { label: "Open Xuva", click: showWindow },
-    { label: "Open in Browser", click: () => shell.openExternal(activeAppURL()) },
     { label: "Open Runtime Folder", click: () => currentRuntimeHome && shell.openPath(currentRuntimeHome) },
     { type: "separator" },
     { label: modeLabel, enabled: false },
@@ -426,7 +403,7 @@ function broadcastDiscovery() {
 
 ipcMain.handle("xuva:pick-folder", async (_event, request = {}) => {
   logEvent("bridge.pick_folder.requested", { purpose: request.purpose || "folder" });
-  const chosen = await dialog.showOpenDialog(mainWindow || undefined, {
+  const chosen = await dialog.showOpenDialog(setupWindow || undefined, {
     title: request.title || "Select folder",
     defaultPath: request.currentPath || undefined,
     properties: ["openDirectory", "dontAddToRecent"],
@@ -463,13 +440,7 @@ ipcMain.handle("xuva:save-settings", async (_event, settings = {}) => {
     setupWindow = null;
   }
 
-  if (mainWindow) {
-    loadAppWindow(mainWindow).catch((err) => logEvent("window.reload_error", { error: String(err) }));
-    mainWindow.show();
-    mainWindow.focus();
-  } else {
-    createMainWindow();
-  }
+  openAppInBrowser().catch((err) => logEvent("browser.open_unhandled_error", { error: String(err) }));
 
   refreshTrayMenu();
   return { ok: true };
@@ -482,23 +453,19 @@ app.whenReady().then(() => {
 
   if (saved) {
     if (currentMode === "local") startServer();
-    createMainWindow();
+    openAppInBrowser().catch((err) => logEvent("browser.open_unhandled_error", { error: String(err) }));
   } else {
     const defaultSettings = { mode: "local", remoteUrl: "" };
     writeSettings(defaultSettings);
     applySettings(defaultSettings);
     startServer();
-    createMainWindow();
+    openAppInBrowser().catch((err) => logEvent("browser.open_unhandled_error", { error: String(err) }));
   }
 
   createTray();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    } else {
-      showWindow();
-    }
+    showWindow();
   });
 });
 

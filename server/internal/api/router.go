@@ -213,6 +213,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtectedCSRF(mux, deps, "PUT /api/settings", settingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/settings/metadata-sources", metadataSourceSettingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))
+	handleProtected(mux, deps, "GET /api/system/updates", updatesCheckHandler(deps))
 	handleProtected(mux, deps, "GET /api/backup/export", backupExportHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/backup/import", backupImportHandler(deps))
 	handleProtected(mux, deps, "GET /api/notifications", notificationsListHandler(deps))
@@ -4813,8 +4814,8 @@ func browseFolderPayload(path string) (map[string]any, int) {
 		}
 		name := entry.Name()
 		folders = append(folders, map[string]any{
-			"name": name,
-			"path": filepath.Join(resolved, name),
+			"name":  name,
+			"path":  filepath.Join(resolved, name),
 			"isDir": true,
 		})
 	}
