@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net"
@@ -301,6 +302,9 @@ func LoadFile(dataDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	// Be tolerant of UTF-8 BOM files produced by some Windows editors/shell
+	// commands so we don't silently fall back to defaults like serverName.
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
 	var cfg Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return Config{}, err

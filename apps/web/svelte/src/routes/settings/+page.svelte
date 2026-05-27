@@ -3973,10 +3973,10 @@
                       {/if}
                     </div>
                     {#if discoveryStatus.serviceName}
-                      <div class="flex items-center justify-between text-sm">
-                        <span class="text-muted-foreground">Service name</span>
-                        <span class="font-mono text-foreground/80">{discoveryStatus.serviceName}</span>
-                      </div>
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-muted-foreground">Advertised server name</span>
+                      <span class="font-mono text-foreground/80">{discoveryStatus.serviceName}</span>
+                    </div>
                     {/if}
                     {#if discoveryStatus.hostName}
                       <div class="flex items-center justify-between text-sm">
@@ -4598,7 +4598,7 @@
               <div class="space-y-5">
                 <div>
                   <label for="server-name" class="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-                    Xuva display name
+                    Server name (display and discovery)
                   </label>
                   <input
                     id="server-name"
@@ -4608,7 +4608,7 @@
                     class="mt-2 h-11 w-full rounded-xl border border-border bg-background/40 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/60 focus:bg-background/70"
                   />
                   <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    This is a human-readable instance name for titles, setup, and discovery lists. It is not a DNS name and does not need to resolve on your network.
+                    This is the one human-readable server name used across titles, setup, and discovery lists. It is not a DNS name and does not need to resolve on your network.
                   </p>
                 </div>
                 <div>
