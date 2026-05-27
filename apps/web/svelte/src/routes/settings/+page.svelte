@@ -4010,6 +4010,26 @@
                         <span class="font-mono text-foreground/80">{discoveryStatus.port}</span>
                       </div>
                     {/if}
+                    {#if discoveryStatus.interfaces?.length}
+                      <div class="space-y-1.5 text-sm">
+                        <span class="text-muted-foreground">Network interfaces</span>
+                        <div class="flex flex-wrap gap-1.5">
+                          {#each discoveryStatus.interfaces as iface}
+                            <span class="hairline rounded-full bg-foreground/[0.06] px-2 py-0.5 font-mono text-[11px] text-foreground/80">{iface}</span>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                    {#if discoveryStatus.advertiseIps?.length}
+                      <div class="space-y-1.5 text-sm">
+                        <span class="text-muted-foreground">Advertised IPs</span>
+                        <div class="flex flex-wrap gap-1.5">
+                          {#each discoveryStatus.advertiseIps as ip}
+                            <span class="hairline rounded-full bg-foreground/[0.06] px-2 py-0.5 font-mono text-[11px] text-foreground/80">{ip}</span>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
                     {#if discoveryStatus.lastError}
                       <p class="text-xs text-red-300">{discoveryStatus.lastError}</p>
                     {/if}
