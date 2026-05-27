@@ -23,6 +23,26 @@ const (
 	bootstrapAPIPath   = "/api/client/bootstrap"
 )
 
+type advertisedAddressFamily int
+
+const (
+	addressFamilyAny advertisedAddressFamily = iota
+	addressFamilyIPv4
+	addressFamilyIPv6
+)
+
+var virtualInterfaceTerms = []string{
+	"vethernet",
+	"docker",
+	"wsl",
+	"hyper-v",
+	"hyperv",
+	"vmware",
+	"virtualbox",
+	"tailscale",
+	"zerotier",
+}
+
 type Status struct {
 	Enabled      bool     `json:"enabled"`
 	Running      bool     `json:"running"`
@@ -356,18 +376,26 @@ func usableAdvertiseIP(ip net.IP) bool {
 }
 
 func interfacePreference(name string) int {
-	lower := strings.ToLower(name)
-	virtualTerms := []string{"vethernet", "docker", "wsl", "hyper-v", "hyperv", "vmware", "virtualbox", "tailscale", "zerotier"}
-	for _, term := range virtualTerms {
-		if strings.Contains(lower, term) {
-			return 10
-		}
+	if isVirtualInterfaceName(name) {
+		return 10
 	}
+	lower := strings.ToLower(name)
 	if strings.Contains(lower, "bluetooth") {
 		return 20
 	}
 	return 0
 }
+
+func isVirtualInterfaceName(name string) bool {
+	lower := strings.ToLower(name)
+	for _, term := range virtualInterfaceTerms {
+		if strings.Contains(lower, term) {
+			return true
+		}
+	}
+	return false
+}
+
 func displayServiceName(value string) string {
 	normalized, err := config.NormalizeServerName(value)
 	if err != nil {
@@ -508,9 +536,18 @@ func advertisedIPs(httpAddr string) ([]net.IP, error) {
 		return nil, errors.New("http address is invalid")
 	}
 	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	family := listenerAddressFamily(host)
 	switch {
 	case host == "", host == "0.0.0.0", host == "::":
-		return activeLANIPs()
+		ips, err := activeLANIPs()
+		if err != nil {
+			return nil, err
+		}
+		filtered := filterAdvertisedIPsByFamily(ips, family)
+		if len(filtered) == 0 {
+			return nil, errors.New("no local network address is available")
+		}
+		return filtered, nil
 	case strings.EqualFold(host, "localhost"):
 		return nil, errors.New("server is listening only on this device")
 	}
@@ -533,6 +570,7 @@ func advertisedIPs(httpAddr string) ([]net.IP, error) {
 		}
 		filtered = append(filtered, ip)
 	}
+	filtered = filterAdvertisedIPsByFamily(filtered, family)
 	if len(filtered) == 0 {
 		return nil, errors.New("no local network address is available")
 	}
@@ -540,13 +578,29 @@ func advertisedIPs(httpAddr string) ([]net.IP, error) {
 }
 
 func activeLANIPs() ([]net.IP, error) {
+	// Prefer physical LAN adapters first. If none exist, fall back to virtual
+	// adapters so development-only environments can still advertise locally.
+	output := collectLANIPs(false)
+	if len(output) == 0 {
+		output = collectLANIPs(true)
+	}
+	if len(output) == 0 {
+		return nil, errors.New("no local network address is available")
+	}
+	return output, nil
+}
+
+func collectLANIPs(includeVirtual bool) []net.IP {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return nil, errors.New("no local network address is available")
+		return nil
 	}
 	var output []net.IP
 	for _, iface := range interfaces {
 		if !usableMulticastInterface(iface) {
+			continue
+		}
+		if !includeVirtual && isVirtualInterfaceName(iface.Name) {
 			continue
 		}
 		addrs, err := iface.Addrs()
@@ -567,11 +621,45 @@ func activeLANIPs() ([]net.IP, error) {
 			output = append(output, ip)
 		}
 	}
-	output = dedupeIPs(output)
-	if len(output) == 0 {
-		return nil, errors.New("no local network address is available")
+	return dedupeIPs(output)
+}
+
+func listenerAddressFamily(host string) advertisedAddressFamily {
+	trimmed := strings.TrimSpace(strings.Trim(host, "[]"))
+	switch {
+	case trimmed == "", trimmed == "0.0.0.0":
+		return addressFamilyIPv4
+	case trimmed == "::":
+		return addressFamilyIPv6
 	}
-	return output, nil
+	ip := net.ParseIP(trimmed)
+	if ip == nil {
+		return addressFamilyAny
+	}
+	if ip.To4() != nil {
+		return addressFamilyIPv4
+	}
+	return addressFamilyIPv6
+}
+
+func filterAdvertisedIPsByFamily(ips []net.IP, family advertisedAddressFamily) []net.IP {
+	if family == addressFamilyAny {
+		return dedupeIPs(ips)
+	}
+	filtered := make([]net.IP, 0, len(ips))
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		isIPv4 := ip.To4() != nil
+		if family == addressFamilyIPv4 && isIPv4 {
+			filtered = append(filtered, ip)
+		}
+		if family == addressFamilyIPv6 && !isIPv4 {
+			filtered = append(filtered, ip)
+		}
+	}
+	return dedupeIPs(filtered)
 }
 
 func dedupeIPs(values []net.IP) []net.IP {
