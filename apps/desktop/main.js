@@ -205,8 +205,8 @@ try {
   if (-not (Test-Path -LiteralPath $installerPath)) {
     throw "installer not found: $installerPath"
   }
-  Write-XuvaUpdateLog "starting installer $installerPath"
-  $proc = Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
+  Write-XuvaUpdateLog "starting elevated installer $installerPath"
+  $proc = Start-Process -FilePath $installerPath -ArgumentList '/S' -Verb RunAs -Wait -PassThru
   if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
     throw "installer exited with code $($proc.ExitCode)"
   }
