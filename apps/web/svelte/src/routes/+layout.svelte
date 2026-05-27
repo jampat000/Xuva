@@ -7,6 +7,7 @@
   import { listProfiles } from '$lib/api/profiles';
   import WhoIsWatching from '$lib/components/WhoIsWatching.svelte';
   import NavProgress from '$lib/components/NavProgress.svelte';
+  import { connectEventStream } from '$lib/api/events';
   import type { ProfileCard } from '$lib/api/profiles';
 
   let { children } = $props();
@@ -22,6 +23,11 @@
     if (typeof window === 'undefined') return;
     const path = window.location.pathname;
     if (path.startsWith('/setup') || path.startsWith('/signin')) return;
+
+    // Subscribe to backend events for live cache invalidation. The
+    // connection is per-tab and idempotent; cleanup tears it down when the
+    // layout unmounts (i.e. on full page navigation away).
+    const disconnect = connectEventStream();
 
     // Restore active profile synchronously from sessionStorage so the picker
     // never flashes on subsequent navigations in the same tab.
@@ -55,6 +61,8 @@
     void listProfiles().then((profiles) => {
       if (profiles.length > 0 && !profileStore.activeProfile) profileStore.openPicker();
     }).catch(() => { /* auth disabled or endpoint unavailable */ });
+
+    return () => { disconnect(); };
   });
 
   function handleProfileSelected(profile: ProfileCard) {
