@@ -16,29 +16,27 @@
 
   let { data } = $props();
 
-  let slides = $state(data.slides);
-  let continueWatching = $state(data.continueWatching);
-  let recentMovies = $state(data.recentMovies);
-  let recentSeries = $state(data.recentSeries);
-  let topTen = $state(data.topTen);
-  let topRowTitle = $state(data.topRowTitle);
-  let topRowEyebrow = $state(data.topRowEyebrow);
-  let collections = $state<Collection[]>([]);
+  // SWR overlay: when /api/client/home refreshes in the background, store the
+  // new rows here. Derived values prefer the overlay over the load() data so
+  // the page updates in place without re-mounting. `null` until the first
+  // refresh — see lib/api/cache/swr-cache.ts and lib/api/home-normalize.ts.
+  let swrRows = $state<ReturnType<typeof normalizeClientHome> | null>(null);
+
+  const slides = $derived(swrRows?.slides ?? data.slides);
+  const continueWatching = $derived(swrRows?.continueWatching ?? data.continueWatching);
+  const recentMovies = $derived(swrRows?.recentMovies ?? data.recentMovies);
+  const recentSeries = $derived(swrRows?.recentSeries ?? data.recentSeries);
+  const topTen = $derived(swrRows?.topTen ?? data.topTen);
+  const topRowTitle = $derived(swrRows?.topRowTitle ?? data.topRowTitle);
+  const topRowEyebrow = $derived(swrRows?.topRowEyebrow ?? data.topRowEyebrow);
+  const collections = $state<Collection[]>([]);
 
   // SWR background-refresh push: when the cache reports fresh /api/client/home
-  // data (e.g. after a stale-cache return on first paint), update rows in
-  // place so the user sees current continue-watching / recent-additions
-  // without navigating away and back. Limit must match getClientHome()'s
-  // default (24).
+  // data (e.g. after a stale-cache return on first paint), set swrRows and let
+  // the derived bindings flow the new content to the rendered rows. Limit
+  // must match getClientHome()'s default (24).
   onMount(() => subscribeClientHome(24, (resp) => {
-    const rows = normalizeClientHome(resp);
-    slides = rows.slides;
-    continueWatching = rows.continueWatching;
-    recentMovies = rows.recentMovies;
-    recentSeries = rows.recentSeries;
-    topTen = rows.topTen;
-    topRowTitle = rows.topRowTitle;
-    topRowEyebrow = rows.topRowEyebrow;
+    swrRows = normalizeClientHome(resp);
   }));
 </script>
 
