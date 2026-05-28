@@ -36,25 +36,30 @@ var samplerState struct {
 	snap     Snapshot
 	at       time.Time
 	hasValue bool
-	// pathsForSampler is captured from the first Collect() / StartSampler call.
-	// Disks change only on configuration reload, so capturing them once and
-	// re-using is correct for the lifetime of the process.
+	// paths is the path-map used for the cached snapshot. Collect() re-samples
+	// synchronously when the caller's paths differ, so settings changes (e.g.
+	// data-dir reconfigured via PUT /api/settings) are reflected immediately
+	// instead of waiting up to samplerInterval for the next background tick.
 	paths map[string]string
+	// getPaths is the callback the background goroutine uses to fetch the
+	// current path map. nil until StartSampler is called — Collect() falls
+	// back to using its caller-supplied paths in that window.
+	getPaths func() map[string]string
 }
 
 // StartSampler kicks off the background ticker that refreshes the system
-// snapshot at samplerInterval. Safe to call once at server start. The first
-// sample is taken synchronously before returning so callers immediately
-// have data; subsequent samples happen on the ticker.
-func StartSampler(ctx context.Context, paths map[string]string) {
-	samplerState.mu.Lock()
-	if samplerState.paths == nil {
-		samplerState.paths = paths
+// snapshot at samplerInterval. getPaths is called on every tick so the
+// goroutine always sees the live config (settings updates flow in without
+// restart). Safe to call once at server start; the first sample is taken
+// synchronously before this function returns.
+func StartSampler(ctx context.Context, getPaths func() map[string]string) {
+	if getPaths == nil {
+		getPaths = func() map[string]string { return nil }
 	}
+	samplerState.mu.Lock()
+	samplerState.getPaths = getPaths
 	samplerState.mu.Unlock()
 
-	// Prime the snapshot synchronously so the first /api/system/status
-	// request after start gets a real value instead of zeros.
 	refreshSampler()
 
 	go func() {
@@ -73,14 +78,33 @@ func StartSampler(ctx context.Context, paths map[string]string) {
 
 func refreshSampler() {
 	samplerState.mu.RLock()
-	paths := samplerState.paths
+	getter := samplerState.getPaths
 	samplerState.mu.RUnlock()
+	var paths map[string]string
+	if getter != nil {
+		paths = getter()
+	}
 	snap := collectFresh(paths)
 	samplerState.mu.Lock()
 	samplerState.snap = snap
 	samplerState.at = time.Now()
 	samplerState.hasValue = true
+	samplerState.paths = paths
 	samplerState.mu.Unlock()
+}
+
+// pathsEqual is a shallow equality check used to decide whether the cached
+// snapshot is still applicable to the caller's path map.
+func pathsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if other, ok := b[k]; !ok || other != v {
+			return false
+		}
+	}
+	return true
 }
 
 type Snapshot struct {
@@ -162,33 +186,29 @@ type DiskStats struct {
 // microseconds; the background goroutine takes the ~750 ms sampling cost off
 // the request path entirely.
 //
-// If the sampler hasn't run yet (test paths, or the very first call before
-// server start), Collect falls back to sampling synchronously. The paths map
-// is also captured here as a one-time install for the sampler so callers
-// don't have to thread it through ad-hoc.
+// If the cache is missing, stale, or built from different paths than the
+// caller supplies (e.g. data-dir was just reconfigured via the settings
+// API), Collect re-samples synchronously and updates the cache.
 func Collect(paths map[string]string) Snapshot {
 	samplerState.mu.RLock()
-	if samplerState.hasValue && time.Since(samplerState.at) < staleSampleAge {
-		snap := samplerState.snap
-		samplerState.mu.RUnlock()
+	hasValue := samplerState.hasValue
+	fresh := hasValue && time.Since(samplerState.at) < staleSampleAge
+	pathsMatch := pathsEqual(samplerState.paths, paths)
+	snap := samplerState.snap
+	samplerState.mu.RUnlock()
+	if fresh && pathsMatch {
 		return snap
 	}
-	samplerState.mu.RUnlock()
 
-	// Fallback path: no sample yet (or it's too stale). Sample synchronously
-	// and store, so the second caller benefits even before StartSampler
-	// kicks in.
-	samplerState.mu.Lock()
-	if samplerState.paths == nil {
-		samplerState.paths = paths
-	}
-	samplerState.mu.Unlock()
-
-	snap := collectFresh(paths)
+	// Sample synchronously on cache miss or path mismatch. This covers tests
+	// that change paths between calls, and the brief window between server
+	// start and StartSampler's first tick.
+	snap = collectFresh(paths)
 	samplerState.mu.Lock()
 	samplerState.snap = snap
 	samplerState.at = time.Now()
 	samplerState.hasValue = true
+	samplerState.paths = paths
 	samplerState.mu.Unlock()
 	return snap
 }
