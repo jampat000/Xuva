@@ -280,6 +280,93 @@ var schemaMigrations = []schemaMigration{
 		Name:       "Denormalized movies list-view + maintenance triggers",
 		Statements: moviesListViewMigration,
 	},
+	{
+		ID:         "0003_tv_series_list_view_snapshot",
+		Name:       "Denormalized tv_series list-view + maintenance triggers",
+		Statements: tvSeriesListViewMigration,
+	},
+}
+
+// tvSeriesListViewMigration is the sibling of moviesListViewMigration for
+// tv_series. ListSeries had the same join-and-group-everything-then-LIMIT
+// pattern (tv_series × tv_seasons × tv_episodes × episode_versions ×
+// playback_states), so it gets the same fix: a snapshot table indexed on
+// (sort_title, id) with triggers maintaining season_count + episode_count.
+//
+// As with movies_list_view, per-user watched state stays out of the snapshot
+// and is layered in by ListSeries via a correlated subquery.
+var tvSeriesListViewMigration = []string{
+	`CREATE TABLE IF NOT EXISTS tv_series_list_view (
+		series_id     TEXT PRIMARY KEY REFERENCES tv_series(id) ON DELETE CASCADE,
+		title         TEXT NOT NULL,
+		sort_title    TEXT NOT NULL,
+		season_count  INTEGER NOT NULL DEFAULT 0,
+		episode_count INTEGER NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_tv_series_list_view_sort ON tv_series_list_view(sort_title, series_id)`,
+	`DROP TRIGGER IF EXISTS tv_series_list_view_series_ai`,
+	`CREATE TRIGGER tv_series_list_view_series_ai
+		AFTER INSERT ON tv_series
+		BEGIN
+			INSERT INTO tv_series_list_view(series_id, title, sort_title, season_count, episode_count, created_at)
+			VALUES (NEW.id, NEW.title, NEW.sort_title, 0, 0, NEW.created_at)
+			ON CONFLICT(series_id) DO UPDATE SET
+				title = excluded.title,
+				sort_title = excluded.sort_title,
+				created_at = excluded.created_at;
+		END`,
+	`DROP TRIGGER IF EXISTS tv_series_list_view_series_au`,
+	`CREATE TRIGGER tv_series_list_view_series_au
+		AFTER UPDATE ON tv_series
+		BEGIN
+			INSERT INTO tv_series_list_view(series_id, title, sort_title, season_count, episode_count, created_at)
+			VALUES (NEW.id, NEW.title, NEW.sort_title, 0, 0, NEW.created_at)
+			ON CONFLICT(series_id) DO UPDATE SET
+				title = excluded.title,
+				sort_title = excluded.sort_title;
+		END`,
+	// tv_seasons → snapshot.season_count
+	`DROP TRIGGER IF EXISTS tv_series_list_view_seasons_ai`,
+	`CREATE TRIGGER tv_series_list_view_seasons_ai
+		AFTER INSERT ON tv_seasons
+		BEGIN
+			UPDATE tv_series_list_view
+			SET season_count = (SELECT COUNT(*) FROM tv_seasons WHERE series_id = NEW.series_id)
+			WHERE series_id = NEW.series_id;
+		END`,
+	`DROP TRIGGER IF EXISTS tv_series_list_view_seasons_ad`,
+	`CREATE TRIGGER tv_series_list_view_seasons_ad
+		AFTER DELETE ON tv_seasons
+		BEGIN
+			UPDATE tv_series_list_view
+			SET season_count = (SELECT COUNT(*) FROM tv_seasons WHERE series_id = OLD.series_id)
+			WHERE series_id = OLD.series_id;
+		END`,
+	// tv_episodes → snapshot.episode_count
+	`DROP TRIGGER IF EXISTS tv_series_list_view_episodes_ai`,
+	`CREATE TRIGGER tv_series_list_view_episodes_ai
+		AFTER INSERT ON tv_episodes
+		BEGIN
+			UPDATE tv_series_list_view
+			SET episode_count = (SELECT COUNT(*) FROM tv_episodes WHERE series_id = NEW.series_id)
+			WHERE series_id = NEW.series_id;
+		END`,
+	`DROP TRIGGER IF EXISTS tv_series_list_view_episodes_ad`,
+	`CREATE TRIGGER tv_series_list_view_episodes_ad
+		AFTER DELETE ON tv_episodes
+		BEGIN
+			UPDATE tv_series_list_view
+			SET episode_count = (SELECT COUNT(*) FROM tv_episodes WHERE series_id = OLD.series_id)
+			WHERE series_id = OLD.series_id;
+		END`,
+	// Backfill from existing data.
+	`INSERT OR REPLACE INTO tv_series_list_view (series_id, title, sort_title, season_count, episode_count, created_at)
+		SELECT s.id, s.title, s.sort_title,
+		       (SELECT COUNT(*) FROM tv_seasons ts WHERE ts.series_id = s.id) AS season_count,
+		       (SELECT COUNT(*) FROM tv_episodes te WHERE te.series_id = s.id) AS episode_count,
+		       s.created_at
+		FROM tv_series s`,
 }
 
 // moviesListViewMigration creates the denormalized snapshot table that backs
