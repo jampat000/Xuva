@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Play, Star } from "lucide-svelte";
+  import { Play, Star, CheckCircle2 } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
   import { artworkSrc, artworkSrcset } from "$lib/api/artwork-url";
 
@@ -122,9 +122,16 @@
       </button>
     </div>
 
-    {#if typeof media.progress === "number"}
+    <!-- Watched badge: shown when fully watched (library flag) OR near-complete (≥90% progress).
+         Netflix-style: checkmark in a subtle circle at the top-right of the poster. -->
+    {#if media.watched || (typeof media.progress === 'number' && media.progress >= 0.9)}
+      <div class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 ring-1 ring-white/20 backdrop-blur-sm">
+        <CheckCircle2 class="h-4 w-4 text-white/90" />
+      </div>
+    {:else if typeof media.progress === 'number'}
+      <!-- In-progress: thin progress bar at the bottom -->
       <div class="absolute inset-x-3 bottom-3">
-        <div class="h-1 overflow-hidden rounded-full bg-white/20 backdrop-blur">
+        <div class="h-[3px] overflow-hidden rounded-full bg-white/20 backdrop-blur">
           <div
             class="h-full rounded-full bg-gradient-primary"
             style={`width: ${Math.max(media.progress * 100, 3)}%`}
