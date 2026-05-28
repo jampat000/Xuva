@@ -247,7 +247,7 @@
         <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
           {#each filtered as collection (collection.id)}
             <a href="/collections/{collection.id}" class="group flex flex-col gap-2">
-              <div class="relative overflow-hidden rounded-xl bg-surface shadow-poster transition-transform duration-200 group-hover:scale-[1.03]">
+              <div class="relative overflow-hidden rounded-xl bg-surface shadow-poster transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)]">
                 {#if collection.posterUrl}
                   <img
                     src={collection.posterUrl}

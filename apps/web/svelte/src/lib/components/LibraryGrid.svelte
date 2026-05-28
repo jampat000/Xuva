@@ -922,7 +922,7 @@
             class="group block library-grid-item"
           >
             <div
-              class="shadow-poster relative aspect-[2/3] overflow-hidden rounded-xl transition-all duration-500 group-hover:-translate-y-1.5 group-hover:shadow-glow"
+              class="shadow-poster relative aspect-[2/3] overflow-hidden rounded-xl transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)]"
               style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
             >
               {#if media.poster}
@@ -951,7 +951,7 @@
                   Review
                 </div>
               {/if}
-              <div class="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 backdrop-blur-[1px] transition-opacity duration-300 group-hover:opacity-100">
+              <div class="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 <button aria-label={`Play ${media.title}`} class="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black ring-1 ring-white/40">
                   <Play class="h-5 w-5 translate-x-0.5 fill-black" />
                 </button>
