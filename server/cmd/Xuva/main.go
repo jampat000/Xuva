@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,8 +15,32 @@ import (
 	"github.com/jampat000/Xuva/server/internal/app"
 	"github.com/jampat000/Xuva/server/internal/backup"
 	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/firewall"
 	xuvalogging "github.com/jampat000/Xuva/server/internal/logging"
 )
+
+// portFromHTTPAddr extracts the TCP port from a Go ListenAndServe addr.
+// Addrs come in three flavours: ":8097", "0.0.0.0:8097", "192.168.1.5:8097".
+// Returns 0 on any parse failure (caller treats that as "skip firewall").
+func portFromHTTPAddr(addr string) int {
+	// Handle pure ":N" form first — net.SplitHostPort wants a non-empty host.
+	if len(addr) > 0 && addr[0] == ':' {
+		var port int
+		if _, err := fmt.Sscanf(addr[1:], "%d", &port); err == nil {
+			return port
+		}
+		return 0
+	}
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return 0
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		return 0
+	}
+	return port
+}
 
 func main() {
 	cfg := config.FromEnv()
@@ -55,6 +81,20 @@ func main() {
 		Addr:              cfg.HTTPAddr,
 		Handler:           application.Router(),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	// Ensure the host firewall lets other LAN devices reach us. On Windows
+	// this is the single biggest reason "the server is fine on localhost but
+	// my phone can't connect": Windows Defender Firewall blocks unsolicited
+	// inbound TCP by default, even for processes listening on 0.0.0.0. On
+	// non-Windows platforms this is a no-op (see firewall_other.go).
+	//
+	// Failure here is non-fatal — the warn log includes the exact manual
+	// netsh command the user can run as Administrator.
+	if port := portFromHTTPAddr(cfg.HTTPAddr); port > 0 {
+		fwCtx, fwCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		firewall.LogResult(fwCtx, slog.Default(), port, "Xuva Server")
+		fwCancel()
 	}
 
 	go func() {
