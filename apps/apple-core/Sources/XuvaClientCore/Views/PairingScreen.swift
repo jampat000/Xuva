@@ -106,6 +106,7 @@ public struct PairingScreen: View {
                         .tint(XuvaTheme.mutedText)
                 }
                 Spacer()
+                refreshDiscoveryButton(viewport: viewport)
             }
             if discovery.servers.isEmpty {
                 emptyDiscoveryHint(viewport: viewport)
@@ -118,6 +119,42 @@ public struct PairingScreen: View {
             }
         }
         .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func refreshDiscoveryButton(viewport: CGSize) -> some View {
+        // tvOS focus is rect-based: from the QR/manual sections pressing UP
+        // should land on this refresh chip (it's the only focusable thing in
+        // the discovery header). We keep it visible even when the list has
+        // servers so users can re-scan after fixing a network/firewall.
+        Button {
+            store.clearError()
+            discoveryTimedOut = false
+            discovery.stop()
+            discovery.start()
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if discovery.servers.isEmpty {
+                    discoveryTimedOut = true
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Refresh")
+                    .font(.system(size: 13, weight: .semibold))
+                    .tracking(0.4)
+                    .textCase(.uppercase)
+            }
+            .foregroundStyle(XuvaTheme.text)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(XuvaTheme.surface.opacity(0.74), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(XuvaTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .xuvaFocused(radius: 999)
     }
 
     @ViewBuilder
@@ -405,7 +442,15 @@ public struct PairingScreen: View {
     private func versionLabel(viewport: CGSize) -> some View {
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
         let buildNum   = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?"
-        Text("Xuva \(appVersion) (\(buildNum))")
+        // CFBundleGitSHA is injected at build time by the "Stamp Build Version
+        // from Git" build phase. Including the short SHA in the on-screen
+        // version label is the cheapest way to confirm a deploy actually
+        // landed — the user can read it off the TV and match it to a commit.
+        let sha = (Bundle.main.infoDictionary?["CFBundleGitSHA"] as? String) ?? ""
+        let label = sha.isEmpty
+            ? "Xuva \(appVersion) (\(buildNum))"
+            : "Xuva \(appVersion) (\(buildNum) · \(sha))"
+        Text(label)
             .font(.system(size: XuvaScale.metaFontSize(viewport)))
             .foregroundStyle(XuvaTheme.mutedText.opacity(0.45))
             .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
