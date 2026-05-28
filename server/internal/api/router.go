@@ -3902,10 +3902,6 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 		// is validated to a sane range; out-of-band values are treated as
 		// "no resize" so a request never errors solely on the query string.
 		resizeWidth := parseResizeWidth(r.URL.Query().Get("w"))
-		// Optional ?meta=1: return JSON with the blurhash instead of image
-		// bytes. The frontend fetches this inline so PosterCard can render a
-		// soft placeholder while the JPEG downloads.
-		metaOnly := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("meta")), "1")
 
 		if deps.Catalog != nil {
 			if record, ok, err := deps.Catalog.GetBestMetadata(r.Context(), kind, id); err == nil && ok {
@@ -3916,10 +3912,6 @@ func artworkHandler(deps Deps) http.HandlerFunc {
 			if records, err := deps.Catalog.ListMetadataRecords(r.Context(), kind, id); err == nil {
 				candidates := metadataArtworkCandidates(records, artType)
 				if path, ok := firstResolvedArtwork(r.Context(), deps.Config.MetadataDir, kind, id, artType, candidates); ok {
-					if metaOnly {
-						serveArtworkMeta(w, r, path)
-						return
-					}
 					serveArtworkFile(w, r, path, resizeWidth)
 					return
 				}
@@ -3961,25 +3953,6 @@ func firstResolvedArtwork(ctx context.Context, metadataDir, kind, id, artType st
 		}
 	}
 	return "", false
-}
-
-// serveArtworkMeta writes the JSON blurhash metadata for a resolved
-// artwork file. The hash is cached as a sibling .blurhash file on disk
-// after the first request; subsequent requests read from disk in
-// microseconds. Returns an empty hash (still 200) on any compute failure
-// so the frontend just falls back to its palette gradient.
-//
-// The response is intentionally not ETag'd: blurhash for a given image is
-// content-addressable and immutable, so we lean on a short max-age
-// instead. If the underlying poster ever changes, the resize cache
-// invalidates by source-URL marker (see resolveCachedArtwork), and the
-// blurhash sidecar gets overwritten by the next ensureBlurhash call.
-func serveArtworkMeta(w http.ResponseWriter, r *http.Request, originalPath string) {
-	_ = r
-	hash := ensureBlurhash(originalPath)
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
-	_ = json.NewEncoder(w).Encode(map[string]string{"hash": hash})
 }
 
 // serveArtworkFile streams an original or resized artwork file with an
