@@ -21,6 +21,10 @@ export type Media = {
   trailerUrl?: string;      // local self-hosted MP4 path, preferred over YouTube
   parentId?: string;        // For Continue Watching: id of the parent movie/series
   parentKind?: string;      // For Continue Watching: "movie" or "series"
+  seasonNumber?: number;    // For Continue Watching TV episodes
+  episodeNumber?: number;   // For Continue Watching TV episodes
+  episodeTitle?: string;    // For Continue Watching TV episodes
+  unwatchedCount?: number;  // For TV series: number of unwatched episodes
   contentRating?: string;   // Parental rating: G, PG, PG-13, R, NC-17, TV-MA, etc.
   needsReview?: boolean;    // Flagged as needing metadata review
   probed?: boolean;         // false = no media source has been analysed yet
