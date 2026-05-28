@@ -116,7 +116,12 @@ Var XuvaCreateDesktopShortcut
 !macroend
 
 Function XuvaShortcutPageShow
-  !insertmacro MUI_HEADER_TEXT "Choose shortcuts" "Decide where Xuva should appear after install."
+  ; NOTE: don't use !insertmacro MUI_HEADER_TEXT here — electron-builder
+  ; !includes this script BEFORE MUI2.nsh is loaded by installer.nsi, so
+  ; the macro is undefined at parse time. The header keeps whatever text
+  ; the previous wizard page set (Directory chooser → "Choose Install
+  ; Location") which is acceptable; the page label below makes its own
+  ; purpose obvious.
 
   nsDialogs::Create 1018
   Pop $XuvaShortcutDialog
