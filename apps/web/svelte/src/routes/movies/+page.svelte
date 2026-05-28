@@ -10,53 +10,63 @@
 
   let { data } = $props();
 
-  // Local overrides for prop-derived values. `null` means "fall through to the
-  // load() prop"; once set, the override wins. This avoids the Svelte 5
-  // state_referenced_locally warning that fires when $state(prop.x) shadows a
-  // prop value (the prop would not propagate further changes into the state).
-  let swrItems = $state<Media[] | null>(null);
+  // load() in +page.ts returns unresolved Promises so SvelteKit can mount the
+  // page IMMEDIATELY on click — no waiting on the API. Local state starts
+  // empty with loading=true, and the first .then() flips both as the data
+  // arrives. On a 4000-item library a cold first visit takes a few seconds;
+  // before this change the user stared at the previous page that whole time.
+  let items = $state<Media[]>([]);
   let userError = $state<string | null | undefined>(undefined);
-  let loading = $state(false);
+  let loading = $state(true);
 
-  const items = $derived(swrItems ?? data.items);
-  const error = $derived(userError === undefined ? data.loadError : userError);
+  const error = $derived(userError ?? null);
 
-  // Background-merge the rest of the library (the first-page paint already
-  // mounted the page with FIRST_PAGE items) and stay subscribed so a later
-  // background SWR refresh — e.g. when a scan adds new movies — flows in
-  // without a manual reload.
   onMount(() => {
-    if (error) return;
     let cancelled = false;
-    if (data.hasMore) {
+
+    void data.itemsPromise.then((firstPage) => {
+      if (cancelled) return;
+      items = firstPage;
+      loading = false;
+    });
+    void data.loadErrorPromise.then((err) => {
+      if (cancelled) return;
+      if (err) userError = err;
+    });
+
+    // Background-fetch the full library once the first page is in. SWR pushes
+    // are subscribed unconditionally so a later scan / metadata refresh
+    // flows in without a reload.
+    void data.itemsPromise.then((firstPage) => {
+      if (cancelled || firstPage.length < 60) return;
       void getMovies(undefined, 0).then((resp) => {
         if (cancelled) return;
         const full = (resp.movies ?? []).map(movieToMedia);
-        // Only replace if the full list is materially larger.
-        if (full.length > items.length) swrItems = full;
-      }).catch(() => { /* keep the first page on failure */ });
-    }
+        if (full.length > items.length) items = full;
+      }).catch(() => { /* keep first page on failure */ });
+    });
+
     const unsubscribe = subscribeMovies(0, (resp) => {
       if (cancelled) return;
-      swrItems = (resp.movies ?? []).map(movieToMedia);
+      items = (resp.movies ?? []).map(movieToMedia);
+      loading = false;
     });
     return () => { cancelled = true; unsubscribe(); };
   });
 
-  // Only used by the "Try again" button — re-runs the full fetch
+  // "Try again" — re-run the fetch and clear errors.
   async function reload() {
     userError = null;
     loading = true;
     try {
       const resp = await getMovies();
-      swrItems = (resp.movies ?? []).map(movieToMedia);
+      items = (resp.movies ?? []).map(movieToMedia);
     } catch (e) {
       userError = e instanceof Error ? e.message : 'Failed to load movies';
     } finally {
       loading = false;
     }
   }
-
 </script>
 
 <svelte:head>
