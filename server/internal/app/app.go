@@ -317,14 +317,19 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	// returns the latest snapshot in microseconds instead of paying ~750 ms
 	// per request (cpuPercent sleeps 120 ms, nvidia-smi exec adds 200-300 ms,
 	// per-disk syscalls do the rest). Sampling happens off the request path
-	// on a fixed ticker; the handler just reads the cached value.
-	systemstats.StartSampler(appCtx, map[string]string{
-		"data":      cfg.DataDir,
-		"transcode": cfg.TranscodeDir,
-		"downloads": cfg.DownloadsDir,
-		"metadata":  cfg.MetadataDir,
-		"cache":     cfg.CacheDir,
-		"temp":      cfg.TempDir,
+	// on a fixed ticker; the handler just reads the cached value. The
+	// callback returns the LIVE config so settings changes (data-dir, etc.)
+	// flow into subsequent samples without requiring a restart.
+	systemstats.StartSampler(appCtx, func() map[string]string {
+		live := getCfg()
+		return map[string]string{
+			"data":      live.DataDir,
+			"transcode": live.TranscodeDir,
+			"downloads": live.DownloadsDir,
+			"metadata":  live.MetadataDir,
+			"cache":     live.CacheDir,
+			"temp":      live.TempDir,
+		}
 	})
 
 	// Trailer downloader: spins up a worker pool that yt-dlp's each item's

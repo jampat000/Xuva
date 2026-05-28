@@ -16,6 +16,7 @@ func resetSamplerState() {
 	samplerState.at = time.Time{}
 	samplerState.hasValue = false
 	samplerState.paths = nil
+	samplerState.getPaths = nil
 	samplerState.mu.Unlock()
 }
 
@@ -79,7 +80,8 @@ func TestStartSampler_PrimesSnapshotAndRefreshes(t *testing.T) {
 	resetSamplerState()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartSampler(ctx, map[string]string{"data": t.TempDir()})
+	dataDir := t.TempDir()
+	StartSampler(ctx, func() map[string]string { return map[string]string{"data": dataDir} })
 
 	// First snapshot must already be populated (StartSampler primes
 	// synchronously before launching the goroutine).
@@ -90,10 +92,27 @@ func TestStartSampler_PrimesSnapshotAndRefreshes(t *testing.T) {
 		t.Fatal("StartSampler did not prime the initial snapshot")
 	}
 
-	// And Collect should return that snapshot in microseconds, never blocking.
+	// And Collect should return that snapshot in microseconds, never blocking,
+	// when the caller's paths match what the sampler captured.
 	start := time.Now()
-	_ = Collect(nil)
+	_ = Collect(map[string]string{"data": dataDir})
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		t.Errorf("Collect should be sub-50ms when sampler has primed; took %v", elapsed)
+		t.Errorf("Collect with matching paths should be sub-50ms; took %v", elapsed)
+	}
+}
+
+func TestCollect_ResamplesWhenPathsChange(t *testing.T) {
+	// Tests/handlers may call Collect with new paths after a settings change.
+	// The cache should be invalidated for the new paths instead of returning
+	// the snapshot built for the old ones — otherwise the dashboard would
+	// keep showing the old data-dir until the next background tick.
+	resetSamplerState()
+	a := Collect(map[string]string{"data": t.TempDir()})
+
+	b := Collect(map[string]string{"data": t.TempDir(), "transcode": t.TempDir()})
+	// Different paths → different disk lists → different snapshot.
+	if len(a.Disks) == len(b.Disks) {
+		t.Errorf("expected disk list to grow after adding 'transcode' path; got %d vs %d",
+			len(a.Disks), len(b.Disks))
 	}
 }
