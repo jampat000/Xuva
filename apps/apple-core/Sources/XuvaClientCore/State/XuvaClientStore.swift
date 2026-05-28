@@ -76,7 +76,12 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func connect() async {
-        await run {
+        // showBusy: false — the pairing screen already shows its own inline
+        // progress (the "Servers on your network" header spinner + the
+        // "Generating pairing code…" line in the pairing card). Letting the
+        // big full-screen overlay run here covers those over with a black
+        // pill, which felt redundant and noisy.
+        await run(showBusy: false) {
             guard let url = URL(string: normalizedServerURL()) else { throw XuvaAPIError.invalidURL }
             let nextAPI = XuvaAPI(baseURL: url, authToken: storedAuthToken())
             bootstrap = try await nextAPI.bootstrap()
@@ -87,7 +92,9 @@ public final class XuvaClientStore: ObservableObject {
     }
 
     public func startPairing() async {
-        await run {
+        // Same reasoning as connect() — the pairing card has its own progress
+        // copy; suppress the full-screen overlay here.
+        await run(showBusy: false) {
             guard let api else { throw XuvaAPIError.invalidURL }
             pairing = try await api.createPairing(deviceName: deviceName(), deviceId: deviceId)
             connectionState = .pairing
