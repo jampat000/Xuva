@@ -40,7 +40,6 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	service := &Service{
 		DataDir:     dataDir,
 		Path:        dbPath,
@@ -60,7 +59,7 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 
 func sqliteDSN(dbPath string) string {
 	q := url.Values{}
-	q.Add("_pragma", "busy_timeout=5000")
+	q.Add("_pragma", "busy_timeout=30000")
 	q.Add("_pragma", "foreign_keys=ON")
 	q.Add("_pragma", "journal_mode=WAL")
 	q.Add("_pragma", "synchronous=NORMAL")

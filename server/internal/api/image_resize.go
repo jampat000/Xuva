@@ -20,10 +20,12 @@ import (
 const maxResizeWidth = 1024
 const minResizeWidth = 32
 
-// jpegQuality balances bytes vs visual quality for poster grids. 85 is the
-// classic web-photo default — at the rendered card size, artifacts are
-// invisible while bytes drop by ~70% versus the TMDB "original" size.
-const resizedJPEGQuality = 85
+// jpegQuality balances bytes vs visual quality for poster grids. 92 gives
+// visibly sharper results than the classic 85 default while still shrinking
+// file sizes ~60 % vs TMDB originals. The difference is most apparent on
+// high-DPI screens where JPEG block artefacts on hair and fine text are
+// visible at 85 but clean at 92.
+const resizedJPEGQuality = 92
 
 var errInvalidImageBounds = errors.New("image has invalid bounds")
 
