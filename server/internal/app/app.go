@@ -312,6 +312,13 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	discoveryService := discovery.NewService(cfg)
 	discoveryService.Start(appCtx)
 	trendingService := trending.NewService(cfg.TMDBAPIKey, catalogService)
+	// Kick off the background trending sampler so /api/client/home never
+	// blocks on a TMDB roundtrip (~800 ms cold). Pattern mirrors
+	// systemstats.StartSampler — read live config on each tick so a
+	// country change in settings flows in without a restart.
+	trendingService.StartSampler(appCtx, func() string {
+		return getCfg().Country
+	})
 
 	// Kick off the background system-stats sampler so /api/system/status
 	// returns the latest snapshot in microseconds instead of paying ~750 ms
