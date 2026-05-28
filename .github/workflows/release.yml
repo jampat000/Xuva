@@ -66,7 +66,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/svelte/package-lock.json
 
-      - name: Build unsigned Windows package
+      - name: Build Windows package
         shell: powershell
         env:
           XUVA_DEFAULT_TMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_TMDB_API_KEY }}
@@ -74,6 +74,27 @@ jobs:
           XUVA_DEFAULT_OMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_OMDB_API_KEY }}
         run: |
           ./packaging/windows/build-package.ps1 -Version "${{ needs.version-policy.outputs.version }}"
+
+      # ── Code signing (Azure Trusted Signing) ──────────────────────────────
+      # Activates when AZURE_CLIENT_ID is set in repository secrets.
+      # Set up: create an Azure Trusted Signing account → identity validation →
+      # certificate profile, then add AZURE_CLIENT_ID / AZURE_CLIENT_SECRET /
+      # AZURE_TENANT_ID / ATS_ENDPOINT / ATS_ACCOUNT / ATS_PROFILE to secrets.
+      - name: Sign Windows installer (Azure Trusted Signing)
+        if: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.ATS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.ATS_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ATS_PROFILE }}
+          files-folder: dist/windows
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - name: Verify unsigned Windows package
         shell: powershell
@@ -201,8 +222,17 @@ jobs:
           echo "docker pull ghcr.io/${{ github.repository_owner }}/xuva:${{ steps.version.outputs.tag }}" >> "$GITHUB_OUTPUT"
           echo '```' >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "## Windows" >> "$GITHUB_OUTPUT"
-          echo "Download the unsigned Windows package zip and verify it with the matching .sha256 file." >> "$GITHUB_OUTPUT"
+          echo "## Windows installer" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "Download \`xuva-v*-win-x64.exe\` and run it to install Xuva." >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "> **Windows SmartScreen / Defender warning**" >> "$GITHUB_OUTPUT"
+          echo "> Xuva is not yet code-signed. Windows will warn the first time you download/run it." >> "$GITHUB_OUTPUT"
+          echo "> " >> "$GITHUB_OUTPUT"
+          echo "> **To install anyway:** click \`More info → Run anyway\` in the SmartScreen dialog." >> "$GITHUB_OUTPUT"
+          echo "> If Defender quarantines the file: open Windows Security → Virus & threat protection → Protection history → find the item → Allow." >> "$GITHUB_OUTPUT"
+          echo "> " >> "$GITHUB_OUTPUT"
+          echo "> This is a known false positive. You can verify the file against the \`.sha256\` checksum provided." >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create release
