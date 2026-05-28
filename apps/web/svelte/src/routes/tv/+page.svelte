@@ -10,41 +10,49 @@
 
   let { data } = $props();
 
-  // Same prop-override pattern as /movies — avoids state_referenced_locally
-  // warnings while still letting SWR + the reload button mutate.
-  let swrItems = $state<Media[] | null>(null);
+  // Non-blocking load — see routes/movies/+page.svelte for rationale.
+  let items = $state<Media[]>([]);
   let userError = $state<string | null | undefined>(undefined);
-  let loading = $state(false);
+  let loading = $state(true);
 
-  const items = $derived(swrItems ?? data.items);
-  const error = $derived(userError === undefined ? data.loadError : userError);
+  const error = $derived(userError ?? null);
 
-  // Background-merge full list and stay subscribed to SWR refreshes — same
-  // pattern as /movies. See movies/+page.svelte for rationale.
   onMount(() => {
-    if (error) return;
     let cancelled = false;
-    if (data.hasMore) {
+
+    void data.itemsPromise.then((firstPage) => {
+      if (cancelled) return;
+      items = firstPage;
+      loading = false;
+    });
+    void data.loadErrorPromise.then((err) => {
+      if (cancelled) return;
+      if (err) userError = err;
+    });
+
+    void data.itemsPromise.then((firstPage) => {
+      if (cancelled || firstPage.length < 60) return;
       void getSeries(undefined, 0).then((resp) => {
         if (cancelled) return;
         const full = (resp.series ?? []).map(seriesToMedia);
-        if (full.length > items.length) swrItems = full;
+        if (full.length > items.length) items = full;
       }).catch(() => { /* keep first page on failure */ });
-    }
+    });
+
     const unsubscribe = subscribeSeries(0, (resp) => {
       if (cancelled) return;
-      swrItems = (resp.series ?? []).map(seriesToMedia);
+      items = (resp.series ?? []).map(seriesToMedia);
+      loading = false;
     });
     return () => { cancelled = true; unsubscribe(); };
   });
 
-  // Only used by the "Try again" button — re-runs the full fetch
   async function reload() {
     userError = null;
     loading = true;
     try {
       const resp = await getSeries();
-      swrItems = (resp.series ?? []).map(seriesToMedia);
+      items = (resp.series ?? []).map(seriesToMedia);
     } catch (e) {
       userError = e instanceof Error ? e.message : 'Failed to load TV shows';
     } finally {
