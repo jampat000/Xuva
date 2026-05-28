@@ -128,6 +128,11 @@
       <div class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 ring-1 ring-white/20 backdrop-blur-sm">
         <CheckCircle2 class="h-4 w-4 text-white/90" />
       </div>
+    {:else if !isWide && media.type === 'Series' && media.unwatchedCount && media.unwatchedCount > 0}
+      <!-- Unplayed episode count badge for TV series — shown when not fully watched -->
+      <div class="absolute right-2 top-2 z-10 flex min-w-[1.75rem] items-center justify-center rounded-md bg-primary-glow/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm ring-1 ring-white/20">
+        {media.unwatchedCount > 99 ? '99+' : media.unwatchedCount}
+      </div>
     {:else if typeof media.progress === 'number'}
       <!-- In-progress: thin progress bar at the bottom -->
       <div class="absolute inset-x-3 bottom-3">
@@ -145,7 +150,11 @@
     <div class="mt-3 px-1">
       <h4 class="truncate text-sm font-semibold text-foreground">{media.title}</h4>
       <p class="mt-0.5 text-xs text-muted-foreground">
-        {#if media.year && media.year > 0}{media.year} • {/if}{media.type}
+        {#if media.seasonNumber && media.episodeNumber}
+          S{media.seasonNumber} E{media.episodeNumber}{media.episodeTitle ? ` • ${media.episodeTitle}` : ''}
+        {:else}
+          {#if media.year && media.year > 0}{media.year} • {/if}{media.type}
+        {/if}
         {#if typeof media.progress === "number"}
           • Resume from {Math.round(media.progress * 100)}%
         {/if}

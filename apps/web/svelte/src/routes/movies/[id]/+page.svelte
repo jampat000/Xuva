@@ -10,7 +10,7 @@
   import Header from '$lib/components/Header.svelte';
   import ErrorState from '$lib/components/ErrorState.svelte';
   import SubtitleSelector from '$lib/components/SubtitleSelector.svelte';
-  import { getMovieDetail } from '$lib/api/home';
+  import { getMovieDetail, getSimilarMovies, type SimilarItem } from '$lib/api/home';
   import { getMetadataRecords, refreshMetadataItem, getMetadataCandidates } from '$lib/api/browse';
   import { getMediaSourceDetail, getMediaSourceTracks, getPlaybackDecision, type MediaSourceItem, type ProbeTrack, type PlaybackDecisionResponse } from '$lib/api/details';
   import { getPerformanceSettings } from '$lib/api/operator';
@@ -37,6 +37,7 @@
   let showTrailer = $state(false);
   let showTechDetails = $state(false);
   let showDataSources = $state(false);
+  let similarItems = $state<SimilarItem[]>([]);
 
   // ── Derived metadata fields ──────────────────────────────────────────────
   const title = $derived(metadata?.title ?? detail?.title ?? 'Unknown');
@@ -246,6 +247,8 @@
     getPerformanceSettings().then(p => {
       selectedEncoderLabel = p.hardwareAcceleration?.selectedEncoder?.label ?? null;
     }).catch(() => {});
+    // Fetch similar items lazily — don't block the main page load
+    getSimilarMovies(id).then(r => { similarItems = r.items ?? []; }).catch(() => {});
   });
 </script>
 
@@ -690,6 +693,41 @@
                   <span class="text-xs text-muted-foreground">View all movies →</span>
                 </div>
               </a>
+            </div>
+          {/if}
+
+          <!-- More Like This -->
+          {#if similarItems.length > 0}
+            <div class="mt-10 border-t border-border pt-8">
+              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">More Like This</h3>
+              <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto pb-3 px-1">
+                {#each similarItems as item (item.id)}
+                  <a
+                    href={`/movies/${item.id}`}
+                    class="group relative flex shrink-0 flex-col gap-2"
+                  >
+                    <div class="relative aspect-[2/3] w-28 overflow-hidden rounded-xl bg-surface shadow-poster transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)] md:w-32">
+                      {#if item.posterUrl}
+                        <img
+                          src={item.posterUrl}
+                          alt={item.title}
+                          loading="lazy"
+                          class="h-full w-full object-cover"
+                          onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
+                        />
+                      {:else}
+                        <div class="flex h-full w-full items-center justify-center bg-surface-elevated">
+                          <Film class="h-6 w-6 text-muted-foreground/30" />
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="min-w-0 px-0.5 w-28 md:w-32">
+                      <p class="truncate text-xs font-medium leading-tight text-foreground">{item.title}</p>
+                      {#if item.year}<p class="text-[11px] text-muted-foreground">{item.year}</p>{/if}
+                    </div>
+                  </a>
+                {/each}
+              </div>
             </div>
           {/if}
 

@@ -124,6 +124,7 @@ export function seriesToMedia(item: SeriesListItem): Media {
 	const id = item.id ?? crypto.randomUUID();
 	const meta = item.metadata as Record<string, unknown> | undefined;
 	const rawTitle = item.title ?? (meta?.title as string | undefined) ?? 'Unknown';
+	const unknownItem = item as Record<string, unknown>;
 	return {
 		id,
 		title: cleanTitle(rawTitle),
@@ -133,12 +134,13 @@ export function seriesToMedia(item: SeriesListItem): Media {
 		rating: (meta?.voteAverage as number | undefined) ?? 0,
 		seasons: item.seasonCount,
 		episodes: item.episodeCount,
+		unwatchedCount: (unknownItem.unwatchedCount as number | undefined) ?? undefined,
 		synopsis: decodeEntities(item.metadata?.overview ?? ''),
 		poster: item.metadata?.posterUrl || undefined,
 		backdrop: item.metadata?.backdropUrl || undefined,
 		contentRating: (meta?.contentRating as string | undefined) || undefined,
 		needsReview: item.needsReview ?? false,
-		versionCount: (item as Record<string, unknown>).versionCount as number | undefined,
+		versionCount: unknownItem.versionCount as number | undefined,
 		addedAt: item.addedAt || undefined,
 		watched: item.watched ?? false,
 		// For series, prefer networks (streaming home) then fall back to studios
@@ -176,6 +178,9 @@ export function clientHomeItemToMedia(item: ClientHomeItem): Media {
 		trailerUrl: (unknownFields.trailerUrl as string | undefined) || undefined,
 		parentId: (unknownFields.parentId as string | undefined) || undefined,
 		parentKind: (unknownFields.parentKind as string | undefined) || undefined,
+		seasonNumber: (unknownFields.seasonNumber as number | undefined) ?? undefined,
+		episodeNumber: (unknownFields.episodeNumber as number | undefined) ?? undefined,
+		episodeTitle: (unknownFields.episodeTitle as string | undefined) || undefined,
 		progress: typeof item.percent === 'number' ? item.percent / 100
 			: typeof item.progressPercent === 'number' ? item.progressPercent / 100
 			: undefined,
