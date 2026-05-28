@@ -42,15 +42,29 @@ Var XuvaCreateDesktopShortcut
 
   ; Program-scoped rule for the packaged server. Tightest scope — only the
   ; signed Xuva binary at this install location is allowed.
-  nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="Xuva Server HTTP" dir=in action=allow program="$INSTDIR\resources\runtime\xuva-server.exe" protocol=TCP localport=8097 profile=private,domain enable=yes description="Allow Xuva web and API access from trusted LAN devices."'
+  ;
+  ; profile=any covers Public networks too, because Windows often
+  ; misclassifies a home LAN as Public (especially after a network change
+  ; or on a fresh adapter) and the user then can't reach Xuva from their
+  ; phone / tablet / other PC without manually re-classifying the network.
+  ; Confirmed against the live media-server: with profile=private,domain
+  ; only, the LAN was unreachable until the user manually added Public to
+  ; the rule. The program-scoped guard means only the signed Xuva binary
+  ; at this install path is allowed in — the rule isn't a generic "open
+  ; port 8097 to the world", it's specifically "let traffic in to *this*
+  ; xuva-server.exe", which keeps the exposure tight.
+  nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="Xuva Server HTTP" dir=in action=allow program="$INSTDIR\resources\runtime\xuva-server.exe" protocol=TCP localport=8097 profile=any enable=yes description="Allow Xuva web and API access on all network profiles (program-scoped)."'
   Pop $0
-  nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="Xuva Local Discovery mDNS" dir=in action=allow program="$INSTDIR\resources\runtime\xuva-server.exe" protocol=UDP localport=5353 profile=private,domain enable=yes description="Allow Xuva Bonjour/mDNS discovery from trusted LAN devices."'
+  nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="Xuva Local Discovery mDNS" dir=in action=allow program="$INSTDIR\resources\runtime\xuva-server.exe" protocol=UDP localport=5353 profile=any enable=yes description="Allow Xuva Bonjour/mDNS discovery on all network profiles (program-scoped)."'
   Pop $0
 
   ; Port-scoped fallback rule. Survives install-path changes between releases
   ; — without this, an upgrade that lands in a slightly different folder
-  ; would leave the user unable to reach the new binary on the LAN until they
-  ; reran the installer. Still scoped to Private+Domain only (not Public).
+  ; would leave the user unable to reach the new binary on the LAN until
+  ; they reran the installer. Scoped to Private+Domain only (not Public)
+  ; because this rule has no program guard, so a "any program on port 8097"
+  ; rule on a coffee-shop wifi would be a footgun. The program-scoped pair
+  ; above covers the Public case for the actual Xuva binary.
   nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="Xuva Server HTTP (Port)" dir=in action=allow protocol=TCP localport=8097 profile=private,domain enable=yes description="Allow inbound TCP 8097 (Xuva web/API) on private and domain networks."'
   Pop $0
   nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="Xuva Local Discovery mDNS (Port)" dir=in action=allow protocol=UDP localport=5353 profile=private,domain enable=yes description="Allow inbound UDP 5353 (mDNS/Bonjour) on private and domain networks."'
