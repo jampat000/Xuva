@@ -12,23 +12,75 @@ import (
 	"time"
 )
 
-// collectCacheTTL is the window within which concurrent Collect() callers
-// share a single snapshot. The dashboard polls /api/system/status every 5 s,
-// and each fresh snapshot costs ~750 ms (cpuPercent sleeps 120 ms; nvidia-smi
-// exec adds 200-300 ms; disk/network/process do the rest). Without this
-// cache, every poll paid the full 750 ms — observed at 2265 calls over a
-// 15-hour session = ~28 minutes of wall-clock burned on stats alone.
+// samplerInterval is how often the background goroutine refreshes the
+// snapshot. The dashboard polls /api/system/status every 5 s; sampling at the
+// same cadence keeps the data fresh without doing any work on the request
+// path. Each sample costs ~750 ms (cpuPercent sleeps 120 ms; nvidia-smi exec
+// adds 200-300 ms; disk/network/process do the rest) but happens in one
+// goroutine off the critical path — every API request now returns the
+// most-recent snapshot in microseconds instead of paying ~750 ms.
 //
-// 1.5 s is short enough that two adjacent dashboard refreshes still see
-// fresh data, and long enough to coalesce bursts (multiple tabs, click
-// flurries during a config change).
-const collectCacheTTL = 1500 * time.Millisecond
+// The earlier TTL-cache approach (introduced in v0.0.18) only helped
+// concurrent burst callers; sequential polls 5 s apart always missed the
+// 1.5 s window, so /api/system/status remained ~750 ms in production logs.
+const samplerInterval = 5 * time.Second
 
-var collectCache struct {
-	mu       sync.Mutex
+// staleSampleAge is the maximum age before a Collect() caller will pay to
+// re-sample synchronously instead of returning the cached value. This only
+// matters before StartSampler() runs (e.g. tests calling Collect() directly,
+// or the brief window between server start and the goroutine's first tick).
+const staleSampleAge = 30 * time.Second
+
+var samplerState struct {
+	mu       sync.RWMutex
 	snap     Snapshot
 	at       time.Time
 	hasValue bool
+	// pathsForSampler is captured from the first Collect() / StartSampler call.
+	// Disks change only on configuration reload, so capturing them once and
+	// re-using is correct for the lifetime of the process.
+	paths map[string]string
+}
+
+// StartSampler kicks off the background ticker that refreshes the system
+// snapshot at samplerInterval. Safe to call once at server start. The first
+// sample is taken synchronously before returning so callers immediately
+// have data; subsequent samples happen on the ticker.
+func StartSampler(ctx context.Context, paths map[string]string) {
+	samplerState.mu.Lock()
+	if samplerState.paths == nil {
+		samplerState.paths = paths
+	}
+	samplerState.mu.Unlock()
+
+	// Prime the snapshot synchronously so the first /api/system/status
+	// request after start gets a real value instead of zeros.
+	refreshSampler()
+
+	go func() {
+		ticker := time.NewTicker(samplerInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				refreshSampler()
+			}
+		}
+	}()
+}
+
+func refreshSampler() {
+	samplerState.mu.RLock()
+	paths := samplerState.paths
+	samplerState.mu.RUnlock()
+	snap := collectFresh(paths)
+	samplerState.mu.Lock()
+	samplerState.snap = snap
+	samplerState.at = time.Now()
+	samplerState.hasValue = true
+	samplerState.mu.Unlock()
 }
 
 type Snapshot struct {
@@ -105,20 +157,39 @@ type DiskStats struct {
 	SharedWithData bool    `json:"sharedWithData"`
 }
 
+// Collect returns the latest system snapshot. When StartSampler is running
+// (normal server operation) this returns the most-recent cached snapshot in
+// microseconds; the background goroutine takes the ~750 ms sampling cost off
+// the request path entirely.
+//
+// If the sampler hasn't run yet (test paths, or the very first call before
+// server start), Collect falls back to sampling synchronously. The paths map
+// is also captured here as a one-time install for the sampler so callers
+// don't have to thread it through ad-hoc.
 func Collect(paths map[string]string) Snapshot {
-	collectCache.mu.Lock()
-	if collectCache.hasValue && time.Since(collectCache.at) < collectCacheTTL {
-		snap := collectCache.snap
-		collectCache.mu.Unlock()
+	samplerState.mu.RLock()
+	if samplerState.hasValue && time.Since(samplerState.at) < staleSampleAge {
+		snap := samplerState.snap
+		samplerState.mu.RUnlock()
 		return snap
 	}
-	collectCache.mu.Unlock()
+	samplerState.mu.RUnlock()
+
+	// Fallback path: no sample yet (or it's too stale). Sample synchronously
+	// and store, so the second caller benefits even before StartSampler
+	// kicks in.
+	samplerState.mu.Lock()
+	if samplerState.paths == nil {
+		samplerState.paths = paths
+	}
+	samplerState.mu.Unlock()
+
 	snap := collectFresh(paths)
-	collectCache.mu.Lock()
-	collectCache.snap = snap
-	collectCache.at = time.Now()
-	collectCache.hasValue = true
-	collectCache.mu.Unlock()
+	samplerState.mu.Lock()
+	samplerState.snap = snap
+	samplerState.at = time.Now()
+	samplerState.hasValue = true
+	samplerState.mu.Unlock()
 	return snap
 }
 

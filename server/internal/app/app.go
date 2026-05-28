@@ -42,6 +42,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/sessions"
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
+	"github.com/jampat000/Xuva/server/internal/systemstats"
 	"github.com/jampat000/Xuva/server/internal/thumbnails"
 	"github.com/jampat000/Xuva/server/internal/trailers"
 	"github.com/jampat000/Xuva/server/internal/transcode"
@@ -311,6 +312,20 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	discoveryService := discovery.NewService(cfg)
 	discoveryService.Start(appCtx)
 	trendingService := trending.NewService(cfg.TMDBAPIKey, catalogService)
+
+	// Kick off the background system-stats sampler so /api/system/status
+	// returns the latest snapshot in microseconds instead of paying ~750 ms
+	// per request (cpuPercent sleeps 120 ms, nvidia-smi exec adds 200-300 ms,
+	// per-disk syscalls do the rest). Sampling happens off the request path
+	// on a fixed ticker; the handler just reads the cached value.
+	systemstats.StartSampler(appCtx, map[string]string{
+		"data":      cfg.DataDir,
+		"transcode": cfg.TranscodeDir,
+		"downloads": cfg.DownloadsDir,
+		"metadata":  cfg.MetadataDir,
+		"cache":     cfg.CacheDir,
+		"temp":      cfg.TempDir,
+	})
 
 	// Trailer downloader: spins up a worker pool that yt-dlp's each item's
 	// trailer to local MP4 on demand. Plays as a native <video> on the hero —
