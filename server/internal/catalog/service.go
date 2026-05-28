@@ -1737,19 +1737,22 @@ func (s *Service) ListSeries(ctx context.Context, limit int, maxRating string, u
 	} else if maxRating != "" {
 		sqlLimit = limit * 10
 	}
+	// Snapshot read from tv_series_list_view (migration 0003). Same pattern
+	// as ListMovies — the old query joined the entire series tree (seasons +
+	// episodes + episode_versions + playback_states) with GROUP BY before
+	// LIMIT could clip it. The watched flag stays per-user and is computed via
+	// a correlated subquery only for the LIMIT-clipped rows.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT s.id, s.title, s.sort_title,
-		       count(DISTINCT seasons.id) AS season_count,
-		       count(DISTINCT e.id) AS episode_count,
-		       s.created_at,
-		       MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END) AS is_watched
-		FROM tv_series s
-		LEFT JOIN tv_seasons seasons ON seasons.series_id = s.id
-		LEFT JOIN tv_episodes e ON e.series_id = s.id
-		LEFT JOIN episode_versions ev ON ev.episode_id = e.id
-		LEFT JOIN playback_states ps ON ps.media_source_id = ev.media_source_id AND ps.user_id = ?
-		GROUP BY s.id
-		ORDER BY s.sort_title, s.id
+		SELECT v.series_id, v.title, v.sort_title,
+		       v.season_count, v.episode_count, v.created_at,
+		       COALESCE((SELECT MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END)
+		                 FROM tv_episodes e
+		                 JOIN episode_versions ev ON ev.episode_id = e.id
+		                 LEFT JOIN playback_states ps
+		                     ON ps.media_source_id = ev.media_source_id AND ps.user_id = ?
+		                 WHERE e.series_id = v.series_id), 0) AS is_watched
+		FROM tv_series_list_view v
+		ORDER BY v.sort_title, v.series_id
 		LIMIT ?
 	`, userID, sqlLimit)
 	if err != nil {
