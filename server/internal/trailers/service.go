@@ -60,6 +60,11 @@ type Service struct {
 	mu       sync.Mutex
 	inflight map[string]struct{} // key = kind:itemID
 	failures map[string]time.Time
+	// unavailable is set at Start when CheckYTDLP fails. Queue() and the
+	// worker pool become no-ops so we don't spam logs with one "yt-dlp not
+	// found" line per queued job (observed: 1828 identical warnings in a
+	// 15-hour session before this guard).
+	unavailable bool
 }
 
 const (
@@ -87,9 +92,23 @@ func NewService(cfg Config, cat Catalog, eventBus *events.Bus) *Service {
 }
 
 // Start spins up the configured number of worker goroutines. No-op when the
-// feature is disabled. Returns immediately.
+// feature is disabled OR when the yt-dlp binary isn't on PATH — in the
+// latter case we set s.unavailable so subsequent Queue() calls drop
+// silently instead of triggering one warning per item (an empty install
+// can otherwise generate thousands of identical "yt-dlp not found" lines).
 func (s *Service) Start(ctx context.Context) {
 	if !s.cfg.Enabled {
+		return
+	}
+	if err := CheckYTDLP(s.cfg.YTDLPPath); err != nil {
+		s.mu.Lock()
+		s.unavailable = true
+		s.mu.Unlock()
+		slog.Warn("trailers: yt-dlp unavailable, disabling trailer downloads",
+			"path", s.cfg.YTDLPPath,
+			"err", err,
+			"hint", "install yt-dlp and put it on PATH (or set XUVA_YTDLP_PATH) to enable local trailer caching",
+		)
 		return
 	}
 	if err := os.MkdirAll(s.cfg.Dir, 0o755); err != nil {
@@ -102,12 +121,19 @@ func (s *Service) Start(ctx context.Context) {
 	slog.Info("trailers: worker pool started", "workers", s.cfg.Workers, "dir", s.cfg.Dir)
 }
 
+// isUnavailable returns true when CheckYTDLP failed at startup. Threadsafe.
+func (s *Service) isUnavailable() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.unavailable
+}
+
 // Queue enqueues a trailer-download job. The call is fire-and-forget — it
 // never blocks, never returns errors to the caller, and silently drops if
 // the queue is full or a download is already in flight for the same item.
 // If the MP4 already exists on disk, we just patch the DB and skip work.
 func (s *Service) Queue(job Job) {
-	if !s.cfg.Enabled {
+	if !s.cfg.Enabled || s.isUnavailable() {
 		return
 	}
 	if strings.TrimSpace(job.TMDBID) == "" || strings.TrimSpace(job.VideoKey) == "" {
