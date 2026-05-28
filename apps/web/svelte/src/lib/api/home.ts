@@ -247,6 +247,39 @@ export function getCollections(
 	return client.request<CollectionsListResponse>('/api/client/collections');
 }
 
+// ── Similar items ─────────────────────────────────────────────────────────────
+
+export interface SimilarItem {
+	id: string;
+	kind: string;
+	title: string;
+	year?: number;
+	posterUrl?: string;
+	backdropUrl?: string;
+}
+
+export interface SimilarResponse {
+	items?: SimilarItem[];
+}
+
+export function getSimilarMovies(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<SimilarResponse> {
+	return client.request<SimilarResponse>(
+		`/api/client/movies/${encodeURIComponent(id)}/similar`
+	);
+}
+
+export function getSimilarSeries(
+	id: string,
+	client: ApiClient = apiClient
+): Promise<SimilarResponse> {
+	return client.request<SimilarResponse>(
+		`/api/client/series/${encodeURIComponent(id)}/similar`
+	);
+}
+
 // ── People ───────────────────────────────────────────────────────────────────
 
 export interface PersonCreditItem {

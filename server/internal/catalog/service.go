@@ -339,12 +339,17 @@ type MediaSourceItem struct {
 }
 
 type MediaSourceDisplay struct {
-	Kind         string `json:"kind"`
-	ItemID       string `json:"itemId"`
-	Title        string `json:"title"`
-	ArtworkKind  string `json:"artworkKind"`
-	ArtworkID    string `json:"artworkId"`
-	QualityLabel string `json:"qualityLabel,omitempty"`
+	Kind          string `json:"kind"`
+	ItemID        string `json:"itemId"`
+	Title         string `json:"title"`
+	ArtworkKind   string `json:"artworkKind"`
+	ArtworkID     string `json:"artworkId"`
+	QualityLabel  string `json:"qualityLabel,omitempty"`
+	// Episode-specific fields (populated when Kind == "episode")
+	SeasonNumber  int    `json:"seasonNumber,omitempty"`
+	EpisodeNumber int    `json:"episodeNumber,omitempty"`
+	EpisodeTitle  string `json:"episodeTitle,omitempty"`
+	SeriesID      string `json:"seriesId,omitempty"`
 }
 
 type MediaSourceTracks struct {
@@ -3409,12 +3414,16 @@ func (s *Service) GetMediaSourceDisplay(ctx context.Context, id string) (MediaSo
 		applyTitleMetadata(&seriesTitle, &seriesSortTitle, record)
 	}
 	return MediaSourceDisplay{
-		Kind:         "episode",
-		ItemID:       episodeID,
-		Title:        episodeDisplayTitle(seriesTitle, seasonNumber, episodeNumber, episodeEnd, episodeTitle),
-		ArtworkKind:  "series",
-		ArtworkID:    seriesID,
-		QualityLabel: episodeQuality.String,
+		Kind:          "episode",
+		ItemID:        episodeID,
+		Title:         episodeDisplayTitle(seriesTitle, seasonNumber, episodeNumber, episodeEnd, episodeTitle),
+		ArtworkKind:   "series",
+		ArtworkID:     seriesID,
+		QualityLabel:  episodeQuality.String,
+		SeasonNumber:  seasonNumber,
+		EpisodeNumber: episodeNumber,
+		EpisodeTitle:  episodeTitle,
+		SeriesID:      seriesID,
 	}, true, nil
 }
 

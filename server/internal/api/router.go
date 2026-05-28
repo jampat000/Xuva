@@ -3062,6 +3062,18 @@ func tvRecentItems(ctx context.Context, deps Deps, items []playstate.RecentItem)
 				if display.Title != "" {
 					entry["title"] = display.Title
 				}
+				// For TV episodes, expose S/E numbers + episode title so the
+				// Continue Watching card can render "S1 E3 • Episode Title".
+				if display.Kind == "episode" {
+					entry["seasonNumber"] = display.SeasonNumber
+					entry["episodeNumber"] = display.EpisodeNumber
+					if display.EpisodeTitle != "" {
+						entry["episodeTitle"] = display.EpisodeTitle
+					}
+					if display.SeriesID != "" {
+						entry["seriesId"] = display.SeriesID
+					}
+				}
 				if display.ArtworkID != "" {
 					if record, has, err := deps.Catalog.GetBestMetadata(ctx, display.ArtworkKind, display.ArtworkID); err == nil && has {
 						entry["posterUrl"] = metadataPoster(&record)
