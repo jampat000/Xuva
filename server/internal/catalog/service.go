@@ -730,18 +730,26 @@ func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, u
 	} else if maxRating != "" {
 		sqlLimit = limit * 10
 	}
+	// Read aggregates from movies_list_view (denormalized snapshot maintained
+	// by triggers in migration 0002). The old query joined movies × movie_versions
+	// × media_probes × playback_states with a GROUP BY m.id over the entire table
+	// before LIMIT could clip it — ~2.4s on a 4000-item library. The new shape
+	// is an index seek + LIMIT.
+	//
+	// The watched flag is per-user so it can't live in the snapshot — we pull
+	// it via a correlated subquery so SQLite only computes it for the LIMIT-
+	// clipped rows, not the whole table.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review,
-		       count(DISTINCT mv.media_source_id) AS version_count,
-		       m.created_at,
-		       MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END) AS is_watched,
-		       MAX(CASE WHEN mp.media_source_id IS NOT NULL THEN 1 ELSE 0 END) AS is_probed
-		FROM movies m
-		LEFT JOIN movie_versions mv ON mv.movie_id = m.id
-		LEFT JOIN media_probes mp ON mp.media_source_id = mv.media_source_id
-		LEFT JOIN playback_states ps ON ps.media_source_id = mv.media_source_id AND ps.user_id = ?
-		GROUP BY m.id
-		ORDER BY m.sort_title, m.year
+		SELECT v.movie_id, v.title, v.year, v.sort_title, v.needs_review,
+		       v.version_count, v.created_at,
+		       COALESCE((SELECT MAX(CASE WHEN ps.watched != 0 THEN 1 ELSE 0 END)
+		                 FROM movie_versions mv
+		                 LEFT JOIN playback_states ps
+		                     ON ps.media_source_id = mv.media_source_id AND ps.user_id = ?
+		                 WHERE mv.movie_id = v.movie_id), 0) AS is_watched,
+		       v.is_probed
+		FROM movies_list_view v
+		ORDER BY v.sort_title, v.year
 		LIMIT ?
 	`, userID, sqlLimit)
 	if err != nil {

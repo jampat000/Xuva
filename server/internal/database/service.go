@@ -275,6 +275,134 @@ var schemaMigrations = []schemaMigration{
 		Statements:           migrations,
 		AllowDuplicateColumn: true,
 	},
+	{
+		ID:         "0002_movies_list_view_snapshot",
+		Name:       "Denormalized movies list-view + maintenance triggers",
+		Statements: moviesListViewMigration,
+	},
+}
+
+// moviesListViewMigration creates the denormalized snapshot table that backs
+// /api/movies. The old ListMovies query joined movies × movie_versions ×
+// media_probes × playback_states with a GROUP BY m.id over the entire table
+// before LIMIT could clip it — ~2.4s on a 4000-item library.
+//
+// The new shape:
+//  1. One row per movie in movies_list_view, sorted by (sort_title, year) via
+//     an index, so the LIMIT-driven page can be served as a single seq read.
+//  2. AFTER INSERT/UPDATE/DELETE triggers on movies/movie_versions/media_probes
+//     keep the snapshot in lock-step with the source-of-truth tables inside
+//     the same transaction as the originating write. Zero writer code changes.
+//  3. Per-user watched state stays out of the snapshot (it's per-user, can't
+//     denormalize cleanly). ListMovies layers it in via a correlated subquery
+//     after LIMIT, so we only compute it for the page being returned.
+//
+// Backfill runs as the final statement: for an empty view, populate from the
+// existing data. Idempotent — re-running the migration would be a no-op since
+// the migration ledger ID already exists, but the body uses INSERT OR REPLACE
+// regardless so a manual rebuild stays safe.
+var moviesListViewMigration = []string{
+	`CREATE TABLE IF NOT EXISTS movies_list_view (
+		movie_id      TEXT PRIMARY KEY REFERENCES movies(id) ON DELETE CASCADE,
+		title         TEXT NOT NULL,
+		year          INTEGER NOT NULL DEFAULT 0,
+		sort_title    TEXT NOT NULL,
+		needs_review  INTEGER NOT NULL DEFAULT 0,
+		version_count INTEGER NOT NULL DEFAULT 0,
+		is_probed     INTEGER NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_movies_list_view_sort ON movies_list_view(sort_title, year)`,
+	// movies → snapshot: keep title / year / sort_title / needs_review in sync.
+	// ON DELETE CASCADE via FK handles row removal automatically.
+	`DROP TRIGGER IF EXISTS movies_list_view_movies_ai`,
+	`CREATE TRIGGER movies_list_view_movies_ai
+		AFTER INSERT ON movies
+		BEGIN
+			INSERT INTO movies_list_view(movie_id, title, year, sort_title, needs_review, version_count, is_probed, created_at)
+			VALUES (NEW.id, NEW.title, NEW.year, NEW.sort_title, NEW.needs_review, 0, 0, NEW.created_at)
+			ON CONFLICT(movie_id) DO UPDATE SET
+				title = excluded.title,
+				year = excluded.year,
+				sort_title = excluded.sort_title,
+				needs_review = excluded.needs_review,
+				created_at = excluded.created_at;
+		END`,
+	`DROP TRIGGER IF EXISTS movies_list_view_movies_au`,
+	`CREATE TRIGGER movies_list_view_movies_au
+		AFTER UPDATE ON movies
+		BEGIN
+			INSERT INTO movies_list_view(movie_id, title, year, sort_title, needs_review, version_count, is_probed, created_at)
+			VALUES (NEW.id, NEW.title, NEW.year, NEW.sort_title, NEW.needs_review, 0, 0, NEW.created_at)
+			ON CONFLICT(movie_id) DO UPDATE SET
+				title = excluded.title,
+				year = excluded.year,
+				sort_title = excluded.sort_title,
+				needs_review = excluded.needs_review;
+		END`,
+	// movie_versions → snapshot: recompute version_count + is_probed for the
+	// affected movie. is_probed depends on media_probes existing for ANY of the
+	// movie's versions, so it needs a full recompute on each version change.
+	`DROP TRIGGER IF EXISTS movies_list_view_versions_ai`,
+	`CREATE TRIGGER movies_list_view_versions_ai
+		AFTER INSERT ON movie_versions
+		BEGIN
+			UPDATE movies_list_view
+			SET version_count = (SELECT COUNT(*) FROM movie_versions WHERE movie_id = NEW.movie_id),
+			    is_probed = CASE WHEN EXISTS (
+			        SELECT 1 FROM movie_versions mv2
+			        JOIN media_probes mp ON mp.media_source_id = mv2.media_source_id
+			        WHERE mv2.movie_id = NEW.movie_id
+			    ) THEN 1 ELSE 0 END
+			WHERE movie_id = NEW.movie_id;
+		END`,
+	`DROP TRIGGER IF EXISTS movies_list_view_versions_ad`,
+	`CREATE TRIGGER movies_list_view_versions_ad
+		AFTER DELETE ON movie_versions
+		BEGIN
+			UPDATE movies_list_view
+			SET version_count = (SELECT COUNT(*) FROM movie_versions WHERE movie_id = OLD.movie_id),
+			    is_probed = CASE WHEN EXISTS (
+			        SELECT 1 FROM movie_versions mv2
+			        JOIN media_probes mp ON mp.media_source_id = mv2.media_source_id
+			        WHERE mv2.movie_id = OLD.movie_id
+			    ) THEN 1 ELSE 0 END
+			WHERE movie_id = OLD.movie_id;
+		END`,
+	// media_probes → snapshot: any movie whose movie_versions reference this
+	// media_source_id may need its is_probed flag flipped.
+	`DROP TRIGGER IF EXISTS movies_list_view_probes_ai`,
+	`CREATE TRIGGER movies_list_view_probes_ai
+		AFTER INSERT ON media_probes
+		BEGIN
+			UPDATE movies_list_view
+			SET is_probed = 1
+			WHERE movie_id IN (SELECT movie_id FROM movie_versions WHERE media_source_id = NEW.media_source_id);
+		END`,
+	`DROP TRIGGER IF EXISTS movies_list_view_probes_ad`,
+	`CREATE TRIGGER movies_list_view_probes_ad
+		AFTER DELETE ON media_probes
+		BEGIN
+			UPDATE movies_list_view
+			SET is_probed = CASE WHEN EXISTS (
+				SELECT 1 FROM movie_versions mv2
+				JOIN media_probes mp ON mp.media_source_id = mv2.media_source_id
+				WHERE mv2.movie_id = movies_list_view.movie_id
+			) THEN 1 ELSE 0 END
+			WHERE movie_id IN (SELECT movie_id FROM movie_versions WHERE media_source_id = OLD.media_source_id);
+		END`,
+	// Backfill: populate the view from existing data. INSERT OR REPLACE so a
+	// manual rebuild (DELETE FROM movies_list_view; re-run this stmt) stays safe.
+	`INSERT OR REPLACE INTO movies_list_view (movie_id, title, year, sort_title, needs_review, version_count, is_probed, created_at)
+		SELECT m.id, m.title, m.year, m.sort_title, m.needs_review,
+		       (SELECT COUNT(*) FROM movie_versions mv WHERE mv.movie_id = m.id) AS version_count,
+		       CASE WHEN EXISTS (
+		           SELECT 1 FROM movie_versions mv
+		           JOIN media_probes mp ON mp.media_source_id = mv.media_source_id
+		           WHERE mv.movie_id = m.id
+		       ) THEN 1 ELSE 0 END AS is_probed,
+		       m.created_at
+		FROM movies m`,
 }
 
 var migrations = []string{
