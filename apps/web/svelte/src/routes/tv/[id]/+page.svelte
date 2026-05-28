@@ -100,6 +100,7 @@
   let manualTmdbId = $state('');
   let manualTmdbError = $state<string | null>(null);
   let showTrailer = $state(false);
+  let showDataSources = $state(false);
   let selectedEncoderLabel = $state<string | null>(null);
 
   // ── Derived metadata fields ──────────────────────────────────────────────
@@ -749,6 +750,15 @@
             <div class="flex items-center justify-between">
               <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Metadata</h3>
               <div class="flex items-center gap-2">
+                {#if altRecords.length > 0}
+                  <button
+                    type="button"
+                    onclick={() => { showDataSources = !showDataSources; }}
+                    class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
+                  >
+                    Sources ({altRecords.length})
+                  </button>
+                {/if}
                 <button
                   type="button"
                   onclick={refreshMeta}
@@ -767,8 +777,8 @@
               </div>
             </div>
 
-            <!-- ── Provider records ──────────────────────────────────────────── -->
-            {#if altRecords.length > 0}
+            <!-- ── Provider records (hidden by default) ──────────────────────── -->
+            {#if altRecords.length > 0 && showDataSources}
               <div class="mt-4 space-y-1.5">
                 <p class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
                   Data sources ({altRecords.length})

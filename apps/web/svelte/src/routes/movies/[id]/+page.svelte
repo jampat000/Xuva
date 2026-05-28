@@ -3,7 +3,7 @@
   import { appState } from '$lib/stores/appState.svelte';
   import { onMount } from 'svelte';
   import {
-    Play, Plus, Check, Star, Clock, ChevronLeft, User, Film,
+    Play, Plus, Check, Star, Clock, ChevronLeft, ChevronDown, User, Film,
     Clapperboard, X, Shield, Volume2, Captions, FileVideo, Gauge, Layers, Languages,
   } from 'lucide-svelte';
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
@@ -35,6 +35,8 @@
   let manualTmdbId = $state('');
   let manualTmdbError = $state<string | null>(null);
   let showTrailer = $state(false);
+  let showTechDetails = $state(false);
+  let showDataSources = $state(false);
 
   // ── Derived metadata fields ──────────────────────────────────────────────
   const title = $derived(metadata?.title ?? detail?.title ?? 'Unknown');
@@ -493,29 +495,45 @@
             </div>
           {/if}
 
-          <!-- ── File Info pills (codec, resolution, bitrate, audio, container) -->
-          {#if mediaSource || audioTracks.length > 0}
-            {#if true}
-            {@const pills = [
-              { icon: FileVideo,  text: formatResolution(mediaSource?.width, mediaSource?.height) },
-              { icon: Film,       text: formatCodec(mediaSource?.videoCodec) },
-              { icon: Volume2,    text: audioSummary(audioTracks) },
-              { icon: Layers,     text: mediaSource?.container ? mediaSource.container.split(',')[0].toUpperCase() : '' },
-              { icon: Gauge,      text: formatBitrate(mediaSource?.bitrate) },
-              { icon: Captions,   text: subtitleTracks.length > 0 ? `${subtitleTracks.length} subtitle${subtitleTracks.length === 1 ? '' : 's'}` : '' },
-            ].filter(p => p.text)}
-            {#if pills.length > 0}
-              <div class="mt-10 border-t border-border pt-8">
-                <h3 class="font-serif-display text-lg tracking-tight text-foreground/90">File Info</h3>
-                <div class="mt-4 flex flex-wrap gap-2">
-                  {#each pills as p, i (i)}
-                    <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-surface/40 px-3 py-1.5 text-[12px] text-foreground/75">
-                      <p.icon class="h-3.5 w-3.5 text-muted-foreground/70" />
-                      {p.text}
-                    </span>
-                  {/each}
-                </div>
-                <!-- Per-device playability breakdown — Video / Audio / Container / Subtitles -->
+          <!-- ── Technical Details (collapsible) ─────────────────────────────
+               Codec, resolution, bitrate, audio/subtitle tracks, and
+               per-device playability. Hidden by default so the page leads
+               with the essentials (overview, cast) for typical users. -->
+          {#if mediaSource || audioTracks.length > 0 || subtitleTracks.length > 0}
+            <div class="mt-10 border-t border-border pt-8">
+              <button
+                type="button"
+                onclick={() => { showTechDetails = !showTechDetails; }}
+                class="flex w-full items-center justify-between gap-4 text-left"
+              >
+                <h3 class="font-serif-display text-lg tracking-tight text-foreground/90">Technical Details</h3>
+                <ChevronDown class={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${showTechDetails ? 'rotate-180' : ''}`} />
+              </button>
+
+              {#if showTechDetails}
+                <!-- File Info pills -->
+                {#if true}
+                {@const pills = [
+                  { icon: FileVideo,  text: formatResolution(mediaSource?.width, mediaSource?.height) },
+                  { icon: Film,       text: formatCodec(mediaSource?.videoCodec) },
+                  { icon: Volume2,    text: audioSummary(audioTracks) },
+                  { icon: Layers,     text: mediaSource?.container ? mediaSource.container.split(',')[0].toUpperCase() : '' },
+                  { icon: Gauge,      text: formatBitrate(mediaSource?.bitrate) },
+                  { icon: Captions,   text: subtitleTracks.length > 0 ? `${subtitleTracks.length} subtitle${subtitleTracks.length === 1 ? '' : 's'}` : '' },
+                ].filter(p => p.text)}
+                {#if pills.length > 0}
+                  <div class="mt-5 flex flex-wrap gap-2">
+                    {#each pills as p, i (i)}
+                      <span class="hairline inline-flex items-center gap-1.5 rounded-full bg-surface/40 px-3 py-1.5 text-[12px] text-foreground/75">
+                        <p.icon class="h-3.5 w-3.5 text-muted-foreground/70" />
+                        {p.text}
+                      </span>
+                    {/each}
+                  </div>
+                {/if}
+                {/if}
+
+                <!-- Per-device playability breakdown -->
                 {#if mediaSourceId && versionPlayability[mediaSourceId]}
                   <div class="mt-6">
                     <div class="mb-2.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/50">
@@ -532,80 +550,78 @@
                     />
                   </div>
                 {/if}
-              </div>
-            {/if}
-            {/if}
-          {/if}
 
-          <!-- ── Audio & Subtitles (per-track list) ────────────────────────── -->
-          {#if audioTracks.length > 0 || subtitleTracks.length > 0}
-            <div class="mt-10 border-t border-border pt-8">
-              <h3 class="font-serif-display text-lg tracking-tight text-foreground/90">Audio &amp; Subtitles</h3>
-              <p class="mt-1 text-[12.5px] text-muted-foreground">
-                Pick a track when you press Play. Default-flagged tracks are used automatically.
-              </p>
-              <div class="mt-4 grid gap-4 md:grid-cols-2">
-                <!-- Audio tracks -->
-                <div class="rounded-xl border border-border bg-surface/30 p-4">
-                  <div class="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    <Volume2 class="h-3.5 w-3.5" /> Audio · {audioTracks.length}
-                  </div>
-                  {#if audioTracks.length === 0}
-                    <p class="text-[12px] italic text-muted-foreground/60">No audio tracks detected.</p>
-                  {:else}
-                    <ul class="space-y-1.5">
-                      {#each audioTracks as t, i (t.index ?? i)}
-                        <li class="flex items-baseline gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-foreground/[0.025]">
-                          <span class="w-5 text-center text-[10px] tabular-nums text-muted-foreground/55">{(t.index ?? i + 1)}</span>
-                          <div class="flex-1 min-w-0">
-                            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                              <span class="text-[13px] font-medium text-foreground/90">{formatCodec(t.codec) || '—'}</span>
-                              {#if t.channels}<span class="text-[12px] text-foreground/65">{formatChannels(t.channels)}</span>{/if}
-                              {#if t.language}<span class="text-[12px] italic text-muted-foreground">· {formatLanguage(t.language)}</span>{/if}
-                              {#if t.title}<span class="truncate text-[11.5px] text-muted-foreground/70">· {t.title}</span>{/if}
-                            </div>
-                            <div class="mt-0.5 flex gap-1.5">
-                              {#if t.default}<span class="rounded bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary-glow">Default</span>{/if}
-                              {#if t.forced}<span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">Forced</span>{/if}
-                            </div>
-                          </div>
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                </div>
+                <!-- Audio & Subtitle tracks -->
+                {#if audioTracks.length > 0 || subtitleTracks.length > 0}
+                  <div class="mt-6">
+                    <p class="mb-3 text-[12px] text-muted-foreground">
+                      Pick a track when you press Play. Default-flagged tracks are used automatically.
+                    </p>
+                    <div class="grid gap-4 md:grid-cols-2">
+                      <!-- Audio tracks -->
+                      <div class="rounded-xl border border-border bg-surface/30 p-4">
+                        <div class="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          <Volume2 class="h-3.5 w-3.5" /> Audio · {audioTracks.length}
+                        </div>
+                        {#if audioTracks.length === 0}
+                          <p class="text-[12px] italic text-muted-foreground/60">No audio tracks detected.</p>
+                        {:else}
+                          <ul class="space-y-1.5">
+                            {#each audioTracks as t, i (t.index ?? i)}
+                              <li class="flex items-baseline gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-foreground/[0.025]">
+                                <span class="w-5 text-center text-[10px] tabular-nums text-muted-foreground/55">{(t.index ?? i + 1)}</span>
+                                <div class="flex-1 min-w-0">
+                                  <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                    <span class="text-[13px] font-medium text-foreground/90">{formatCodec(t.codec) || '—'}</span>
+                                    {#if t.channels}<span class="text-[12px] text-foreground/65">{formatChannels(t.channels)}</span>{/if}
+                                    {#if t.language}<span class="text-[12px] italic text-muted-foreground">· {formatLanguage(t.language)}</span>{/if}
+                                    {#if t.title}<span class="truncate text-[11.5px] text-muted-foreground/70">· {t.title}</span>{/if}
+                                  </div>
+                                  <div class="mt-0.5 flex gap-1.5">
+                                    {#if t.default}<span class="rounded bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary-glow">Default</span>{/if}
+                                    {#if t.forced}<span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">Forced</span>{/if}
+                                  </div>
+                                </div>
+                              </li>
+                            {/each}
+                          </ul>
+                        {/if}
+                      </div>
 
-                <!-- Subtitle tracks -->
-                <div class="rounded-xl border border-border bg-surface/30 p-4">
-                  <div class="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    <Captions class="h-3.5 w-3.5" /> Subtitles · {subtitleTracks.length}
+                      <!-- Subtitle tracks -->
+                      <div class="rounded-xl border border-border bg-surface/30 p-4">
+                        <div class="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          <Captions class="h-3.5 w-3.5" /> Subtitles · {subtitleTracks.length}
+                        </div>
+                        {#if subtitleTracks.length === 0}
+                          <p class="text-[12px] italic text-muted-foreground/60">No subtitle tracks. Drop an SRT next to the file to add one.</p>
+                        {:else}
+                          <ul class="space-y-1.5">
+                            {#each subtitleTracks as t, i (t.index ?? i)}
+                              <li class="flex items-baseline gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-foreground/[0.025]">
+                                <span class="w-5 text-center text-[10px] tabular-nums text-muted-foreground/55">{(t.index ?? i + 1)}</span>
+                                <div class="flex-1 min-w-0">
+                                  <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                    <span class="text-[13px] font-medium text-foreground/90">{formatLanguage(t.language) || formatCodec(t.codec) || '—'}</span>
+                                    {#if t.language && t.codec}<span class="text-[11.5px] text-muted-foreground/65">· {formatCodec(t.codec)}</span>{/if}
+                                    {#if t.title}<span class="truncate text-[11.5px] text-muted-foreground/70">· {t.title}</span>{/if}
+                                  </div>
+                                  <div class="mt-0.5 flex gap-1.5">
+                                    {#if t.default}<span class="rounded bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary-glow">Default</span>{/if}
+                                    {#if t.forced}<span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">Forced</span>{/if}
+                                  </div>
+                                </div>
+                              </li>
+                            {/each}
+                          </ul>
+                        {/if}
+                      </div>
+                    </div>
+                    {#if tracksLoading}
+                      <p class="mt-3 text-[11px] italic text-muted-foreground/60">Loading tracks…</p>
+                    {/if}
                   </div>
-                  {#if subtitleTracks.length === 0}
-                    <p class="text-[12px] italic text-muted-foreground/60">No subtitle tracks. Drop an SRT next to the file to add one.</p>
-                  {:else}
-                    <ul class="space-y-1.5">
-                      {#each subtitleTracks as t, i (t.index ?? i)}
-                        <li class="flex items-baseline gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-foreground/[0.025]">
-                          <span class="w-5 text-center text-[10px] tabular-nums text-muted-foreground/55">{(t.index ?? i + 1)}</span>
-                          <div class="flex-1 min-w-0">
-                            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                              <span class="text-[13px] font-medium text-foreground/90">{formatLanguage(t.language) || formatCodec(t.codec) || '—'}</span>
-                              {#if t.language && t.codec}<span class="text-[11.5px] text-muted-foreground/65">· {formatCodec(t.codec)}</span>{/if}
-                              {#if t.title}<span class="truncate text-[11.5px] text-muted-foreground/70">· {t.title}</span>{/if}
-                            </div>
-                            <div class="mt-0.5 flex gap-1.5">
-                              {#if t.default}<span class="rounded bg-primary-glow/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary-glow">Default</span>{/if}
-                              {#if t.forced}<span class="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">Forced</span>{/if}
-                            </div>
-                          </div>
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                </div>
-              </div>
-              {#if tracksLoading}
-                <p class="mt-3 text-[11px] italic text-muted-foreground/60">Loading tracks…</p>
+                {/if}
               {/if}
             </div>
           {/if}
@@ -682,6 +698,15 @@
             <div class="flex items-center justify-between">
               <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">Metadata</h3>
               <div class="flex items-center gap-2">
+                {#if altRecords.length > 0}
+                  <button
+                    type="button"
+                    onclick={() => { showDataSources = !showDataSources; }}
+                    class="hairline rounded-full bg-foreground/[0.04] px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
+                  >
+                    Sources ({altRecords.length})
+                  </button>
+                {/if}
                 <button
                   type="button"
                   onclick={refreshMeta}
@@ -700,8 +725,8 @@
               </div>
             </div>
 
-            <!-- ── Provider records ──────────────────────────────────────────── -->
-            {#if altRecords.length > 0}
+            <!-- ── Provider records (hidden by default) ──────────────────────── -->
+            {#if altRecords.length > 0 && showDataSources}
               <div class="mt-4 space-y-1.5">
                 <p class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
                   Data sources ({altRecords.length})
