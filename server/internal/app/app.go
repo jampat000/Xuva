@@ -379,6 +379,15 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 			}
 			slog.Info("auto-backfill: starting TMDB backfill", "missingItems", total)
 			if err := metadataService.StartBackfill(appCtx, "tmdb"); err != nil {
+				// ErrBackfillAlreadyRunning is a benign race: the periodic
+				// automation goroutine and the boot-time auto-trigger can
+				// both fire within the same second on first launch. Demote
+				// to Debug so the WARN level stays meaningful for actual
+				// failures (DB issues, provider misconfig).
+				if errors.Is(err, metadata.ErrBackfillAlreadyRunning) {
+					slog.Debug("auto-backfill: already running, skipping concurrent start")
+					return
+				}
 				slog.Warn("auto-backfill failed to start", "err", err)
 			}
 		}()
