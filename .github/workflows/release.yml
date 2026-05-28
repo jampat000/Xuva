@@ -13,7 +13,7 @@ on:
       dry_run:
         description: 'Build and smoke artifacts without publishing GHCR tags or GitHub Release'
         required: true
-        default: true
+        default: 'true'
         type: boolean
 
 permissions:
