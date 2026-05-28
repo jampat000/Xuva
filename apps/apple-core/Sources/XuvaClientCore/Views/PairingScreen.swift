@@ -44,14 +44,9 @@ public struct PairingScreen: View {
 
                     connectionHint(viewport: viewport)
 
-                    if let error = store.errorMessage {
-                        Text(error)
-                            .font(.system(size: XuvaScale.metaFontSize(viewport)))
-                            .foregroundStyle(XuvaTheme.danger)
-                            .padding(16)
-                            .background(XuvaTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
-                    }
+                    // Error is rendered by the top toast (XuvaRootView's
+                    // ErrorToast). Don't duplicate it inline here — earlier
+                    // we showed both and it appeared twice on screen.
 
                     // Version label — long-press (2 s on tvOS) to open the diagnostic log.
                     versionLabel(viewport: viewport)
@@ -106,6 +101,39 @@ public struct PairingScreen: View {
                         .tint(XuvaTheme.mutedText)
                 }
                 Spacer()
+                Button {
+                    store.clearError()
+                    discoveryTimedOut = false
+                    // Tear down the browser and start it again — equivalent
+                    // to a refresh(). Inline so we don't depend on a method
+                    // that has been removed/added a few times.
+                    discovery.stop()
+                    discovery.start()
+                    // Re-arm the 2-second fallback so the manual-entry hint
+                    // reappears if the rescan also finds nothing.
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        if discovery.servers.isEmpty {
+                            discoveryTimedOut = true
+                            showManualEntry = true
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Refresh")
+                    }
+                    .font(.system(size: labelSize, weight: .semibold))
+                    .tracking(labelSize * 0.10)
+                    .textCase(.uppercase)
+                    .foregroundStyle(XuvaTheme.mutedText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(XuvaTheme.surface.opacity(0.6), in: Capsule())
+                    .overlay(Capsule().stroke(XuvaTheme.hairline))
+                }
+                .buttonStyle(.plain)
+                .xuvaFocused(radius: 22)
             }
             if discovery.servers.isEmpty {
                 emptyDiscoveryHint(viewport: viewport)
