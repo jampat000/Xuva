@@ -316,6 +316,19 @@
   let dashScanBusy  = $state(false);
   let dashProbeBusy = $state(false);
   let dashUpdatedAt = $state('');
+
+  // Live scan progress — populated by SSE scan.progress events so the
+  // dashboard shows a real-time file counter + scrolling path while a scan
+  // is running, without polling a separate endpoint.
+  interface ScanLiveProgressData {
+    jobId: string;
+    totalFiles: number;
+    mediaFiles: number;
+    changedFiles: number;
+    lastPath: string;
+    status: string;
+  }
+  let scanLiveProgress = $state<ScanLiveProgressData | null>(null);
   let dashPollTimers: ReturnType<typeof setInterval>[] = [];
   const dashStream = createEventStream();
 
@@ -1161,6 +1174,48 @@
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  });
+
+  // ─── SSE: live scan progress ───────────────────────────────────────────────
+  // Opens a dedicated EventSource for the duration of the settings page so the
+  // Automation Control panel can show a live file counter + scrolling path
+  // while a scan is in flight. We don't reuse the global connectEventStream()
+  // singleton (which is layout-level and only handles cache invalidation) to
+  // keep concerns separate.
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+    let scanClearTimer: ReturnType<typeof setTimeout> | null = null;
+    const es = new EventSource('/api/events');
+    es.onmessage = (e) => {
+      try {
+        const evt = JSON.parse(e.data) as { type: string; data?: Record<string, unknown> };
+        if (evt?.type === 'scan.progress' && evt.data) {
+          if (scanClearTimer) { clearTimeout(scanClearTimer); scanClearTimer = null; }
+          const job = evt.data;
+          scanLiveProgress = {
+            jobId: (job['id'] as string) ?? '',
+            totalFiles: (job['totalFiles'] as number) ?? 0,
+            mediaFiles: (job['mediaFiles'] as number) ?? 0,
+            changedFiles: (job['changedFiles'] as number) ?? 0,
+            lastPath: (job['lastPath'] as string) ?? '',
+            status: (job['status'] as string) ?? 'running',
+          };
+        } else if (evt?.type === 'scan.completed' || evt?.type === 'automation.scan.completed') {
+          // Hold the last progress snapshot for 3 s so users can read the
+          // final counts, then clear it so the panel reverts to idle state.
+          scanClearTimer = setTimeout(() => {
+            scanLiveProgress = null;
+            scanClearTimer = null;
+          }, 3000);
+          // Also refresh job status so the "LAST RUN" timestamp updates.
+          void refreshDashJobs();
+        }
+      } catch { /* non-JSON heartbeat — ignore */ }
+    };
+    return () => {
+      if (scanClearTimer) clearTimeout(scanClearTimer);
+      es.close();
+    };
   });
 
   // ─── Utility helpers ───────────────────────────────────────────────────────
@@ -2613,12 +2668,27 @@
                     </div>
                     <div class="flex-1 min-w-0">
                       <div class="font-serif-display text-[16px] tracking-tight text-foreground/90">Library Scan</div>
-                      <div class="mt-0.5 text-[12px] text-foreground/55 tracking-tight">
-                        {#if scanSt === 'running'}<span style="color: oklch(0.74 0.2 280);">RUNNING NOW</span>
-                        {:else if scanSt === 'paused'}<span class="text-amber-300">PAUSED — SESSION ACTIVE</span>
-                        {:else if dashJobs?.scan?.lastRunAt}LAST RUN {new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        {:else}NEVER RUN{/if}
-                      </div>
+                      {#if scanSt === 'running' && scanLiveProgress}
+                        <!-- Live progress from SSE scan.progress events -->
+                        <div class="mt-1 space-y-1">
+                          <div class="flex items-center justify-between text-[12px] tracking-tight gap-2">
+                            <span style="color: oklch(0.74 0.2 280);" class="truncate">SCANNING{#if scanLiveProgress.lastPath}&thinsp;—&thinsp;{scanLiveProgress.lastPath.split(/[/\\]/).pop()}{/if}</span>
+                            <span class="shrink-0 text-foreground/55 tabular-nums">{scanLiveProgress.mediaFiles.toLocaleString()} media · {scanLiveProgress.totalFiles.toLocaleString()} files</span>
+                          </div>
+                          <!-- Indeterminate bar — total is unknown until the walk finishes -->
+                          <div class="h-0.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
+                            <div class="h-full w-1/3 animate-[scan-sweep_1.4s_ease-in-out_infinite] rounded-full"
+                              style="background: oklch(0.74 0.2 280 / 0.7);"></div>
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="mt-0.5 text-[12px] text-foreground/55 tracking-tight">
+                          {#if scanSt === 'running'}<span style="color: oklch(0.74 0.2 280);">RUNNING NOW</span>
+                          {:else if scanSt === 'paused'}<span class="text-amber-300">PAUSED — SESSION ACTIVE</span>
+                          {:else if dashJobs?.scan?.lastRunAt}LAST RUN {new Date(dashJobs.scan.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {:else}NEVER RUN{/if}
+                        </div>
+                      {/if}
                     </div>
                     <button type="button" onclick={handleDashScanNow} disabled={dashScanBusy || scanSt === 'running'}
                       class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium tracking-tight transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"

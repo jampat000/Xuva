@@ -926,7 +926,7 @@
               style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
             >
               {#if media.poster}
-                {@const cardWidth = density === 'S' ? 140 : density === 'M' ? 180 : 240}
+                {@const cardWidth = density === 'S' ? 200 : density === 'M' ? 260 : 360}
                 <img
                   src={artworkSrc(media, 'poster', cardWidth, media.poster)}
                   srcset={artworkSrcset(media, 'poster', cardWidth)}
