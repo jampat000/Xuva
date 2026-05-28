@@ -21,9 +21,19 @@
 !include nsDialogs.nsh
 !include LogicLib.nsh
 
-Var XuvaShortcutDialog
-Var XuvaShortcutCheckbox
-Var XuvaCreateDesktopShortcut
+; All three Vars are read/written only in the installer pass: the dialog +
+; checkbox vars are touched inside XuvaShortcutPageShow/Leave, and
+; XuvaCreateDesktopShortcut is set in customInit + read in customInstall —
+; both of which electron-builder's installer.nsi only `!insertmacro`s under
+; `!ifndef BUILD_UNINSTALLER`. NSIS warning 6001 ("Variable not referenced or
+; never set, wasting memory") is treated as an error by electron-builder's
+; strict mode and was what killed the v0.0.24 / v0.0.25 release builds, so
+; we gate the declarations the same way.
+!ifndef BUILD_UNINSTALLER
+  Var XuvaShortcutDialog
+  Var XuvaShortcutCheckbox
+  Var XuvaCreateDesktopShortcut
+!endif
 
 ; ── Firewall rules ──────────────────────────────────────────────────────────
 
@@ -115,6 +125,16 @@ Var XuvaCreateDesktopShortcut
   Page custom XuvaShortcutPageShow XuvaShortcutPageLeave
 !macroend
 
+; The two Page functions below are only referenced from `customPageAfterChangeDir`
+; which is only inserted into the installer build, never the uninstaller.
+; NSIS's `warning 6010: install function "..." not referenced - zeroing code` is
+; treated as an error by electron-builder, so we have to gate the function
+; declarations on `!ifndef BUILD_UNINSTALLER` (defined when building the
+; uninstaller stub). Without this guard, v0.0.24/v0.0.25 release builds
+; failed the uninstaller compile pass.
+
+!ifndef BUILD_UNINSTALLER
+
 Function XuvaShortcutPageShow
   ; NOTE: don't use !insertmacro MUI_HEADER_TEXT here — electron-builder
   ; !includes this script BEFORE MUI2.nsh is loaded by installer.nsi, so
@@ -149,6 +169,8 @@ Function XuvaShortcutPageLeave
     StrCpy $XuvaCreateDesktopShortcut "0"
   ${EndIf}
 FunctionEnd
+
+!endif ; BUILD_UNINSTALLER guard for the install-only Page functions
 
 ; ── Install / Uninstall hooks ───────────────────────────────────────────────
 
