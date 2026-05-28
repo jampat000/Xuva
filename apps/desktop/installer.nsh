@@ -204,7 +204,16 @@ FunctionEnd
   ; installer. We write a stable filename (no version in path) so the latest
   ; receipt always overwrites prior runs.
   DetailPrint "Writing install receipt to ProgramData..."
-  CreateDirectory "$APPDATA\..\..\ProgramData\Xuva"
+  ; Use %PROGRAMDATA% env var to get the canonical path (C:\ProgramData).
+  ; $APPDATA relative traversal (e.g. $APPDATA\..\..) resolves incorrectly
+  ; for per-user installs because $APPDATA is the Roaming profile dir and
+  ; only two levels up from there is the user's home, not the machine-wide
+  ; ProgramData root.
+  ReadEnvStr $6 "PROGRAMDATA"
+  ${If} $6 == ""
+    StrCpy $6 "C:\ProgramData"
+  ${EndIf}
+  CreateDirectory "$6\Xuva"
   ; Capture admin state and current timestamp via NSIS macros + system call.
   ${If} ${UAC_IsAdmin}
     StrCpy $9 "true"
@@ -216,7 +225,7 @@ FunctionEnd
   System::Call 'kernel32::GetSystemTime(p)p.r8'
   ; Bail on the timestamp if the call shape varies — receipt is best-effort.
   ClearErrors
-  FileOpen $7 "$APPDATA\..\..\ProgramData\Xuva\install-receipt.json" w
+  FileOpen $7 "$6\Xuva\install-receipt.json" w
   ${IfNot} ${Errors}
     FileWrite $7 '{$\r$\n'
     FileWrite $7 '  "schema": 1,$\r$\n'
@@ -241,6 +250,10 @@ FunctionEnd
 
   ; Drop the install receipt so a future fresh-install starts with a clean
   ; state and we don't leave forensic data lying around after uninstall.
-  Delete "$APPDATA\..\..\ProgramData\Xuva\install-receipt.json"
+  ReadEnvStr $0 "PROGRAMDATA"
+  ${If} $0 == ""
+    StrCpy $0 "C:\ProgramData"
+  ${EndIf}
+  Delete "$0\Xuva\install-receipt.json"
   ClearErrors
 !macroend
