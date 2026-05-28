@@ -1307,7 +1307,7 @@ func systemVersionHandler(deps Deps) http.HandlerFunc {
 		if startedAt.IsZero() {
 			startedAt = time.Now().UTC()
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		payload := map[string]any{
 			"product":       "xuva",
 			"version":       info.Version,
 			"commit":        info.Commit,
@@ -1315,8 +1315,39 @@ func systemVersionHandler(deps Deps) http.HandlerFunc {
 			"schemaVersion": schemaVersion,
 			"goVersion":     runtime.Version(),
 			"startedAt":     startedAt.UTC().Format(time.RFC3339),
-		})
+		}
+		// Surface the installer receipt that the NSIS customInstall macro
+		// writes. A single GET answers "did the installer hook actually
+		// fire, did it have admin rights?" — much better than
+		// round-tripping through Windows Firewall state, which can't tell
+		// "installer added the rule" apart from "user added the rule
+		// manually". Missing on non-Windows builds or when the user
+		// installed via the zip target — both correctly absent.
+		if receipt := readInstallReceipt(); receipt != nil {
+			payload["installReceipt"] = receipt
+		}
+		writeJSON(w, http.StatusOK, payload)
 	}
+}
+
+// installReceiptPath is the canonical location the NSIS customInstall macro
+// writes its JSON receipt to. Hard-coded because (a) ProgramData is the only
+// writable location that survives reinstalls and isn't tied to a per-user
+// install dir, and (b) the path is locale-invariant on every Windows install
+// so we don't need the running process to know where it was installed from
+// in order to find the receipt.
+const installReceiptPath = `C:\ProgramData\Xuva\install-receipt.json`
+
+func readInstallReceipt() map[string]any {
+	data, err := os.ReadFile(installReceiptPath)
+	if err != nil {
+		return nil
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		return nil
+	}
+	return receipt
 }
 
 func metricsHandler(deps Deps) http.HandlerFunc {

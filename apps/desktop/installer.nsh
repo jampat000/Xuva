@@ -162,6 +162,46 @@ FunctionEnd
   ${Else}
     DetailPrint "Skipping Desktop shortcut (unchecked by user)."
   ${EndIf}
+
+  ; ── Install receipt ──────────────────────────────────────────────────────
+  ; Write a small JSON receipt to ProgramData so we can observe whether this
+  ; hook actually ran and at what privilege level. The previous "install over
+  ; the top" verification was useless because the user had already added a
+  ; firewall rule manually — checking the rule's existence couldn't
+  ; distinguish "installer fired customInstall" from "user's manual rule
+  ; survived". The receipt's presence + content unambiguously says the hook
+  ; ran. The server can also read it later to surface install diagnostics in
+  ; the settings UI.
+  ;
+  ; ProgramData persists across upgrades and is writeable by an elevated
+  ; installer. We write a stable filename (no version in path) so the latest
+  ; receipt always overwrites prior runs.
+  DetailPrint "Writing install receipt to ProgramData..."
+  CreateDirectory "$APPDATA\..\..\ProgramData\Xuva"
+  ; Capture admin state and current timestamp via NSIS macros + system call.
+  ${If} ${UAC_IsAdmin}
+    StrCpy $9 "true"
+  ${Else}
+    StrCpy $9 "false"
+  ${EndIf}
+  ; %SYSTEMTIME% style ISO timestamp — we don't have ISO out of the box in
+  ; NSIS but the order y/m/d h:m is sortable and good enough for debugging.
+  System::Call 'kernel32::GetSystemTime(p)p.r8'
+  ; Bail on the timestamp if the call shape varies — receipt is best-effort.
+  ClearErrors
+  FileOpen $7 "$APPDATA\..\..\ProgramData\Xuva\install-receipt.json" w
+  ${IfNot} ${Errors}
+    FileWrite $7 '{$\r$\n'
+    FileWrite $7 '  "schema": 1,$\r$\n'
+    FileWrite $7 '  "installerVersion": "${VERSION}",$\r$\n'
+    FileWrite $7 '  "installDir": "$INSTDIR",$\r$\n'
+    FileWrite $7 '  "ranAsAdmin": $9,$\r$\n'
+    FileWrite $7 '  "desktopShortcutRequested": $XuvaCreateDesktopShortcut,$\r$\n'
+    FileWrite $7 '  "firewallRulesAttempted": true,$\r$\n'
+    FileWrite $7 '  "shortcutName": "${SHORTCUT_NAME}"$\r$\n'
+    FileWrite $7 '}$\r$\n'
+    FileClose $7
+  ${EndIf}
 !macroend
 
 !macro customUnInstall
@@ -170,5 +210,10 @@ FunctionEnd
   ; Best-effort: remove the Desktop shortcut we may have created. Safe to
   ; call even if it doesn't exist (Delete just sets an error flag we ignore).
   Delete "$DESKTOP\${SHORTCUT_NAME}.lnk"
+  ClearErrors
+
+  ; Drop the install receipt so a future fresh-install starts with a clean
+  ; state and we don't leave forensic data lying around after uninstall.
+  Delete "$APPDATA\..\..\ProgramData\Xuva\install-receipt.json"
   ClearErrors
 !macroend
