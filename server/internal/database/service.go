@@ -285,6 +285,31 @@ var schemaMigrations = []schemaMigration{
 		Name:       "Denormalized tv_series list-view + maintenance triggers",
 		Statements: tvSeriesListViewMigration,
 	},
+	{
+		ID:         "0004_metadata_collection_index",
+		Name:       "Partial expression index for collection lookups in metadata_records",
+		Statements: metadataCollectionIndexMigration,
+	},
+}
+
+// metadataCollectionIndexMigration adds a partial expression index on
+// metadata_records for the collection JSON path used by ListCollections /
+// ListMoviesByCollection. Before this index, both queries did a full table
+// scan with json_extract evaluated per-row on every metadata_records row
+// (≈3× the movie count once filename + TMDB + wiki providers all land). The
+// partial WHERE clause limits the index to rows that actually have a
+// collection — typically ~10% of metadata_records — keeping index size small.
+//
+// The SQLite planner matches expression indexes by syntactic equality, so the
+// query text must use the same `json_extract(details_json, '$.collection.id')`
+// form. It does in both call sites.
+var metadataCollectionIndexMigration = []string{
+	`CREATE INDEX IF NOT EXISTS idx_metadata_records_collection
+		ON metadata_records (
+			kind,
+			json_extract(details_json, '$.collection.id')
+		)
+		WHERE json_extract(details_json, '$.collection.id') IS NOT NULL`,
 }
 
 // tvSeriesListViewMigration is the sibling of moviesListViewMigration for
