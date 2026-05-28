@@ -65,8 +65,9 @@ func TestOpenReusesSchemaMigrationLedger(t *testing.T) {
 	if err := reopened.DB().QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("query schema migrations: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("expected migration ledger to stay stable, got %d rows", migrationCount)
+	if migrationCount != len(schemaMigrations) {
+		t.Fatalf("expected migration ledger to stay stable at %d rows, got %d",
+			len(schemaMigrations), migrationCount)
 	}
 }
 
@@ -82,8 +83,9 @@ func TestSchemaVersionReturnsLatestMigrationID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if version != "0001_legacy_inline_schema" {
-		t.Fatalf("expected latest schema version, got %q", version)
+	want := schemaMigrations[len(schemaMigrations)-1].ID
+	if version != want {
+		t.Fatalf("expected latest schema version %q, got %q", want, version)
 	}
 }
 
