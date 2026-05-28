@@ -44,14 +44,10 @@ public struct PairingScreen: View {
 
                     connectionHint(viewport: viewport)
 
-                    if let error = store.errorMessage {
-                        Text(error)
-                            .font(.system(size: XuvaScale.metaFontSize(viewport)))
-                            .foregroundStyle(XuvaTheme.danger)
-                            .padding(16)
-                            .background(XuvaTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .frame(maxWidth: XuvaScale.heroContentMaxWidth(viewport), alignment: .leading)
-                    }
+                    // Error is rendered by the top toast in XuvaRootView
+                    // (ErrorToast, auto-dismisses after 7s). Don't duplicate
+                    // it inline here — real-device photos showed "the request
+                    // timed out" appearing twice: once at top, once below.
 
                     // Version label — long-press (2 s on tvOS) to open the diagnostic log.
                     versionLabel(viewport: viewport)
