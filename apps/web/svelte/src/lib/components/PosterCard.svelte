@@ -36,7 +36,7 @@
   }`}
 >
   <div
-    class={`relative overflow-hidden rounded-2xl shadow-poster transition-all duration-500 group-hover:-translate-y-1 group-hover:shadow-glow ${
+    class={`relative overflow-hidden rounded-2xl shadow-poster transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)] ${
       isWide ? "aspect-video" : "aspect-[2/3]"
     }`}
     style:background={gradient}
