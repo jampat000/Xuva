@@ -1,33 +1,42 @@
 import { getMovies } from '$lib/api/browse';
 import { movieToMedia } from '$lib/api/adapters';
+import type { Media } from '$lib/mock-data';
 
-/**
- * Fast first-paint pattern: fetch the first FIRST_PAGE items synchronously so
- * SvelteKit can mount the page immediately. The rest of the library is
- * background-fetched in +page.svelte and merged into the grid when it lands.
- * On a 5000-movie library this turns a 2s blocking load into a ~100ms one.
- *
- * The TTL cache in browse.ts keys on the full URL (including `limit`), so the
- * first-page and full-list responses are cached independently. Repeat visits
- * hit both caches in <1ms.
- */
 const FIRST_PAGE = 60;
 
-export async function load() {
-	try {
-		const resp = await getMovies(undefined, FIRST_PAGE);
-		const items = (resp.movies ?? []).map(movieToMedia);
-		return {
-			items,
-			// If the response is full of items, there are probably more to fetch.
-			hasMore: items.length >= FIRST_PAGE,
-			loadError: null as string | null,
-		};
-	} catch (e) {
-		return {
-			items: [] as ReturnType<typeof movieToMedia>[],
-			hasMore: false,
-			loadError: e instanceof Error ? e.message : 'Failed to load movies',
-		};
-	}
+export interface MoviesPageData {
+	/**
+	 * Resolves to the first page of movies. We deliberately do NOT await this
+	 * in load() — SvelteKit awaits returned values before mounting the page,
+	 * which blocks navigation for the duration of the API call. On a
+	 * 4000-item library the limit=60 query alone can take several seconds,
+	 * during which the previous page stays on screen ("nothing happens").
+	 *
+	 * Returning the unresolved promise lets +page.svelte mount immediately
+	 * with a skeleton; the grid fills in once the promise lands.
+	 */
+	itemsPromise: Promise<Media[]>;
+
+	/**
+	 * Same pattern for surface errors so the component can react with a
+	 * retry UI rather than crashing the load.
+	 */
+	loadErrorPromise: Promise<string | null>;
+}
+
+/**
+ * Non-blocking load — see comments on MoviesPageData. The TTL/SWR cache in
+ * browse.ts means second-visit and beyond resolve in <1ms anyway, so this
+ * change is purely about preventing the first cold visit from feeling like
+ * a hang.
+ */
+export function load(): MoviesPageData {
+	const fetched = getMovies(undefined, FIRST_PAGE).then(
+		(resp) => ({ items: (resp.movies ?? []).map(movieToMedia), error: null as string | null }),
+		(e: unknown) => ({ items: [] as Media[], error: e instanceof Error ? e.message : 'Failed to load movies' }),
+	);
+	return {
+		itemsPromise: fetched.then((r) => r.items),
+		loadErrorPromise: fetched.then((r) => r.error),
+	};
 }

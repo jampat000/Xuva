@@ -1,31 +1,26 @@
 import { getSeries } from '$lib/api/browse';
 import { seriesToMedia } from '$lib/api/adapters';
+import type { Media } from '$lib/mock-data';
 
-/**
- * Fast first-paint pattern: fetch the first FIRST_PAGE items synchronously so
- * SvelteKit can mount the page immediately. The rest of the library is
- * background-fetched in +page.svelte and merged into the grid when it lands.
- *
- * The TTL cache in browse.ts keys on the full URL (including `limit`), so the
- * first-page and full-list responses are cached independently. Repeat visits
- * hit both caches in <1ms.
- */
 const FIRST_PAGE = 60;
 
-export async function load() {
-	try {
-		const resp = await getSeries(undefined, FIRST_PAGE);
-		const items = (resp.series ?? []).map(seriesToMedia);
-		return {
-			items,
-			hasMore: items.length >= FIRST_PAGE,
-			loadError: null as string | null,
-		};
-	} catch (e) {
-		return {
-			items: [] as ReturnType<typeof seriesToMedia>[],
-			hasMore: false,
-			loadError: e instanceof Error ? e.message : 'Failed to load TV shows',
-		};
-	}
+export interface TVPageData {
+	itemsPromise: Promise<Media[]>;
+	loadErrorPromise: Promise<string | null>;
+}
+
+/**
+ * Non-blocking load. See routes/movies/+page.ts for rationale — same
+ * pattern (return unresolved promises so the page mounts instantly on
+ * click; the grid fills in when the API responds).
+ */
+export function load(): TVPageData {
+	const fetched = getSeries(undefined, FIRST_PAGE).then(
+		(resp) => ({ items: (resp.series ?? []).map(seriesToMedia), error: null as string | null }),
+		(e: unknown) => ({ items: [] as Media[], error: e instanceof Error ? e.message : 'Failed to load TV shows' }),
+	);
+	return {
+		itemsPromise: fetched.then((r) => r.items),
+		loadErrorPromise: fetched.then((r) => r.error),
+	};
 }
