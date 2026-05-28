@@ -2,8 +2,13 @@
   "name": "xuva-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Xuva desktop alpha shell",
-  "author": "Xuva",
+  "description": "Xuva — self-hosted media server desktop launcher",
+  "author": {
+    "name": "Xuva",
+    "email": "hello@xuva.app",
+    "url": "https://github.com/jampat000/Xuva"
+  },
+  "homepage": "https://github.com/jampat000/Xuva",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
@@ -19,6 +24,7 @@
   "build": {
     "appId": "com.xuva.desktop",
     "productName": "Xuva",
+    "copyright": "Copyright © 2024–2025 Xuva contributors",
     "artifactName": "xuva-v${version}-win-x64.${ext}",
     "asar": true,
     "files": [
@@ -44,7 +50,11 @@
         "nsis",
         "zip"
       ],
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "publisherName": "Xuva",
+      "fileDescription": "Xuva — Self-hosted media server",
+      "legalTrademarks": "Xuva",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "installerIcon": "assets/xuva.ico",
