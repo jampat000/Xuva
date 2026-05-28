@@ -10,11 +10,9 @@
 
   let { data } = $props();
 
-  // load() in +page.ts returns unresolved Promises so SvelteKit can mount the
-  // page IMMEDIATELY on click — no waiting on the API. Local state starts
-  // empty with loading=true, and the first .then() flips both as the data
-  // arrives. On a 4000-item library a cold first visit takes a few seconds;
-  // before this change the user stared at the previous page that whole time.
+  // load() in +page.ts returns the full library as an unresolved Promise so
+  // SvelteKit mounts the page immediately with a skeleton — see +page.ts
+  // for why the old two-stage fetch is gone.
   let items = $state<Media[]>([]);
   let userError = $state<string | null | undefined>(undefined);
   let loading = $state(true);
@@ -24,9 +22,9 @@
   onMount(() => {
     let cancelled = false;
 
-    void data.itemsPromise.then((firstPage) => {
+    void data.itemsPromise.then((full) => {
       if (cancelled) return;
-      items = firstPage;
+      items = full;
       loading = false;
     });
     void data.loadErrorPromise.then((err) => {
@@ -34,18 +32,8 @@
       if (err) userError = err;
     });
 
-    // Background-fetch the full library once the first page is in. SWR pushes
-    // are subscribed unconditionally so a later scan / metadata refresh
-    // flows in without a reload.
-    void data.itemsPromise.then((firstPage) => {
-      if (cancelled || firstPage.length < 60) return;
-      void getMovies(undefined, 0).then((resp) => {
-        if (cancelled) return;
-        const full = (resp.movies ?? []).map(movieToMedia);
-        if (full.length > items.length) items = full;
-      }).catch(() => { /* keep first page on failure */ });
-    });
-
+    // SWR pushes (background refresh / SSE invalidation → refetch) flow in
+    // here so a later scan or metadata update lands without a reload.
     const unsubscribe = subscribeMovies(0, (resp) => {
       if (cancelled) return;
       items = (resp.movies ?? []).map(movieToMedia);
