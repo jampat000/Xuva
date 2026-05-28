@@ -2336,12 +2336,22 @@ func (s *Service) GetBestMetadataBatch(ctx context.Context, kind string, ids []s
 		args = append(args, id)
 	}
 
-	// ── 1 query: all metadata records ────────────────────────────────────────
+	// ── 1 query: all metadata records (without raw_json / artwork_json) ─────
+	// raw_json is the full TMDB API response (often 20-50 KB per row) and
+	// artwork_json mirrors data we already have in dedicated columns. Neither
+	// is exposed on the wire — both fields are `json:"-"` on MetadataRecord —
+	// but reading them for every row of a list response added ~2 s to a
+	// 4000-item /api/movies call (425 MB DB, ~120 MB of TEXT walked then
+	// discarded). The trade-off: trailerVideoKey()'s fallback parse of
+	// raw_json no longer fires on list responses; rows missing the
+	// video_key column won't surface a trailer in /api/client/home or the
+	// search hero band. Detail endpoints still go through the full
+	// scanMetadataRecords path, so per-item trailer lookups are unaffected.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT kind, item_id, provider, external_id, title, year, overview,
 		       poster_url, backdrop_url, thumbnail_url, logo_url, banner_url,
-		       video_key, trailer_path, artwork_json, details_json, confidence,
-		       raw_json, fetched_at, updated_at
+		       video_key, trailer_path, details_json, confidence,
+		       fetched_at, updated_at
 		FROM metadata_records
 		WHERE kind = ? AND item_id IN (`+ph+`)
 		ORDER BY item_id, updated_at DESC
@@ -2350,7 +2360,7 @@ func (s *Service) GetBestMetadataBatch(ctx context.Context, kind string, ids []s
 		return nil, err
 	}
 	defer rows.Close()
-	allRecords, err := scanMetadataRecords(rows)
+	allRecords, err := scanMetadataRecordsLite(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -3076,6 +3086,44 @@ func scanMetadataRecords(rows *sql.Rows) ([]MetadataRecord, error) {
 			return nil, err
 		}
 		applyMetadataArtwork(&item)
+		applyMetadataDetails(&item)
+		output = append(output, item)
+	}
+	return output, rows.Err()
+}
+
+// scanMetadataRecordsLite is the matching scan for GetBestMetadataBatch's
+// list-view query — 18 columns instead of 20 (no artwork_json, no raw_json).
+// ArtworkJSON / RawJSON fields stay at zero value; applyMetadataArtwork sees
+// an empty string and no-ops, which is fine because the dedicated
+// thumbnail_url / logo_url / banner_url columns are already populated for
+// the rare items that have artwork sidecars.
+func scanMetadataRecordsLite(rows *sql.Rows) ([]MetadataRecord, error) {
+	output := []MetadataRecord{}
+	for rows.Next() {
+		var item MetadataRecord
+		if err := rows.Scan(
+			&item.Kind,
+			&item.ItemID,
+			&item.Provider,
+			&item.ExternalID,
+			&item.Title,
+			&item.Year,
+			&item.Overview,
+			&item.PosterURL,
+			&item.BackdropURL,
+			&item.ThumbnailURL,
+			&item.LogoURL,
+			&item.BannerURL,
+			&item.VideoKey,
+			&item.TrailerPath,
+			&item.DetailsJSON,
+			&item.Confidence,
+			&item.FetchedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
 		applyMetadataDetails(&item)
 		output = append(output, item)
 	}
