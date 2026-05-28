@@ -12,6 +12,15 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- Without NSLocalNetworkUsageDescription, iOS silently refuses to use
+	     any local-network API (including NWBrowser for mDNS) AND never shows
+	     the permission prompt — discovery fails completely with no UI signal.
+	     Required alongside NSBonjourServices for the Bonjour browser in
+	     XuvaDiscovery.swift to function. The string is shown verbatim in the
+	     first-launch permission prompt and in Settings → Privacy → Local
+	     Network so keep it short and user-readable. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Xuva needs your local network to find and stream from Xuva media servers in your home.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_xuva._tcp</string>
