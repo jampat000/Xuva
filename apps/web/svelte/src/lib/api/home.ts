@@ -125,8 +125,15 @@ export interface SeriesDetailResponse {
 // stale, then refresh in the background and push fresh data to subscribers so
 // the page updates in place. After a playback-stop or library mutation, callers
 // invalidate via invalidateHomeCache() to force a refetch.
-const HOME_FRESH_MS = 2 * 60_000;             // 2 min — short, since continue-watching shifts
-const HOME_MAX_AGE  = 24 * 60 * 60_000;        // 24 h — keep stale data usable for a day
+//
+// freshMs is intentionally generous: continue-watching shifts on playback
+// stop, but Player.svelte already calls invalidateHomeCache() at that
+// moment, so the TTL window doesn't need to be short to "catch" it. SSE
+// library events also invalidate via lib/api/events.ts. Keeping the
+// window long means nav between Home and other pages doesn't trigger a
+// background refresh on every return visit.
+const HOME_FRESH_MS = 30 * 60_000;            // 30 min — invalidated explicitly on playback / library events
+const HOME_MAX_AGE  = 24 * 60 * 60_000;        // 24 h before discarding cache entirely
 
 const HOME_KEY_PREFIX = '/api/client/home';
 
