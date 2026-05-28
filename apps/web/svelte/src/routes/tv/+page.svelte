@@ -20,9 +20,9 @@
   onMount(() => {
     let cancelled = false;
 
-    void data.itemsPromise.then((firstPage) => {
+    void data.itemsPromise.then((full) => {
       if (cancelled) return;
-      items = firstPage;
+      items = full;
       loading = false;
     });
     void data.loadErrorPromise.then((err) => {
@@ -30,15 +30,9 @@
       if (err) userError = err;
     });
 
-    void data.itemsPromise.then((firstPage) => {
-      if (cancelled || firstPage.length < 60) return;
-      void getSeries(undefined, 0).then((resp) => {
-        if (cancelled) return;
-        const full = (resp.series ?? []).map(seriesToMedia);
-        if (full.length > items.length) items = full;
-      }).catch(() => { /* keep first page on failure */ });
-    });
-
+    // SWR push subscription — fires when SSE invalidation or background
+    // refresh produces fresh data, so a later scan / metadata update flows
+    // in without a reload.
     const unsubscribe = subscribeSeries(0, (resp) => {
       if (cancelled) return;
       items = (resp.series ?? []).map(seriesToMedia);
