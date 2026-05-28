@@ -2,6 +2,15 @@
 
 These rules apply to every Claude Code session in this repo.
 
+### Context window management — HARD RULE
+- **Monitor context usage throughout every session.** When the conversation reaches approximately 85% of the context window, stop whatever you are doing and issue a clear warning before continuing:
+
+  > ⚠️ **Context at ~85% — recommend starting a fresh session.**
+  > Summarise any in-flight work (open PRs, pending edits, next steps) so nothing is lost, then pause and let the user decide whether to continue or open a new session.
+
+- Do not wait until the context is exhausted. Degraded responses near the limit cost more to fix than a clean handoff.
+- At the start of every new session, check the memory files and recent git log so you can resume seamlessly without re-reading the entire prior conversation.
+
 ### Branching & commits
 - **All work goes through a PR into `main`** under normal circumstances. Direct pushes to `main` are permitted only when the repo owner explicitly instructs it in the chat (admin override). In that case, use `gh pr merge --merge` on the relevant PRs rather than `git push` — this keeps the commit history intact and triggers any post-merge hooks.
 - Create a topic branch named for the work (e.g. `fix/<area>-<short>`, `chore/<area>-<short>`, `feat/<area>-<short>`).
