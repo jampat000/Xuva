@@ -219,3 +219,12 @@
 .animate-fade-up {
   animation: fade-up 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* Indeterminate progress-bar sweep — used by the scan progress bar in the
+   dashboard Automation Control panel while a library scan is in flight. The
+   bar width is unknown so we animate a 1/3-width fill shuttling left→right. */
+@keyframes scan-sweep {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(200%); }
+  100% { transform: translateX(-100%); }
+}

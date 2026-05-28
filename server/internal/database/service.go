@@ -40,6 +40,17 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Serialize all writes through a single connection. modernc.org/sqlite is
+	// an in-process library — the OS-level SQLITE_BUSY "database is locked"
+	// errors we were seeing come from database/sql opening multiple connections
+	// (default: unlimited) and letting two goroutines attempt concurrent writes.
+	// WAL mode permits one writer at a time; with no connection cap the second
+	// writer waits up to busy_timeout and then fails. A cap of 1 means only one
+	// connection ever exists, so all writes are serialised at the Go layer before
+	// they even reach SQLite, eliminating the race. Reads via GetContext / QueryContext
+	// on a single shared connection are fine — SQLite WAL + Go's database/sql
+	// serialise them correctly.
+	db.SetMaxOpenConns(1)
 
 	service := &Service{
 		DataDir:     dataDir,
@@ -60,7 +71,7 @@ func Open(ctx context.Context, dataDir string) (*Service, error) {
 
 func sqliteDSN(dbPath string) string {
 	q := url.Values{}
-	q.Add("_pragma", "busy_timeout=5000")
+	q.Add("_pragma", "busy_timeout=30000")
 	q.Add("_pragma", "foreign_keys=ON")
 	q.Add("_pragma", "journal_mode=WAL")
 	q.Add("_pragma", "synchronous=NORMAL")
