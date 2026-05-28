@@ -240,9 +240,17 @@ export function searchLibrary(
 // served; subscribers (via subscribeMovies / subscribeSeries) receive the
 // fresh data and update the grid in place. Mutation endpoints invalidate via
 // invalidateListCache so the next browse fetches new data.
+//
+// freshMs was previously 5 minutes — too short for typical browsing
+// sessions. On a 4000-item library, every visit beyond the 5 min mark
+// triggered a ~2.4 s background fetch even though the data was unchanged.
+// Bumped to 24 h here; library mutations still flow in via the SSE
+// invalidation handler in lib/api/events.ts (library.updated, scan.completed,
+// metadata.updated → invalidateListCache), so the only cost of the longer
+// TTL is missing TMDB-side metadata changes for up to a day.
 
-const MOVIES_FRESH_MS  = 5 * 60_000;            // 5 min before triggering refresh
-const MOVIES_MAX_AGE   = 24 * 60 * 60_000;       // 24 h before discarding cache
+const MOVIES_FRESH_MS  = 24 * 60 * 60_000;       // 24 h — invalidated by SSE on mutations
+const MOVIES_MAX_AGE   = 7 * 24 * 60 * 60_000;   // 7 d before discarding cache entirely
 const SERIES_FRESH_MS  = MOVIES_FRESH_MS;
 const SERIES_MAX_AGE   = MOVIES_MAX_AGE;
 
