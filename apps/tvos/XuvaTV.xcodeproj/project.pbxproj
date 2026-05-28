@@ -119,6 +119,7 @@
 				TV0000000000000000000009 /* Frameworks */,
 				TV0000000000000000000032 /* Resources */,
 				TV000100000000000000000F /* Embed Foundation Extensions */,
+				TV00000000000000000000A1 /* Stamp Build Version from Git */,
 			);
 			buildRules = (
 			);
@@ -227,6 +228,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Guard: only run when the project is on an SMB/network volume where\n# files can revert between sessions (NAS snapshots, SMB caching, etc.).\n# Restores the working tree to exactly what HEAD committed so the build\n# always uses the correct source files and icon assets.\nREPO=\"$SRCROOT/../..\"\nif git -C \"$REPO\" rev-parse --git-dir > /dev/null 2>&1; then\n  git -C \"$REPO\" checkout HEAD -- \\\n    apps/apple-core/Sources/XuvaClientCore/ \\\n    apps/tvos/Sources/XuvaTVApp/ \\\n    2>/dev/null || true\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		TV00000000000000000000A1 /* Stamp Build Version from Git */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Build Version from Git";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Stamp CFBundleVersion with the git commit count (monotonic, valid\n# numeric build number) and add a CFBundleGitSHA key holding the short\n# SHA so we can read the deployed commit straight off the pairing screen.\n# Runs after Resources copies the processed Info.plist into the .app and\n# before codesign — the modified plist gets signed in place.\nset -e\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -z \"${INFO_PLIST}\" ] || [ ! -f \"${INFO_PLIST}\" ]; then\n    echo \"warning: Info.plist not found at ${INFO_PLIST}, skipping version stamp\"\n    exit 0\nfi\nREPO=\"${SRCROOT}/../..\"\nif ! git -C \"${REPO}\" rev-parse --git-dir > /dev/null 2>&1; then\n    echo \"warning: not in a git repo, skipping version stamp\"\n    exit 0\nfi\nCOMMIT_COUNT=$(git -C \"${REPO}\" rev-list --count HEAD)\nSHORT_SHA=$(git -C \"${REPO}\" rev-parse --short=7 HEAD)\nDIRTY=\"\"\nif ! git -C \"${REPO}\" diff --quiet HEAD 2>/dev/null; then\n    DIRTY=\"+\"\nfi\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion ${COMMIT_COUNT}\" \"${INFO_PLIST}\"\n/usr/libexec/PlistBuddy -c \"Add :CFBundleGitSHA string ${SHORT_SHA}${DIRTY}\" \"${INFO_PLIST}\" 2>/dev/null || \\\n    /usr/libexec/PlistBuddy -c \"Set :CFBundleGitSHA ${SHORT_SHA}${DIRTY}\" \"${INFO_PLIST}\"\necho \"Stamped CFBundleVersion=${COMMIT_COUNT} CFBundleGitSHA=${SHORT_SHA}${DIRTY}\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
