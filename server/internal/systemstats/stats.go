@@ -8,8 +8,28 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+// collectCacheTTL is the window within which concurrent Collect() callers
+// share a single snapshot. The dashboard polls /api/system/status every 5 s,
+// and each fresh snapshot costs ~750 ms (cpuPercent sleeps 120 ms; nvidia-smi
+// exec adds 200-300 ms; disk/network/process do the rest). Without this
+// cache, every poll paid the full 750 ms — observed at 2265 calls over a
+// 15-hour session = ~28 minutes of wall-clock burned on stats alone.
+//
+// 1.5 s is short enough that two adjacent dashboard refreshes still see
+// fresh data, and long enough to coalesce bursts (multiple tabs, click
+// flurries during a config change).
+const collectCacheTTL = 1500 * time.Millisecond
+
+var collectCache struct {
+	mu       sync.Mutex
+	snap     Snapshot
+	at       time.Time
+	hasValue bool
+}
 
 type Snapshot struct {
 	CollectedAt string       `json:"collectedAt"`
@@ -86,6 +106,26 @@ type DiskStats struct {
 }
 
 func Collect(paths map[string]string) Snapshot {
+	collectCache.mu.Lock()
+	if collectCache.hasValue && time.Since(collectCache.at) < collectCacheTTL {
+		snap := collectCache.snap
+		collectCache.mu.Unlock()
+		return snap
+	}
+	collectCache.mu.Unlock()
+	snap := collectFresh(paths)
+	collectCache.mu.Lock()
+	collectCache.snap = snap
+	collectCache.at = time.Now()
+	collectCache.hasValue = true
+	collectCache.mu.Unlock()
+	return snap
+}
+
+// collectFresh is the previous Collect() body — the actual sampling work,
+// called once per cache miss. Kept separate so callers and tests can reason
+// about cost without staring at the mutex.
+func collectFresh(paths map[string]string) Snapshot {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	output := Snapshot{
