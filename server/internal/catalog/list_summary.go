@@ -56,15 +56,16 @@ type MovieListSummary struct {
 
 // SeriesListSummary is the slim list-view counterpart to SeriesListItem.
 type SeriesListSummary struct {
-	ID           string               `json:"id"`
-	Title        string               `json:"title"`
-	SortTitle    string               `json:"sortTitle"`
-	SeasonCount  int                  `json:"seasonCount"`
-	EpisodeCount int                  `json:"episodeCount"`
-	AddedAt      string               `json:"addedAt,omitempty"`
-	Watched      bool                 `json:"watched,omitempty"`
-	NeedsReview  bool                 `json:"needsReview,omitempty"`
-	Metadata     *MetadataListSummary `json:"metadata,omitempty"`
+	ID             string               `json:"id"`
+	Title          string               `json:"title"`
+	SortTitle      string               `json:"sortTitle"`
+	SeasonCount    int                  `json:"seasonCount"`
+	EpisodeCount   int                  `json:"episodeCount"`
+	UnwatchedCount int                  `json:"unwatchedCount,omitempty"`
+	AddedAt        string               `json:"addedAt,omitempty"`
+	Watched        bool                 `json:"watched,omitempty"`
+	NeedsReview    bool                 `json:"needsReview,omitempty"`
+	Metadata       *MetadataListSummary `json:"metadata,omitempty"`
 }
 
 // listMetadataBatch fetches only the fields needed for list-view grid cards
@@ -291,11 +292,18 @@ func (s *Service) ListSeriesSummary(ctx context.Context, limit int, maxRating st
 		                 JOIN episode_versions ev ON ev.episode_id = e.id
 		                 LEFT JOIN playback_states ps
 		                     ON ps.media_source_id = ev.media_source_id AND ps.user_id = ?
-		                 WHERE e.series_id = v.series_id), 0) AS is_watched
+		                 WHERE e.series_id = v.series_id), 0) AS is_watched,
+		       COALESCE((SELECT COUNT(DISTINCT ev2.episode_id)
+		                 FROM tv_episodes e2
+		                 JOIN episode_versions ev2 ON ev2.episode_id = e2.id
+		                 LEFT JOIN playback_states ps2
+		                     ON ps2.media_source_id = ev2.media_source_id AND ps2.user_id = ?
+		                 WHERE e2.series_id = v.series_id
+		                   AND (ps2.watched IS NULL OR ps2.watched = 0)), 0) AS unwatched_count
 		FROM tv_series_list_view v
 		ORDER BY v.sort_title, v.series_id
 		LIMIT ?
-	`, userID, sqlLimit)
+	`, userID, userID, sqlLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -305,13 +313,14 @@ func (s *Service) ListSeriesSummary(ctx context.Context, limit int, maxRating st
 		id, title, sortTitle, addedAt string
 		seasonCount, episodeCount     int
 		isWatched                     int
+		unwatchedCount                int
 	}
 	var stubs []seriesStub
 	for rows.Next() {
 		var st seriesStub
 		if err := rows.Scan(
 			&st.id, &st.title, &st.sortTitle,
-			&st.seasonCount, &st.episodeCount, &st.addedAt, &st.isWatched,
+			&st.seasonCount, &st.episodeCount, &st.addedAt, &st.isWatched, &st.unwatchedCount,
 		); err != nil {
 			return nil, err
 		}
@@ -333,13 +342,14 @@ func (s *Service) ListSeriesSummary(ctx context.Context, limit int, maxRating st
 	raw := make([]SeriesListSummary, 0, len(stubs))
 	for _, st := range stubs {
 		item := SeriesListSummary{
-			ID:           st.id,
-			Title:        st.title,
-			SortTitle:    st.sortTitle,
-			SeasonCount:  st.seasonCount,
-			EpisodeCount: st.episodeCount,
-			AddedAt:      st.addedAt,
-			Watched:      st.isWatched != 0,
+			ID:             st.id,
+			Title:          st.title,
+			SortTitle:      st.sortTitle,
+			SeasonCount:    st.seasonCount,
+			EpisodeCount:   st.episodeCount,
+			UnwatchedCount: st.unwatchedCount,
+			AddedAt:        st.addedAt,
+			Watched:        st.isWatched != 0,
 		}
 		if summary, ok := metaMap[st.id]; ok {
 			if summary.Title != "" {
@@ -395,6 +405,7 @@ func collapseSeriesListSummaries(items []SeriesListSummary) []SeriesListSummary 
 		existing := &output[idx]
 		existing.SeasonCount += item.SeasonCount
 		existing.EpisodeCount += item.EpisodeCount
+		existing.UnwatchedCount += item.UnwatchedCount
 		if shouldPreferSeriesSummary(item, *existing) {
 			existing.ID = item.ID
 			existing.Title = item.Title
