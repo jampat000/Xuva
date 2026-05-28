@@ -47,7 +47,7 @@
         class="group relative flex shrink-0 cursor-pointer flex-col"
       >
         <div
-          class="shadow-poster relative aspect-[2/3] w-[140px] shrink-0 overflow-hidden rounded-lg transition-all duration-500 group-hover:-translate-y-1 group-hover:shadow-glow md:w-[170px] lg:w-[180px]"
+          class="shadow-poster relative aspect-[2/3] w-[140px] shrink-0 overflow-hidden rounded-lg transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)] md:w-[170px] lg:w-[180px]"
           style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
         >
           {#if media.poster}
