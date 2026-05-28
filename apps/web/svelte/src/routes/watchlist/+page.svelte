@@ -282,7 +282,7 @@
                 <a {href} class="block">
                   <!-- Poster -->
                   <div
-                    class="shadow-poster relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-surface transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-glow"
+                    class="shadow-poster relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-surface transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)]"
                     style={item.posterUrl ? '' : 'background: linear-gradient(135deg, #1e3a5f, #0f172a)'}
                   >
                     {#if item.posterUrl}
@@ -290,7 +290,7 @@
                         src={item.posterUrl}
                         alt={item.title}
                         loading="lazy"
-                        class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        class="absolute inset-0 h-full w-full object-cover"
                         onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                       />
                     {/if}

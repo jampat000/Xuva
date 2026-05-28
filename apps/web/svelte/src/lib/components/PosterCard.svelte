@@ -112,7 +112,7 @@
       </div>
     </div>
 
-    <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 backdrop-blur-[2px] transition-opacity duration-300 group-hover:opacity-100">
+    <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
       <button
         type="button"
         class="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary shadow-glow ring-1 ring-white/30 transition-transform hover:scale-110"

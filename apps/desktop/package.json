@@ -56,7 +56,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Xuva",
       "uninstallDisplayName": "Xuva",
-      "include": "installer.nsh"
+      "include": "installer.nsh",
+      "runAfterFinish": true
     }
   }
 }
