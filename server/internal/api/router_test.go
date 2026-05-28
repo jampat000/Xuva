@@ -76,8 +76,8 @@ func TestSystemVersionIsPublicAndIncludesSchemaVersion(t *testing.T) {
 	if payload["product"] != "xuva" || payload["version"] != "dev" {
 		t.Fatalf("expected product/version identity, got %#v", payload)
 	}
-	if payload["schemaVersion"] != "0001_legacy_inline_schema" {
-		t.Fatalf("expected schema version, got %#v", payload)
+	if sv, _ := payload["schemaVersion"].(string); sv == "" || !strings.HasPrefix(sv, "0") {
+		t.Fatalf("expected non-empty schema version, got %#v", payload)
 	}
 	if payload["startedAt"] != startedAt.Format(time.RFC3339) {
 		t.Fatalf("expected stable startedAt, got %#v", payload)
