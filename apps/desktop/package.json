@@ -65,8 +65,7 @@
       "shortcutName": "Xuva",
       "uninstallDisplayName": "Xuva",
       "include": "installer.nsh",
-      "runAfterFinish": true,
-      "publisherName": "Xuva"
+      "runAfterFinish": true
     }
   }
 }
