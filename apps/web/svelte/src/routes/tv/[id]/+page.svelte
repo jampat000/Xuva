@@ -760,7 +760,7 @@
               <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 {similarFallback && similarFallbackGenre ? `More in ${similarFallbackGenre}` : 'More Like This'}
               </h3>
-              <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto pb-3 px-1">
+              <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto pb-3 pt-3 px-1">
                 {#each similarItems as item (item.id)}
                   <a
                     href={`/tv/${item.id}`}

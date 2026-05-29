@@ -53,7 +53,7 @@
   </div>
   <div
     bind:this={scrollerRef}
-    class="scrollbar-none flex gap-4 overflow-x-auto scroll-smooth px-6 pb-6 md:gap-5 md:px-12 lg:px-20"
+    class="scrollbar-none flex gap-4 overflow-x-auto scroll-smooth px-6 pb-6 pt-4 md:gap-5 md:px-12 lg:px-20"
   >
     {#each items as media (media.id)}
       <PosterCard {media} {variant} />
