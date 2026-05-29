@@ -257,7 +257,7 @@
       onclick={() => (showMobileMenu = !showMobileMenu)}
       aria-label="Menu"
       aria-expanded={showMobileMenu}
-      class={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface lg:hidden ${showMobileMenu ? 'bg-surface text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+      class={`flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface lg:hidden ${showMobileMenu ? 'bg-surface text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
     >
       <Menu class="h-5 w-5" />
     </button>
@@ -378,7 +378,7 @@
       <button
         type="button"
         aria-label="Search"
-        class="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground md:hidden"
+        class="flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground md:hidden"
         onclick={() => goto('/search')}
       >
         <Search class="h-5 w-5" />
@@ -392,7 +392,7 @@
           aria-label="Notifications"
           title="Notifications"
           onclick={openNotifications}
-          class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showNotifications ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
+          class={`relative flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-full transition-colors ${showNotifications ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
         >
           <Bell class="h-5 w-5" />
           {#if notificationsLoaded && notifications.filter(n => !n.dismissed).length > 0}
@@ -406,7 +406,7 @@
           aria-label="Recently Played"
           title="Recently Played"
           onclick={openRecentPlayed}
-          class={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showRecentPlayed ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
+          class={`relative flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-full transition-colors ${showRecentPlayed ? 'bg-surface text-foreground' : 'text-muted-foreground hover:bg-surface hover:text-foreground'}`}
         >
           <Clock class="h-5 w-5" />
           {#if recentLoaded && recentItems.length > 0}
@@ -530,7 +530,7 @@
         <button
           type="button"
           onclick={toggleProfile}
-          class={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-1 ring-white/20 transition-shadow ${showProfile ? 'shadow-glow' : ''}`}
+          class={`flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center overflow-hidden rounded-full ring-1 ring-white/20 transition-shadow ${showProfile ? 'shadow-glow' : ''}`}
           aria-label="Profile"
           title={activeProfile ? activeProfile.displayName : 'Profile'}
         >
