@@ -2186,12 +2186,17 @@ func clientSimilarMoviesHandler(deps Deps) http.HandlerFunc {
 func clientSimilarSeriesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		items, err := deps.Catalog.SimilarSeries(r.Context(), id, 20)
+		result, err := deps.Catalog.SimilarSeries(r.Context(), id, 20)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "similar series lookup failed")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		resp := map[string]any{"items": result.Items}
+		if result.Fallback {
+			resp["genreFallback"] = true
+			resp["fallbackGenre"] = result.FallbackGenre
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
