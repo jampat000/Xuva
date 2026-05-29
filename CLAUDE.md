@@ -3,9 +3,9 @@
 These rules apply to every Claude Code session in this repo.
 
 ### Context window management — HARD RULE
-- **Monitor context usage throughout every session.** When the conversation reaches approximately 85% of the context window, stop whatever you are doing and issue a clear warning before continuing:
+- **Monitor context usage throughout every session.** When the conversation reaches approximately 75% of the context window, stop whatever you are doing and issue a clear warning before continuing:
 
-  > ⚠️ **Context at ~85% — recommend starting a fresh session.**
+  > ⚠️ **Context at ~75% — recommend starting a fresh session.**
   > Summarise any in-flight work (open PRs, pending edits, next steps) so nothing is lost, then pause and let the user decide whether to continue or open a new session.
 
 - Do not wait until the context is exhausted. Degraded responses near the limit cost more to fix than a clean handoff.
