@@ -1044,5 +1044,112 @@ func fileCandidate(path string, relPath string) scanner.FileCandidate {
 	}
 }
 
+// TestSimilarSeriesHandlesUnmatchedLibraryRows is the regression test for
+// #368 / #384. The bug surfaced on the live server as a 500 "similar series
+// lookup failed" on every TV detail page; the immediate impact was that the
+// "More Like This" rail never rendered on TV detail.
+//
+// The fix has two layers:
+//
+//  1. clientSimilarSeriesHandler now returns 200 + empty items on any
+//     downstream error, logging the cause via slog.Warn. So even if the
+//     underlying query fails for some unexpected reason, the UI no longer
+//     blanks — it just hides the rail. That's the production safety net.
+//
+//  2. The SimilarSeries SQL is hardened against rows where details_json is
+//     missing, NULL, or has $.genres as something other than an array, by
+//     pre-filtering with json_valid() and json_extract() in a LEFT JOIN.
+//     The original query inlined the genre extraction inside json_each(),
+//     which made a single problem row stop the whole rowset.
+//
+// This test exercises the realistic failure case: a freshly-scanned library
+// where some candidate series have full metadata (and would normally match
+// by genre) while others have none at all (TMDB hasn't matched yet, or the
+// match was wiped). Before the LEFT-JOIN refactor the unmatched rows could
+// confuse the overlap subquery's COALESCE('{}') path; after the refactor
+// they cleanly drop out of consideration without breaking the query.
+func TestSimilarSeriesHandlesUnmatchedLibraryRows(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t)
+	library := libraries.Library{ID: "tv", Name: "TV", Path: `X:\TV`, Kind: libraries.KindTV}
+
+	// Source series (the one the UI is looking at) — has genres so the query
+	// has something to match against.
+	srcFile := fileCandidate(`X:\TV\Source Show\Season 01\S01E01.mkv`, "Source Show/Season 01/S01E01.mkv")
+	srcCandidate := tv.EpisodeCandidate{SeriesTitle: "Source Show", SeasonNumber: 1, EpisodeNumber: 1, EpisodeTitle: "Pilot", Media: srcFile}
+	if _, err := service.SaveTVScan(ctx, library, scanResult(scanner.KindTV, library.Path, []scanner.FileCandidate{srcFile}), []tv.EpisodeCandidate{srcCandidate}); err != nil {
+		t.Fatalf("save source series: %v", err)
+	}
+
+	// Candidate series — would normally match by genre.
+	candFile := fileCandidate(`X:\TV\Candidate Show\Season 01\S01E01.mkv`, "Candidate Show/Season 01/S01E01.mkv")
+	candCandidate := tv.EpisodeCandidate{SeriesTitle: "Candidate Show", SeasonNumber: 1, EpisodeNumber: 1, EpisodeTitle: "Pilot", Media: candFile}
+	if _, err := service.SaveTVScan(ctx, library, scanResult(scanner.KindTV, library.Path, []scanner.FileCandidate{candFile}), []tv.EpisodeCandidate{candCandidate}); err != nil {
+		t.Fatalf("save candidate series: %v", err)
+	}
+
+	seriesList, err := service.ListSeries(ctx, 10, "", "")
+	if err != nil {
+		t.Fatalf("list series: %v", err)
+	}
+	if len(seriesList) != 2 {
+		t.Fatalf("expected 2 series, got %d", len(seriesList))
+	}
+	var sourceID, candidateID string
+	for _, s := range seriesList {
+		if s.Title == "Source Show" {
+			sourceID = s.ID
+		} else {
+			candidateID = s.ID
+		}
+	}
+
+	// Give both series valid metadata so they overlap on a real genre.
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind: "series", ItemID: sourceID, Provider: "tmdb",
+		Title: "Source Show", Genres: []string{"Drama"}, Confidence: 0.9,
+	}); err != nil {
+		t.Fatalf("upsert source metadata: %v", err)
+	}
+	if err := service.UpsertMetadataRecord(ctx, MetadataRecord{
+		Kind: "series", ItemID: candidateID, Provider: "tmdb",
+		Title: "Candidate Show", Genres: []string{"Drama"}, Confidence: 0.9,
+	}); err != nil {
+		t.Fatalf("upsert candidate metadata: %v", err)
+	}
+
+	// Seed a third series with NO metadata record at all — a realistic state
+	// during a fresh library scan, between SaveTVScan and the first TMDB
+	// match. The pre-fix query coalesced this case to '{}' inside json_each
+	// which could subtly miscount overlap (counting a phantom row when
+	// $.genres was missing); the post-fix LEFT JOIN drops it cleanly so it
+	// neither blows up the query nor contaminates the rankings.
+	unmatchedFile := fileCandidate(`X:\TV\Unmatched\Season 01\S01E01.mkv`, "Unmatched/Season 01/S01E01.mkv")
+	unmatchedCand := tv.EpisodeCandidate{SeriesTitle: "Unmatched Show", SeasonNumber: 1, EpisodeNumber: 1, EpisodeTitle: "Pilot", Media: unmatchedFile}
+	if _, err := service.SaveTVScan(ctx, library, scanResult(scanner.KindTV, library.Path, []scanner.FileCandidate{unmatchedFile}), []tv.EpisodeCandidate{unmatchedCand}); err != nil {
+		t.Fatalf("save unmatched series: %v", err)
+	}
+
+	// SimilarSeries must succeed and return the valid Drama match even with
+	// the unmatched row in the table.
+	result, err := service.SimilarSeries(ctx, sourceID, 20)
+	if err != nil {
+		t.Fatalf("SimilarSeries should survive malformed JSON in another row, got: %v", err)
+	}
+	if len(result.Items) == 0 {
+		t.Fatalf("expected the valid Drama candidate to be returned despite a sibling malformed row, got 0 items")
+	}
+	var foundCandidate bool
+	for _, it := range result.Items {
+		if it.ID == candidateID {
+			foundCandidate = true
+			break
+		}
+	}
+	if !foundCandidate {
+		t.Fatalf("expected to find candidate series %s in results, got %#v", candidateID, result.Items)
+	}
+}
+
 
 

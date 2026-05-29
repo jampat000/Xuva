@@ -2176,7 +2176,11 @@ func clientSimilarMoviesHandler(deps Deps) http.HandlerFunc {
 		id := r.PathValue("id")
 		items, err := deps.Catalog.SimilarMovies(r.Context(), id, 20)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "similar movies lookup failed")
+			// See clientSimilarSeriesHandler — same rationale. A SimilarMovies
+			// SQL failure shouldn't 500 the row; degrade to empty + log so the
+			// UI hides MLT instead of surfacing an error tile.
+			slog.Warn("similar movies lookup failed", "id", id, "err", err)
+			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -2188,7 +2192,13 @@ func clientSimilarSeriesHandler(deps Deps) http.HandlerFunc {
 		id := r.PathValue("id")
 		result, err := deps.Catalog.SimilarSeries(r.Context(), id, 20)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "similar series lookup failed")
+			// Log but don't 500: a similar-series query failure shouldn't blank
+			// the entire detail page's bottom-of-page rail. Return an empty
+			// result so the UI hides the row gracefully. Previously this
+			// returned 500 and the UI rendered nothing under "Seasons / Cast /
+			// Metadata", which read as "MLT broken" on a working detail page.
+			slog.Warn("similar series lookup failed", "id", id, "err", err)
+			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}})
 			return
 		}
 		resp := map[string]any{"items": result.Items}
@@ -4015,13 +4025,22 @@ func firstResolvedArtwork(ctx context.Context, metadataDir, kind, id, artType st
 
 // serveArtworkFile streams an original or resized artwork file with an
 // immutable Cache-Control header. When width > 0 and the source is wider than
-// the target, the file is downscaled to a .wNNN.jpg sibling on first request
-// and reused thereafter. A resize failure falls back to serving the original
-// rather than erroring out — the user still sees a poster.
+// the target, the file is downscaled to a .wNNN.{jpg,webp} sibling on first
+// request and reused thereafter. The output format is picked from the
+// request's Accept header (webp for modern browsers, jpg otherwise — see
+// resolveServeFormat in image_resize.go) so each variant gets its own cache
+// entry side-by-side; a JPEG and a WebP of the same source coexist as
+// poster.w200.jpg and poster.w200.webp.
+//
+// A resize/encode failure falls back to serving the original rather than
+// erroring out — the user still sees a poster. The Vary: Accept header is
+// emitted whenever resizing is in play so caches downstream don't serve a
+// WebP body to a JPEG-only client (and vice versa).
 func serveArtworkFile(w http.ResponseWriter, r *http.Request, originalPath string, width int) {
 	servePath := originalPath
 	if width > 0 {
-		sized := sizedArtworkPath(originalPath, width)
+		format := resolveServeFormat(r.Header.Get("Accept"))
+		sized := sizedArtworkPath(originalPath, width, format)
 		if _, err := os.Stat(sized); err != nil {
 			if rerr := resizeImageWidth(originalPath, sized, width); rerr == nil {
 				servePath = sized
@@ -4029,6 +4048,11 @@ func serveArtworkFile(w http.ResponseWriter, r *http.Request, originalPath strin
 		} else {
 			servePath = sized
 		}
+		// Tell downstream caches (and the browser cache) that the response
+		// body depends on Accept — without this, a CDN could serve a WebP
+		// payload to a curl client that asked for image/* and the result
+		// would be a broken image.
+		w.Header().Set("Vary", "Accept")
 	}
 	// 1 year, immutable. Hashes/source URL changes invalidate by switching
 	// to a different sized variant filename, not by client revalidation.
