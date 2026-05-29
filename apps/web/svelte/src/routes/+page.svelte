@@ -31,6 +31,44 @@
   const topRowEyebrow = $derived(swrRows?.topRowEyebrow ?? data.topRowEyebrow);
   const collections = $state<Collection[]>([]);
 
+  // ── Suggested for you (#405 — minimal viable suggestions row) ─────────────
+  // Pulls from the existing recentMovies + recentSeries + topTen sets and
+  // filters to unwatched items, then surfaces them as a personalised row.
+  // Not a real recommendation engine — a deliberate, scoped implementation
+  // that matches #405's stated approach ("extend the existing Trending /
+  // similarity scoring per viewer"). A future PR can replace this with a
+  // proper TMDB-similar-by-watch-history scorer when the back-end ships
+  // viewer-specific affinity data.
+  //
+  // Stable shuffle so the row doesn't reorder on every render. Seeded by the
+  // active server's name (a proxy for user identity that's already in the
+  // store); a real recommendation engine would key on userId.
+  function seededShuffle<T>(input: T[], seed: string): T[] {
+    if (input.length <= 1) return [...input];
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    const out = [...input];
+    for (let i = out.length - 1; i > 0; i--) {
+      h = (h * 1103515245 + 12345) >>> 0;
+      const j = h % (i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+  const suggestedItems = $derived.by(() => {
+    const seen = new Set<string>();
+    const pool: typeof recentMovies = [];
+    for (const m of [...recentMovies, ...recentSeries, ...topTen]) {
+      if (!m || seen.has(m.id)) continue;
+      // Skip items the viewer has finished. In-progress items stay because
+      // a partial watch is a strong signal they're interested.
+      if (m.watched) continue;
+      seen.add(m.id);
+      pool.push(m);
+    }
+    return seededShuffle(pool, appState.serverName ?? 'xuva').slice(0, 16);
+  });
+
   // SWR background-refresh push: when the cache reports fresh /api/client/home
   // data (e.g. after a stale-cache return on first paint), set swrRows and let
   // the derived bindings flow the new content to the rendered rows. Limit
@@ -78,6 +116,14 @@
 
       {#if collections.length > 0}
         <CollectionsBento items={collections} />
+      {/if}
+
+      {#if suggestedItems.length >= 4}
+        <ContentRow
+          eyebrow="Picked for you"
+          title="Suggested"
+          items={suggestedItems}
+        />
       {/if}
 
       {#if recentMovies.length > 0}
