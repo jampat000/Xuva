@@ -1,7 +1,33 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { ChevronLeft } from 'lucide-svelte';
   import Header from '$lib/components/Header.svelte';
   import Logo from '$lib/components/Logo.svelte';
+
+  // Pulled from the server's public /api/system/version endpoint (no auth, no
+  // PII — just release/upgrade identity). Rendered in the "Version" block at
+  // the bottom of the page so users can quote it in bug reports without
+  // hunting through Settings or the installer receipt.
+  let version = $state<string | null>(null);
+  let commit = $state<string | null>(null);
+  let buildDate = $state<string | null>(null);
+
+  onMount(async () => {
+    try {
+      const res = await fetch('/api/system/version');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data?.version === 'string') version = data.version;
+      if (typeof data?.commit === 'string') commit = data.commit;
+      if (typeof data?.buildDate === 'string') buildDate = data.buildDate;
+    } catch {
+      // best-effort: leave version null so the block renders "unknown"
+    }
+  });
+
+  // Show the short commit (first 7 chars) — the full SHA is noisy and the
+  // short form is what GitHub links and `git log` display by default.
+  const shortCommit = $derived(commit ? commit.slice(0, 7) : null);
 </script>
 
 <svelte:head>
@@ -31,6 +57,22 @@
       <p class="mt-4 text-base leading-relaxed text-muted-foreground">
         Built on open-source foundations including SvelteKit, Go, and FFmpeg. Xuva puts you in control of your media — no subscriptions, no cloud dependency, no compromises.
       </p>
+
+      <div class="mt-12 border-t border-border pt-8">
+        <h2 class="font-serif-display text-xl tracking-tight">Version</h2>
+        <dl class="mt-4 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+          <dt class="text-muted-foreground">Release</dt>
+          <dd class="font-mono">{version ?? 'unknown'}</dd>
+          {#if shortCommit}
+            <dt class="text-muted-foreground">Commit</dt>
+            <dd class="font-mono">{shortCommit}</dd>
+          {/if}
+          {#if buildDate}
+            <dt class="text-muted-foreground">Built</dt>
+            <dd class="font-mono">{buildDate}</dd>
+          {/if}
+        </dl>
+      </div>
 
       <div class="mt-12 border-t border-border pt-8">
         <h2 class="font-serif-display text-xl tracking-tight">Built with</h2>

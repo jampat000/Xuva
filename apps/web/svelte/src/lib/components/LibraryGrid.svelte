@@ -27,9 +27,11 @@
     | "az" | "za"
     | "year-desc" | "year-asc"
     | "added-desc" | "added-asc"
-    | "rating-desc"
+    | "rating-desc" | "rating-asc"
     | "runtime-asc" | "runtime-desc"
     | "parental-asc"
+    | "unwatched-first" | "watched-first"
+    | "versions-desc" | "versions-asc"
     | "random";
 
   // ── Density grid ──────────────────────────────────────────────────────────
@@ -64,21 +66,33 @@
 
   // ── Sort options ───────────────────────────────────────────────────────────
   const sortOptions: { value: Sort; label: string }[] = [
-    { value: "az",           label: "Title A → Z" },
-    { value: "za",           label: "Title Z → A" },
-    { value: "year-desc",    label: "Year — Newest" },
-    { value: "year-asc",     label: "Year — Oldest" },
-    { value: "added-desc",   label: "Date Added — Newest" },
-    { value: "added-asc",    label: "Date Added — Oldest" },
-    { value: "rating-desc",  label: "Rating — Highest" },
-    { value: "runtime-asc",  label: "Runtime — Shortest" },
-    { value: "runtime-desc", label: "Runtime — Longest" },
-    { value: "parental-asc", label: "Parental Rating" },
-    { value: "random",       label: "Random" },
+    { value: "az",              label: "Title A → Z" },
+    { value: "za",              label: "Title Z → A" },
+    { value: "year-desc",       label: "Year — Newest" },
+    { value: "year-asc",        label: "Year — Oldest" },
+    { value: "added-desc",      label: "Date Added — Newest" },
+    { value: "added-asc",       label: "Date Added — Oldest" },
+    { value: "rating-desc",     label: "Rating — Highest" },
+    { value: "rating-asc",      label: "Rating — Lowest" },
+    { value: "runtime-asc",     label: "Runtime — Shortest" },
+    { value: "runtime-desc",    label: "Runtime — Longest" },
+    { value: "unwatched-first", label: "Unwatched First" },
+    { value: "watched-first",   label: "Watched First" },
+    { value: "versions-desc",   label: "Most Files" },
+    { value: "versions-asc",    label: "Fewest Files" },
+    { value: "parental-asc",    label: "Parental Rating" },
+    { value: "random",          label: "Random" },
   ];
 
   // Parental-rating sort order (G → most restricted)
   const RATING_ORDER = ['G','PG','PG-13','R','NC-17','TV-Y','TV-Y7','TV-Y7-FV','TV-G','TV-PG','TV-14','TV-MA'];
+
+  // Header description sentence: "{count} films across {N} genres." or
+  // "{count} TV shows." Building this in JS instead of in the template avoids
+  // Svelte 5's whitespace handling around {#if} blocks, which collapsed the
+  // space between expression and conditional on one line ("filmsacross") and
+  // emitted a stray space before the period on another line ("TV shows .").
+  // A $derived expression is the only stable way to compose this sentence.
 
   // ── Filter & UI state ─────────────────────────────────────────────────────
   let q            = $state("");
@@ -137,6 +151,18 @@
     for (const [name, count] of counts) arr.push({ name, count });
     arr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
     return arr;
+  });
+
+  // See the comment above RATING_ORDER for why this is composed in JS.
+  // No trailing period — matches Watchlist's title styling and stops the page
+  // reading "title. description." which felt over-punctuated to the user.
+  const headerSentence = $derived.by(() => {
+    const noun = kind === 'TV' ? 'TV shows' : 'films';
+    const count = items.length.toLocaleString();
+    if (genreChips.length > 0) {
+      return `${count} ${noun} across ${genreChips.length} genres`;
+    }
+    return `${count} ${noun}`;
   });
 
   const availableDecades = $derived.by<string[]>(() => {
@@ -241,11 +267,29 @@
       case 'rating-desc':  list = [...list].sort((a, b) => (b.rating || 0) - (a.rating || 0)); break;
       case 'runtime-asc':  list = [...list].sort((a, b) => (a.runtimeMins || 9999) - (b.runtimeMins || 9999)); break;
       case 'runtime-desc': list = [...list].sort((a, b) => (b.runtimeMins || 0) - (a.runtimeMins || 0)); break;
+      case 'rating-asc':   list = [...list].sort((a, b) => (a.rating || 99) - (b.rating || 99)); break;
       case 'parental-asc': list = [...list].sort((a, b) => {
         const ra = RATING_ORDER.indexOf(a.contentRating?.trim().toUpperCase() || 'NR');
         const rb = RATING_ORDER.indexOf(b.contentRating?.trim().toUpperCase() || 'NR');
         return (ra < 0 ? 999 : ra) - (rb < 0 ? 999 : rb);
       }); break;
+      // Unwatched first: cards with no watched flag AND no/low progress come
+      // before in-progress, then watched. Tie-break by title so the order is
+      // stable across renders.
+      case 'unwatched-first': list = [...list].sort((a, b) => {
+        const score = (m: typeof a) => (m.watched ? 2 : (m.progress && m.progress >= 0.05) ? 1 : 0);
+        const d = score(a) - score(b);
+        return d !== 0 ? d : a.title.localeCompare(b.title);
+      }); break;
+      case 'watched-first': list = [...list].sort((a, b) => {
+        const score = (m: typeof a) => (m.watched ? 2 : (m.progress && m.progress >= 0.05) ? 1 : 0);
+        const d = score(b) - score(a);
+        return d !== 0 ? d : a.title.localeCompare(b.title);
+      }); break;
+      // File-count sorts: useful for storage triage ("which titles have the
+      // most duplicate versions?") and finding under-represented matches.
+      case 'versions-desc': list = [...list].sort((a, b) => (b.versionCount || 0) - (a.versionCount || 0)); break;
+      case 'versions-asc':  list = [...list].sort((a, b) => (a.versionCount || 99) - (b.versionCount || 99)); break;
       case 'random': {
         const seed = randomSeed;
         list = [...list].sort((a, b) => pseudoRandom(a.id, seed) - pseudoRandom(b.id, seed));
@@ -435,7 +479,12 @@
 
 <main class="pb-32">
   {#if !showHero}
-    <!-- ── Compact header (collections-style) ──────────────────────────────── -->
+    <!-- ── Compact header (matches /collections and /watchlist) ───────────────
+         Sentence-style description in `text-sm muted-foreground` rather than
+         the previous cramped uppercase stat strip, so Movies / TV /
+         Collections / Watchlist all read the same. The library count is moved
+         into the sticky toolbar below (as "{filtered} of {total}") where it
+         lives alongside the active filter chips. -->
     <div class="px-6 pb-0 pt-28 md:px-12 lg:px-20">
       <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">
         {eyebrow}
@@ -443,13 +492,7 @@
       <h1 class="font-serif-display text-[clamp(2rem,5vw,3.5rem)] leading-[0.95] tracking-tight">
         {title}
       </h1>
-      <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-        <span><span class="text-foreground/90">{items.length}</span> in library</span>
-        {#if genreChips.length > 0}
-          <span class="opacity-30">·</span>
-          <span><span class="text-foreground/90">{genreChips.length}</span> genres</span>
-        {/if}
-      </div>
+      <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">{headerSentence}</p>
     </div>
   {:else}
   <!-- ── Hero header ──────────────────────────────────────────────────────── -->
@@ -564,12 +607,48 @@
   </section>
   {/if}
 
-  <!-- ── Toolbar (sticky) ─────────────────────────────────────────────────── -->
+  <!-- ── Toolbar (sticky) ───────────────────────────────────────────────────
+       3-column flex layout matching /collections: a left flex-1 holds the
+       Filters chip + (when filtering) "{filtered} of {total}" result count;
+       the search input is centered (max-w-sm, w-full); the right flex-1
+       holds sort + density. Previously this was "search hard-left, sort
+       ml-auto" which left search visually anchored to the page gutter rather
+       than centred on the viewport. -->
   <div class="sticky top-16 z-30 -mb-px border-y border-border bg-background/75 backdrop-blur-xl md:top-18">
-    <div class="flex flex-wrap items-center gap-2 px-6 py-3 md:px-12 lg:px-20">
+    <div class="flex items-center gap-3 px-6 py-3 md:px-12 lg:px-20">
 
-      <!-- Search -->
-      <div class="relative min-w-0 flex-1 max-w-xs">
+      <!-- Left: Filters chip + result count -->
+      <div class="flex flex-1 items-center gap-3">
+        <div class="relative">
+          <button
+            type="button"
+            onclick={() => { filterOpen = !filterOpen; sortOpen = false; }}
+            class={`hairline flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              filterOpen || activeFilterCount > 0
+                ? 'bg-primary-glow/15 text-foreground ring-1 ring-primary-glow/30'
+                : 'bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground'
+            }`}
+            aria-expanded={filterOpen}
+          >
+            <SlidersHorizontal class="h-3.5 w-3.5" />
+            Filters
+            {#if activeFilterCount > 0}
+              <span class="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-glow px-1 text-[10px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            {/if}
+            <ChevronDown class={`h-3.5 w-3.5 transition-transform ${filterOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+        {#if q || activeFilterCount > 0}
+          <span class="hidden text-xs text-muted-foreground tabular-nums sm:inline">
+            {filtered.length.toLocaleString()} of {items.length.toLocaleString()}
+          </span>
+        {/if}
+      </div>
+
+      <!-- Center: search -->
+      <div class="relative w-full max-w-sm">
         <Search class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           bind:value={q}
@@ -583,30 +662,8 @@
         {/if}
       </div>
 
-      <!-- Filters toggle button -->
-      <div class="relative">
-        <button
-          type="button"
-          onclick={() => { filterOpen = !filterOpen; sortOpen = false; }}
-          class={`hairline flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-            filterOpen || activeFilterCount > 0
-              ? 'bg-primary-glow/15 text-foreground ring-1 ring-primary-glow/30'
-              : 'bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground'
-          }`}
-          aria-expanded={filterOpen}
-        >
-          <SlidersHorizontal class="h-3.5 w-3.5" />
-          Filters
-          {#if activeFilterCount > 0}
-            <span class="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-glow px-1 text-[10px] font-bold text-white">
-              {activeFilterCount}
-            </span>
-          {/if}
-          <ChevronDown class={`h-3.5 w-3.5 transition-transform ${filterOpen ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-
-      <div class="ml-auto flex items-center gap-2">
+      <!-- Right: sort + density -->
+      <div class="flex flex-1 items-center justify-end gap-2">
         <!-- Sort picker -->
         <div class="flex items-center gap-1">
           <!-- Shuffle button shown alongside when random is active -->

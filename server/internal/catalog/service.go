@@ -1226,6 +1226,11 @@ func (s *Service) SimilarMovies(ctx context.Context, sourceID string, limit int)
 	if err != nil {
 		return nil, err
 	}
+	// json_valid() guards on every json_each call — see SimilarSeries for the
+	// rationale. A single bad row in metadata_records would otherwise abort the
+	// whole query with "malformed JSON" and 500 the entire MLT row on a movie
+	// detail page. Confirmed broken on TV (#368) until this hardening landed;
+	// applied here defensively so movies don't regress the same way.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.title, m.year,
 		       COALESCE((SELECT mr2.poster_url FROM metadata_records mr2
@@ -1233,19 +1238,29 @@ func (s *Service) SimilarMovies(ctx context.Context, sourceID string, limit int)
 		                   AND mr2.poster_url != ''
 		                 ORDER BY mr2.confidence DESC, mr2.updated_at DESC
 		                 LIMIT 1), '') AS poster_url,
-		       (SELECT COUNT(*) FROM json_each(
-		           COALESCE((SELECT mr3.details_json FROM metadata_records mr3
-		                     WHERE mr3.kind = 'movie' AND mr3.item_id = m.id
-		                     ORDER BY mr3.confidence DESC LIMIT 1), '{}'),
-		           '$.genres') g
-		        WHERE g.value IN (SELECT value FROM json_each(?))) AS overlap
+		       COALESCE((
+		         SELECT COUNT(*) FROM json_each(genres_json) g
+		         WHERE g.value IN (SELECT value FROM json_each(?))
+		       ), 0) AS overlap
 		FROM movies m
+		LEFT JOIN (
+		  SELECT mr3.item_id,
+		         json_extract(mr3.details_json, '$.genres') AS genres_json
+		  FROM metadata_records mr3
+		  WHERE mr3.kind = 'movie'
+		    AND json_valid(mr3.details_json)
+		    AND json_extract(mr3.details_json, '$.genres') IS NOT NULL
+		    AND json_valid(json_extract(mr3.details_json, '$.genres'))
+		  GROUP BY mr3.item_id
+		) gj ON gj.item_id = m.id
 		WHERE m.id != ?
 		  AND EXISTS (
 		    SELECT 1 FROM metadata_records mr
 		    WHERE mr.kind = 'movie' AND mr.item_id = m.id
+		      AND json_valid(mr.details_json)
+		      AND json_valid(json_extract(mr.details_json, '$.genres'))
 		      AND EXISTS (
-		        SELECT 1 FROM json_each(mr.details_json, '$.genres') g
+		        SELECT 1 FROM json_each(json_extract(mr.details_json, '$.genres')) g
 		        WHERE g.value IN (SELECT value FROM json_each(?))
 		      )
 		  )
@@ -1293,26 +1308,52 @@ func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int)
 	if err != nil {
 		return empty, err
 	}
+	// IMPORTANT: every json_each() call below is guarded by json_valid().
+	// SQLite's json_each() aborts the whole query with a generic
+	// "malformed JSON" error when given an invalid input, and a single bad
+	// row in metadata_records is enough to 500 the entire similar-series
+	// endpoint for every series in the library. The json_valid() guard makes
+	// bad rows skip themselves silently instead of taking down the row set.
+	//
+	// The overlap subquery uses json_extract(...,'$.genres') wrapped in a
+	// json_valid() check on the EXTRACTED value too: details_json might be
+	// valid JSON overall but have a non-array $.genres (e.g. older records
+	// that stored it as a string), which also makes json_each fail.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT s.id, s.title, s.start_year,
+		SELECT s.id, s.title,
+		       COALESCE((SELECT mr4.year FROM metadata_records mr4
+		                 WHERE mr4.kind = 'series' AND mr4.item_id = s.id
+		                   AND mr4.year > 0
+		                 ORDER BY mr4.confidence DESC, mr4.updated_at DESC
+		                 LIMIT 1), 0) AS year,
 		       COALESCE((SELECT mr2.poster_url FROM metadata_records mr2
 		                 WHERE mr2.kind = 'series' AND mr2.item_id = s.id
 		                   AND mr2.poster_url != ''
 		                 ORDER BY mr2.confidence DESC, mr2.updated_at DESC
 		                 LIMIT 1), '') AS poster_url,
-		       (SELECT COUNT(*) FROM json_each(
-		           COALESCE((SELECT mr3.details_json FROM metadata_records mr3
-		                     WHERE mr3.kind = 'series' AND mr3.item_id = s.id
-		                     ORDER BY mr3.confidence DESC LIMIT 1), '{}'),
-		           '$.genres') g
-		        WHERE g.value IN (SELECT value FROM json_each(?))) AS overlap
+		       COALESCE((
+		         SELECT COUNT(*) FROM json_each(genres_json) g
+		         WHERE g.value IN (SELECT value FROM json_each(?))
+		       ), 0) AS overlap
 		FROM tv_series s
+		LEFT JOIN (
+		  SELECT mr3.item_id,
+		         json_extract(mr3.details_json, '$.genres') AS genres_json
+		  FROM metadata_records mr3
+		  WHERE mr3.kind = 'series'
+		    AND json_valid(mr3.details_json)
+		    AND json_extract(mr3.details_json, '$.genres') IS NOT NULL
+		    AND json_valid(json_extract(mr3.details_json, '$.genres'))
+		  GROUP BY mr3.item_id
+		) gj ON gj.item_id = s.id
 		WHERE s.id != ?
 		  AND EXISTS (
 		    SELECT 1 FROM metadata_records mr
 		    WHERE mr.kind = 'series' AND mr.item_id = s.id
+		      AND json_valid(mr.details_json)
+		      AND json_valid(json_extract(mr.details_json, '$.genres'))
 		      AND EXISTS (
-		        SELECT 1 FROM json_each(mr.details_json, '$.genres') g
+		        SELECT 1 FROM json_each(json_extract(mr.details_json, '$.genres')) g
 		        WHERE g.value IN (SELECT value FROM json_each(?))
 		      )
 		  )
@@ -1356,8 +1397,16 @@ func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int)
 		return SimilarSeriesResult{Items: out}, nil //nolint:nilerr
 	}
 	needed := limit - len(out)
+	// Same json_valid() guards as the primary query above — see comment there.
+	// tv_series has no year column either; we pull year from metadata_records
+	// the same way the primary query does.
 	frows, err := s.db.QueryContext(ctx, `
-		SELECT s.id, s.title, s.start_year,
+		SELECT s.id, s.title,
+		       COALESCE((SELECT mr4.year FROM metadata_records mr4
+		                 WHERE mr4.kind = 'series' AND mr4.item_id = s.id
+		                   AND mr4.year > 0
+		                 ORDER BY mr4.confidence DESC, mr4.updated_at DESC
+		                 LIMIT 1), 0) AS year,
 		       COALESCE((SELECT mr2.poster_url FROM metadata_records mr2
 		                 WHERE mr2.kind = 'series' AND mr2.item_id = s.id
 		                   AND mr2.poster_url != ''
@@ -1368,8 +1417,10 @@ func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int)
 		  AND EXISTS (
 		    SELECT 1 FROM metadata_records mr
 		    WHERE mr.kind = 'series' AND mr.item_id = s.id
+		      AND json_valid(mr.details_json)
+		      AND json_valid(json_extract(mr.details_json, '$.genres'))
 		      AND EXISTS (
-		        SELECT 1 FROM json_each(mr.details_json, '$.genres') g
+		        SELECT 1 FROM json_each(json_extract(mr.details_json, '$.genres')) g
 		        WHERE g.value = ?
 		      )
 		  )
