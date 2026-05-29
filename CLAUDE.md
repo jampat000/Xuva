@@ -32,3 +32,8 @@ These rules apply to every Claude Code session in this repo.
 
 ### Tests visibility
 - The agent-check gate runs *before* `go test`. If agent-check is broken, test failures are hidden behind it. After fixing agent-check, expect previously-masked test failures to surface — fix them in the same PR or a follow-up.
+
+### Installer changes — HARD RULE
+- **PR-level CI does NOT run the Windows installer build.** The `Windows package script checks` job only validates PowerShell syntax. The actual NSIS compile + signing pipeline runs only in the release workflow on `v*.*.*` tag pushes. Three back-to-back v0.0.34 release runs failed because PR CI was green but the tag-push installer build wasn't.
+- **Before pushing any change to `apps/desktop/installer.nsh`, `apps/desktop/package.json`'s `nsis` block, or `packaging/windows/build-package.ps1`, run `tools/check-installer-build.ps1` locally.** It exercises the same `npx electron-builder --win nsis --x64` path CI uses. Takes ~3 minutes on a warm cache. If it doesn't produce a `dist/*.exe`, don't push.
+- This rule overrides the "wait for CI green" check on installer-touching PRs. Local installer build must pass first; CI is the second confirmation.
