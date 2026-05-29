@@ -28,13 +28,9 @@
 
   // ── Data state ─────────────────────────────────────────────────────────────
   let { data } = $props();
-  // Local overrides — `null` / `undefined` means "fall through to load() data".
-  // See routes/movies/+page.svelte for rationale (avoids the
-  // state_referenced_locally warning that fires when $state shadows props).
-  let userItems = $state<CollectionListItem[] | null>(null);
-  let userError = $state<string | null | undefined>(undefined);
-  const items = $derived(userItems ?? data.items);
-  const error = $derived(userError === undefined ? data.loadError : userError);
+  let items = $state<CollectionListItem[]>([]);
+  let error = $state<string | null>(null);
+  let loading = $state(true);
 
   // ── Control state ──────────────────────────────────────────────────────────
   let q          = $state('');
@@ -87,20 +83,33 @@
     updateUserPreferences({ posterSize: d }).catch(() => {});
   }
 
-  // ── Reload (error retry) ───────────────────────────────────────────────────
+  // ── Reload (error retry + initial load from promise) ───────────────────────
   async function reload() {
-    userError = null;
+    loading = true;
+    error = null;
     try {
       const resp = await getCollections();
-      userItems = resp.collections ?? [];
+      items = resp.collections ?? [];
     } catch (e) {
-      userError = e instanceof Error ? e.message : 'Failed to load collections';
+      error = e instanceof Error ? e.message : 'Failed to load collections';
+    } finally {
+      loading = false;
     }
   }
 
-  // ── Sync server preference ─────────────────────────────────────────────────
+  // ── Bootstrap from the page data promise ──────────────────────────────────
   import { onMount } from 'svelte';
-  onMount(() => {
+  onMount(async () => {
+    // Resolve both promises in parallel; they share the same underlying fetch
+    const [resolvedItems, resolvedError] = await Promise.all([
+      data.itemsPromise,
+      data.loadErrorPromise,
+    ]);
+    items = resolvedItems;
+    error = resolvedError;
+    loading = false;
+
+    // Sync density from server preference
     getAuthSession().then(s => {
       const size = s?.preferences?.posterSize;
       if (size === 'S' || size === 'M' || size === 'L') {
@@ -118,7 +127,7 @@
 <div class="min-h-screen bg-background">
   <Header />
 
-  {#if error}
+  {#if error && !loading}
     <ErrorState
       title="Can't load collections"
       message="Make sure your Xuva server is running, then try again."
@@ -140,10 +149,17 @@
     </div>
 
     <!-- ── Control bar ──────────────────────────────────────────────────────── -->
-    <div class="sticky top-14 z-30 mt-8 flex items-center gap-2 border-b border-border bg-background/80 px-6 py-3 backdrop-blur-md md:px-12 lg:px-20">
+    <div class="sticky top-14 z-30 mt-8 flex items-center gap-3 border-b border-border bg-background/80 px-6 py-3 backdrop-blur-md md:px-12 lg:px-20">
 
-      <!-- Search -->
-      <div class="relative min-w-0 flex-1 max-w-xs">
+      <!-- Left spacer / result count -->
+      <div class="flex flex-1 items-center">
+        {#if !loading && (q || filtered.length !== items.length)}
+          <span class="text-xs text-muted-foreground">{filtered.length} of {items.length}</span>
+        {/if}
+      </div>
+
+      <!-- Center: search -->
+      <div class="relative w-full max-w-sm">
         <Search class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           bind:value={q}
@@ -157,7 +173,8 @@
         {/if}
       </div>
 
-      <div class="ml-auto flex items-center gap-2">
+      <!-- Right: sort + density -->
+      <div class="flex flex-1 items-center justify-end gap-2">
 
         <!-- Sort picker -->
         <div class="flex items-center gap-1">
@@ -223,7 +240,21 @@
     <!-- ── Grid ────────────────────────────────────────────────────────────── -->
     <main class="px-6 pb-32 pt-10 md:px-12 lg:px-20">
 
-      {#if items.length === 0}
+      {#if loading}
+        <!-- Skeleton cards -->
+        <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
+          {#each { length: 18 } as _, i (i)}
+            <div class="animate-pulse">
+              <div class="aspect-[2/3] rounded-xl bg-foreground/[0.07]"></div>
+              {#if density !== 'S'}
+                <div class="mt-3 h-4 w-3/4 rounded bg-foreground/[0.07]"></div>
+                <div class="mt-1.5 h-3 w-1/2 rounded bg-foreground/[0.05]"></div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+
+      {:else if items.length === 0}
         <div class="mt-24 flex flex-col items-center justify-center gap-4 text-center">
           <Layers class="h-14 w-14 text-muted-foreground/20" />
           <p class="text-muted-foreground">No collections found in your library.</p>
@@ -238,12 +269,6 @@
         </div>
 
       {:else}
-        {#if q || filtered.length !== items.length}
-          <p class="mb-6 text-xs text-muted-foreground">
-            {filtered.length} of {items.length} collections
-          </p>
-        {/if}
-
         <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
           {#each filtered as collection (collection.id)}
             <a href="/collections/{collection.id}" class="group flex flex-col gap-2">
