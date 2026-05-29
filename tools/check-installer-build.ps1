@@ -108,15 +108,20 @@ Write-Host "[4/4] Running electron-builder --win nsis --x64..." -ForegroundColor
 if (Test-Path $distRoot) { Remove-Item $distRoot -Recurse -Force }
 Push-Location $desktopRoot
 try {
-    & npx electron-builder --win nsis --x64
-    if ($LASTEXITCODE -ne 0) { throw "electron-builder failed with exit $LASTEXITCODE - inspect output above for NSIS/makensis errors" }
+    # Don't use $LASTEXITCODE here - electron-builder writes Node.js
+    # deprecation warnings to stderr, which PowerShell wraps in
+    # NativeCommandError and surfaces as $LASTEXITCODE=1 even when the
+    # underlying build succeeds. Check the actual artifact instead: if the
+    # installer .exe exists in $distRoot, the build worked regardless of
+    # what PowerShell thinks the exit code was.
+    try { & npx electron-builder --win nsis --x64 } catch { Write-Host "  (stderr noise from electron-builder ignored - checking artifacts below)" -ForegroundColor DarkGray }
 } finally {
     Pop-Location
 }
 
-$installer = Get-ChildItem -Path $distRoot -Filter '*.exe' | Where-Object { $_.Name -notlike '*uninstaller*' } | Select-Object -First 1
+$installer = Get-ChildItem -Path $distRoot -Filter '*.exe' -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*uninstaller*' } | Select-Object -First 1
 if (-not $installer) {
-    throw "Installer .exe not produced - electron-builder reported success but no artifact found"
+    throw "Installer .exe not produced - electron-builder failed at the NSIS compile step. Inspect the output above."
 }
 Write-Host ""
 Write-Host "PASS - installer built: $($installer.FullName) ($([math]::Round($installer.Length / 1MB, 1)) MB)" -ForegroundColor Green
