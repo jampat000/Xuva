@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -20,6 +21,12 @@ type Service struct {
 	Path        string
 	db          *sql.DB
 	preexisting bool
+	// writeMu serialises all write transactions so that concurrent scan,
+	// metadata, and probe goroutines never race for the single SQLite WAL
+	// write slot. Reads (SELECT) bypass the mutex and run concurrently.
+	// This is preferable to SetMaxOpenConns(1) which deadlocks nested-rows
+	// patterns in the catalog layer.
+	writeMu sync.Mutex
 }
 
 func Open(ctx context.Context, dataDir string) (*Service, error) {
@@ -94,7 +101,9 @@ func (s *Service) configure(ctx context.Context) error {
 		"PRAGMA foreign_keys = ON",
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA synchronous = NORMAL",
-		"PRAGMA busy_timeout = 5000",
+		// Match the DSN busy_timeout so configure() does not silently
+		// overwrite the 30 s value set in sqliteDSN.
+		"PRAGMA busy_timeout = 30000",
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -102,6 +111,25 @@ func (s *Service) configure(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// WithWriteLock acquires the write-serialisation mutex, runs fn inside a
+// fresh transaction, commits on success, and rolls back on error. It is the
+// preferred way to perform any INSERT / UPDATE / DELETE so that concurrent
+// scan, metadata-refresh, and probe goroutines do not race for SQLite's
+// single WAL write slot.
+func (s *Service) WithWriteLock(ctx context.Context, fn func(*sql.Tx) error) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) migrate(ctx context.Context) error {
