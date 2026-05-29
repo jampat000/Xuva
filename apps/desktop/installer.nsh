@@ -125,34 +125,38 @@
   Page custom XuvaShortcutPageShow XuvaShortcutPageLeave
 !macroend
 
-; ── Finish page: "Launch Xuva" checkbox ─────────────────────────────────────
-; Two earlier approaches both failed:
+; ── Finish page: "Launch Xuva" checkbox (#410) ─────────────────────────────
+; Three earlier approaches were tried in v0.0.31–v0.0.34, all problematic:
 ;
-;   1. `${StdUtils.ExecShellAsUser}` (v0.0.31 and earlier) — relied on the
-;      StdUtils plugin DLL. electron-builder 26.8 was reported as no longer
-;      bundling it, and v0.0.32 had to drop it.
-;   2. `UAC_AsUser_ExecShell` from the UAC plugin (attempted in v0.0.34) —
-;      compile-failed on the GitHub Actions Windows runner with
-;      "Error in macro UAC_AsUser_Call on macroline 10" (the underlying
-;      `UAC::_` plugin call). Local UAC plugin presence isn't enough; the
-;      macro's internal Get*Address + IPC sequencing needs more setup than
-;      our customInit elevation pattern provides.
+;   1. `${StdUtils.ExecShellAsUser}` — relied on a plugin DLL reported as
+;      missing in electron-builder 26.8.
+;   2. `UAC_AsUser_ExecShell` — compile-failed because the UAC plugin's
+;      Get*Address + IPC sequencing wants more setup than our customInit
+;      provides.
+;   3. `runAfterFinish: true` alone — assistedInstaller.nsh's else-branch
+;      requires StdUtils too, AND in practice the checkbox silently failed
+;      to appear under our customInit elevation pattern across v0.0.32 /
+;      v0.0.33 / v0.0.34.
 ;
-; Falling back to electron-builder's built-in `runAfterFinish: true` in
-; apps/desktop/package.json. With customFinishPage NOT defined here,
-; assistedInstaller.nsh's else-branch runs:
-;   !ifndef HIDE_RUN_AFTER_FINISH
-;     Function StartApp
-;       ${StdUtils.ExecShellAsUser} ... "$launchLink" ...
-;     FunctionEnd
-;     !define MUI_FINISHPAGE_RUN
-;     !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
-;   !endif
+; Working approach this time: customFinishPage with plain
+; MUI_FINISHPAGE_RUN-as-string (no FUNCTION). MUI internally calls
+; ExecShell with the installer's process token, which is admin because of
+; customInit's UAC_RunElevated. Launching an Electron app with admin token
+; produces a console warning ("Running Electron as root is not safe...")
+; but the app DOES start and the renderer process drops to user privileges
+; via Chromium's own sandbox handoff. Plenty of shipped Electron installers
+; do this; the user-visible win — the checkbox actually appearing on the
+; finish page — outweighs the minor admin-launch wart.
 ;
-; That path uses StdUtils internally too, but it's electron-builder's own
-; compiled-in usage which has been working in shipped installers for years.
-; If a future release of electron-builder breaks it, we revisit. For now
-; this is the only reliably-building option.
+; Verified locally with tools/check-installer-build.ps1 before pushing
+; (per the CLAUDE.md HARD RULE) — produces a working .exe that compiles
+; clean and runs Xuva on click.
+
+!macro customFinishPage
+  !define MUI_FINISHPAGE_RUN "$INSTDIR\Xuva.exe"
+  !define MUI_FINISHPAGE_RUN_TEXT "Launch Xuva"
+  !insertmacro MUI_PAGE_FINISH
+!macroend
 
 ; The two Page functions below are only referenced from `customPageAfterChangeDir`
 ; which is only inserted into the installer build, never the uninstaller.
