@@ -51,8 +51,6 @@
         "zip"
       ],
       "requestedExecutionLevel": "asInvoker",
-      "publisherName": "Xuva",
-      "fileDescription": "Xuva — Self-hosted media server",
       "legalTrademarks": "Xuva",
       "verifyUpdateCodeSignature": false
     },
@@ -67,7 +65,8 @@
       "shortcutName": "Xuva",
       "uninstallDisplayName": "Xuva",
       "include": "installer.nsh",
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "publisherName": "Xuva"
     }
   }
 }
