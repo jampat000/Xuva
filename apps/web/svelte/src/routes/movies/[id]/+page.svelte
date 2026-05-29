@@ -421,6 +421,52 @@
             </button>
           </div>
 
+          <!-- Inline video / audio / subtitle strip (#402).
+               The full breakdown lives in the Technical Details disclosure
+               below; this strip surfaces the three most-asked-for fields
+               (codec, audio summary, subtitle availability) at a glance so
+               power users don't have to expand the disclosure to see whether
+               their setup will direct-play.
+
+               Only renders when mediaSource probe data is loaded — for an
+               unprobed file the strip is empty and the disclosure is the
+               canonical source of truth. Each pill is hidden if its specific
+               value is missing, so a release that's video-only still shows
+               the video pill without an empty audio pill next to it. -->
+          {#if mediaSource}
+            {@const videoSummary = [formatResolution(mediaSource?.width, mediaSource?.height), formatCodec(mediaSource?.videoCodec)].filter(Boolean).join(' ')}
+            {@const audSummary = audioSummary(audioTracks)}
+            {@const subSummary = (() => {
+              if (!subtitleTracks?.length) return '';
+              const langs = Array.from(new Set(subtitleTracks.map(t => formatLanguage(t.language)).filter(Boolean)));
+              if (langs.length === 0) return `${subtitleTracks.length} subtitle${subtitleTracks.length === 1 ? '' : 's'}`;
+              if (langs.length <= 2) return langs.join(', ');
+              return `${langs.slice(0, 2).join(', ')} +${langs.length - 2}`;
+            })()}
+            {#if videoSummary || audSummary || subSummary}
+              <div class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-muted-foreground">
+                {#if videoSummary}
+                  <span class="inline-flex items-center gap-1.5">
+                    <FileVideo class="h-3.5 w-3.5 text-muted-foreground/70" />
+                    <span class="text-foreground/80">{videoSummary}</span>
+                  </span>
+                {/if}
+                {#if audSummary}
+                  <span class="inline-flex items-center gap-1.5">
+                    <Volume2 class="h-3.5 w-3.5 text-muted-foreground/70" />
+                    <span class="text-foreground/80">{audSummary}</span>
+                  </span>
+                {/if}
+                {#if subSummary}
+                  <span class="inline-flex items-center gap-1.5">
+                    <Captions class="h-3.5 w-3.5 text-muted-foreground/70" />
+                    <span class="text-foreground/80">{subSummary}</span>
+                  </span>
+                {/if}
+              </div>
+            {/if}
+          {/if}
+
           <!-- Credits + studio strip -->
           <div class="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-xs text-muted-foreground">
             {#if directors.length > 0}
