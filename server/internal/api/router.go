@@ -582,8 +582,9 @@ func requireAuthCSRF(deps Deps, next http.HandlerFunc) http.HandlerFunc {
 
 func authLoginHandler(deps Deps) http.HandlerFunc {
 	type request struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		TrustDevice bool   `json:"trustDevice,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth == nil || deps.Auth.Disabled() {
@@ -594,7 +595,10 @@ func authLoginHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &payload) {
 			return
 		}
-		principal, session, token, err := deps.Auth.Authenticate(r.Context(), payload.Username, payload.Password, requestRemoteAddr(r), r.UserAgent())
+		// TrustDevice=true issues a 90-day session instead of the default 24h.
+		// The cookie's Max-Age is derived from session.ExpiresAt in
+		// writeAuthCookies, so the cookie + server-side session stay in sync.
+		principal, session, token, err := deps.Auth.AuthenticateWithTrust(r.Context(), payload.Username, payload.Password, requestRemoteAddr(r), r.UserAgent(), payload.TrustDevice)
 		if err != nil {
 			publishAuthAudit(deps, r, payload.Username, "", "", "login", "denied")
 			if until, ok := auth.LockoutUntil(err); ok {

@@ -511,7 +511,43 @@ func normalizeRole(role string) string {
 	}
 }
 
+// extendedSessionTTL is the session lifetime used when the user ticks
+// "Trust this device" at sign-in. 90 days matches the user-confirmed default
+// for a self-hosted media-server context — long enough to feel like the
+// device stays signed in, short enough that an abandoned shared device
+// eventually drops out of trust on its own. See AuthenticateWithTrust.
+const extendedSessionTTL = 90 * 24 * time.Hour
+
+// AuthenticateWithTrust is the trust-aware variant of Authenticate. When
+// trustDevice is true the issued session uses extendedSessionTTL (90 days)
+// instead of the default 24-hour s.sessionTTL. Callers from /api/auth/login
+// pass the user's checkbox state through to this method.
+//
+// The default Authenticate path is preserved unchanged for any consumer
+// that doesn't surface a trust toggle (the desktop pairing flow, the
+// device pairing API, internal callers, etc.) so the security posture for
+// those paths is unaffected.
+//
+// Implemented via authenticateWithTTL so the TTL flows down as an explicit
+// parameter rather than a mutated receiver field — concurrent logins are
+// safe regardless of trust-flag mix.
+func (s *Service) AuthenticateWithTrust(ctx context.Context, username, password, remoteAddr, userAgent string, trustDevice bool) (Principal, Session, string, error) {
+	ttl := s.sessionTTL
+	if trustDevice {
+		ttl = extendedSessionTTL
+	}
+	return s.authenticateWithTTL(ctx, username, password, remoteAddr, userAgent, ttl)
+}
+
 func (s *Service) Authenticate(ctx context.Context, username string, password string, remoteAddr string, userAgent string) (Principal, Session, string, error) {
+	return s.authenticateWithTTL(ctx, username, password, remoteAddr, userAgent, s.sessionTTL)
+}
+
+// authenticateWithTTL is the shared implementation of Authenticate +
+// AuthenticateWithTrust. The TTL is threaded through to issueSessionWithTTL
+// so different callers can request different lifetimes without mutating
+// receiver state.
+func (s *Service) authenticateWithTTL(ctx context.Context, username, password, remoteAddr, userAgent string, ttl time.Duration) (Principal, Session, string, error) {
 	if s.Disabled() {
 		return Principal{}, Session{}, "", ErrUnauthorized
 	}
@@ -557,11 +593,11 @@ func (s *Service) Authenticate(ctx context.Context, username string, password st
 	}
 	s.clearUnknownFailure(key)
 	principal := Principal{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, AvatarURL: user.AvatarURL, Role: user.Role}
-	session, token, err := s.issueSession(ctx, principal, "", remoteAddr, userAgent)
+	session, token, err := s.issueSessionWithTTL(ctx, principal, "", remoteAddr, userAgent, ttl)
 	if err != nil {
 		return Principal{}, Session{}, "", err
 	}
-	slog.Info("auth login success", "username", principal.Username, "remote_addr", remoteAddr, "session_id", session.ID)
+	slog.Info("auth login success", "username", principal.Username, "remote_addr", remoteAddr, "session_id", session.ID, "ttl", ttl.String())
 	return principal, session, token, nil
 }
 
@@ -815,12 +851,23 @@ func (s *Service) clearFailedLogin(ctx context.Context, userID string) error {
 }
 
 func (s *Service) issueSession(ctx context.Context, principal Principal, deviceID string, remoteAddr string, userAgent string) (Session, string, error) {
+	return s.issueSessionWithTTL(ctx, principal, deviceID, remoteAddr, userAgent, s.sessionTTL)
+}
+
+// issueSessionWithTTL is the explicit-TTL form of issueSession. The TTL
+// parameter lets AuthenticateWithTrust issue a 90-day session without
+// touching the receiver's default sessionTTL field (which would race on
+// concurrent logins).
+func (s *Service) issueSessionWithTTL(ctx context.Context, principal Principal, deviceID string, remoteAddr string, userAgent string, ttl time.Duration) (Session, string, error) {
+	if ttl <= 0 {
+		ttl = s.sessionTTL
+	}
 	now := time.Now().UTC()
 	sessionID := "auth_" + uuid.NewString()
 	secret := randomToken(32)
 	csrfToken := randomToken(32)
 	token := sessionID + "." + secret
-	expiresAt := now.Add(s.sessionTTL)
+	expiresAt := now.Add(ttl)
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth_sessions(id, user_id, secret_hash, csrf_token, device_id, remote_addr, user_agent, created_at, last_seen_at, expires_at, revoked_at)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')

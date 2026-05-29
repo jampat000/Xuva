@@ -1,1 +1,0 @@
-import{n as e}from"./JIgoTWAU.js";function t(t=e){return t.request(`/api/setup/status`)}function n(t,n=e){return n.send(`/api/setup/complete`,t,`POST`)}function r(t,n=e){return n.send(`/api/libraries`,t,`POST`)}function i(t,n=e){return n.send(`/api/libraries/${encodeURIComponent(t)}/scan`,{},`POST`)}export{i,t as n,r,n as t};
