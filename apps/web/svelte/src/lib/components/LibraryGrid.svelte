@@ -474,7 +474,12 @@
         {title}
       </h1>
       <p class="mt-4 max-w-xl text-sm text-muted-foreground">
-        {items.length.toLocaleString()} {kind === 'TV' ? 'TV shows' : 'films'}{#if genreChips.length > 0} across {genreChips.length} genres{/if}.
+        <!-- Sentence-style description matches Collections / Watchlist styling.
+             Note: Svelte 5 collapses whitespace at {#if} block boundaries, so we
+             have to keep the spaces OUTSIDE the conditional (and inline the noun
+             phrase) to avoid "filmsacross" rendering bugs. -->
+        {items.length.toLocaleString()} {kind === 'TV' ? 'TV shows' : 'films'}
+        {#if genreChips.length > 0}across {genreChips.length} genres{/if}.
       </p>
     </div>
   {:else}
