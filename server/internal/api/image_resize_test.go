@@ -79,19 +79,80 @@ func TestParseResizeWidth(t *testing.T) {
 
 func TestSizedArtworkPath(t *testing.T) {
 	cases := []struct {
-		in    string
-		width int
-		want  string
+		in     string
+		width  int
+		format string
+		want   string
 	}{
 		// filepath.Join uses OS separators, so we let Join's behavior decide.
-		{filepath.Join("a", "b", "poster.jpg"), 200, filepath.Join("a", "b", "poster.w200.jpg")},
-		{filepath.Join("a", "b", "poster.png"), 400, filepath.Join("a", "b", "poster.w400.jpg")},
-		{"poster.webp", 100, "poster.w100.jpg"},
+		{filepath.Join("a", "b", "poster.jpg"), 200, "jpg", filepath.Join("a", "b", "poster.w200.jpg")},
+		{filepath.Join("a", "b", "poster.png"), 400, "jpg", filepath.Join("a", "b", "poster.w400.jpg")},
+		{"poster.webp", 100, "jpg", "poster.w100.jpg"},
+		// WebP format keeps the source intact, derives a .webp sibling so the
+		// JPEG and WebP variants of the same source cache independently.
+		{filepath.Join("a", "b", "poster.jpg"), 200, "webp", filepath.Join("a", "b", "poster.w200.webp")},
+		{"hero.png", 360, "webp", "hero.w360.webp"},
+		// Unknown format defaults to JPEG — defensive against typos / future
+		// formats slipping in via query string.
+		{"poster.jpg", 200, "avif", "poster.w200.jpg"},
+		{"poster.jpg", 200, "", "poster.w200.jpg"},
 	}
 	for _, tc := range cases {
-		if got := sizedArtworkPath(tc.in, tc.width); got != tc.want {
-			t.Errorf("sizedArtworkPath(%q, %d) = %q, want %q", tc.in, tc.width, got, tc.want)
+		if got := sizedArtworkPath(tc.in, tc.width, tc.format); got != tc.want {
+			t.Errorf("sizedArtworkPath(%q, %d, %q) = %q, want %q", tc.in, tc.width, tc.format, got, tc.want)
 		}
+	}
+}
+
+func TestResolveServeFormat(t *testing.T) {
+	cases := []struct {
+		accept string
+		want   string
+	}{
+		{"", "jpg"},
+		{"*/*", "jpg"},
+		{"image/jpeg", "jpg"},
+		{"image/*", "jpg"}, // strict: wildcard image alone isn't WebP-capable
+		{"image/webp", "webp"},
+		{"image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "webp"},
+		{"image/webp;q=0.9", "webp"},
+		{"  image/webp  ,  */*  ", "webp"},
+		{"image/avif", "jpg"}, // avif support alone shouldn't get WebP
+		{"text/html,application/xhtml+xml,image/webp", "webp"},
+	}
+	for _, tc := range cases {
+		if got := resolveServeFormat(tc.accept); got != tc.want {
+			t.Errorf("resolveServeFormat(%q) = %q, want %q", tc.accept, got, tc.want)
+		}
+	}
+}
+
+func TestResizeImageWidth_EncodesWebPWhenDestEndsInWebP(t *testing.T) {
+	dir := t.TempDir()
+	src := writeTestImage(t, dir, "poster.jpg", 800, 1200)
+	dst := filepath.Join(dir, "poster.w200.webp")
+	if err := resizeImageWidth(src, dst, 200); err != nil {
+		t.Fatalf("resizeImageWidth → webp: %v", err)
+	}
+	// Read first 12 bytes — WebP files start with RIFF....WEBP.
+	f, err := os.Open(dst)
+	if err != nil {
+		t.Fatalf("open webp output: %v", err)
+	}
+	defer f.Close()
+	head := make([]byte, 12)
+	if _, err := f.Read(head); err != nil {
+		t.Fatalf("read webp head: %v", err)
+	}
+	if string(head[0:4]) != "RIFF" || string(head[8:12]) != "WEBP" {
+		t.Fatalf("output is not WebP — header was %q (expected RIFF..WEBP)", head)
+	}
+	w, h := decodeDimensions(t, dst)
+	if w != 200 {
+		t.Errorf("webp output width = %d, want 200", w)
+	}
+	if h != 300 {
+		t.Errorf("webp output height = %d, want 300 (aspect-preserved)", h)
 	}
 }
 
