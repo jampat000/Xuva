@@ -1199,6 +1199,15 @@ type SimilarItem struct {
 	PosterURL string `json:"posterUrl,omitempty"`
 }
 
+// SimilarSeriesResult carries the items returned by SimilarSeries plus a flag
+// indicating whether a genre-based fallback was used (i.e. no direct genre
+// overlap was found and results were filled from the primary genre pool).
+type SimilarSeriesResult struct {
+	Items         []SimilarItem
+	Fallback      bool
+	FallbackGenre string
+}
+
 // SimilarMovies returns up to limit movies from the library that share at
 // least one genre with the movie identified by sourceID. Results are ordered
 // by genre-overlap count descending so the closest matches appear first.
@@ -1265,21 +1274,24 @@ func (s *Service) SimilarMovies(ctx context.Context, sourceID string, limit int)
 
 // SimilarSeries returns up to limit TV series from the library that share at
 // least one genre with the series identified by sourceID. Results are ordered
-// by genre-overlap count descending.
-func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int) ([]SimilarItem, error) {
+// by genre-overlap count descending. When fewer than 3 direct genre-overlap
+// matches are found, the result is augmented with same-primary-genre titles
+// ordered by metadata confidence and SimilarSeriesResult.Fallback is set true.
+func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int) (SimilarSeriesResult, error) {
+	empty := SimilarSeriesResult{Items: []SimilarItem{}}
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	src, ok, err := s.GetBestMetadata(ctx, "series", sourceID)
 	if err != nil {
-		return nil, err
+		return empty, err
 	}
 	if !ok || len(src.Genres) == 0 {
-		return []SimilarItem{}, nil
+		return empty, nil
 	}
 	genresJSON, err := json.Marshal(src.Genres)
 	if err != nil {
-		return nil, err
+		return empty, err
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, s.title, s.start_year,
@@ -1308,7 +1320,7 @@ func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int)
 		LIMIT ?
 	`, string(genresJSON), sourceID, string(genresJSON), limit)
 	if err != nil {
-		return nil, err
+		return empty, err
 	}
 	defer rows.Close()
 	var out []SimilarItem
@@ -1317,14 +1329,71 @@ func (s *Service) SimilarSeries(ctx context.Context, sourceID string, limit int)
 		var overlap int
 		it.Kind = "series"
 		if err := rows.Scan(&it.ID, &it.Title, &it.Year, &it.PosterURL, &overlap); err != nil {
-			return nil, err
+			return empty, err
 		}
 		out = append(out, it)
+	}
+	if err := rows.Err(); err != nil {
+		return empty, err
 	}
 	if out == nil {
 		out = []SimilarItem{}
 	}
-	return out, rows.Err()
+	if len(out) >= 3 {
+		return SimilarSeriesResult{Items: out}, nil
+	}
+
+	// Fallback: fill remaining slots from the primary genre, ordered by
+	// metadata confidence. Excludes the source series and any already returned.
+	primaryGenre := src.Genres[0]
+	excludeIDs := make([]string, 0, len(out)+1)
+	excludeIDs = append(excludeIDs, sourceID)
+	for _, it := range out {
+		excludeIDs = append(excludeIDs, it.ID)
+	}
+	excludeJSON, err := json.Marshal(excludeIDs)
+	if err != nil {
+		return SimilarSeriesResult{Items: out}, nil //nolint:nilerr
+	}
+	needed := limit - len(out)
+	frows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.title, s.start_year,
+		       COALESCE((SELECT mr2.poster_url FROM metadata_records mr2
+		                 WHERE mr2.kind = 'series' AND mr2.item_id = s.id
+		                   AND mr2.poster_url != ''
+		                 ORDER BY mr2.confidence DESC, mr2.updated_at DESC
+		                 LIMIT 1), '') AS poster_url
+		FROM tv_series s
+		WHERE s.id NOT IN (SELECT value FROM json_each(?))
+		  AND EXISTS (
+		    SELECT 1 FROM metadata_records mr
+		    WHERE mr.kind = 'series' AND mr.item_id = s.id
+		      AND EXISTS (
+		        SELECT 1 FROM json_each(mr.details_json, '$.genres') g
+		        WHERE g.value = ?
+		      )
+		  )
+		ORDER BY (SELECT MAX(mr.confidence) FROM metadata_records mr
+		          WHERE mr.kind = 'series' AND mr.item_id = s.id) DESC
+		LIMIT ?
+	`, string(excludeJSON), primaryGenre, needed)
+	if err != nil {
+		// Fallback query failed — return what we have without error
+		return SimilarSeriesResult{Items: out}, nil //nolint:nilerr
+	}
+	defer frows.Close()
+	for frows.Next() {
+		var it SimilarItem
+		it.Kind = "series"
+		if err := frows.Scan(&it.ID, &it.Title, &it.Year, &it.PosterURL); err != nil {
+			break
+		}
+		out = append(out, it)
+	}
+	if len(out) == 0 {
+		return empty, nil
+	}
+	return SimilarSeriesResult{Items: out, Fallback: true, FallbackGenre: primaryGenre}, nil
 }
 
 // PersonHit is one search hit for a person discovered in metadata cast/crew.
