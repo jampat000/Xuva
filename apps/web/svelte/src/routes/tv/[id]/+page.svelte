@@ -563,13 +563,21 @@
                         <ul class="space-y-2">
                           {#each season.episodes ?? [] as ep, epIdx (ep.id ?? epIdx)}
                             {@const epRecord = ep as Record<string, unknown>}
-                            {@const epThumb = (epRecord.thumbnailUrl as string | undefined) || seasonPoster}
-                            {@const epOverview = epRecord.overview as string | undefined}
-                            {@const epRuntime = epRecord.runtimeMinutes as number | undefined}
-                            {@const epAirDate = epRecord.airDate as string | undefined}
+                            {@const epOverview = (epRecord.metadata as { overview?: string } | undefined)?.overview ?? (epRecord.overview as string | undefined)}
+                            {@const epRuntime = (epRecord.metadata as { runtimeMinutes?: number } | undefined)?.runtimeMinutes ?? (epRecord.runtimeMinutes as number | undefined)}
+                            {@const epAirDate = (epRecord.metadata as { airDate?: string } | undefined)?.airDate ?? (epRecord.airDate as string | undefined)}
                             {@const epMsid = ep.versions?.[0]?.mediaSourceId}
                             {@const epLabel = `E${String(ep.episodeNumber ?? epIdx + 1).padStart(2, '0')}`}
                             {@const epTitle = ep.title || epLabel}
+                            <!-- Episode still: always go through the Xuva artwork proxy keyed by
+                                 episode id. The /api/series/{id} endpoint returns thumbnailUrl as
+                                 either a raw TMDB CDN URL (which can 503 / rate-limit / disappear)
+                                 or nothing at all; routing every still through /api/artwork/episode/
+                                 {id} means the proxy caches first-hit, serves an SVG placeholder when
+                                 no still is known yet, and clients never see a black tile. The proxy
+                                 ignores unknown ids gracefully (placeholder), so we render the img
+                                 unconditionally — no \`{#if epThumb}\` gate is needed. -->
+                            {@const epThumb = ep.id ? `/api/artwork/episode/${ep.id}?type=thumbnail&w=320` : null}
                             <li class="group flex gap-3 rounded-lg p-2 transition-colors hover:bg-surface/40">
                               <div class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-surface to-surface-elevated md:w-40">
                                 {#if epThumb}
@@ -577,8 +585,8 @@
                                     src={epThumb}
                                     alt={epTitle}
                                     loading="lazy"
+                                    decoding="async"
                                     class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                    onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                                   />
                                 {/if}
                                 {#if epMsid}
@@ -760,7 +768,7 @@
               <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 {similarFallback && similarFallbackGenre ? `More in ${similarFallbackGenre}` : 'More Like This'}
               </h3>
-              <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto pb-3 px-1">
+              <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto pb-3 pt-3 px-1">
                 {#each similarItems as item (item.id)}
                   <a
                     href={`/tv/${item.id}`}

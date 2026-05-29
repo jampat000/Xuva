@@ -40,7 +40,7 @@
        overlays the top-left corner. Cards flow naturally so the first one
        aligns with the page gutter exactly like Continue Watching / New
        Movies — zero alignment math required. -->
-  <div bind:this={scrollerRef} class="scrollbar-none flex gap-3 overflow-x-auto scroll-smooth px-6 pb-8 md:gap-4 md:px-12 lg:px-20">
+  <div bind:this={scrollerRef} class="scrollbar-none flex gap-3 overflow-x-auto scroll-smooth px-6 pb-8 pt-4 md:gap-4 md:px-12 lg:px-20">
     {#each items as media, i (media.id)}
       <a
         href={detailHref(media)}
