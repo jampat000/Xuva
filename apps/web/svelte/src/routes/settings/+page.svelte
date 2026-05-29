@@ -227,6 +227,32 @@
   let updateApplyResult = $state<UpdateApplyResponse | null>(null);
   let updateApplyError = $state<string | null>(null);
 
+  // ── About panel ───────────────────────────────────────────────────────────
+  // Live build identity from /api/system/version. Loaded on mount so the
+  // Settings → About panel shows the running version + commit + build date.
+  // Without this the panel only had hard-coded placeholder strings, leaving
+  // users with no way to quote the running version in bug reports.
+  interface SystemVersionPayload {
+    version?: string;
+    commit?: string;
+    buildDate?: string;
+    schemaVersion?: string;
+    goVersion?: string;
+  }
+  let systemVersion = $state<SystemVersionPayload | null>(null);
+  const aboutShortCommit = $derived(systemVersion?.commit ? systemVersion.commit.slice(0, 7) : null);
+  const aboutBuildDateFormatted = $derived.by(() => {
+    const raw = systemVersion?.buildDate;
+    if (!raw) return null;
+    try {
+      const d = new Date(raw);
+      if (isNaN(d.getTime())) return raw;
+      return d.toLocaleString();
+    } catch {
+      return raw;
+    }
+  });
+
   const installerAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-installer'));
   const portableAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-portable'));
   const installerChecksumAsset = $derived(updateStatus?.assets?.find((asset) => asset.packageType === 'windows-installer-checksum'));
@@ -1601,6 +1627,11 @@
     loadDashboard();
     loadLibraries();
     getAuthSession().then(r => { if (r.user) currentUser = r.user; }).catch(() => {});
+    // Build-info fetch for Settings → About. Best-effort; failure leaves
+    // systemVersion null and the panel falls back to "unknown".
+    fetch('/api/system/version').then(r => r.ok ? r.json() : null).then(v => {
+      if (v && typeof v === 'object') systemVersion = v as SystemVersionPayload;
+    }).catch(() => {});
     // Dashboard live extras
     refreshDashSys();
     refreshDashJobs();
@@ -5008,24 +5039,37 @@
           </div>
 
         {:else if active === "about"}
+          <!-- Settings → About
+               Build information and Open source share the same hairline-bordered
+               card layout (name/purpose on the left, mono badge on the right) so
+               the panel reads as one consistent surface instead of two. Release
+               / Commit / Built come from /api/system/version on mount; if the
+               fetch fails the row shows "Unknown" rather than disappearing, so
+               users can still see the row exists. -->
           <div class="space-y-8">
             <section class="grid gap-6 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10">
               <div>
                 <h3 class="font-serif-display text-lg tracking-tight">Build information</h3>
                 <p class="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                  Version details for this installation of Xuva.
+                  Version details for this installation of Xuva. Useful when
+                  filing a bug or asking for support.
                 </p>
               </div>
-              <div class="space-y-4">
+              <div class="space-y-3">
                 {#each [
-                  { label: 'Application', value: 'Xuva' },
-                  { label: 'Channel', value: 'Development build' },
-                  { label: 'Web UI', value: 'SvelteKit + Svelte 5' },
-                  { label: 'Server', value: 'Go' },
+                  { label: 'Release', detail: 'Tagged Xuva version running on this server', value: systemVersion?.version ?? 'Unknown' },
+                  { label: 'Commit',  detail: 'Short Git SHA the binary was built from',     value: aboutShortCommit ?? 'Unknown' },
+                  { label: 'Built',   detail: 'When this binary was compiled (local time)',  value: aboutBuildDateFormatted ?? 'Unknown' },
+                  { label: 'Schema',  detail: 'Database migration the catalog is on',        value: systemVersion?.schemaVersion ?? 'Unknown' },
+                  { label: 'Runtime', detail: 'Go toolchain the server was built with',      value: systemVersion?.goVersion ?? 'Unknown' },
+                  { label: 'Web UI',  detail: 'Front-end framework powering this dashboard', value: 'SvelteKit + Svelte 5' },
                 ] as row (row.label)}
-                  <div class="flex items-center justify-between border-b border-border py-3 last:border-0">
-                    <span class="text-sm text-muted-foreground">{row.label}</span>
-                    <span class="font-mono text-sm text-foreground/80">{row.value}</span>
+                  <div class="hairline flex items-center justify-between gap-3 rounded-xl bg-surface/40 px-4 py-3">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium">{row.label}</div>
+                      <div class="text-xs text-muted-foreground">{row.detail}</div>
+                    </div>
+                    <span class="shrink-0 truncate rounded-full bg-foreground/[0.06] px-2.5 py-1 font-mono text-[10px] text-muted-foreground" title={row.value}>{row.value}</span>
                   </div>
                 {/each}
               </div>
@@ -5040,14 +5084,15 @@
               </div>
               <div class="space-y-3">
                 {#each [
-                  { name: 'SvelteKit', purpose: 'Web application framework', license: 'MIT' },
-                  { name: 'Go', purpose: 'Server runtime and API layer', license: 'BSD-3-Clause' },
-                  { name: 'FFmpeg', purpose: 'Media transcoding and probing', license: 'LGPL-2.1 / GPL-2.0' },
-                  { name: 'Tailwind CSS', purpose: 'Utility-first styling', license: 'MIT' },
-                  { name: 'Lucide', purpose: 'Icon library', license: 'ISC' },
+                  { name: 'SvelteKit',   purpose: 'Web application framework',  license: 'MIT' },
+                  { name: 'Go',          purpose: 'Server runtime and API layer', license: 'BSD-3-Clause' },
+                  { name: 'FFmpeg',      purpose: 'Media transcoding and probing', license: 'LGPL-2.1 / GPL-2.0' },
+                  { name: 'Tailwind CSS', purpose: 'Utility-first styling',       license: 'MIT' },
+                  { name: 'Lucide',      purpose: 'Icon library',                license: 'ISC' },
+                  { name: 'nativewebp',  purpose: 'WebP encoder for image proxy', license: 'MIT' },
                 ] as lib (lib.name)}
-                  <div class="hairline flex items-center justify-between rounded-xl bg-surface/40 px-4 py-3">
-                    <div>
+                  <div class="hairline flex items-center justify-between gap-3 rounded-xl bg-surface/40 px-4 py-3">
+                    <div class="min-w-0">
                       <div class="text-sm font-medium">{lib.name}</div>
                       <div class="text-xs text-muted-foreground">{lib.purpose}</div>
                     </div>

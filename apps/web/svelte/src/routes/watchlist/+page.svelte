@@ -119,12 +119,12 @@
       <div class="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary-glow">Your list</div>
       <h1 class="font-serif-display text-[clamp(2rem,4vw,3.25rem)] leading-[1] tracking-tight">Watchlist</h1>
       {#if mounted && items.length > 0}
-        <p class="mt-3 text-sm text-muted-foreground">
+        <p class="mt-1.5 text-sm text-muted-foreground">
           {items.length} {items.length === 1 ? 'title' : 'titles'} saved
         </p>
       {:else}
-        <p class="mt-3 max-w-xl text-sm text-muted-foreground">
-          Films and shows you've saved to watch later, all in one place.
+        <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">
+          Films and shows you've saved to watch later, all in one place
         </p>
       {/if}
     </header>

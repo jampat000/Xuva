@@ -141,10 +141,10 @@
         Your library
       </div>
       <h1 class="font-serif-display text-[clamp(2rem,5vw,3.5rem)] leading-[0.95] tracking-tight">
-        Collections.
+        Collections
       </h1>
-      <p class="mt-4 max-w-xl text-sm text-muted-foreground">
-        Film franchises and multi-part series grouped together from your library.
+      <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">
+        Film franchises and multi-part series grouped together from your library
       </p>
     </div>
 
