@@ -82,7 +82,7 @@
   {:else}
     <LibraryGrid
       eyebrow="Your library · Movies"
-      title="Movies."
+      title="Movies"
       tagline="Every movie in your collection, organized the way you actually browse — by mood, by genre, by what you almost watched last weekend."
       {items}
       {loading}

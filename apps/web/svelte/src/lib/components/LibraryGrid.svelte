@@ -87,6 +87,13 @@
   // Parental-rating sort order (G → most restricted)
   const RATING_ORDER = ['G','PG','PG-13','R','NC-17','TV-Y','TV-Y7','TV-Y7-FV','TV-G','TV-PG','TV-14','TV-MA'];
 
+  // Header description sentence: "{count} films across {N} genres." or
+  // "{count} TV shows." Building this in JS instead of in the template avoids
+  // Svelte 5's whitespace handling around {#if} blocks, which collapsed the
+  // space between expression and conditional on one line ("filmsacross") and
+  // emitted a stray space before the period on another line ("TV shows .").
+  // A $derived expression is the only stable way to compose this sentence.
+
   // ── Filter & UI state ─────────────────────────────────────────────────────
   let q            = $state("");
   let sort         = $state<Sort>("az");
@@ -144,6 +151,18 @@
     for (const [name, count] of counts) arr.push({ name, count });
     arr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
     return arr;
+  });
+
+  // See the comment above RATING_ORDER for why this is composed in JS.
+  // No trailing period — matches Watchlist's title styling and stops the page
+  // reading "title. description." which felt over-punctuated to the user.
+  const headerSentence = $derived.by(() => {
+    const noun = kind === 'TV' ? 'TV shows' : 'films';
+    const count = items.length.toLocaleString();
+    if (genreChips.length > 0) {
+      return `${count} ${noun} across ${genreChips.length} genres`;
+    }
+    return `${count} ${noun}`;
   });
 
   const availableDecades = $derived.by<string[]>(() => {
@@ -473,14 +492,7 @@
       <h1 class="font-serif-display text-[clamp(2rem,5vw,3.5rem)] leading-[0.95] tracking-tight">
         {title}
       </h1>
-      <p class="mt-4 max-w-xl text-sm text-muted-foreground">
-        <!-- Sentence-style description matches Collections / Watchlist styling.
-             Note: Svelte 5 collapses whitespace at {#if} block boundaries, so we
-             have to keep the spaces OUTSIDE the conditional (and inline the noun
-             phrase) to avoid "filmsacross" rendering bugs. -->
-        {items.length.toLocaleString()} {kind === 'TV' ? 'TV shows' : 'films'}
-        {#if genreChips.length > 0}across {genreChips.length} genres{/if}.
-      </p>
+      <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">{headerSentence}</p>
     </div>
   {:else}
   <!-- ── Hero header ──────────────────────────────────────────────────────── -->

@@ -80,7 +80,7 @@
   {:else}
     <LibraryGrid
       eyebrow="Your library · TV"
-      title="TV."
+      title="TV"
       tagline="Pick up mid-episode, queue the next season, or fall down a rabbit hole — your full series shelf, beautifully laid out."
       {items}
       {loading}
