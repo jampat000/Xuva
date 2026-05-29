@@ -94,6 +94,14 @@ type Config struct {
 	TrailersDir     string `json:"trailersDir,omitempty"` // local MP4 cache
 	YTDLPPath       string `json:"ytdlpPath,omitempty"`   // yt-dlp binary, defaults to PATH lookup
 	TrailerWorkers  int    `json:"trailerWorkers,omitempty"`
+	// TLS / HTTPS — optional. When TLSEnabled is true the server also listens on
+	// HTTPSAddr (default :8443) using HTTPS. If TLSCertFile/TLSKeyFile are
+	// empty, a self-signed certificate is auto-generated and stored in
+	// <DataDir>/tls/cert.pem and <DataDir>/tls/key.pem.
+	TLSEnabled  bool   `json:"tlsEnabled,omitempty"`
+	HTTPSAddr   string `json:"httpsAddr,omitempty"`   // default 0.0.0.0:8443
+	TLSCertFile string `json:"tlsCertFile,omitempty"` // empty = auto-generated
+	TLSKeyFile  string `json:"tlsKeyFile,omitempty"`  // empty = auto-generated
 	AuthDisabled    bool   `json:"-"`
 	AdminUsername   string `json:"-"`
 	AdminPassword   string `json:"-"`
@@ -211,6 +219,10 @@ func FromEnv() Config {
 		YTDLPPath:              envString("XUVA_YTDLP_PATH", "yt-dlp"),
 		TrailerWorkers:         envInt("XUVA_TRAILER_WORKERS", 1),
 		AllowedOrigins:         envCSV("XUVA_ALLOWED_ORIGINS", nil),
+		TLSEnabled:             envBool("XUVA_TLS_ENABLED", false),
+		HTTPSAddr:              envString("XUVA_HTTPS_ADDR", "0.0.0.0:8443"),
+		TLSCertFile:            envString("XUVA_TLS_CERT_FILE", ""),
+		TLSKeyFile:             envString("XUVA_TLS_KEY_FILE", ""),
 		AuthDisabled:           envBool("XUVA_AUTH_DISABLED", false),
 		AdminUsername:          envString("XUVA_ADMIN_USERNAME", "admin"),
 		AdminPassword:          envString("XUVA_ADMIN_PASSWORD", ""),
@@ -292,6 +304,10 @@ func FromEnv() Config {
 	cfg.YTDLPPath = envString("XUVA_YTDLP_PATH", defaultString(cfg.YTDLPPath, "yt-dlp"))
 	cfg.TrailerWorkers = envInt("XUVA_TRAILER_WORKERS", defaultInt(cfg.TrailerWorkers, 1))
 	cfg.AllowedOrigins = envCSV("XUVA_ALLOWED_ORIGINS", cfg.AllowedOrigins)
+	cfg.TLSEnabled = envBool("XUVA_TLS_ENABLED", cfg.TLSEnabled)
+	cfg.HTTPSAddr = envString("XUVA_HTTPS_ADDR", defaultString(cfg.HTTPSAddr, "0.0.0.0:8443"))
+	cfg.TLSCertFile = envString("XUVA_TLS_CERT_FILE", cfg.TLSCertFile)
+	cfg.TLSKeyFile = envString("XUVA_TLS_KEY_FILE", cfg.TLSKeyFile)
 	cfg.AuthDisabled = envBool("XUVA_AUTH_DISABLED", cfg.AuthDisabled)
 	cfg.AdminUsername = envString("XUVA_ADMIN_USERNAME", cfg.AdminUsername)
 	cfg.AdminPassword = envString("XUVA_ADMIN_PASSWORD", cfg.AdminPassword)
@@ -484,6 +500,18 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.TrailerWorkers > 0 {
 		base.TrailerWorkers = saved.TrailerWorkers
+	}
+	if saved.TLSEnabled {
+		base.TLSEnabled = true
+	}
+	if saved.HTTPSAddr != "" {
+		base.HTTPSAddr = saved.HTTPSAddr
+	}
+	if saved.TLSCertFile != "" {
+		base.TLSCertFile = saved.TLSCertFile
+	}
+	if saved.TLSKeyFile != "" {
+		base.TLSKeyFile = saved.TLSKeyFile
 	}
 	return base
 }
