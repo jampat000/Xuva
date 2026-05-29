@@ -951,6 +951,16 @@
                   Review
                 </div>
               {/if}
+              <!-- Watched / unwatched badge -->
+              {#if media.type === 'Series' && (media.unwatchedCount ?? 0) > 0}
+                <div class="absolute left-2 top-2 min-w-[22px] rounded-full bg-primary/80 px-1.5 py-0.5 text-center text-[10px] font-bold leading-tight text-white backdrop-blur-sm">
+                  {media.unwatchedCount}
+                </div>
+              {:else if media.type !== 'Series' && media.watched === true}
+                <div class="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-green-500/80 backdrop-blur-sm">
+                  <Check class="h-3 w-3 text-white" />
+                </div>
+              {/if}
               <div class="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 <button aria-label={`Play ${media.title}`} class="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black ring-1 ring-white/40">
                   <Play class="h-5 w-5 translate-x-0.5 fill-black" />

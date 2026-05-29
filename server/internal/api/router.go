@@ -2793,8 +2793,12 @@ func clientSeriesDetailPayload(ctx context.Context, deps Deps, r *http.Request, 
 				"episodeNumber": episode.EpisodeNumber,
 				"versionCount":  episode.VersionCount,
 				"versions":      versionPayloads,
-				// Per-episode artwork (TMDB StillPath → ThumbnailURL).
-				"thumbnailUrl": metadataThumbnail(episode.Metadata),
+				// Route episode stills through the local artwork proxy so they are
+				// cached on disk and served with immutable headers. Direct TMDB URLs
+				// bypass the proxy cache and appear black when TMDB is unreachable or
+				// the still hasn't been fetched yet. The proxy falls back to an SVG
+				// placeholder when no still is cached.
+				"thumbnailUrl": "/api/artwork/episode/" + episode.ID + "?type=thumbnail",
 			}
 			if episode.Metadata != nil {
 				epEntry["overview"] = html.UnescapeString(episode.Metadata.Overview)
