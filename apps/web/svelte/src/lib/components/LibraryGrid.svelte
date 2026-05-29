@@ -165,6 +165,50 @@
     return `${count} ${noun}`;
   });
 
+  // ── Alphabet jump rail (#403) ──────────────────────────────────────────────
+  // Letter → index of the first item in the *filtered + sorted* list whose
+  // sort-title starts with that letter. Computed against `filtered` so the
+  // rail tracks the visible result set: filter to a single genre and the
+  // index map shrinks accordingly, with letters that have no items rendered
+  // dim and non-interactive.
+  //
+  // Only renders when sort is alphabetical (az / za) and on lg+ breakpoint;
+  // the filter panel covers small-screen navigation. Click handler computes
+  // the y-coordinate from gridTop + (index/itemsPerRow)*rowHeight and
+  // window.scrollTo — works with the virtualization spacer because the
+  // outer page scroll position is what drives the virtual window.
+  function jumpLetter(title: string): string {
+    // Strip common articles so "The Godfather" indexes under G, not T.
+    const stripped = title.replace(/^(the|a|an)\s+/i, '');
+    const ch = stripped.charAt(0).toUpperCase();
+    if (!ch) return '#';
+    if (ch >= '0' && ch <= '9') return '#';
+    if (ch >= 'A' && ch <= 'Z') return ch;
+    return '#';
+  }
+  const ALPHABET = ['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+  const isAlphabeticalSort = $derived(sort === 'az' || sort === 'za');
+  const letterIndex = $derived.by(() => {
+    if (!isAlphabeticalSort) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (let i = 0; i < filtered.length; i++) {
+      const letter = jumpLetter(filtered[i].title);
+      if (!map.has(letter)) map.set(letter, i);
+    }
+    return map;
+  });
+  function jumpToLetter(letter: string) {
+    const idx = letterIndex.get(letter);
+    if (idx === undefined) return;
+    const rowH = rowHeight > 0 ? rowHeight : 360;
+    const perRow = itemsPerRow > 0 ? itemsPerRow : 7;
+    const targetRow = Math.floor(idx / perRow);
+    const targetY = Math.max(0, gridTop + targetRow * rowH - 90); // 90px = header offset
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: targetY, behavior: 'smooth' });
+    }
+  }
+
   const availableDecades = $derived.by<string[]>(() => {
     const set = new Set<string>();
     for (const item of items) {
@@ -478,6 +522,40 @@
 </script>
 
 <main class="pb-32">
+  <!-- Alphabet jump rail (#403) ────────────────────────────────────────────
+       Sticky vertical strip of A–Z (+ # for digits / non-Latin titles), shown
+       only on alphabetical sort and only on lg+ where there's horizontal room.
+       Letters that have no items in the current filter render dim and
+       non-interactive. Click → smooth-scrolls the page to the row of the
+       first matching item via the existing virtualization metrics. -->
+  {#if isAlphabeticalSort}
+    <nav
+      class="pointer-events-none fixed right-2 top-1/2 z-30 hidden -translate-y-1/2 lg:block"
+      aria-label="Jump to letter"
+    >
+      <ul class="pointer-events-auto flex flex-col items-center gap-px rounded-full bg-background/70 px-1.5 py-2 text-[10px] font-semibold tracking-widest backdrop-blur-sm">
+        {#each ALPHABET as letter (letter)}
+          {@const has = letterIndex.has(letter)}
+          <li>
+            <button
+              type="button"
+              disabled={!has}
+              onclick={() => jumpToLetter(letter)}
+              aria-label={`Jump to ${letter}`}
+              class={`flex h-4 w-5 items-center justify-center rounded transition-colors ${
+                has
+                  ? 'text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground'
+                  : 'text-muted-foreground/25 cursor-default'
+              }`}
+            >
+              {letter}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </nav>
+  {/if}
+
   {#if !showHero}
     <!-- ── Compact header (matches /collections and /watchlist) ───────────────
          Sentence-style description in `text-sm muted-foreground` rather than
