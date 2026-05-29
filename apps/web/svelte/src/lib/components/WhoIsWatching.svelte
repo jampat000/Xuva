@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Settings } from 'lucide-svelte';
   import { readProfileToken } from '$lib/api/profile-token-store';
   import { listProfiles, switchProfile, type ProfileCard } from '$lib/api/profiles';
   import { profileStore } from '$lib/stores/profileStore.svelte';
+  import { appState } from '$lib/stores/appState.svelte';
   import PinPad from './PinPad.svelte';
 
   interface Props {
@@ -137,10 +139,39 @@
   }
 </script>
 
-<!-- Full-screen overlay -->
-<div class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background">
+<!-- Full-screen overlay
+     #404 polish — the picker used to be a centred title on a pure-black
+     background, which read as a debug page on first login. Three additions
+     here lift it into something that looks intentional:
+       1. Soft radial-gradient backdrop so the page isn't a void.
+       2. Server name under the title — orients users with multiple Xuva
+          servers in their browser history.
+       3. "Manage profiles" link in the footer — visible exit to Settings
+          so users without an existing profile know where to add one.
+     The avatars themselves are unchanged (already 112 px); avatar-preset
+     selection on user creation is tracked separately. -->
+<div class="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-background">
+  <!-- Backdrop: two radial gradients keyed off the primary palette plus a
+       subtle film-grain overlay borrowed from the library hero. Decorative
+       only; pointer-events disabled so the buttons below remain clickable. -->
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-0 -z-10"
+    style="background:
+      radial-gradient(55% 65% at 50% 0%, oklch(0.62 0.22 285 / 0.18), transparent 70%),
+      radial-gradient(45% 55% at 15% 85%, oklch(0.55 0.18 320 / 0.10), transparent 70%),
+      radial-gradient(45% 55% at 85% 85%, oklch(0.55 0.18 240 / 0.10), transparent 70%);
+    "
+  ></div>
+  <div aria-hidden="true" class="grain pointer-events-none absolute inset-0 -z-10 opacity-40"></div>
+
   <div class="mb-10 text-center">
     <h1 class="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Who's Watching?</h1>
+    {#if appState.serverName}
+      <p class="mt-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground/80">
+        {appState.serverName}
+      </p>
+    {/if}
   </div>
 
   {#if !loaded}
@@ -203,6 +234,19 @@
         </button>
       {/each}
     </div>
+  {/if}
+
+  <!-- Manage profiles link — visible exit to Settings for adding or editing
+       profiles. Hidden during the loading skeleton so it doesn't flash before
+       we know whether profiles exist at all. -->
+  {#if loaded && !loadError}
+    <a
+      href="/settings"
+      class="absolute bottom-8 inline-flex items-center gap-2 rounded-full bg-foreground/[0.04] px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
+    >
+      <Settings class="h-3.5 w-3.5" />
+      Manage profiles
+    </a>
   {/if}
 </div>
 
