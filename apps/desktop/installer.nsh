@@ -162,10 +162,10 @@
 ; during the uninstaller compile pass — electron-builder treats that as an
 ; error. The installer runs elevated (admin) due to our customInit UAC hook;
 ; ExecShellAsUser launches Xuva with the user's normal (non-elevated) token.
-; $launchLink is set by electron-builder's installSection.nsh to either the
-; Start Menu shortcut or $INSTDIR\${APP_EXECUTABLE_FILENAME}.
+; We use $INSTDIR\Xuva.exe directly — $launchLink was removed from
+; electron-builder's NSIS templates in v26.8 and is now an unknown variable.
 Function XuvaStartApp
-  ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" ""
+  ${StdUtils.ExecShellAsUser} $0 "$INSTDIR\Xuva.exe" "open" ""
 FunctionEnd
 
 Function XuvaShortcutPageShow
