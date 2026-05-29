@@ -125,6 +125,33 @@
   Page custom XuvaShortcutPageShow XuvaShortcutPageLeave
 !macroend
 
+; ── Finish page: "Launch Xuva" checkbox ─────────────────────────────────────
+; electron-builder's `runAfterFinish: true` setting was supposed to surface the
+; Launch checkbox via the built-in finish page, but in practice it is omitted
+; when our customInit UAC elevation pattern is active — the elevated inner
+; instance reaches the finish page but `MUI_FINISHPAGE_RUN` is never defined
+; in that branch of assistedInstaller.nsh once a customPageAfterChangeDir
+; macro is also present (observed silently on v0.0.32–v0.0.33). We take over
+; the finish page ourselves so the checkbox is always rendered.
+;
+; The previous attempt used `${StdUtils.ExecShellAsUser}` to drop privileges
+; before launching Xuva. That requires the StdUtils plugin DLL, which is
+; bundled in electron-builder's nsis-resources cache but was reported missing
+; under some build configurations. We use `UAC_AsUser_ExecShell` from the
+; UAC plugin instead — UAC.nsh is already !included by assistedInstaller.nsh
+; (it's the same plugin we rely on in customInit for elevation), so no extra
+; plugin dependency is introduced. The outer non-elevated process is still
+; alive blocked on UAC_RunElevated when the finish page fires, which is the
+; condition UAC_AsUser_ExecShell needs to IPC back to the user-token process
+; and launch Xuva without elevation.
+
+!macro customFinishPage
+  !define MUI_FINISHPAGE_RUN
+  !define MUI_FINISHPAGE_RUN_FUNCTION "XuvaStartApp"
+  !define MUI_FINISHPAGE_RUN_TEXT "Launch Xuva"
+  !insertmacro MUI_PAGE_FINISH
+!macroend
+
 ; The two Page functions below are only referenced from `customPageAfterChangeDir`
 ; which is only inserted into the installer build, never the uninstaller.
 ; NSIS's `warning 6010: install function "..." not referenced - zeroing code` is
@@ -134,6 +161,23 @@
 ; failed the uninstaller compile pass.
 
 !ifndef BUILD_UNINSTALLER
+
+; XuvaStartApp is wired to MUI_FINISHPAGE_RUN_FUNCTION in customFinishPage.
+; Must live inside !ifndef BUILD_UNINSTALLER so the uninstaller compile pass
+; doesn't trip NSIS warning 6010 ("install function not referenced — zeroing
+; code"), which electron-builder treats as a fatal error.
+;
+; UAC_AsUser_ExecShell verb command params workdir show
+;   - verb=open   → default ShellExecute action
+;   - command     → installed Xuva.exe
+;   - params/workdir/show → empty (defaults)
+; The macro IPCs the request to the still-alive outer (non-elevated) UAC
+; process, which performs the ShellExecute with the user's normal token, so
+; Xuva launches without admin (important: an Electron app launched with the
+; installer's admin token would refuse to start the sandboxed renderers).
+Function XuvaStartApp
+  !insertmacro UAC_AsUser_ExecShell "" "$INSTDIR\Xuva.exe" "" "" ""
+FunctionEnd
 
 Function XuvaShortcutPageShow
   ; NOTE: don't use !insertmacro MUI_HEADER_TEXT here — electron-builder
