@@ -83,8 +83,19 @@ jobs:
       # Set up: create an Azure Trusted Signing account → identity validation →
       # certificate profile, then add AZURE_CLIENT_ID / AZURE_CLIENT_SECRET /
       # AZURE_TENANT_ID / ATS_ENDPOINT / ATS_ACCOUNT / ATS_PROFILE to secrets.
+      # GitHub Actions does not allow secrets in if: expressions; we emit the
+      # flag from a run step and gate on the step output instead.
+      - name: Check Azure signing configuration
+        id: signing_check
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Sign Windows installer (Azure Trusted Signing)
-        if: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        if: steps.signing_check.outputs.enabled == 'true'
         uses: azure/trusted-signing-action@v0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
