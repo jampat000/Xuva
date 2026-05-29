@@ -20,6 +20,14 @@
 
 !include nsDialogs.nsh
 !include LogicLib.nsh
+; UAC.nsh is also !included by electron-builder's assistedInstaller.nsh, but
+; that include runs *after* this file is processed during the NSIS compile.
+; Without the explicit include here, makensis fails with "macro named
+; UAC_AsUser_ExecShell not found" when it parses XuvaStartApp below — which
+; is what blocked the v0.0.34 Windows build. NSIS treats duplicate includes
+; as no-ops, so adding it here doesn't conflict with the later assisted-
+; installer include.
+!include UAC.nsh
 
 ; All three Vars are read/written only in the installer pass: the dialog +
 ; checkbox vars are touched inside XuvaShortcutPageShow/Leave, and
