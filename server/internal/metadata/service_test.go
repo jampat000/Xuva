@@ -594,3 +594,86 @@ func writeFile(t *testing.T, path string, value string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+// TestShouldSkipMetadataKeepsArtlessRecordsEligible is the regression test for
+// #401. Before the fix, a TMDB metadata record with overview but no poster
+// URL satisfied hasEnrichedMetadata and was permanently skipped by every
+// subsequent RefreshBatch — its library card stayed on the gradient
+// placeholder forever. After the fix, missing-art records remain eligible
+// so the next batch can re-query for the poster.
+//
+// We exercise hasEnrichedMetadata directly because shouldSkipMetadata's
+// outer switch only delegates to hasEnrichedMetadata for the major online
+// providers (tmdb / tvdb / omdb / tvmaze / wikipedia / wikidata), and the
+// enrichment helper is where the regression lived.
+func TestShouldSkipMetadataKeepsArtlessRecordsEligible(t *testing.T) {
+	cases := []struct {
+		name       string
+		record     *catalog.MetadataRecord
+		wantSkip   bool
+		wantReason string
+	}{
+		{
+			name:       "nil record stays eligible",
+			record:     nil,
+			wantSkip:   false,
+			wantReason: "no record means nothing has tried yet",
+		},
+		{
+			name: "overview without poster stays eligible (#401 regression)",
+			record: &catalog.MetadataRecord{
+				Kind:     "movie",
+				Provider: "tmdb",
+				Title:    "Sample",
+				Overview: "Some long overview text",
+				// PosterURL and BackdropURL intentionally empty
+			},
+			wantSkip:   false,
+			wantReason: "missing poster should not block re-fetch",
+		},
+		{
+			name: "poster without overview stays eligible",
+			record: &catalog.MetadataRecord{
+				Kind:      "movie",
+				Provider:  "tmdb",
+				Title:     "Sample",
+				PosterURL: "https://image.tmdb.org/t/p/original/abc.jpg",
+				// Overview intentionally empty
+			},
+			wantSkip:   false,
+			wantReason: "missing overview should not block re-fetch",
+		},
+		{
+			name: "overview + poster is the only fully-enriched case",
+			record: &catalog.MetadataRecord{
+				Kind:      "movie",
+				Provider:  "tmdb",
+				Title:     "Sample",
+				Overview:  "Some long overview text",
+				PosterURL: "https://image.tmdb.org/t/p/original/abc.jpg",
+			},
+			wantSkip:   true,
+			wantReason: "both dimensions present — no value in another provider call",
+		},
+		{
+			name: "overview + backdrop also counts as enriched (visual covered)",
+			record: &catalog.MetadataRecord{
+				Kind:        "movie",
+				Provider:    "tmdb",
+				Title:       "Sample",
+				Overview:    "Some long overview text",
+				BackdropURL: "https://image.tmdb.org/t/p/original/back.jpg",
+			},
+			wantSkip:   true,
+			wantReason: "backdrop satisfies the visual dimension",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := hasEnrichedMetadata(tc.record)
+			if got != tc.wantSkip {
+				t.Fatalf("hasEnrichedMetadata = %v, want %v (%s)", got, tc.wantSkip, tc.wantReason)
+			}
+		})
+	}
+}

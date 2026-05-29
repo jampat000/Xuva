@@ -295,17 +295,32 @@ func shouldSkipMetadata(record *catalog.MetadataRecord) bool {
 	}
 }
 
+// hasEnrichedMetadata controls whether shouldSkipMetadata short-circuits a
+// batch-refresh for an item. A record is "enriched enough to skip" only when
+// BOTH text and visual data are present.
+//
+// Pre-#401 this returned true the moment overview was set, meaning any item
+// where TMDB returned a description but no poster URL (rate-limit response,
+// stale CDN entry, region-locked artwork, etc.) was permanently skipped by
+// every subsequent RefreshBatch — its library card stayed stuck on the
+// gradient placeholder forever. Users with 4 k-movie libraries hit this for
+// hundreds of titles. See the Emby comparison audit on #401 for the
+// user-visible impact: most missing posters were items with valid overview
+// text, not items missing TMDB matches entirely.
+//
+// New rule: text without artwork (or artwork without text) keeps the record
+// eligible for re-fetch. The provider call to re-fill the missing dimension
+// is cheap relative to the user-visible quality gap.
 func hasEnrichedMetadata(record *catalog.MetadataRecord) bool {
 	if record == nil {
 		return false
 	}
-	if strings.TrimSpace(record.Overview) != "" {
-		return true
-	}
-	if strings.TrimSpace(record.PosterURL) != "" || strings.TrimSpace(record.BackdropURL) != "" {
-		return true
-	}
-	return len(record.Ratings) > 0 || len(record.ExternalIDs) > 0
+	hasText := strings.TrimSpace(record.Overview) != ""
+	hasArt := strings.TrimSpace(record.PosterURL) != "" || strings.TrimSpace(record.BackdropURL) != ""
+	// Identifier-only records (just ratings or external IDs) don't satisfy
+	// either dimension — keep them eligible so a real metadata refresh can
+	// fill both.
+	return hasText && hasArt
 }
 
 func batchCandidateWindow(limit int) int {
