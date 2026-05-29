@@ -125,27 +125,6 @@
   Page custom XuvaShortcutPageShow XuvaShortcutPageLeave
 !macroend
 
-; ── Finish page: "Launch Xuva" checkbox ─────────────────────────────────────
-; electron-builder's built-in runAfterFinish mechanism can silently omit the
-; checkbox when our customInit UAC-elevation pattern is in use (the outer,
-; non-admin process quits immediately after spawning the elevated inner
-; process, which can interfere with how electron-builder wires the finish
-; page). We take over the finish page entirely using the customFinishPage hook
-; so the "Launch Xuva" checkbox is always present and correctly wired.
-;
-; assistedInstaller.nsh checks !ifmacrodef customFinishPage; if the macro is
-; defined it inserts ours instead of the built-in block, so there is no
-; duplication. StdUtils.nsh is included by electron-builder's script
-; generator BEFORE our installer.nsh, so ${StdUtils.ExecShellAsUser} is
-; available here.
-
-!macro customFinishPage
-  !define MUI_FINISHPAGE_RUN
-  !define MUI_FINISHPAGE_RUN_FUNCTION "XuvaStartApp"
-  !define MUI_FINISHPAGE_RUN_TEXT "Launch Xuva"
-  !insertmacro MUI_PAGE_FINISH
-!macroend
-
 ; The two Page functions below are only referenced from `customPageAfterChangeDir`
 ; which is only inserted into the installer build, never the uninstaller.
 ; NSIS's `warning 6010: install function "..." not referenced - zeroing code` is
@@ -155,18 +134,6 @@
 ; failed the uninstaller compile pass.
 
 !ifndef BUILD_UNINSTALLER
-
-; XuvaStartApp is referenced by MUI_FINISHPAGE_RUN_FUNCTION in the
-; customFinishPage macro above. It must live inside !ifndef BUILD_UNINSTALLER
-; to avoid NSIS warning 6010 ("install function not referenced, zeroing code")
-; during the uninstaller compile pass — electron-builder treats that as an
-; error. The installer runs elevated (admin) due to our customInit UAC hook;
-; ExecShellAsUser launches Xuva with the user's normal (non-elevated) token.
-; We use $INSTDIR\Xuva.exe directly — $launchLink was removed from
-; electron-builder's NSIS templates in v26.8 and is now an unknown variable.
-Function XuvaStartApp
-  ${StdUtils.ExecShellAsUser} $0 "$INSTDIR\Xuva.exe" "open" ""
-FunctionEnd
 
 Function XuvaShortcutPageShow
   ; NOTE: don't use !insertmacro MUI_HEADER_TEXT here — electron-builder
