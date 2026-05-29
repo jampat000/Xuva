@@ -14,7 +14,10 @@ on:
         description: 'Build and smoke artifacts without publishing GHCR tags or GitHub Release'
         required: true
         default: 'true'
-        type: boolean
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 permissions:
   contents: write
