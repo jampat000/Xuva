@@ -103,6 +103,8 @@
   let showDataSources = $state(false);
   let selectedEncoderLabel = $state<string | null>(null);
   let similarItems = $state<SimilarItem[]>([]);
+  let similarFallback = $state(false);
+  let similarFallbackGenre = $state('');
 
   // ── Derived metadata fields ──────────────────────────────────────────────
   const title = $derived(metadata?.title ?? detail?.title ?? 'Unknown');
@@ -277,7 +279,11 @@
       selectedEncoderLabel = p.hardwareAcceleration?.selectedEncoder?.label ?? null;
     }).catch(() => {});
     // Fetch similar series lazily — don't block the main page load
-    getSimilarSeries(id).then(r => { similarItems = r.items ?? []; }).catch(() => {});
+    getSimilarSeries(id).then(r => {
+      similarItems = r.items ?? [];
+      similarFallback = r.genreFallback ?? false;
+      similarFallbackGenre = r.fallbackGenre ?? '';
+    }).catch(() => {});
   });
 </script>
 
@@ -751,7 +757,9 @@
           <!-- More Like This -->
           {#if similarItems.length > 0}
             <div class="mt-10 border-t border-border pt-8">
-              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">More Like This</h3>
+              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                {similarFallback && similarFallbackGenre ? `More in ${similarFallbackGenre}` : 'More Like This'}
+              </h3>
               <div class="scrollbar-none mt-5 -mx-1 flex gap-3 overflow-x-auto pb-3 px-1">
                 {#each similarItems as item (item.id)}
                   <a

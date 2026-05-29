@@ -260,6 +260,8 @@ export interface SimilarItem {
 
 export interface SimilarResponse {
 	items?: SimilarItem[];
+	genreFallback?: boolean;
+	fallbackGenre?: string;
 }
 
 export function getSimilarMovies(
