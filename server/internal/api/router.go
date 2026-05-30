@@ -740,6 +740,17 @@ func authSessionHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
+		// Re-issue the session cookie on every successful session check. This
+		// keeps the cookie + Authorization-header views of auth state in sync
+		// even when the client carries a valid bearer token but the cookie has
+		// gone stale (browser cleared cookies, cookie TTL elapsed while the
+		// localStorage token persisted, etc.). Without this, a client with a
+		// valid token but a missing/expired cookie can pass /api/auth/session,
+		// then call `window.location.href = '/'` and get 307'd back to /signin
+		// by the root handler's `if !isSignedIn` branch — the v0.0.36 redirect
+		// flicker loop. Re-stamping the cookie here closes that gap before
+		// the full-page navigation fires.
+		writeAuthCookies(w, r, resolved)
 		payload := map[string]any{
 			"user": map[string]any{
 				"id":          resolved.Principal.ID,
