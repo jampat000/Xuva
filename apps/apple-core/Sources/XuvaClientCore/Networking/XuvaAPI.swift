@@ -143,6 +143,26 @@ public final class XuvaAPI: @unchecked Sendable {
         let _: EmptyResponse = try await send("DELETE", path: path)
     }
 
+    // MARK: – Player metadata (tracks, chapters, state)
+
+    /// Audio + subtitle tracks for a media source. Used to populate the
+    /// in-player track menus (matches the web player's track switcher).
+    public func mediaSourceTracks(mediaSourceId: String) async throws -> MediaSourceTracksResponse {
+        try await send("GET", path: "/api/media-sources/\(mediaSourceId)/tracks")
+    }
+
+    /// Detected intro / credits markers. Drives the Skip Intro button and the
+    /// Credits marker overlay. Returns an empty response when none are stored.
+    public func chapters(mediaSourceId: String) async throws -> ChaptersResponse {
+        try await send("GET", path: "/api/media-sources/\(mediaSourceId)/chapters")
+    }
+
+    /// Persist final playback progress / watched state. Called when playback
+    /// ends so Continue Watching reflects the right position.
+    public func setPlaybackState(mediaSourceId: String, update: PlaybackStateUpdate) async throws {
+        let _: EmptyResponse = try await send("PUT", path: "/api/playback/state/\(mediaSourceId)", body: update)
+    }
+
     public func resolvedURL(_ pathOrURL: String) -> URL? {
         if let url = URL(string: pathOrURL), url.scheme != nil { return url }
         guard pathOrURL.hasPrefix("/") else { return nil }
