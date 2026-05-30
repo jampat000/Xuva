@@ -21,6 +21,8 @@
 	     Network so keep it short and user-readable. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Xuva needs your local network to find and stream from Xuva media servers in your home.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Xuva uses the camera to scan the pairing QR code shown on your Xuva server.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_xuva._tcp</string>
