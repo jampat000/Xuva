@@ -57,15 +57,34 @@ export function artworkSrc(
 	return sizedArtworkUrl(media, type, width) ?? rawUrl;
 }
 
+// Mirror the server's maxResizeWidth (see server/internal/api/image_resize.go).
+// Anything above this gets clamped server-side, so emitting a 3x descriptor
+// past it wastes a srcset slot. Bumped alongside the server cap so 4K screens
+// at 2-3x DPR can request a sharp poster.
+const ARTWORK_MAX_WIDTH = 2048;
+
 /**
- * Build a `srcset` attribute with the requested width and its 2× variant.
- * Use alongside `sizes` for retina sharpness without wasted bandwidth on
- * standard-density screens.
+ * Build a `srcset` attribute with 1x / 2x / 3x descriptors. The browser picks
+ * the variant whose pixel width best matches the rendered CSS size × the
+ * device's pixel ratio. Three rungs cover the realistic range:
+ *
+ *   - 1x: standard-density desktop monitors (DPR=1)
+ *   - 2x: most retina laptops and modern phones (DPR=2)
+ *   - 3x: high-density phones and 4K monitors at 200% scaling (DPR=3)
+ *
+ * Each rung is capped at ARTWORK_MAX_WIDTH because the proxy clamps above
+ * that. Duplicate rungs (e.g. 2x and 3x both hit the cap) are deduped so we
+ * don't ship a srcset with two identical URLs at different descriptors.
  */
 export function artworkSrcset(media: Media, type: ArtType, width: number): string | undefined {
 	const url1x = sizedArtworkUrl(media, type, width);
 	if (!url1x) return undefined;
-	const url2x = sizedArtworkUrl(media, type, Math.min(width * 2, 1024));
-	if (!url2x || url2x === url1x) return undefined;
-	return `${url1x} 1x, ${url2x} 2x`;
+	const w2 = Math.min(width * 2, ARTWORK_MAX_WIDTH);
+	const w3 = Math.min(width * 3, ARTWORK_MAX_WIDTH);
+	const url2x = sizedArtworkUrl(media, type, w2);
+	const url3x = w3 > w2 ? sizedArtworkUrl(media, type, w3) : undefined;
+	const parts: string[] = [`${url1x} 1x`];
+	if (url2x && url2x !== url1x) parts.push(`${url2x} 2x`);
+	if (url3x && url3x !== url2x && url3x !== url1x) parts.push(`${url3x} 3x`);
+	return parts.length > 1 ? parts.join(', ') : undefined;
 }

@@ -15,10 +15,14 @@ import (
 	_ "golang.org/x/image/webp" // register decoder for cached WebP sources
 )
 
-// Hard cap on the requested width — generous for 2x retina posters but stops
-// the proxy from being used as a generic image-resize service that could chew
-// CPU. Posters never need more than ~600px wide rendered at 2x density.
-const maxResizeWidth = 1024
+// Hard cap on the requested width. 2048 covers 4K displays at L density with
+// a 2x retina pixel-ratio — the previous 1024 was a noticeable cap on big
+// screens (poster grids looked soft on 4K monitors and the detail-page hero
+// poster cropped/blurred at 2x). The proxy still won't run as a generic
+// image-resize service: it only emits widths the client actually requests
+// through a fixed srcset ladder, and the on-disk variant cache means each
+// (source, width) pair is computed once and served thereafter.
+const maxResizeWidth = 2048
 const minResizeWidth = 32
 
 // jpegQuality balances bytes vs visual quality for poster grids. 92 gives

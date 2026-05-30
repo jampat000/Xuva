@@ -66,8 +66,9 @@ func TestParseResizeWidth(t *testing.T) {
 		{"31", 0},          // below minResizeWidth
 		{"32", 32},         // exactly min
 		{"200", 200},       // typical poster width
-		{"1024", 1024},     // exactly max
-		{"1025", 0},        // over max
+		{"1024", 1024},     // mid-range — still valid
+		{"2048", 2048},     // exactly max
+		{"2049", 0},        // over max
 		{"  300  ", 300},   // trimming
 	}
 	for _, tc := range cases {

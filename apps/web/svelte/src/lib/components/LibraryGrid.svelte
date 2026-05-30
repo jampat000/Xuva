@@ -35,10 +35,15 @@
     | "random";
 
   // ── Density grid ──────────────────────────────────────────────────────────
+  // Bumped +2 columns at every breakpoint vs the previous values. Users wanted
+  // smaller posters across S / M / L so more titles fit on screen per row —
+  // the previous L (5 cols at xl) was reading more like a marketing grid than
+  // a browse view. Card heights scale automatically with column width since
+  // they use aspect-[2/3], so no other tuning needed.
   const densityGrid: Record<Density, string> = {
-    S: "grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-8 xl:grid-cols-10",
-    M: "grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7",
-    L: "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5"
+    S: "grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12",
+    M: "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-9",
+    L: "grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7"
   };
 
   // ── Virtual window state ──────────────────────────────────────────────────
@@ -1061,7 +1066,7 @@
               style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
             >
               {#if media.poster}
-                {@const cardWidth = density === 'S' ? 200 : density === 'M' ? 260 : 360}
+                {@const cardWidth = density === 'S' ? 160 : density === 'M' ? 220 : 300}
                 <img
                   src={artworkSrc(media, 'poster', cardWidth, media.poster)}
                   srcset={artworkSrcset(media, 'poster', cardWidth)}
