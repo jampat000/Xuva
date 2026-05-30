@@ -5,8 +5,6 @@
   import { Check, ChevronDown, Play, Plus, RotateCcw, Search, SlidersHorizontal, X } from "lucide-svelte";
   import type { Media } from "$lib/mock-data";
   import { toggleWatchlist, isInWatchlist } from '$lib/stores/watchlistStore.svelte';
-  import { getAuthSession } from '$lib/api/auth';
-  import { updateUserPreferences } from '$lib/api/operator';
   import { artworkSrc, artworkSrcset } from '$lib/api/artwork-url';
 
   let { eyebrow, title, tagline, items, kind, loading = false, baseHref = "", showHero = true } = $props<{
@@ -22,7 +20,6 @@
   }>();
 
   // ── Types ──────────────────────────────────────────────────────────────────
-  type Density = "S" | "M" | "L";
   type Sort =
     | "az" | "za"
     | "year-desc" | "year-asc"
@@ -34,17 +31,15 @@
     | "versions-desc" | "versions-asc"
     | "random";
 
-  // ── Density grid ──────────────────────────────────────────────────────────
-  // Bumped +2 columns at every breakpoint vs the previous values. Users wanted
-  // smaller posters across S / M / L so more titles fit on screen per row —
-  // the previous L (5 cols at xl) was reading more like a marketing grid than
-  // a browse view. Card heights scale automatically with column width since
-  // they use aspect-[2/3], so no other tuning needed.
-  const densityGrid: Record<Density, string> = {
-    S: "grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12",
-    M: "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-9",
-    L: "grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7"
-  };
+  // ── Poster grid ─────────────────────────────────────────────────────────────
+  // Single fixed, responsive poster grid — no S/M/L density toggle. This matches
+  // how Emby and Plex present libraries: one consistent poster size, column count
+  // scaling with viewport width, a fixed 2:3 box with object-fit:cover. Dropping
+  // the density switcher also removed the class of bug where a hardcoded per-
+  // density request width (e.g. 160px) was served into a differently-sized box
+  // and upscaled. Column counts here land each card at ~150–180px on common
+  // desktop widths.
+  const POSTER_GRID = "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-9 2xl:grid-cols-10";
 
   // ── Virtual window state ──────────────────────────────────────────────────
   // Renders ONLY ~70 cards (visible + overscan) instead of all 4000+. Without
@@ -67,6 +62,22 @@
   let gridTop     = $state(0);
   let rowHeight   = $state(360); // measured on mount/resize; fallback covers cold paint
   let itemsPerRow = $state(7);
+  // Rendered CSS width of a single poster card, measured from the live DOM in
+  // remeasureGrid(). Drives posterReqWidth so we request artwork sized to the
+  // box × device-pixel-ratio (Emby's "fillWidth" model) instead of a fixed guess.
+  let cardCssWidth = $state(0);
+
+  // Width (px) to request from the artwork proxy for a poster card: the measured
+  // card width × DPR, rounded up to a 40px step (so the on-disk variant cache
+  // doesn't fragment into dozens of near-identical widths), floored at 300 so a
+  // card is never served a sub-card-resolution blur, and capped at the proxy's
+  // own max (2048). Before the first measurement we assume a ~180px card.
+  const posterReqWidth = $derived.by(() => {
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 3) : 2;
+    const base = cardCssWidth > 0 ? cardCssWidth : 180;
+    const stepped = Math.ceil((base * dpr) / 40) * 40;
+    return Math.min(2048, Math.max(300, stepped));
+  });
   const OVERSCAN_ROWS = 3;       // rows beyond viewport edges to keep mounted
 
   // ── Sort options ───────────────────────────────────────────────────────────
@@ -102,17 +113,6 @@
   // ── Filter & UI state ─────────────────────────────────────────────────────
   let q            = $state("");
   let sort         = $state<Sort>("az");
-  // Read cached density from localStorage synchronously so the correct size is
-  // applied on the very first render — no flash of the wrong grid size.
-  const DENSITY_KEY = 'xuva:poster-size';
-  function readCachedDensity(): Density {
-    try {
-      const v = typeof localStorage !== 'undefined' ? localStorage.getItem(DENSITY_KEY) : null;
-      if (v === 'S' || v === 'M' || v === 'L') return v;
-    } catch { /* SSR or privacy mode */ }
-    return 'M';
-  }
-  let density      = $state<Density>(readCachedDensity());
   let sortOpen     = $state(false);
   let filterOpen   = $state(false);
   let randomSeed   = $state(Date.now());
@@ -419,6 +419,7 @@
     if (first) {
       const gap = parseFloat(cs.rowGap || cs.gap || '0') || 0;
       rowHeight = first.offsetHeight + gap;
+      cardCssWidth = first.offsetWidth;
     }
     const rect = gridEl.getBoundingClientRect();
     gridTop = rect.top + window.scrollY;
@@ -449,16 +450,6 @@
     const seed = parseInt(p.get('seed') ?? '', 10);
     if (!isNaN(seed) && seed > 0) randomSeed = seed;
 
-    // Sync density with server preference (runs after first render; localStorage
-    // already applied the cached value above so there is no visible flash).
-    getAuthSession().then(s => {
-      const size = s?.preferences?.posterSize;
-      if (size === 'S' || size === 'M' || size === 'L') {
-        density = size;
-        try { localStorage.setItem(DENSITY_KEY, size); } catch { /* privacy mode */ }
-      }
-    }).catch(() => {});
-
     // Virtual-grid bookkeeping. Throttle scroll via rAF — we only need the
     // updated scrollY once per frame; firing on every wheel tick would burn
     // CPU and cause derived recomputes to thrash. Resize/orientationchange
@@ -488,20 +479,6 @@
       window.removeEventListener('resize', onResize);
     };
   });
-
-  // Re-measure whenever density flips — that changes both items-per-row
-  // (different grid-cols-*) and card height (no caption on density S).
-  $effect(() => {
-    // touch density so the effect re-runs
-    void density;
-    if (gridEl) requestAnimationFrame(remeasureGrid);
-  });
-
-  function setDensity(d: Density) {
-    density = d;
-    try { localStorage.setItem(DENSITY_KEY, d); } catch { /* privacy mode */ }
-    updateUserPreferences({ posterSize: d }).catch(() => {});
-  }
 
   // Sync filter state → URL (replaceState, no scroll, no focus loss)
   $effect(() => {
@@ -617,13 +594,14 @@
       </div>
 
       {#if featured}
+        {@const featuredArt = artworkSrc(featured, 'poster', 320, featured.poster)}
         <article
           class="shadow-poster relative ml-auto aspect-[2/3] w-full max-w-[260px] overflow-hidden rounded-2xl md:max-w-[280px] lg:max-w-[320px]"
           style={`background: linear-gradient(135deg, ${featured.palette[0]}, ${featured.palette[1]})`}
         >
-          {#if featured.poster}
+          {#if featuredArt}
             <img
-              src={artworkSrc(featured, 'poster', 320, featured.poster)}
+              src={featuredArt}
               srcset={artworkSrcset(featured, 'poster', 320)}
               alt={featured.title}
               decoding="async"
@@ -745,7 +723,7 @@
         {/if}
       </div>
 
-      <!-- Right: sort + density -->
+      <!-- Right: sort -->
       <div class="flex flex-1 items-center justify-end gap-2">
         <!-- Sort picker -->
         <div class="flex items-center gap-1">
@@ -789,22 +767,6 @@
               </div>
             {/if}
           </div>
-        </div>
-
-        <!-- Density switcher -->
-        <div class="hairline hidden items-center rounded-full bg-foreground/[0.04] p-1 md:flex">
-          {#each (["S", "M", "L"] as const) as option (option)}
-            <button
-              type="button"
-              aria-label={option === "S" ? "Small cards" : option === "M" ? "Medium cards" : "Large cards"}
-              onclick={() => setDensity(option)}
-              class={`flex h-7 min-w-7 items-center justify-center rounded-full px-2.5 text-[11px] font-semibold tracking-wider transition-colors ${
-                density === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {option}
-            </button>
-          {/each}
         </div>
       </div>
     </div>
@@ -1025,14 +987,12 @@
   <!-- ── Grid ─────────────────────────────────────────────────────────────── -->
   <section class="px-6 pt-10 md:px-12 lg:px-20">
     {#if loading}
-      <div class={`grid gap-x-5 gap-y-10 ${densityGrid[density]}`}>
+      <div class={`grid gap-x-5 gap-y-10 ${POSTER_GRID}`}>
         {#each { length: 18 } as _, i (i)}
           <div class="animate-pulse">
             <div class="aspect-[2/3] rounded-xl bg-foreground/[0.07]"></div>
-            {#if density !== "S"}
-              <div class="mt-3 h-4 w-3/4 rounded bg-foreground/[0.07]"></div>
-              <div class="mt-1.5 h-3 w-1/2 rounded bg-foreground/[0.05]"></div>
-            {/if}
+            <div class="mt-3 h-4 w-3/4 rounded bg-foreground/[0.07]"></div>
+            <div class="mt-1.5 h-3 w-1/2 rounded bg-foreground/[0.05]"></div>
           </div>
         {/each}
       </div>
@@ -1055,8 +1015,9 @@
     {:else}
       <!-- Top spacer reserves scroll height for rows above the rendered window. -->
       <div aria-hidden="true" style="height: {topSpacer}px"></div>
-      <div bind:this={gridEl} class={`grid gap-x-5 gap-y-10 library-grid ${densityGrid[density]}`}>
+      <div bind:this={gridEl} class={`grid gap-x-5 gap-y-10 library-grid ${POSTER_GRID}`}>
         {#each visibleSlice as media (media.id)}
+          {@const art = artworkSrc(media, 'poster', posterReqWidth, media.poster)}
           <a
             href={baseHref ? `${baseHref}/${media.id}` : (media.type === "Series" ? `/tv/${media.id}` : `/movies/${media.id}`)}
             class="group block library-grid-item"
@@ -1065,11 +1026,17 @@
               class="shadow-poster relative aspect-[2/3] overflow-hidden rounded-xl transition-all duration-300 group-hover:-translate-y-2 group-hover:scale-[1.04] group-hover:ring-[3px] group-hover:ring-white/85 group-hover:shadow-[0_28px_60px_-12px_oklch(0_0_0/0.85)]"
               style={`background: linear-gradient(135deg, ${media.palette[0]}, ${media.palette[1]})`}
             >
-              {#if media.poster}
-                {@const cardWidth = density === 'S' ? 160 : density === 'M' ? 220 : 300}
+              <!-- Render the poster whenever we can build a proxy artwork URL
+                   (always, for Movie/Series rows — the proxy is keyed by id, not
+                   by the list payload's poster field). The previous gate was
+                   `{#if media.poster}`, but the /api/movies list summary omits
+                   posterUrl for ~half the library, so those cards rendered as
+                   blank gradient placeholders even though the artwork proxy
+                   could serve a full-res poster by id. onerror reveals the
+                   palette-gradient background underneath if the fetch fails. -->
+              {#if art}
                 <img
-                  src={artworkSrc(media, 'poster', cardWidth, media.poster)}
-                  srcset={artworkSrcset(media, 'poster', cardWidth)}
+                  src={art}
                   alt={media.title}
                   loading="lazy"
                   decoding="async"
@@ -1107,18 +1074,16 @@
                 </button>
               </div>
             </div>
-            {#if density !== "S"}
-              <div class="mt-3 flex items-baseline justify-between gap-2 px-0.5">
-                <h4 class="truncate text-sm font-medium text-foreground">{media.title}</h4>
-                <span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{media.year || ''}</span>
-              </div>
-              <p class="mt-0.5 truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                {media.genres.slice(0, 2).join(" · ")}
-                {#if typeof media.rating === "number" && media.rating > 0}
-                  <span class="ml-2 normal-case tracking-normal text-foreground/70">★ {media.rating.toFixed(1)}</span>
-                {/if}
-              </p>
-            {/if}
+            <div class="mt-3 flex items-baseline justify-between gap-2 px-0.5">
+              <h4 class="truncate text-sm font-medium text-foreground">{media.title}</h4>
+              <span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{media.year || ''}</span>
+            </div>
+            <p class="mt-0.5 truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              {media.genres.slice(0, 2).join(" · ")}
+              {#if typeof media.rating === "number" && media.rating > 0}
+                <span class="ml-2 normal-case tracking-normal text-foreground/70">★ {media.rating.toFixed(1)}</span>
+              {/if}
+            </p>
           </a>
         {/each}
       </div>

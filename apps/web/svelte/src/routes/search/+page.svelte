@@ -151,13 +151,16 @@
             {/if}
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {#each movies as m (m.id)}
+                {@const art = `/api/artwork/movie/${encodeURIComponent(m.id)}?type=poster&w=300`}
                 <a href={hitHref(m)} class="group block">
-                  <div class="aspect-[2/3] overflow-hidden rounded-xl bg-surface/60">
-                    {#if m.posterUrl}
-                      <img src={m.posterUrl} alt={m.title} class="h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
-                    {:else}
-                      <div class="flex h-full w-full items-center justify-center"><Film class="h-8 w-8 text-muted-foreground" /></div>
-                    {/if}
+                  <!-- Route through the artwork proxy by id rather than gating on
+                       m.posterUrl: the search API omits posterUrl, so the old
+                       `{#if m.posterUrl}` left every result as a bare icon. The
+                       proxy serves the full-res poster by id; onerror reveals the
+                       Film icon fallback if a title genuinely has no artwork. -->
+                  <div class="relative aspect-[2/3] overflow-hidden rounded-xl bg-surface/60">
+                    <div class="absolute inset-0 flex items-center justify-center"><Film class="h-8 w-8 text-muted-foreground" /></div>
+                    <img src={art} alt={m.title} class="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
                   </div>
                   <p class="mt-2 truncate text-sm font-medium">{m.title}</p>
                   {#if m.year}
@@ -179,13 +182,11 @@
             {/if}
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {#each series as s (s.id)}
+                {@const art = `/api/artwork/series/${encodeURIComponent(s.id)}?type=poster&w=300`}
                 <a href={hitHref(s)} class="group block">
-                  <div class="aspect-[2/3] overflow-hidden rounded-xl bg-surface/60">
-                    {#if s.posterUrl}
-                      <img src={s.posterUrl} alt={s.title} class="h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
-                    {:else}
-                      <div class="flex h-full w-full items-center justify-center"><Tv class="h-8 w-8 text-muted-foreground" /></div>
-                    {/if}
+                  <div class="relative aspect-[2/3] overflow-hidden rounded-xl bg-surface/60">
+                    <div class="absolute inset-0 flex items-center justify-center"><Tv class="h-8 w-8 text-muted-foreground" /></div>
+                    <img src={art} alt={s.title} class="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
                   </div>
                   <p class="mt-2 truncate text-sm font-medium">{s.title}</p>
                   {#if s.year}
