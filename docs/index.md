@@ -28,6 +28,7 @@ This index is the repository map for humans and agents. Keep it short, current, 
 - [Server/client release readiness](release-readiness-server-client.md)
 - [Release versioning](release-versioning.md)
 - [Package verification](package-verification.md)
+- [Windows server packaging & service model](windows-server-packaging.md)
 - [Git worktree hygiene](git-worktree-hygiene.md)
 - [Filesystem access](filesystem-access.md)
 - [Development mode](development-mode.md)
