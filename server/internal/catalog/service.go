@@ -725,6 +725,63 @@ func withinCeiling(itemRating, ceiling string) bool {
 	return itemOrder <= ceilingOrder
 }
 
+// RatingWithinCeiling is the exported form of withinCeiling so callers outside
+// this package (e.g. the API streaming/detail authorization paths) can apply
+// the exact same parental-control rule used for list/search filtering.
+func RatingWithinCeiling(itemRating, ceiling string) bool {
+	return withinCeiling(itemRating, ceiling)
+}
+
+// MediaSourceContentRating resolves the content rating of the movie or series
+// that owns the given media source. It returns ("", false, nil) when the media
+// source isn't found or has no resolvable parent. The rating is read from the
+// owning title's best metadata record — the same field used by the list and
+// search rating filters — so playback/detail authorization stays consistent
+// with what the profile is allowed to see.
+func (s *Service) MediaSourceContentRating(ctx context.Context, mediaSourceID string) (string, bool, error) {
+	// Movie owner?
+	var movieID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT movie_id FROM movie_versions WHERE media_source_id = ? LIMIT 1
+	`, mediaSourceID).Scan(&movieID)
+	if err == nil && movieID != "" {
+		if record, ok, mErr := s.GetBestMetadata(ctx, "movie", movieID); mErr != nil {
+			return "", false, mErr
+		} else if ok {
+			return strings.TrimSpace(record.ContentRating), true, nil
+		}
+		return "", true, nil // owner exists but no rating known — pass-through at the ceiling check
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", false, err
+	}
+
+	// Episode owner? Its content rating comes from the parent series.
+	var seriesID string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT e.series_id
+		FROM episode_versions ev
+		JOIN tv_episodes e ON e.id = ev.episode_id
+		WHERE ev.media_source_id = ?
+		LIMIT 1
+	`, mediaSourceID).Scan(&seriesID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if seriesID == "" {
+		return "", false, nil
+	}
+	if record, ok, mErr := s.GetBestMetadata(ctx, "series", seriesID); mErr != nil {
+		return "", false, mErr
+	} else if ok {
+		return strings.TrimSpace(record.ContentRating), true, nil
+	}
+	return "", true, nil
+}
+
 func (s *Service) ListMovies(ctx context.Context, limit int, maxRating string, userID string) ([]MovieListItem, error) {
 	// limit <= 0 means "return everything". A positive limit is honoured as-is.
 	// When a rating ceiling is active we over-fetch so the Go-level filter
