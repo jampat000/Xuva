@@ -13,6 +13,10 @@ let setupWindow = null;
 let tray = null;
 let serverProcess = null;
 let serverRestarting = false;
+// True when we've attached to an already-running local server (e.g. the Xuva
+// Windows Service) instead of spawning our own child. In this mode we never own
+// or kill the server process — the tray is just a window onto it.
+let attachedToExisting = false;
 let discoveredServers = [];
 let bonjourBrowser = null;
 let currentMode = "local";
@@ -410,8 +414,43 @@ function serverCommand() {
   return { cmd: "go", args: ["run", "./cmd/Xuva"], cwd, env: process.env };
 }
 
-function startServer() {
+// probeServerRunning does a single quick health check: is a Xuva server already
+// serving on the local port? Used to decide attach-vs-spawn.
+function probeServerRunning(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const healthURL = new URL("/api/health", LOCAL_APP_URL);
+    const req = http.get(healthURL, (res) => {
+      res.resume();
+      done(Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 500));
+    });
+    req.on("error", () => done(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      done(false);
+    });
+  });
+}
+
+async function startServer() {
   if (serverProcess || currentMode !== "local") return;
+  // Attach, don't spawn: if a Xuva server is already serving locally (most
+  // importantly the Xuva Windows Service), do NOT start a second engine — two
+  // would collide on the port, the database, and the media library. Attach to
+  // the running one; the tray becomes a window onto it.
+  if (await probeServerRunning()) {
+    if (!attachedToExisting) {
+      attachedToExisting = true;
+      logEvent("server.attach.existing", { url: LOCAL_APP_URL });
+    }
+    return;
+  }
+  attachedToExisting = false;
   const cfg = serverCommand();
   logEvent("server.start.requested", { cmd: cfg.cmd, args: cfg.args, cwd: cfg.cwd });
   serverProcess = spawn(cfg.cmd, cfg.args, {
