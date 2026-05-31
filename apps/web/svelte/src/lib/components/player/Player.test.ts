@@ -15,6 +15,7 @@ vi.mock('hls.js', () => ({
 vi.mock('$lib/api/details', () => ({
   getMediaSourceTracks: vi.fn().mockResolvedValue({ audioTracks: [], subtitleTracks: [] }),
   getPlaybackRoute: vi.fn(),
+  getStreamToken: vi.fn().mockResolvedValue({ query: '?sessionId=s&deviceId=web&token=t' }),
   heartbeatClientPlayback: vi.fn().mockResolvedValue(undefined),
   stopClientPlayback: vi.fn().mockResolvedValue(undefined),
   setPlaybackState: vi.fn().mockResolvedValue(undefined),

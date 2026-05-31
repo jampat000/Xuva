@@ -28,7 +28,7 @@
     MediaSourceItem, ProbeTrack, PlaybackStateResponse
   } from '$lib/api/details';
   import {
-    getPlaybackRoute, getMediaSourceTracks,
+    getPlaybackRoute, getMediaSourceTracks, getStreamToken,
     heartbeatClientPlayback, stopClientPlayback, setPlaybackState
   } from '$lib/api/details';
   import { getChapters, type ChaptersResponse, type UserPreferences } from '$lib/api/operator';
@@ -44,6 +44,7 @@
     initialState?: PlaybackStateResponse;
     mediaSource?: MediaSourceItem;
     clientSessionId?: string;
+    deviceId?: string;
     defaultSubtitlesEnabled?: boolean;
     backHref?: string;
   }
@@ -55,6 +56,7 @@
     initialState,
     mediaSource,
     clientSessionId,
+    deviceId = 'web',
     defaultSubtitlesEnabled = false,
     backHref = '/'
   }: Props = $props();
@@ -63,6 +65,23 @@
   let videoEl = $state<HTMLVideoElement | undefined>(undefined);
   let containerEl = $state<HTMLDivElement | undefined>(undefined);
   let hls: Hls | null = null;
+
+  // Resume seek for the native-HLS / direct-stream paths. Setting currentTime
+  // before the media is seekable silently no-ops, so we stash the target and
+  // apply it once `loadedmetadata` fires. (The hls.js path uses Hls.startPosition
+  // instead — see loadSource.)
+  let pendingSeek: number | null = null;
+
+  // ─── Mid-stream stream-token refresh ───────────────────────────────────────
+  // Stream URLs carry a short-lived signed token (?sessionId&deviceId&token).
+  // On a long title the token can expire mid-playback, after which segment / byte-
+  // range requests start failing with 401/403. We detect that, fetch a fresh
+  // token, splice it into the URL and reload at the current position so playback
+  // resumes seamlessly. Guarded against tight loops when the failure isn't
+  // actually auth-related.
+  let tokenRefreshing = false;
+  let tokenRefreshAttempts = 0;
+  const MAX_TOKEN_REFRESHES = 3;
 
   // ─── Playback state ───────────────────────────────────────────────────────
   let currentTime = $state(0);
@@ -172,11 +191,17 @@
     const url = r.manifestUrl || r.url || '';
     const protocol = r.protocol ?? 'http';
 
+    const resumeAt = resumePosition && resumePosition > 5 ? resumePosition : null;
+
     if (protocol === 'hls' && url.includes('.m3u8')) {
       if (Hls.isSupported()) {
         hls = new Hls({
           // Aggressive start — load media segments immediately
           startLevel: -1, // auto
+          // Seek to the resume point natively. hls.js loads the segment covering
+          // startPosition first, so the seek can't be lost to a not-yet-seekable
+          // range the way setting videoEl.currentTime at MANIFEST_PARSED could.
+          startPosition: resumeAt ?? -1,
           abrEwmaDefaultEstimate: 5_000_000, // assume 5 Mbps until we know better
           maxBufferLength: 60,
           maxMaxBufferLength: 120,
@@ -188,47 +213,84 @@
         hls.attachMedia(videoEl);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           loading = false;
-          if (resumePosition && resumePosition > 5) {
-            videoEl!.currentTime = resumePosition;
-          }
           videoEl!.play().catch(() => {});
         });
         hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              hls?.startLoad();
-            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              hls?.recoverMediaError();
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            // A 401/403 means the stream token expired — refresh it and reload
+            // rather than retrying the same dead URL forever.
+            const code = data.response?.code;
+            if (code === 401 || code === 403) {
+              refreshTokenAndReload();
             } else {
-              error = 'Stream error. Check server logs.';
-              loading = false;
+              hls?.startLoad();
             }
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls?.recoverMediaError();
+          } else {
+            error = 'Stream error. Check server logs.';
+            loading = false;
           }
         });
       } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-        // Safari native HLS
+        // Safari native HLS — seek after metadata (see pendingSeek).
+        pendingSeek = resumeAt;
         videoEl.src = url;
-        if (resumePosition && resumePosition > 5) {
-          videoEl.currentTime = resumePosition;
-        }
         videoEl.load();
         videoEl.play().catch(() => {});
         loading = false;
       }
     } else {
-      // Direct play or remux — plain HTTP stream
+      // Direct play or remux — plain HTTP stream. Seek after metadata.
+      pendingSeek = resumeAt;
       videoEl.src = url;
-      if (resumePosition && resumePosition > 5) {
-        // Wait for loadedmetadata before seeking on direct streams
-        const seekOnce = () => {
-          videoEl!.currentTime = resumePosition;
-          videoEl!.removeEventListener('loadedmetadata', seekOnce);
-        };
-        videoEl.addEventListener('loadedmetadata', seekOnce);
-      }
       videoEl.load();
       videoEl.play().catch(() => {});
       loading = false;
+    }
+  }
+
+  // Splice a fresh `?sessionId&deviceId&token` query onto a stream URL, dropping
+  // any stale auth params first so we don't end up with two token= values.
+  function applyStreamTokenQuery(rawUrl: string, query: string): string {
+    if (!rawUrl) return rawUrl;
+    const cleanQuery = query.replace(/^\?/, '');
+    // Strip existing sessionId / deviceId / token / expires params.
+    const stripped = rawUrl
+      .replace(/([?&])(sessionId|deviceId|token|expires|expiresAt)=[^&]*/gi, '$1')
+      .replace(/[?&]+$/g, '')
+      .replace(/&{2,}/g, '&')
+      .replace(/\?&/, '?');
+    const sep = stripped.includes('?') ? '&' : '?';
+    return `${stripped}${sep}${cleanQuery}`;
+  }
+
+  // Fetch a new stream token and reload the source at the current position.
+  async function refreshTokenAndReload() {
+    if (tokenRefreshing) return;
+    if (!clientSessionId) { error = 'Stream authorization expired. Reload the page to continue.'; loading = false; return; }
+    if (tokenRefreshAttempts >= MAX_TOKEN_REFRESHES) {
+      error = 'Stream authorization expired. Reload the page to continue.';
+      loading = false;
+      return;
+    }
+    tokenRefreshing = true;
+    tokenRefreshAttempts += 1;
+    const resumeAt = videoEl ? videoEl.currentTime : 0;
+    try {
+      const tok = await getStreamToken(mediaSourceId, clientSessionId, deviceId);
+      if (!tok.query) { error = 'Stream authorization expired. Reload the page to continue.'; loading = false; return; }
+      const next: PlaybackRouteResponse = { ...route };
+      if (next.manifestUrl) next.manifestUrl = applyStreamTokenQuery(next.manifestUrl, tok.query);
+      if (next.url) next.url = applyStreamTokenQuery(next.url, tok.query);
+      route = next;
+      await loadSource(next, resumeAt);
+    } catch {
+      error = 'Stream authorization expired. Reload the page to continue.';
+      loading = false;
+    } finally {
+      tokenRefreshing = false;
     }
   }
 
@@ -339,6 +401,13 @@
     if (!videoEl) return;
     duration = videoEl.duration;
     loading = false;
+    // Apply a deferred resume seek now that the media is seekable (native HLS /
+    // direct streams — the hls.js path resumes via Hls.startPosition instead).
+    if (pendingSeek != null) {
+      const target = pendingSeek;
+      pendingSeek = null;
+      try { videoEl.currentTime = target; } catch { /* not seekable yet — leave at 0 */ }
+    }
   }
 
   function onPlay() {
@@ -397,6 +466,9 @@
   function onCanPlay() {
     seeking = false;
     loading = false;
+    // Playback is healthy again — reset the token-refresh budget so a later,
+    // independent expiry later in the title gets its own refresh allowance.
+    tokenRefreshAttempts = 0;
   }
 
   function onEnded() {
@@ -422,6 +494,16 @@
   }
 
   function onError() {
+    // For the direct / native-HLS paths a <video> error is the only signal we
+    // get when the stream token expires (the element can't surface the HTTP
+    // status). If we have a session and a token in the URL, try a token refresh
+    // before giving up — but only when hls.js isn't driving the element (its own
+    // ERROR handler covers that path with the real HTTP code).
+    if (!hls && clientSessionId && tokenRefreshAttempts < MAX_TOKEN_REFRESHES &&
+        ((route.url && route.url.includes('token=')) || (route.manifestUrl && route.manifestUrl.includes('token=')))) {
+      refreshTokenAndReload();
+      return;
+    }
     error = 'Could not load media. The file may be unavailable or the format is unsupported.';
     loading = false;
   }
@@ -704,17 +786,40 @@
     }, 10_000);
   }
 
-  // ─── Stop on unload (sendBeacon) ──────────────────────────────────────────
-  function onBeforeUnload() {
-    if (!clientSessionId || !videoEl) return;
+  // ─── Persist progress on unload / backgrounding (sendBeacon) ───────────────
+  // `beforeunload` alone is unreliable on mobile — iOS/Android Safari and Chrome
+  // frequently skip it, and the OS can kill a backgrounded tab without ever
+  // firing it. We additionally listen for `pagehide` (the spec'd replacement,
+  // fires on real navigations) and `visibilitychange` → hidden (fires when the
+  // tab is backgrounded, which is the last reliable hook before an OS kill).
+  //
+  // `endSession` distinguishes a genuine teardown (stop the playback session)
+  // from a mere backgrounding (just checkpoint progress — the user may return,
+  // and the heartbeat session must survive a tab switch).
+  function writeProgressBeacon(endSession: boolean) {
+    if (!clientSessionId || !videoEl || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
     const pos = Math.floor(videoEl.currentTime);
     const dur = Math.floor(duration);
-    // sendBeacon for guaranteed delivery on tab close
-    const payload = JSON.stringify({ positionSeconds: pos, completed: pos >= dur - 5 });
-    navigator.sendBeacon(`/api/client/playback/${clientSessionId}/stop`, payload);
-    // Also write final playback state
-    const statePayload = JSON.stringify({ progressSeconds: pos, durationSeconds: dur });
-    navigator.sendBeacon(`/api/playback/state/${mediaSourceId}`, statePayload);
+    // Always checkpoint the resume position.
+    navigator.sendBeacon(
+      `/api/playback/state/${mediaSourceId}`,
+      JSON.stringify({ progressSeconds: pos, durationSeconds: dur })
+    );
+    // Only end the playback session on a real unload, not a tab switch.
+    if (endSession) {
+      navigator.sendBeacon(
+        `/api/client/playback/${clientSessionId}/stop`,
+        JSON.stringify({ positionSeconds: pos, completed: dur > 0 && pos >= dur - 5 })
+      );
+    }
+  }
+
+  function onBeforeUnload() { writeProgressBeacon(true); }
+  function onPageHide() { writeProgressBeacon(true); }
+  function onVisibilityChange() {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      writeProgressBeacon(false);
+    }
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
@@ -773,6 +878,8 @@
     // Fullscreen change listener
     document.addEventListener('fullscreenchange', onFullscreenChange);
     window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Initial controls show
     showControls();
@@ -786,6 +893,8 @@
     if (remuxRestartTimer) clearTimeout(remuxRestartTimer);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     window.removeEventListener('beforeunload', onBeforeUnload);
+    window.removeEventListener('pagehide', onPageHide);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
 
     // Final position write on component destroy (SPA navigation)
     if (videoEl && clientSessionId) {
