@@ -176,7 +176,7 @@
 		isSubmitting = true;
 		try {
 			await login({ username: usernameValue, password: passwordValue, trustDevice });
-			window.location.href = '/';
+			window.location.href = safeReturnTarget();
 		} catch (error) {
 			errorMessage = formatAuthError(error, 'Sign-in failed.');
 		} finally {
@@ -263,6 +263,24 @@
 
 	function asText(value: unknown): string {
 		return String(value ?? '').trim();
+	}
+
+	// Where to land after a successful sign-in. When the client bounced the user
+	// here from an expired session it appends ?return=<path>; honour it, but only
+	// for same-origin relative paths so a crafted ?return=//evil.example can't turn
+	// the sign-in form into an open redirect.
+	function safeReturnTarget(): string {
+		if (typeof window === 'undefined') return '/';
+		try {
+			const raw = new URL(window.location.href).searchParams.get('return');
+			if (!raw) return '/';
+			const decoded = decodeURIComponent(raw);
+			// Must be a root-relative path and not a protocol-relative // URL.
+			if (!decoded.startsWith('/') || decoded.startsWith('//')) return '/';
+			return decoded;
+		} catch {
+			return '/';
+		}
 	}
 
 	function isApiStatus(error: unknown, expectedStatus: number): boolean {
