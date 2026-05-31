@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -45,6 +47,54 @@ func portFromHTTPAddr(addr string) int {
 	return port
 }
 
+// hostIsLoopback reports whether a ListenAndServe addr binds only to loopback.
+// Treats the empty host (":8097") and the all-interfaces wildcards as NON-loopback,
+// since those expose the listener to the LAN.
+func hostIsLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Pure ":8097" form has no host → all interfaces → not loopback.
+		host = strings.TrimSpace(addr)
+		if strings.HasPrefix(host, ":") {
+			return false
+		}
+	}
+	host = strings.TrimSpace(host)
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// guardAuthDisabledBind refuses to start an auth-disabled server that is reachable
+// from anything other than loopback — that combination serves the entire library,
+// unauthenticated, to the local network. An explicit env override is provided for
+// trusted isolated deployments (e.g. a private reverse proxy that adds its own auth).
+func guardAuthDisabledBind(cfg config.Config) error {
+	if !cfg.AuthDisabled {
+		return nil
+	}
+	if allow, _ := strconv.ParseBool(os.Getenv("XUVA_AUTH_DISABLED_ALLOW_NONLOOPBACK")); allow {
+		slog.Warn("authentication is DISABLED on a non-loopback bind — proceeding because XUVA_AUTH_DISABLED_ALLOW_NONLOOPBACK=true",
+			"httpAddr", cfg.HTTPAddr)
+		return nil
+	}
+	exposed := !hostIsLoopback(cfg.HTTPAddr)
+	if cfg.TLSEnabled && !hostIsLoopback(cfg.HTTPSAddr) {
+		exposed = true
+	}
+	if exposed {
+		return fmt.Errorf("refusing to start: XUVA_AUTH_DISABLED is set but the server binds to a non-loopback address (%s) — this exposes the library unauthenticated to the network; bind to 127.0.0.1, enable auth, or set XUVA_AUTH_DISABLED_ALLOW_NONLOOPBACK=true to override", cfg.HTTPAddr)
+	}
+	return nil
+}
+
 func main() {
 	cfg := config.FromEnv()
 	logCloser, err := xuvalogging.Configure(xuvalogging.Config{
@@ -76,6 +126,10 @@ func main() {
 		"httpsAddr", cfg.HTTPSAddr,
 		"serverName", cfg.ServerName,
 	)
+	if err := guardAuthDisabledBind(cfg); err != nil {
+		slog.Error("startup blocked", "error", err)
+		os.Exit(1)
+	}
 	application, err := app.New(context.Background(), cfg)
 	if err != nil {
 		slog.Error("server startup failed", "error", err)
@@ -85,9 +139,17 @@ func main() {
 	router := application.Router()
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           router,
+		Addr:    cfg.HTTPAddr,
+		Handler: router,
+		// ReadHeaderTimeout bounds the Slowloris vector (slow header drip).
+		// IdleTimeout reaps leaked keep-alive connections.
+		// ReadTimeout and WriteTimeout are intentionally left unset: the server
+		// streams large media bodies (a WriteTimeout would sever long playbacks)
+		// and accepts variable-size uploads (a ReadTimeout would cut slow but
+		// legitimate ones). Body size is bounded per-handler instead — JSON via
+		// decodeJSON's MaxBytesReader, uploads via their own MaxBytesReader.
 		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Ensure the host firewall lets other LAN devices reach us. On Windows
@@ -147,9 +209,11 @@ func main() {
 				)
 			}
 			httpsServer = &http.Server{
-				Addr:              cfg.HTTPSAddr,
-				Handler:           router,
+				Addr:    cfg.HTTPSAddr,
+				Handler: router,
+				// Same timeout rationale as the HTTP listener above.
 				ReadHeaderTimeout: 5 * time.Second,
+				IdleTimeout:       120 * time.Second,
 				TLSConfig: &tls.Config{
 					Certificates: []tls.Certificate{tlsCert},
 					MinVersion:   tls.VersionTLS12,

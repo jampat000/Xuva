@@ -533,11 +533,20 @@ public final class XuvaClientStore: ObservableObject {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: Self.keychainAuthTokenAccount
         ]
-        let attributes: [String: Any] = [kSecValueData as String: data]
-        if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecItemNotFound {
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecItemNotFound {
             var addQuery = query
             addQuery[kSecValueData as String] = data
-            SecItemAdd(addQuery as CFDictionary, nil)
+            // Accessible after first unlock so background refresh / launch can read
+            // the token, but never while the device is locked and never synced to
+            // iCloud or migrated to a new device.
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus != errSecSuccess {
+                logger.error("keychain auth-token add failed: OSStatus \(addStatus)")
+            }
+        } else if updateStatus != errSecSuccess {
+            logger.error("keychain auth-token update failed: OSStatus \(updateStatus)")
         }
     }
 
@@ -561,7 +570,10 @@ public final class XuvaClientStore: ObservableObject {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: Self.keychainAuthTokenAccount
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            logger.error("keychain auth-token delete failed: OSStatus \(status)")
+        }
     }
 
     // MARK: - Deep links
