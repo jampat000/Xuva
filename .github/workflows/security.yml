@@ -148,6 +148,7 @@ jobs:
             "tools/check.ps1",
             "tools/rehearse-install-upgrade-rollback.ps1",
             "packaging/windows/build-package.ps1",
+            "packaging/windows/build-msi.ps1",
             "packaging/windows/verify-package.ps1"
           )
           foreach ($file in $files) {
@@ -186,3 +187,44 @@ jobs:
 
       - name: Validate release tag guard
         run: node tools/validate-release-tag.cjs v0.0.1
+
+  windows-msi:
+    name: Windows MSI build
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install WiX v5
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Build MSI
+        shell: pwsh
+        run: ./packaging/windows/build-msi.ps1 -Version 0.0.0.0
+
+      - name: Verify MSI produced
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path dist/windows-msi -Filter *.msi -ErrorAction SilentlyContinue
+          if (-not $msi) { throw "No MSI was produced" }
+          Write-Host ("MSI: {0} ({1:N2} MB)" -f $msi.Name, ($msi.Length / 1MB))
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuva-msi
+          path: dist/windows-msi/*.msi
+          if-no-files-found: error
