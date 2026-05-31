@@ -46,17 +46,30 @@ func connect(remote, username, password string) (func(), error) {
 	}
 	nr := netResource{Type: resourcetypeDisk, RemoteName: rn}
 
+	// Credential pointer semantics for WNetAddConnection2W:
+	//   lpPassword == NULL  -> use the caller's *default* credentials
+	//   lpPassword == L""    -> an *explicit empty* password
+	// These are different. When a username is supplied we must pass an explicit
+	// password pointer even when it's blank, otherwise e.g. `guest` with an
+	// empty password is sent with the machine's default credentials and the
+	// server rejects it with ERROR_LOGON_FAILURE (1326). This is exactly how
+	// `net use \\host\share /user:guest ""` succeeds where NULL would fail.
 	var userPtr, passPtr *uint16
 	if username != "" {
 		if userPtr, err = windows.UTF16PtrFromString(username); err != nil {
 			return nil, fmt.Errorf("smb: encode username: %w", err)
 		}
-	}
-	if password != "" {
+		// Explicit username => explicit password (empty string allowed).
+		if passPtr, err = windows.UTF16PtrFromString(password); err != nil {
+			return nil, fmt.Errorf("smb: encode password: %w", err)
+		}
+	} else if password != "" {
+		// No username but an explicit password: pass it through as-is.
 		if passPtr, err = windows.UTF16PtrFromString(password); err != nil {
 			return nil, fmt.Errorf("smb: encode password: %w", err)
 		}
 	}
+	// Both empty => userPtr/passPtr stay nil (NULL) => default credentials.
 
 	r, _, _ := procWNetAddConnection2W.Call(
 		uintptr(unsafe.Pointer(&nr)),
