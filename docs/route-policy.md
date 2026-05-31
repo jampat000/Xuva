@@ -55,6 +55,7 @@ Public client bootstrap routes:
 | `POST /api/remote/diagnostics` | remote | `remote.diagnostics.run` | admin |
 | `POST /api/remote/wan` | remote | `remote.wan.lookup` | admin |
 | `GET /api/settings/folders/browse` | settings | `settings.folders.browse` | admin |
+| `POST /api/settings/folders/browse-smb` | settings | `settings.folders.browse-smb` | admin |
 | `GET /api/media-sources/{id}/stream` | media | `media.stream` | admin, standard |
 | `GET /api/media-sources/{id}/remux-stream` | media | `media.remux.stream` | admin, standard |
 | `GET /api/media-sources/{id}/download` | media | `media.download` | admin, standard |

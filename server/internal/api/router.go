@@ -60,6 +60,7 @@ import (
 	"github.com/jampat000/Xuva/server/internal/resources"
 	"github.com/jampat000/Xuva/server/internal/scanner"
 	"github.com/jampat000/Xuva/server/internal/scans"
+	"github.com/jampat000/Xuva/server/internal/secret"
 	"github.com/jampat000/Xuva/server/internal/sessions"
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
@@ -75,7 +76,10 @@ import (
 )
 
 type Deps struct {
-	Config        config.Config
+	Config config.Config
+	// Secret seals/opens machine-bound secrets (e.g. SMB share credentials).
+	// May be nil if the store failed to initialize; handlers must nil-check.
+	Secret        secret.Store
 	StartedAt     time.Time
 	Database      *database.Service
 	Auth          *auth.Service
@@ -210,6 +214,7 @@ func NewRouter(deps Deps) http.Handler {
 	handleProtected(mux, deps, "GET /api/settings/performance", performanceSettingsHandler(deps))
 	handleProtected(mux, deps, "GET /api/settings", settingsHandler(deps))
 	handleProtected(mux, deps, "GET /api/settings/folders/browse", settingsFolderBrowseHandler(deps))
+	handleProtectedCSRF(mux, deps, "POST /api/settings/folders/browse-smb", settingsSMBBrowseHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/settings", settingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "PUT /api/settings/metadata-sources", metadataSourceSettingsUpdateHandler(deps))
 	handleProtectedCSRF(mux, deps, "POST /api/settings/hardware/test", hardwareTestHandler(deps))

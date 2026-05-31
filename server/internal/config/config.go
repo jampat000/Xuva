@@ -24,23 +24,28 @@ type Config struct {
 	DiscoveryServiceType string `json:"-"`
 	// DataDir is resolved at startup and never persisted in settings.json
 	// (since the file itself lives inside DataDir). Override via XUVA_DATA_DIR.
-	RuntimeHome           string   `json:"-"`
-	RuntimeScope          string   `json:"-"`
-	DataDir               string   `json:"-"`
-	TranscodeDir          string   `json:"transcodeDir,omitempty"`
-	DownloadsDir          string   `json:"downloadsDir,omitempty"`
-	MetadataDir           string   `json:"metadataDir,omitempty"`
-	CacheDir              string   `json:"cacheDir,omitempty"`
-	TempDir               string   `json:"tempDir,omitempty"`
-	MovieLibraryPath      string   `json:"movieLibraryPath,omitempty"`
-	TVLibraryPath         string   `json:"tvLibraryPath,omitempty"`
-	MovieMetadataSources  []string `json:"movieMetadataSources,omitempty"`
-	SeriesMetadataSources []string `json:"seriesMetadataSources,omitempty"`
-	MovieArtworkSources   []string `json:"movieArtworkSources,omitempty"`
-	SeriesArtworkSources  []string `json:"seriesArtworkSources,omitempty"`
-	FFprobePath           string   `json:"ffprobePath"`
-	FFmpegPath            string   `json:"ffmpegPath"`
-	FpcalcPath            string   `json:"fpcalcPath,omitempty"` // path to fpcalc binary; empty = intro detection disabled
+	RuntimeHome      string `json:"-"`
+	RuntimeScope     string `json:"-"`
+	DataDir          string `json:"-"`
+	TranscodeDir     string `json:"transcodeDir,omitempty"`
+	DownloadsDir     string `json:"downloadsDir,omitempty"`
+	MetadataDir      string `json:"metadataDir,omitempty"`
+	CacheDir         string `json:"cacheDir,omitempty"`
+	TempDir          string `json:"tempDir,omitempty"`
+	MovieLibraryPath string `json:"movieLibraryPath,omitempty"`
+	TVLibraryPath    string `json:"tvLibraryPath,omitempty"`
+	// NetworkCredentials maps a normalized UNC share path to a sealed,
+	// base64-encoded credential blob (see internal/secret). Plaintext never
+	// touches disk; values are opaque and machine-bound, and are never echoed
+	// back in any settings read response.
+	NetworkCredentials    map[string]string `json:"networkCredentials,omitempty"`
+	MovieMetadataSources  []string          `json:"movieMetadataSources,omitempty"`
+	SeriesMetadataSources []string          `json:"seriesMetadataSources,omitempty"`
+	MovieArtworkSources   []string          `json:"movieArtworkSources,omitempty"`
+	SeriesArtworkSources  []string          `json:"seriesArtworkSources,omitempty"`
+	FFprobePath           string            `json:"ffprobePath"`
+	FFmpegPath            string            `json:"ffmpegPath"`
+	FpcalcPath            string            `json:"fpcalcPath,omitempty"` // path to fpcalc binary; empty = intro detection disabled
 	// API keys: when blank, the four-tier resolver in keys.go falls back to
 	// env vars then to build-time embedded defaults. End users do not need
 	// to populate these — they exist only as power-user overrides for cases
@@ -98,13 +103,13 @@ type Config struct {
 	// HTTPSAddr (default :8443) using HTTPS. If TLSCertFile/TLSKeyFile are
 	// empty, a self-signed certificate is auto-generated and stored in
 	// <DataDir>/tls/cert.pem and <DataDir>/tls/key.pem.
-	TLSEnabled  bool   `json:"tlsEnabled,omitempty"`
-	HTTPSAddr   string `json:"httpsAddr,omitempty"`   // default 0.0.0.0:8443
-	TLSCertFile string `json:"tlsCertFile,omitempty"` // empty = auto-generated
-	TLSKeyFile  string `json:"tlsKeyFile,omitempty"`  // empty = auto-generated
-	AuthDisabled    bool   `json:"-"`
-	AdminUsername   string `json:"-"`
-	AdminPassword   string `json:"-"`
+	TLSEnabled    bool   `json:"tlsEnabled,omitempty"`
+	HTTPSAddr     string `json:"httpsAddr,omitempty"`   // default 0.0.0.0:8443
+	TLSCertFile   string `json:"tlsCertFile,omitempty"` // empty = auto-generated
+	TLSKeyFile    string `json:"tlsKeyFile,omitempty"`  // empty = auto-generated
+	AuthDisabled  bool   `json:"-"`
+	AdminUsername string `json:"-"`
+	AdminPassword string `json:"-"`
 	// Logging config — env-only, not persisted in settings.json.
 	// LogFormat: "text" (default) or "json" (machine-readable, e.g. for Loki/Datadog)
 	// LogLevel: "debug", "info" (default), "warn", "error"
@@ -165,7 +170,7 @@ func FromEnv() Config {
 		return filepath.Join(dataDir, name)
 	}
 	cfg := Config{
-		ServerName:           envString("XUVA_SERVER_NAME", "Xuva"),
+		ServerName: envString("XUVA_SERVER_NAME", "Xuva"),
 		// Default bind to all interfaces so the personal-media-server use case
 		// works out of the box on a LAN. Users who want loopback-only can set
 		// XUVA_HTTP_ADDR=127.0.0.1:8097 explicitly. Previously we defaulted to
@@ -377,6 +382,13 @@ func merge(base Config, saved Config) Config {
 	}
 	if saved.TVLibraryPath != "" {
 		base.TVLibraryPath = saved.TVLibraryPath
+	}
+	if len(saved.NetworkCredentials) > 0 {
+		creds := make(map[string]string, len(saved.NetworkCredentials))
+		for k, v := range saved.NetworkCredentials {
+			creds[k] = v
+		}
+		base.NetworkCredentials = creds
 	}
 	if len(saved.MovieMetadataSources) > 0 {
 		base.MovieMetadataSources = append([]string(nil), saved.MovieMetadataSources...)
