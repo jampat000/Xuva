@@ -12,6 +12,12 @@ import (
 
 const resourcetypeDisk = 0x1 // RESOURCETYPE_DISK
 
+// errorSessionCredentialConflict (ERROR_SESSION_CREDENTIAL_CONFLICT, 1219) is
+// returned when a session to the target server already exists under a different
+// credential context. Windows permits only one credential set per server per
+// logon session, so we can't add a second — we reuse the existing one instead.
+const errorSessionCredentialConflict = 1219
+
 var (
 	modmpr                     = windows.NewLazySystemDLL("mpr.dll")
 	procWNetAddConnection2W    = modmpr.NewProc("WNetAddConnection2W")
@@ -77,15 +83,24 @@ func connect(remote, username, password string) (func(), error) {
 		uintptr(unsafe.Pointer(userPtr)),
 		0, // dwFlags: no CONNECT_UPDATE_PROFILE — ephemeral, not persisted
 	)
-	if r != 0 { // anything non-zero is a Win32 error code (NO_ERROR == 0)
+	switch r {
+	case 0: // NO_ERROR — we established the session and own its teardown.
+		disconnect := func() {
+			// fForce = TRUE: drop even if the share is in use by this process.
+			procWNetCancelConnection2W.Call(uintptr(unsafe.Pointer(rn)), 0, 1)
+		}
+		return disconnect, nil
+	case errorSessionCredentialConflict:
+		// A session to this server already exists (another process, or another
+		// library on the same host). We can't add a second credential context,
+		// so reuse the existing one: return a no-op teardown — we must NOT tear
+		// down a connection we didn't create — and let the caller use the path
+		// directly. If that existing session can't reach this share, the
+		// caller's listing fails with a clear error.
+		return func() {}, nil
+	default:
 		return nil, fmt.Errorf("smb: connect to %s failed: %w", remote, syscall.Errno(r))
 	}
-
-	disconnect := func() {
-		// fForce = TRUE: drop even if the share is in use by this process.
-		procWNetCancelConnection2W.Call(uintptr(unsafe.Pointer(rn)), 0, 1)
-	}
-	return disconnect, nil
 }
 
 // Validate authenticates to remote with the given credentials and confirms the
