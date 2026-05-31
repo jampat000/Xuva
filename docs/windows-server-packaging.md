@@ -160,7 +160,7 @@ WiX authoring outline:
 - **Unattended properties** for headless/enterprise deployment:
   ```
   msiexec /i xuva.msi /qn /norestart ^
-    ADDLOCAL=Engine,Service XUVA_HTTP_PORT=8097 XUVA_DATA_DIR="D:\XuvaData"
+    ADDLOCAL=Engine,Service XUVA_HTTP_ADDR=0.0.0.0:8097 XUVA_DATA_DIR="D:\XuvaData"
   ```
 - **Upgrade**: stable `UpgradeCode`; major-upgrade keyed on version so a newer MSI
   auto-removes the old and installs the new. This is the substrate for §5.
