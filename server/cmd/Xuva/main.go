@@ -96,6 +96,19 @@ func guardAuthDisabledBind(cfg config.Config) error {
 }
 
 func main() {
+	// Windows service control verbs (install/uninstall/start/stop) run as a
+	// normal console process and exit. No-op / returns false on non-Windows.
+	if handleServiceControlCommand(os.Args) {
+		return
+	}
+
+	// When the Windows SCM launches us, default the runtime home to ProgramData
+	// before config is read so state lands in C:\ProgramData\Xuva rather than
+	// under Program Files. No-op on non-Windows and on non-service launches.
+	if isWindowsService() {
+		ensureServiceRuntimeDefaults()
+	}
+
 	cfg := config.FromEnv()
 	logCloser, err := xuvalogging.Configure(xuvalogging.Config{
 		Format:   cfg.LogFormat,
@@ -126,19 +139,41 @@ func main() {
 		"httpsAddr", cfg.HTTPSAddr,
 		"serverName", cfg.ServerName,
 	)
+
 	if err := guardAuthDisabledBind(cfg); err != nil {
 		slog.Error("startup blocked", "error", err)
 		os.Exit(1)
 	}
+
+	// Under the Windows SCM, hand control to the service dispatcher (it owns the
+	// start/stop lifecycle). Otherwise run as a normal foreground process.
+	if isWindowsService() {
+		runService(cfg)
+		return
+	}
+	runConsole(cfg)
+}
+
+// serverRuntime owns the started HTTP/HTTPS listeners and the application so the
+// console path and the Windows service handler share one start/stop lifecycle.
+type serverRuntime struct {
+	application *app.Application
+	httpServer  *http.Server
+	httpsServer *http.Server
+}
+
+// startRuntime builds the application + listeners and starts serving in the
+// background. It returns once the listeners are launched; callers wait for a
+// stop signal (console) or an SCM stop request (service) and then call shutdown.
+func startRuntime(cfg config.Config) (*serverRuntime, error) {
 	application, err := app.New(context.Background(), cfg)
 	if err != nil {
-		slog.Error("server startup failed", "error", err)
-		os.Exit(1)
+		return nil, err
 	}
 
 	router := application.Router()
 
-	server := &http.Server{
+	httpServer := &http.Server{
 		Addr:    cfg.HTTPAddr,
 		Handler: router,
 		// ReadHeaderTimeout bounds the Slowloris vector (slow header drip).
@@ -168,7 +203,7 @@ func main() {
 
 	go func() {
 		slog.Info("xuva server listening", "addr", cfg.HTTPAddr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server stopped unexpectedly", "error", err)
 			os.Exit(1)
 		}
@@ -233,22 +268,43 @@ func main() {
 		}
 	}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	return &serverRuntime{
+		application: application,
+		httpServer:  httpServer,
+		httpsServer: httpsServer,
+	}, nil
+}
 
+// shutdown gracefully drains the listeners and the application. Safe to call once.
+func (rt *serverRuntime) shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	application.Shutdown(ctx)
-	if err := server.Shutdown(ctx); err != nil {
+	rt.application.Shutdown(ctx)
+	if err := rt.httpServer.Shutdown(ctx); err != nil {
 		slog.Error("server shutdown failed", "error", err)
-		os.Exit(1)
 	}
-	if httpsServer != nil {
-		if err := httpsServer.Shutdown(ctx); err != nil {
+	if rt.httpsServer != nil {
+		if err := rt.httpsServer.Shutdown(ctx); err != nil {
 			slog.Error("https server shutdown failed", "error", err)
 		}
 	}
 	slog.Info("xuva server stopped")
+}
+
+// runConsole runs the server as a normal foreground process, stopping on
+// SIGINT/SIGTERM. This is the dev path and the path the desktop app uses when it
+// spawns xuva-server.exe as a child process.
+func runConsole(cfg config.Config) {
+	rt, err := startRuntime(cfg)
+	if err != nil {
+		slog.Error("server startup failed", "error", err)
+		os.Exit(1)
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+
+	rt.shutdown()
 }
