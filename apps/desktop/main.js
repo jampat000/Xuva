@@ -1,6 +1,7 @@
 ﻿const path = require("path");
 const fs = require("fs");
 const http = require("http");
+const crypto = require("crypto");
 const { app, BrowserWindow, Menu, Tray, shell, dialog, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 
@@ -178,6 +179,67 @@ function escapePowerShellSingleQuoted(value) {
   return String(value || "").replace(/'/g, "''");
 }
 
+// Only http(s) URLs may ever be handed to the OS via shell.openExternal.
+// Anything else (file:, javascript:, custom schemes) is rejected.
+function isSafeWebUrl(value) {
+  try {
+    const parsed = new URL(String(value || ""));
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function sha256FileSync(filePath) {
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest("hex");
+}
+
+// Parse "v1.2.3" / "1.2.3" into [1,2,3]; null if it doesn't match.
+function parseSemver(value) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(value || "").trim());
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+// Returns true when `candidate` is strictly newer than `current`.
+// If either version is unparseable we conservatively return false
+// (no downgrade, no same-version reinstall via the auto-update path).
+function isNewerVersion(candidate, current) {
+  const a = parseSemver(candidate);
+  const b = parseSemver(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return false;
+}
+
+// Move a consumed/rejected pending-update.json out of the watched path so the
+// 3s watcher cannot re-trigger the same elevated install in a loop (e.g. after
+// a declined UAC prompt or a failed integrity check).
+function quarantinePendingUpdate(reason) {
+  const pending = updateRequestPath();
+  if (!pending) return;
+  try {
+    if (!fs.existsSync(pending)) return;
+    const quarantined = pending + ".rejected";
+    fs.rmSync(quarantined, { force: true });
+    fs.renameSync(pending, quarantined);
+    logEvent("update.pending_quarantined", { reason, path: quarantined });
+  } catch (err) {
+    // Last resort: delete it so we don't loop, even if rename failed.
+    try {
+      fs.rmSync(pending, { force: true });
+    } catch {
+      // ignore
+    }
+    logEvent("update.pending_quarantine_error", { reason, error: String(err) });
+  }
+}
+
 function writeUpdaterScript(request) {
   const updatesDir = path.dirname(updateRequestPath());
   ensureDir(updatesDir);
@@ -235,11 +297,65 @@ async function applyPendingUpdate(request) {
     const installerPath = String(request.installerPath || "");
     if (!installerPath || !fs.existsSync(installerPath)) {
       logEvent("update.apply_skipped", { reason: "installer_missing", installerPath });
+      quarantinePendingUpdate("installer_missing");
       updateApplying = false;
       return;
     }
+
+    // Reject downgrades / same-version reinstalls. The launcher must never run
+    // an elevated installer for a build that isn't strictly newer than ours.
+    const requestedVersion = String(request.version || "");
+    if (!isNewerVersion(requestedVersion, app.getVersion())) {
+      logEvent("update.apply_rejected", {
+        reason: "not_newer",
+        requestedVersion,
+        currentVersion: app.getVersion(),
+      });
+      quarantinePendingUpdate("not_newer");
+      updateApplying = false;
+      return;
+    }
+
+    // Re-verify the staged installer's SHA256 against the digest the server
+    // recorded when it downloaded+verified the asset. This closes the local
+    // tamper window: anyone who swaps the file in the updates dir between
+    // staging and apply would change its hash and be rejected here.
+    const expectedSHA = String(request.installerSha256 || "").trim().toLowerCase();
+    if (!expectedSHA) {
+      logEvent("update.apply_rejected", { reason: "missing_expected_sha", installerPath });
+      quarantinePendingUpdate("missing_expected_sha");
+      updateApplying = false;
+      return;
+    }
+    let actualSHA = "";
+    try {
+      actualSHA = sha256FileSync(installerPath).toLowerCase();
+    } catch (hashErr) {
+      logEvent("update.apply_rejected", { reason: "hash_error", error: String(hashErr) });
+      quarantinePendingUpdate("hash_error");
+      updateApplying = false;
+      return;
+    }
+    if (actualSHA !== expectedSHA) {
+      logEvent("update.apply_rejected", { reason: "sha_mismatch", expectedSHA, actualSHA });
+      quarantinePendingUpdate("sha_mismatch");
+      try {
+        fs.rmSync(installerPath, { force: true });
+      } catch {
+        // ignore
+      }
+      updateApplying = false;
+      return;
+    }
+
+    // Move the pending request aside BEFORE launching the elevated installer.
+    // If the user declines the UAC prompt (or the install fails), the watcher
+    // won't find pending-update.json on its next tick and so won't re-prompt
+    // in a loop. Re-applying requires re-staging from the update UI.
+    quarantinePendingUpdate("applying");
+
     const scriptPath = writeUpdaterScript(request);
-    logEvent("update.apply_requested", { version: request.version || "", installerPath, scriptPath });
+    logEvent("update.apply_requested", { version: requestedVersion, installerPath, scriptPath });
     const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath], {
       detached: true,
       stdio: "ignore",
@@ -252,6 +368,7 @@ async function applyPendingUpdate(request) {
     app.quit();
   } catch (err) {
     logEvent("update.apply_error", { error: String(err) });
+    quarantinePendingUpdate("apply_error");
     updateApplying = false;
   }
 }
@@ -377,6 +494,10 @@ function waitForLocalServer(timeoutMs = 30000) {
 async function openAppInBrowser() {
   await waitForLocalServer();
   const url = activeAppURL();
+  if (!isSafeWebUrl(url)) {
+    logEvent("browser.open_rejected", { reason: "unsafe_url", url });
+    return { ok: false, url, error: "unsafe url scheme" };
+  }
   logEvent("browser.open_requested", { url });
   try {
     await shell.openExternal(url);
@@ -537,6 +658,10 @@ ipcMain.handle("xuva:get-discovered-servers", () => discoveredServers);
 ipcMain.handle("xuva:save-settings", async (_event, settings = {}) => {
   const mode = settings.mode === "remote" ? "remote" : "local";
   const remoteUrl = mode === "remote" ? String(settings.remoteUrl || "").trim() : "";
+  if (mode === "remote" && !isSafeWebUrl(remoteUrl)) {
+    logEvent("settings.save_rejected", { reason: "unsafe_remote_url", remoteUrl });
+    return { ok: false, error: "Remote server URL must be a valid http(s) address." };
+  }
   writeSettings({ mode, remoteUrl });
   applySettings({ mode, remoteUrl });
   logEvent("settings.saved", { mode, remoteUrl });
@@ -558,7 +683,23 @@ ipcMain.handle("xuva:save-settings", async (_event, settings = {}) => {
   return { ok: true };
 });
 
-app.whenReady().then(() => {
+// Single-instance lock: a second launch (Start Menu + tray + installer
+// finish-page) must not start a competing xuva-server.exe on the same port,
+// which would crash-loop on bind. The second instance hands off and exits;
+// the primary instance brings the app forward.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    logEvent("app.second_instance");
+    showWindow();
+  });
+  startApp();
+}
+
+function startApp() {
+  return app.whenReady().then(() => {
   const saved = readSettings();
   applySettings(saved);
   startDiscovery();
@@ -580,7 +721,8 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     showWindow();
   });
-});
+  });
+}
 
 app.on("before-quit", () => {
   app.isQuiting = true;
