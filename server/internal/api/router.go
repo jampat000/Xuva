@@ -2141,6 +2141,27 @@ func clientHomeHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+// detailContentRating extracts the content rating from a loaded detail's
+// metadata pointer (movie or series share the embedded *MetadataRecord).
+func metadataContentRating(record *catalog.MetadataRecord) string {
+	if record == nil {
+		return ""
+	}
+	return record.ContentRating
+}
+
+// ratingBlocked reports whether the active profile's max-rating ceiling forbids
+// an item with the given content rating. Returns false when no ceiling is set.
+// Centralises the parental-control gate so detail and playback paths enforce the
+// same rule the list/search filters already apply.
+func ratingBlocked(ctx context.Context, deps Deps, contentRating string) bool {
+	ceiling := activeMaxRating(ctx, deps)
+	if ceiling == "" {
+		return false
+	}
+	return !catalog.RatingWithinCeiling(contentRating, ceiling)
+}
+
 func clientMovieDetailHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		detail, ok, err := deps.Catalog.GetMovie(r.Context(), r.PathValue("id"))
@@ -2149,6 +2170,13 @@ func clientMovieDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		if !ok {
+			writeError(w, http.StatusNotFound, "movie not found")
+			return
+		}
+		// Parental control: a restricted profile must not see detail for an item
+		// it isn't allowed to view. 404 (not 403) so the item's existence isn't
+		// disclosed, matching how list/search simply omit it.
+		if ratingBlocked(r.Context(), deps, metadataContentRating(detail.Metadata)) {
 			writeError(w, http.StatusNotFound, "movie not found")
 			return
 		}
@@ -2164,6 +2192,10 @@ func clientSeriesDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		if !ok {
+			writeError(w, http.StatusNotFound, "series not found")
+			return
+		}
+		if ratingBlocked(r.Context(), deps, metadataContentRating(detail.Metadata)) {
 			writeError(w, http.StatusNotFound, "series not found")
 			return
 		}
@@ -3572,6 +3604,10 @@ func movieDetailHandler(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "movie not found")
 			return
 		}
+		if ratingBlocked(r.Context(), deps, metadataContentRating(detail.Metadata)) {
+			writeError(w, http.StatusNotFound, "movie not found")
+			return
+		}
 		writeJSON(w, http.StatusOK, detail)
 	}
 }
@@ -3598,6 +3634,10 @@ func seriesDetailHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		if !ok {
+			writeError(w, http.StatusNotFound, "series not found")
+			return
+		}
+		if ratingBlocked(r.Context(), deps, metadataContentRating(detail.Metadata)) {
 			writeError(w, http.StatusNotFound, "series not found")
 			return
 		}
@@ -6176,6 +6216,16 @@ func authorizeStreamRequest(deps Deps, w http.ResponseWriter, r *http.Request, m
 		writeError(w, http.StatusForbidden, "playback session does not match this stream")
 		return nil, false
 	}
+	// Parental control: even with a valid session+token, a restricted profile
+	// must not be able to stream/remux/download an item whose rating exceeds
+	// its ceiling. This is the chokepoint for all byte-serving handlers, so it
+	// closes the IDOR where a kids profile streamed any item by media-source ID.
+	if blocked, reason := streamRatingBlocked(r.Context(), deps, mediaSourceID); blocked {
+		publishStreamDenied(deps, r, resolved, mediaSourceID, sessionID, reason)
+		writeError(w, http.StatusForbidden, "this title is not available for the active profile")
+		return nil, false
+	}
+
 	_, release, err := deps.Streaming.Validate(r.URL.Query().Get("token"), streaming.Expected{
 		MediaSourceID: mediaSourceID,
 		SessionID:     session.ID,
@@ -6189,6 +6239,30 @@ func authorizeStreamRequest(deps Deps, w http.ResponseWriter, r *http.Request, m
 		return nil, false
 	}
 	return release, true
+}
+
+// streamRatingBlocked reports whether the active profile's max-rating ceiling
+// forbids playback of the media source. Returns (false, "") when no ceiling is
+// set or the rating is allowed. A lookup error fails open with a logged reason
+// rather than blocking legitimate playback — the ceiling is a content filter,
+// not the primary access-control boundary (that's the session+token check).
+func streamRatingBlocked(ctx context.Context, deps Deps, mediaSourceID string) (bool, string) {
+	ceiling := activeMaxRating(ctx, deps)
+	if ceiling == "" {
+		return false, ""
+	}
+	rating, ok, err := deps.Catalog.MediaSourceContentRating(ctx, mediaSourceID)
+	if err != nil {
+		slog.Warn("stream rating lookup failed", "mediaSourceId", mediaSourceID, "err", err)
+		return false, ""
+	}
+	if !ok {
+		return false, ""
+	}
+	if catalog.RatingWithinCeiling(rating, ceiling) {
+		return false, ""
+	}
+	return true, "rating_ceiling"
 }
 
 func streamTokenError(err error) (int, string) {
