@@ -193,11 +193,19 @@ func stageUpdateApply(ctx context.Context, cfg config.Config) (updateApplyRespon
 		}
 		expectedSHA = parseSHA256File(checksumPath)
 	}
+	// An installer we cannot verify must never be staged. If neither the GitHub
+	// asset digest nor a published .exe.sha256 sidecar gave us an expected hash,
+	// fail closed rather than handing an unverified binary to the elevated
+	// launcher.
+	if expectedSHA == "" {
+		_ = os.Remove(installerPath)
+		return updateApplyResponse{}, fmt.Errorf("release is missing a checksum for the installer; refusing to stage an unverified update")
+	}
 	actualSHA, err := sha256File(installerPath)
 	if err != nil {
 		return updateApplyResponse{}, err
 	}
-	if expectedSHA != "" && !strings.EqualFold(expectedSHA, actualSHA) {
+	if !strings.EqualFold(expectedSHA, actualSHA) {
 		_ = os.Remove(installerPath)
 		return updateApplyResponse{}, fmt.Errorf("installer checksum mismatch")
 	}
