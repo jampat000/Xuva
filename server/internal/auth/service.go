@@ -182,10 +182,13 @@ func (s *Service) Bootstrap(ctx context.Context, options BootstrapOptions) error
 	if username == "" {
 		username = "admin"
 	}
-	password := options.Password
-	if strings.TrimSpace(password) == "" {
-		password = randomToken(24)
-		slog.Warn("auth bootstrap password generated", "username", username, "password", password)
+	// Fail closed rather than generate a random password and log it in plaintext
+	// (the old behaviour leaked an admin credential into persisted/rotated logs).
+	// The only live caller supplies a password from XUVA_ADMIN_PASSWORD; zero-config
+	// first-run instead defers to the interactive sign-in bootstrap (see app.New).
+	password := strings.TrimSpace(options.Password)
+	if password == "" {
+		return errors.New("bootstrap password is required")
 	}
 	displayName := strings.TrimSpace(options.DisplayName)
 	if displayName == "" {
