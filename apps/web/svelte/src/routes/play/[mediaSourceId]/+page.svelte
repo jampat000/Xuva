@@ -27,6 +27,9 @@
   let savedState = $state<PlaybackStateResponse | null>(null);
   let mediaSource = $state<MediaSourceItem | null>(null);
   let clientSessionId = $state<string | undefined>(undefined);
+  // Mirrors the deviceId the playback session was created with — the Player needs
+  // it to fetch a fresh stream token if the current one expires mid-playback.
+  let clientDeviceId = $state<string>('web');
   let defaultSubtitlesEnabled = $state(false);
   let loadError = $state<string | null>(null);
   let loading = $state(true);
@@ -169,6 +172,7 @@
         sessionId = session.sessionId;
         sessionDeviceId = session.deviceId ?? 'web';
         clientSessionId = session.sessionId;
+        clientDeviceId = sessionDeviceId;
         defaultSubtitlesEnabled = Boolean(session.defaultSubtitlesEnabled);
         // The start response embeds the resolved route — use it to avoid a
         // redundant getPlaybackRoute round-trip on the happy path.
@@ -381,6 +385,7 @@
     initialState={savedState ?? undefined}
     mediaSource={mediaSource ?? undefined}
     {clientSessionId}
+    deviceId={clientDeviceId}
     {defaultSubtitlesEnabled}
     {backHref}
   />

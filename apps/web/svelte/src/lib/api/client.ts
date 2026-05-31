@@ -92,6 +92,27 @@ export function normalizeErrorMessage(status: number, message = ''): string {
 	return message || 'Something went wrong. Retry the action.';
 }
 
+// On a spontaneous 401 (the session expired or was revoked mid-use) we clear the
+// stored token and bounce the user to the sign-in page so they aren't stranded on
+// a now-broken view. Excluded:
+//   • the auth endpoints themselves — a 401 from /api/auth/login is a bad-password
+//     response the form shows inline, not an expired session; /api/auth/session is
+//     the app's own "am I signed in?" probe and is handled by the layout guard.
+//   • requests made while already on /signin (avoids a redirect loop).
+// The current path is preserved as ?return= so sign-in can send the user back.
+function redirectToSignInOn401(path: string): void {
+	if (typeof window === 'undefined' || !window.location) return;
+	if (path.startsWith('/api/auth/')) return;
+	try {
+		const current = window.location.pathname || '/';
+		if (current.startsWith('/signin') || current.startsWith('/setup')) return;
+		const ret = encodeURIComponent(current + (window.location.search || ''));
+		window.location.assign(`/signin?return=${ret}`);
+	} catch {
+		// Navigation may be unavailable in test/SSR contexts — fail quietly.
+	}
+}
+
 function readCookie(name: string): string {
 	if (typeof document === 'undefined' || !document.cookie) return '';
 	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -215,7 +236,10 @@ export function createApiClient({
 			const payload = parsePayload(rawText, path, response.status) as ApiErrorShape;
 
 			if (!response.ok) {
-				if (response.status === 401) clearAuthToken();
+				if (response.status === 401) {
+						clearAuthToken();
+						redirectToSignInOn401(path);
+					}
 				throw new ApiClientError(payload?.error || response.statusText, {
 					status: response.status,
 					path,
