@@ -49,6 +49,11 @@ func normalizeUNC(p string) string {
 	return strings.TrimRight(p, `\`)
 }
 
+// NormalizeUNC canonicalizes a UNC path (trim, forward→back slashes, no trailing
+// slash). Callers use it as the stable key for stored per-share credentials so
+// equivalent spellings of the same share resolve to one entry.
+func NormalizeUNC(p string) string { return normalizeUNC(p) }
+
 // listDirs returns the immediate subdirectories of root, sorted case-insensitively.
 // Shared by the Windows implementation after a connection is established.
 func listDirs(root string) ([]Entry, error) {

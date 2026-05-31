@@ -39,6 +39,7 @@ import (
 	runtimestore "github.com/jampat000/Xuva/server/internal/runtime"
 	"github.com/jampat000/Xuva/server/internal/scanner"
 	"github.com/jampat000/Xuva/server/internal/scans"
+	"github.com/jampat000/Xuva/server/internal/secret"
 	"github.com/jampat000/Xuva/server/internal/sessions"
 	"github.com/jampat000/Xuva/server/internal/streaming"
 	"github.com/jampat000/Xuva/server/internal/subtitles"
@@ -852,8 +853,16 @@ func ensureRuntimeDirs(cfg config.Config) error {
 }
 
 func (a *Application) Router() http.Handler {
+	// Machine-bound secret store for sealing SMB share credentials. A failure
+	// here is non-fatal: credential storage is simply unavailable (handlers
+	// nil-check), but the rest of the server runs normally.
+	secretStore, err := secret.New(a.Config.DataDir)
+	if err != nil {
+		slog.Error("secret store init failed; network credential storage disabled", "error", err)
+	}
 	return api.NewRouter(api.Deps{
 		Config:        a.Config,
+		Secret:        secretStore,
 		StartedAt:     a.StartedAt,
 		Database:      a.Database,
 		Auth:          a.Auth,
