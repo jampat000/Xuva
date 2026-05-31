@@ -7887,15 +7887,28 @@ func scanTV(w http.ResponseWriter, r *http.Request, deps Deps, path string, samp
 	return response, true
 }
 
+// maxJSONBodyBytes caps the size of a JSON control-plane request body. These
+// payloads are small (settings, IDs, track selections); 1 MiB is generous while
+// preventing an unbounded body from exhausting memory. Bulk endpoints that
+// legitimately accept large bodies (e.g. backup upload) set their own, larger
+// MaxBytesReader before calling their decoder and do not use decodeJSON.
+const maxJSONBodyBytes = 1 << 20 // 1 MiB
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) bool {
 	if r.Body == nil || r.Body == http.NoBody {
 		return true
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(destination); err != nil {
 		if errors.Is(err, io.EOF) {
 			return true
+		}
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return false
 		}
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return false

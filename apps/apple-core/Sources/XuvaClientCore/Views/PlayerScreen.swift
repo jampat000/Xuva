@@ -242,6 +242,10 @@ struct XuvaVideoPlayer: View {
     @State private var isPlaying = true
     @State private var loading = true
     @State private var loadError: String?
+    // True once the item is ready AND the resume seek (if any) has landed. Until
+    // then player.currentTime() is ~0; writing that as progress would clobber a
+    // real saved position with 0 on an early exit.
+    @State private var didBecomeReady = false
 
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
@@ -681,7 +685,13 @@ struct XuvaVideoPlayer: View {
             loading = false
             if let s = playback.clientStartPositionSeconds, s > 0 {
                 let target = CMTime(seconds: Double(s), preferredTimescale: 600)
-                item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity)
+                // Only mark ready once the seek has actually landed — until then a
+                // progress write would persist 0 over the saved resume position.
+                item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
+                    DispatchQueue.main.async { didBecomeReady = true }
+                }
+            } else {
+                didBecomeReady = true
             }
             Task { await loadSelectionGroups(item: item) }
             statusObservation?.invalidate()
@@ -762,13 +772,19 @@ struct XuvaVideoPlayer: View {
     // MARK: Heartbeat / stop
 
     private func stopAndClose() async {
-        let seconds = CMTimeGetSeconds(player.currentTime())
         await writeFinalState(completed: false)
-        if seconds.isFinite {
-            await store.stopPlayback(positionSeconds: max(0, Int(seconds)), completed: false)
+        let seconds = CMTimeGetSeconds(player.currentTime())
+        // Before the resume seek lands, currentTime is ~0 — reporting that as the
+        // stop position would reset Continue Watching to the start. Fall back to
+        // the position we were asked to resume from. stopPlayback closes the
+        // player internally in every path.
+        let pos: Int
+        if didBecomeReady, seconds.isFinite {
+            pos = max(0, Int(seconds))
         } else {
-            close()
+            pos = max(0, playback.clientStartPositionSeconds ?? 0)
         }
+        await store.stopPlayback(positionSeconds: pos, completed: false)
     }
 
     private func writeFinalState(completed: Bool) async {
@@ -776,6 +792,13 @@ struct XuvaVideoPlayer: View {
         let pos = CMTimeGetSeconds(player.currentTime())
         guard pos.isFinite else { return }
         let dur = durationSeconds.isFinite ? durationSeconds : 0
+        // Guard the resume-write race: an exit before the item is ready / before
+        // the resume seek lands (or with an unknown duration) would otherwise
+        // persist progress 0 over a real saved position. A genuine play-to-end
+        // (completed) is always written.
+        if !completed, !didBecomeReady || dur <= 0 {
+            return
+        }
         try? await api.setPlaybackState(
             mediaSourceId: msid,
             update: PlaybackStateUpdate(progressSeconds: max(0, pos), durationSeconds: dur, watched: completed ? true : nil)
