@@ -201,11 +201,26 @@ func startRuntime(cfg config.Config) (*serverRuntime, error) {
 		fwCancel()
 	}
 
+	// Bind the listener synchronously, before returning, so a bind failure
+	// (port already in use, bad address) surfaces as a startRuntime error the
+	// caller reports cleanly. This matters most under the Windows SCM: the old
+	// goroutine path called os.Exit(1) on bind failure, which during startup
+	// crashes the service (no clean start-failure status) and, if the bind died
+	// after the Running signal, would crash-loop a service the SCM thinks is
+	// healthy. With the listener already bound here, Serve only fails on a real
+	// runtime fault, which we log and let the SCM/graceful-shutdown path handle.
+	httpListener, err := net.Listen("tcp", cfg.HTTPAddr)
+	if err != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		application.Shutdown(shutdownCtx)
+		cancel()
+		return nil, fmt.Errorf("bind http listener %s: %w", cfg.HTTPAddr, err)
+	}
+
 	go func() {
 		slog.Info("xuva server listening", "addr", cfg.HTTPAddr)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := httpServer.Serve(httpListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server stopped unexpectedly", "error", err)
-			os.Exit(1)
 		}
 	}()
 
@@ -259,12 +274,21 @@ func startRuntime(cfg config.Config) (*serverRuntime, error) {
 				firewall.LogResult(fwCtx, slog.Default(), port, "Xuva Server (HTTPS)")
 				fwCancel()
 			}
-			go func() {
-				slog.Info("xuva server listening (https)", "addr", cfg.HTTPSAddr)
-				if err := httpsServer.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-					slog.Error("https server stopped unexpectedly", "error", err)
-				}
-			}()
+			// Pre-bind like the HTTP listener. HTTPS is optional, so a bind
+			// failure here is non-fatal: log and continue without TLS rather
+			// than failing the whole server (or crashing a goroutine).
+			httpsListener, lerr := net.Listen("tcp", cfg.HTTPSAddr)
+			if lerr != nil {
+				slog.Error("https listener bind failed — HTTPS not started", "addr", cfg.HTTPSAddr, "error", lerr)
+				httpsServer = nil
+			} else {
+				go func() {
+					slog.Info("xuva server listening (https)", "addr", cfg.HTTPSAddr)
+					if err := httpsServer.ServeTLS(httpsListener, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+						slog.Error("https server stopped unexpectedly", "error", err)
+					}
+				}()
+			}
 		}
 	}
 
