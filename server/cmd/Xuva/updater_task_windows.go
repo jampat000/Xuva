@@ -45,12 +45,12 @@ func readAutoUpdateRegistry() (string, bool) {
 }
 
 // ensureUpdaterTask registers (enabled) or removes (disabled) the SYSTEM
-// scheduled task that runs `xuva-server update --scheduled`. Called on each
-// service start, so it self-heals a missing task and applies an opt-out toggle
-// on restart. Idempotent. Runs as the LocalSystem service, which has the rights
-// to manage a SYSTEM task.
+// scheduled tasks that run `xuva-server update --scheduled` — one every 6 hours
+// and one shortly after boot. Called on each service start, so it self-heals
+// missing tasks and applies an opt-out toggle on restart. Idempotent. Runs as
+// the LocalSystem service, which has the rights to manage a SYSTEM task.
 //
-// The task is built from schtasks command-line flags rather than an XML
+// The tasks are built from schtasks command-line flags rather than an XML
 // definition: schtasks constructs a schema-valid task internally, which avoids
 // the /create /xml pitfalls (the file must be UTF-16 and its <Settings>
 // elements must be in a strict order — both easy to get wrong and the cause of
@@ -60,15 +60,20 @@ func ensureUpdaterTask(enabled bool) error {
 	if err != nil {
 		return fmt.Errorf("resolve own path: %w", err)
 	}
-	cmd := exec.Command("schtasks", updaterTaskArgs(enabled, exe)...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
-	out, runErr := cmd.CombinedOutput()
-	if runErr != nil {
+	for _, t := range updaterTasks {
+		var args []string
 		if enabled {
-			return fmt.Errorf("schtasks: %v: %s", runErr, strings.TrimSpace(string(out)))
+			args = updaterCreateArgs(t.name, exe, t.schedule)
+		} else {
+			args = updaterDeleteArgs(t.name)
 		}
-		// Removing an already-absent task is fine — disabling must be idempotent.
-		return nil
+		cmd := exec.Command("schtasks", args...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
+		out, runErr := cmd.CombinedOutput()
+		if runErr != nil && enabled {
+			// Removing an already-absent task is fine — disabling stays quiet.
+			return fmt.Errorf("schtasks %s: %v: %s", t.name, runErr, strings.TrimSpace(string(out)))
+		}
 	}
 	return nil
 }

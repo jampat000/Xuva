@@ -198,8 +198,9 @@ func TestAutoUpdateDisabledByValue(t *testing.T) {
 	}
 }
 
-func TestUpdaterTaskArgs(t *testing.T) {
-	create := updaterTaskArgs(true, `C:\Program Files\Xuva\xuva-server.exe`)
+func TestUpdaterCreateArgs(t *testing.T) {
+	exe := `C:\Program Files\Xuva\xuva-server.exe`
+	periodic := updaterCreateArgs(updaterTaskName, exe, []string{"/sc", "HOURLY", "/mo", "6"})
 	want := []string{
 		"/create", "/tn", `Xuva\XuvaUpdater`,
 		"/tr", `"C:\Program Files\Xuva\xuva-server.exe" update --scheduled`,
@@ -207,17 +208,36 @@ func TestUpdaterTaskArgs(t *testing.T) {
 		"/ru", "SYSTEM", "/rl", "HIGHEST",
 		"/f",
 	}
-	if strings.Join(create, "|") != strings.Join(want, "|") {
-		t.Errorf("create args =\n  %v\nwant\n  %v", create, want)
+	if strings.Join(periodic, "|") != strings.Join(want, "|") {
+		t.Errorf("periodic create args =\n  %v\nwant\n  %v", periodic, want)
 	}
 	// The exe path must be quoted in /tr so the spaced "Program Files" path runs.
-	if !strings.Contains(strings.Join(create, " "), `"C:\Program Files\Xuva\xuva-server.exe" update --scheduled`) {
+	if !strings.Contains(strings.Join(periodic, " "), `"C:\Program Files\Xuva\xuva-server.exe" update --scheduled`) {
 		t.Error("the /tr value must wrap the exe path in quotes")
 	}
-	del := updaterTaskArgs(false, "ignored")
-	wantDel := []string{"/delete", "/tn", `Xuva\XuvaUpdater`, "/f"}
-	if strings.Join(del, "|") != strings.Join(wantDel, "|") {
-		t.Errorf("delete args = %v, want %v", del, wantDel)
+
+	boot := updaterCreateArgs(updaterBootTaskName, exe, []string{"/sc", "ONSTART"})
+	if !strings.Contains(strings.Join(boot, " "), `/tn Xuva\XuvaUpdater-AtBoot`) ||
+		!strings.Contains(strings.Join(boot, " "), "/sc ONSTART") {
+		t.Errorf("boot create args missing name/schedule: %v", boot)
+	}
+}
+
+func TestUpdaterDeleteArgs(t *testing.T) {
+	if got := strings.Join(updaterDeleteArgs(updaterTaskName), "|"); got != `/delete|/tn|Xuva\XuvaUpdater|/f` {
+		t.Errorf("delete args = %q", got)
+	}
+}
+
+// Both the periodic and the boot task must be in the managed set, or the
+// service would leave one of them unregistered / un-cleaned.
+func TestUpdaterTasksCoverPeriodicAndBoot(t *testing.T) {
+	names := map[string]bool{}
+	for _, tk := range updaterTasks {
+		names[tk.name] = true
+	}
+	if !names[updaterTaskName] || !names[updaterBootTaskName] {
+		t.Fatalf("updaterTasks must include both %q and %q, got %v", updaterTaskName, updaterBootTaskName, names)
 	}
 }
 
