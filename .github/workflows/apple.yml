@@ -1,0 +1,52 @@
+name: Apple
+
+# Build the iOS and tvOS apps so they can't silently break. Compile-only on the
+# Simulator SDK with signing disabled — no certificates/provisioning needed in
+# CI. Path-filtered so it only runs when Apple sources change. (Locally verified:
+# both schemes build clean via these exact invocations.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ios/**'
+      - 'apps/tvos/**'
+      - 'apps/apple-core/**'
+      - '.github/workflows/apple.yml'
+  pull_request:
+    paths:
+      - 'apps/ios/**'
+      - 'apps/tvos/**'
+      - 'apps/apple-core/**'
+      - '.github/workflows/apple.yml'
+
+jobs:
+  ios:
+    name: Build iOS (simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: Build Xuva iOS
+        run: |
+          xcodebuild build \
+            -project apps/ios/XuvaIOS.xcodeproj \
+            -scheme "Xuva iOS" \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+  tvos:
+    name: Build tvOS (simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: Build Xuva TV
+        run: |
+          xcodebuild build \
+            -project apps/tvos/XuvaTV.xcodeproj \
+            -scheme "Xuva TV" \
+            -destination 'generic/platform=tvOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO

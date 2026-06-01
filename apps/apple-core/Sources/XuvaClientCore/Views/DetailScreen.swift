@@ -13,7 +13,9 @@ public struct DetailScreen: View {
             GeometryReader { geometry in
                 VStack(spacing: 16) {
                     ProgressView()
+                        #if !os(tvOS)
                         .controlSize(.large)
+                        #endif
                         .tint(.white)
                     Text("Loading title…")
                         .font(.system(size: XuvaScale.bodyFontSize(geometry.size)))
