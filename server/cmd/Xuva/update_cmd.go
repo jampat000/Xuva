@@ -39,7 +39,16 @@ func handleUpdateCommand(args []string) bool {
 	if len(args) >= 4 && args[2] == "--apply" {
 		os.Exit(runApplyStage(args[3]))
 	}
-	if err := runUpdateCheck(context.Background(), newUpdateApplier()); err != nil {
+	// --scheduled marks the invocation as the unattended scheduled-task run (vs a
+	// manual `xuva-server update`). Only scheduled runs honor the auto-update
+	// opt-out; a manual run is an explicit admin action and always proceeds.
+	scheduled := false
+	for _, a := range args[2:] {
+		if a == "--scheduled" {
+			scheduled = true
+		}
+	}
+	if err := runUpdateCheck(context.Background(), newUpdateApplier(), scheduled); err != nil {
 		fmt.Fprintf(os.Stderr, "xuva update: %v\n", err)
 		os.Exit(1)
 	}
@@ -49,7 +58,11 @@ func handleUpdateCommand(args []string) bool {
 // runUpdateCheck is stage 1: poll the release feed, and if a newer release ships
 // a Windows MSI, download it, verify its SHA-256 (fail closed if unverifiable),
 // and hand the verified path to the applier. OS-agnostic so it's unit-testable.
-func runUpdateCheck(ctx context.Context, applier updateApplier) error {
+func runUpdateCheck(ctx context.Context, applier updateApplier, scheduled bool) error {
+	if scheduled && !autoUpdateEnabled() {
+		slog.Info("xuva update: auto-update is disabled — skipping the scheduled check")
+		return nil
+	}
 	current := buildinfo.Current().Version
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
@@ -118,4 +131,30 @@ func updateDownloadRoot() string {
 		return filepath.Join(pd, "Xuva")
 	}
 	return filepath.Join(os.TempDir(), "Xuva")
+}
+
+// updaterTaskName is the scheduled task's path (folder \Xuva\, task XuvaUpdater).
+const updaterTaskName = `Xuva\XuvaUpdater`
+
+// updaterTaskArgs builds the schtasks.exe arguments to register the SYSTEM
+// auto-updater task from its XML definition (enabled), or remove it (disabled).
+// Pure so the command shape is unit-tested without touching the real Task
+// Scheduler. /f makes both idempotent (create overwrites, delete won't prompt).
+func updaterTaskArgs(enabled bool, xmlPath string) []string {
+	if enabled {
+		return []string{"/create", "/xml", xmlPath, "/tn", updaterTaskName, "/f"}
+	}
+	return []string{"/delete", "/tn", updaterTaskName, "/f"}
+}
+
+// autoUpdateDisabledByValue reports whether an XUVA_AUTO_UPDATE-style value
+// explicitly turns auto-update off. Anything else — including empty or unset —
+// leaves it enabled, because auto-update is on by default.
+func autoUpdateDisabledByValue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "no", "off":
+		return true
+	default:
+		return false
+	}
 }
