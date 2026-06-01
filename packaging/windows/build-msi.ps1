@@ -186,7 +186,11 @@ Write-Host "`n== wix build =="
 # Firewall rules are provisioned by the server itself (netsh, as LocalSystem) —
 # see Xuva.wxs — so no WiX Firewall extension is needed.
 Copy-Item -LiteralPath $wxsSource -Destination (Join-Path $staging "Xuva.wxs") -Force
-$msiOut = Join-Path $outputBase "xuva-server-v$Version.msi"
+# Strip any leading "v" from the tag so the file is xuva-server-v0.0.99.msi,
+# not xuva-server-vv0.0.99.msi (release tags arrive as "v0.0.99"). Matches the
+# single-"v" desktop asset naming (xuva-v0.0.99-win-x64.exe).
+$fileVersion = $Version.TrimStart('v', 'V')
+$msiOut = Join-Path $outputBase "xuva-server-v$fileVersion.msi"
 Push-Location $staging
 try {
     # -d Version=... feeds the WiX preprocessor variable $(var.Version) that
