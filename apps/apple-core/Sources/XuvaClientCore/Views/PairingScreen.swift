@@ -98,7 +98,9 @@ public struct PairingScreen: View {
                     .foregroundStyle(XuvaTheme.mutedText)
                 if discovery.isBrowsing && discovery.servers.isEmpty {
                     ProgressView()
+                        #if !os(tvOS)
                         .controlSize(.small)
+                        #endif
                         .tint(XuvaTheme.mutedText)
                 }
                 Spacer()
@@ -293,7 +295,9 @@ public struct PairingScreen: View {
                     .foregroundStyle(XuvaTheme.muted)
                 HStack(spacing: 10) {
                     ProgressView()
+                        #if !os(tvOS)
                         .controlSize(.small)
+                        #endif
                         .tint(XuvaTheme.primaryGlow)
                     Text("Waiting for approval…")
                         .font(.system(size: XuvaScale.metaFontSize(viewport), weight: .semibold))

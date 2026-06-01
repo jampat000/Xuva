@@ -27,7 +27,9 @@ public struct XuvaRootView: View {
             }
             if store.isBusy {
                 ProgressView()
+                    #if !os(tvOS)
                     .controlSize(.large)
+                    #endif
                     .tint(.white)
                     .padding(28)
                     .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
