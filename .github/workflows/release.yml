@@ -69,6 +69,17 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/svelte/package-lock.json
 
+      # WiX toolset for the server MSI (matches the .github/workflows/security.yml
+      # "Windows MSI build" job — pinned to v5 to avoid the v6/v7 OSMF EULA gate).
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Install WiX v5
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Build Windows package
         shell: powershell
         env:
@@ -77,6 +88,19 @@ jobs:
           XUVA_DEFAULT_OMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_OMDB_API_KEY }}
         run: |
           ./packaging/windows/build-package.ps1 -Version "${{ needs.version-policy.outputs.version }}"
+
+      # Server MSI (Windows Service install). Output goes into dist/windows so it
+      # ships alongside the desktop installer; the version is injected into the
+      # binary (buildinfo) and the MSI ProductVersion so the SYSTEM updater can
+      # compare it against the published release.
+      - name: Build Windows MSI
+        shell: powershell
+        env:
+          XUVA_DEFAULT_TMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_TMDB_API_KEY }}
+          XUVA_DEFAULT_FANARTTV_API_KEY: ${{ secrets.XUVA_DEFAULT_FANARTTV_API_KEY }}
+          XUVA_DEFAULT_OMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_OMDB_API_KEY }}
+        run: |
+          ./packaging/windows/build-msi.ps1 -Version "${{ needs.version-policy.outputs.version }}" -OutputDir dist/windows
 
       # ── Code signing (Azure Trusted Signing) ──────────────────────────────
       # Activates when AZURE_CLIENT_ID is set in repository secrets.
@@ -109,6 +133,34 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+      - name: Sign Windows MSI (Azure Trusted Signing)
+        if: steps.signing_check.outputs.enabled == 'true'
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.ATS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.ATS_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ATS_PROFILE }}
+          files-folder: dist/windows
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Checksum the MSI AFTER signing so the .sha256 the updater verifies matches
+      # the published (signed) file. Format mirrors build-package.ps1's sidecars:
+      # "<64-hex>  <filename>" (ASCII), which the server's parseSHA256File reads.
+      - name: Generate MSI checksum
+        shell: powershell
+        run: |
+          $msi = Get-ChildItem -Path dist/windows -Filter "*.msi" | Select-Object -First 1
+          if (-not $msi) { throw "Server MSI was not produced." }
+          $sha = (Get-FileHash -LiteralPath $msi.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $($msi.Name)" | Set-Content -LiteralPath "$($msi.FullName).sha256" -Encoding ASCII
+          Write-Host "MSI:     $($msi.Name) ($([math]::Round($msi.Length / 1MB, 2)) MB)"
+          Write-Host "SHA256:  $sha"
 
       - name: Verify unsigned Windows package
         shell: powershell
@@ -123,6 +175,7 @@ jobs:
           name: windows-package
           path: |
             dist/windows/*.exe
+            dist/windows/*.msi
             dist/windows/*.zip
             dist/windows/*.sha256
 
@@ -236,9 +289,10 @@ jobs:
           echo "docker pull ghcr.io/${{ github.repository_owner }}/xuva:${{ steps.version.outputs.tag }}" >> "$GITHUB_OUTPUT"
           echo '```' >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "## Windows installer" >> "$GITHUB_OUTPUT"
+          echo "## Windows" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "Download \`xuva-v*-win-x64.exe\` and run it to install Xuva." >> "$GITHUB_OUTPUT"
+          echo "- **Desktop app** — download \`xuva-v*-win-x64.exe\` and run it (per-user, with tray app)." >> "$GITHUB_OUTPUT"
+          echo "- **Server (headless service)** — download \`xuva-server-v*.msi\` and run it to install the Xuva Media Server Windows Service. It self-updates from future releases." >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "> **Windows SmartScreen / Defender warning**" >> "$GITHUB_OUTPUT"
           echo "> Xuva is not yet code-signed. Windows will warn the first time you download/run it." >> "$GITHUB_OUTPUT"
