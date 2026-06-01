@@ -144,12 +144,13 @@ jobs:
       - name: Validate PowerShell syntax
         shell: powershell
         run: |
+          # build-package.ps1 + verify-package.ps1 + installer.nsh were
+          # retired alongside the NSIS .exe in #451; only the MSI path
+          # and the dev-helper scripts remain.
           $files = @(
             "tools/check.ps1",
             "tools/rehearse-install-upgrade-rollback.ps1",
-            "packaging/windows/build-package.ps1",
-            "packaging/windows/build-msi.ps1",
-            "packaging/windows/verify-package.ps1"
+            "packaging/windows/build-msi.ps1"
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -160,30 +161,6 @@ jobs:
               throw "PowerShell syntax failed for $file"
             }
           }
-
-      - name: Test Windows package verifier
-        shell: powershell
-        run: |
-          $root = Join-Path $env:RUNNER_TEMP "xuva-package-fixture"
-          $resources = Join-Path $root "resources"
-          $runtime = Join-Path $resources "runtime"
-          $bin = Join-Path $runtime "bin"
-          New-Item -ItemType Directory -Path $bin -Force | Out-Null
-          "desktop" | Set-Content -LiteralPath (Join-Path $root "Xuva.exe")
-          "asar" | Set-Content -LiteralPath (Join-Path $resources "app.asar")
-          "server" | Set-Content -LiteralPath (Join-Path $runtime "xuva-server.exe")
-          "readme" | Set-Content -LiteralPath (Join-Path $runtime "README.txt")
-          "notes" | Set-Content -LiteralPath (Join-Path $runtime "PACKAGE-NOTES.txt")
-          "ffmpeg notice" | Set-Content -LiteralPath (Join-Path $runtime "THIRD_PARTY_FFMPEG.txt")
-          "ffmpeg" | Set-Content -LiteralPath (Join-Path $bin "ffmpeg.exe")
-          "ffprobe" | Set-Content -LiteralPath (Join-Path $bin "ffprobe.exe")
-
-          $zip = Join-Path $env:RUNNER_TEMP "xuva-fixture.zip"
-          Compress-Archive -Path (Join-Path $root "*") -DestinationPath $zip -Force
-          $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$sha  xuva-fixture.zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding ASCII
-
-          ./packaging/windows/verify-package.ps1 -PackagePath $zip
 
       - name: Validate release tag guard
         run: node tools/validate-release-tag.cjs v0.0.1
