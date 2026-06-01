@@ -126,19 +126,25 @@
         />
       {/if}
 
-      {#if recentMovies.length > 0}
-        <ContentRow
-          eyebrow="Fresh in your library"
-          title="New movies"
-          items={recentMovies}
-        />
-      {/if}
-
+      <!--
+        Order: Trending (Top10 above) → New episodes dropped (TV) → Fresh
+        in your library (Movies). New episodes are more time-sensitive
+        ("just dropped" tonight) than new movies (just added to library),
+        so they read higher (#222).
+      -->
       {#if recentSeries.length > 0}
         <ContentRow
           eyebrow="New episodes dropped"
           title="New series"
           items={recentSeries}
+        />
+      {/if}
+
+      {#if recentMovies.length > 0}
+        <ContentRow
+          eyebrow="Fresh in your library"
+          title="New movies"
+          items={recentMovies}
         />
       {/if}
 
