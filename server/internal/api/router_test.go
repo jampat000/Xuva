@@ -201,6 +201,73 @@ func releaseURL(r *http.Request, path string) string {
 	return "http://" + r.Host + path
 }
 
+// When a release publishes both the NSIS .exe and the MSI, the desktop apply
+// path stages the MSI — that's the single-Windows-artifact direction in #451.
+// The .exe fallback is exercised by TestSystemUpdatesApplyStagesVerifiedInstaller
+// above (a release with only the .exe asset).
+func TestSystemUpdatesApplyPrefersMSIOverNSIS(t *testing.T) {
+	previousVersion := buildinfo.Version
+	buildinfo.Version = "v0.0.4"
+	t.Cleanup(func() { buildinfo.Version = previousVersion })
+
+	exeBytes := []byte("fake xuva nsis installer")
+	msiBytes := []byte("fake xuva msi installer")
+	exeSum := sha256.Sum256(exeBytes)
+	msiSum := sha256.Sum256(msiBytes)
+	exeSHA := hex.EncodeToString(exeSum[:])
+	msiSHA := hex.EncodeToString(msiSum[:])
+
+	release := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/latest":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"tag_name":     "v0.0.5",
+				"html_url":     "https://github.com/jampat000/Xuva/releases/tag/v0.0.5",
+				"published_at": "2026-05-27T04:00:00Z",
+				"assets": []map[string]any{
+					{
+						"name":                 "xuva-v0.0.5-win-x64.exe",
+						"browser_download_url": releaseURL(r, "/xuva-v0.0.5-win-x64.exe"),
+						"size":                 len(exeBytes),
+						"digest":               "sha256:" + exeSHA,
+					},
+					{
+						"name":                 "xuva-server-v0.0.5.msi",
+						"browser_download_url": releaseURL(r, "/xuva-server-v0.0.5.msi"),
+						"size":                 len(msiBytes),
+						"digest":               "sha256:" + msiSHA,
+					},
+				},
+			})
+		case "/xuva-v0.0.5-win-x64.exe":
+			_, _ = w.Write(exeBytes)
+		case "/xuva-server-v0.0.5.msi":
+			_, _ = w.Write(msiBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer release.Close()
+	t.Setenv("XUVA_UPDATE_RELEASE_API", release.URL+"/latest")
+	t.Setenv("XUVA_UPDATE_APPLY_SUPPORTED", "1")
+
+	deps := testDeps(t, time.Now())
+	deps.Config.RuntimeHome = t.TempDir()
+	router := NewRouter(deps)
+	response := requestJSON(t, router, http.MethodPost, "/api/system/updates/apply", nil)
+
+	if response["status"] != "staged" {
+		t.Fatalf("expected staged update response, got %#v", response)
+	}
+	if response["installerSha256"] != msiSHA {
+		t.Fatalf("expected MSI to be staged (sha %q), got %#v", msiSHA, response)
+	}
+	stagedPath, _ := response["installerPath"].(string)
+	if !strings.HasSuffix(strings.ToLower(stagedPath), ".msi") {
+		t.Fatalf("expected staged installer to be a .msi, got %q", stagedPath)
+	}
+}
+
 func TestRootServesWebApp(t *testing.T) {
 	router := NewRouter(testDeps(t, time.Now()))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
