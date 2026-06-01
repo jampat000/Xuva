@@ -1,0 +1,172 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/jampat000/Xuva/server/internal/buildinfo"
+)
+
+type fakeApplier struct {
+	called  bool
+	msiPath string
+	version string
+}
+
+func (f *fakeApplier) apply(_ context.Context, msiPath, version string) error {
+	f.called = true
+	f.msiPath = msiPath
+	f.version = version
+	return nil
+}
+
+func setBuildVersion(t *testing.T, v string) {
+	t.Helper()
+	prev := buildinfo.Version
+	buildinfo.Version = v
+	t.Cleanup(func() { buildinfo.Version = prev })
+}
+
+// newReleaseServer serves a GitHub-style "latest release" JSON whose single MSI
+// asset downloads msiBody, with the given digest ("" → no digest field).
+func newReleaseServer(t *testing.T, version string, msiBody []byte, digest string) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/download/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(msiBody)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		asset := map[string]any{
+			"name":                 "xuva-server-" + strings.TrimPrefix(version, "v") + ".msi",
+			"browser_download_url": srv.URL + "/download/xuva.msi",
+			"size":                 len(msiBody),
+		}
+		if digest != "" {
+			asset["digest"] = digest
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": version,
+			"html_url": "https://example.test/releases/" + version,
+			"assets":   []map[string]any{asset},
+		})
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func sha256Digest(b []byte) string {
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func TestRunUpdateCheckAppliesNewerVerifiedMSI(t *testing.T) {
+	body := []byte("PRETEND-MSI-CONTENTS")
+	srv := newReleaseServer(t, "v2.0.0", body, sha256Digest(body))
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	t.Setenv("XUVA_RUNTIME_HOME", t.TempDir())
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	if err := runUpdateCheck(context.Background(), fake); err != nil {
+		t.Fatalf("runUpdateCheck: %v", err)
+	}
+	if !fake.called {
+		t.Fatal("applier was not called for a newer, verified release")
+	}
+	if fake.version != "v2.0.0" {
+		t.Errorf("applied version = %q, want v2.0.0", fake.version)
+	}
+	got, err := os.ReadFile(fake.msiPath)
+	if err != nil {
+		t.Fatalf("staged MSI missing: %v", err)
+	}
+	if string(got) != string(body) {
+		t.Errorf("staged MSI content mismatch")
+	}
+}
+
+func TestRunUpdateCheckUpToDate(t *testing.T) {
+	body := []byte("x")
+	srv := newReleaseServer(t, "v1.0.0", body, sha256Digest(body))
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	t.Setenv("XUVA_RUNTIME_HOME", t.TempDir())
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	if err := runUpdateCheck(context.Background(), fake); err != nil {
+		t.Fatalf("runUpdateCheck: %v", err)
+	}
+	if fake.called {
+		t.Fatal("applier called even though the installed version is current")
+	}
+}
+
+func TestRunUpdateCheckRejectsBadChecksum(t *testing.T) {
+	body := []byte("real-msi-bytes")
+	// Advertise a digest that does not match the body we serve.
+	srv := newReleaseServer(t, "v2.0.0", body, "sha256:"+strings.Repeat("0", 64))
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	runtimeHome := t.TempDir()
+	t.Setenv("XUVA_RUNTIME_HOME", runtimeHome)
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	err := runUpdateCheck(context.Background(), fake)
+	if err == nil {
+		t.Fatal("expected a checksum-mismatch error")
+	}
+	if !strings.Contains(err.Error(), "mismatch") {
+		t.Errorf("error = %v, want a checksum mismatch", err)
+	}
+	if fake.called {
+		t.Fatal("applier called despite a checksum mismatch")
+	}
+}
+
+func TestRunUpdateCheckFailsClosedWithoutChecksum(t *testing.T) {
+	body := []byte("unverifiable")
+	srv := newReleaseServer(t, "v2.0.0", body, "") // no digest, no sidecar
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	t.Setenv("XUVA_RUNTIME_HOME", t.TempDir())
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	if err := runUpdateCheck(context.Background(), fake); err == nil {
+		t.Fatal("expected a fail-closed error when no checksum is available")
+	}
+	if fake.called {
+		t.Fatal("applier called for an unverifiable MSI")
+	}
+}
+
+func TestRunUpdateCheckNoMSIAsset(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": "v2.0.0",
+			"assets": []map[string]any{
+				{"name": "xuva-v2.0.0-win-x64.exe", "browser_download_url": "https://example.test/x.exe"},
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	t.Setenv("XUVA_RUNTIME_HOME", t.TempDir())
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	if err := runUpdateCheck(context.Background(), fake); err == nil {
+		t.Fatal("expected an error when the release has no MSI asset")
+	}
+	if fake.called {
+		t.Fatal("applier called when there was no MSI to apply")
+	}
+}
