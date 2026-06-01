@@ -268,44 +268,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $trayStaging "Xuva.exe"))) {
     throw "tray staging missing Xuva.exe (electron-builder output shape changed?)"
 }
 
-# 1d) Harvest staging\tray with `wix heat`. Output (tray.wxs) is a fragment
-#     that, when combined with Xuva.wxs at build time, populates the
-#     TrayComponents ComponentGroup under TrayInstallFolder. Flags:
-#       -cg TrayComponents       — the ComponentGroup id Xuva.wxs references
-#       -dr TrayInstallFolder    — parent Directory id (declared in Xuva.wxs)
-#       -srd                     — suppress root-dir wrapping (nest directly
-#                                  under TrayInstallFolder)
-#       -ag -gg                  — auto-generate stable, deterministic guids
-#                                  from the input paths
-#       -var var.TraySource      — source paths use $(var.TraySource)\... so
-#                                  wix build -d TraySource=tray resolves them
-#       -sfrag                   — single fragment (no per-component fragment)
-#       -scom -sreg              — suppress COM / Registry harvesting (we
-#                                  don't want self-registration side effects)
-Write-Host "`n== wix heat (tray) =="
-$trayWxs = Join-Path $staging "tray.wxs"
-Push-Location $staging
-try {
-    & wix heat dir "tray" `
-        -cg TrayComponents `
-        -dr TrayInstallFolder `
-        -srd `
-        -ag `
-        -gg `
-        -var "var.TraySource" `
-        -sfrag `
-        -scom `
-        -sreg `
-        -o "tray.wxs"
-    if ($LASTEXITCODE -ne 0) { throw "wix heat failed (exit $LASTEXITCODE)" }
-} finally {
-    Pop-Location
-}
-if (-not (Test-Path -LiteralPath $trayWxs)) { throw "tray.wxs was not produced" }
-
 # 2) Build the MSI. Run wix from the staging dir so File/@Source paths
 #    (xuva-server.exe, bin\ffmpeg.exe, $(var.TraySource)\...) resolve, with
-#    the .wxs files alongside.
+#    the .wxs alongside. The TrayFeature ComponentGroup uses WiX 4/5's
+#    built-in `<Files Include="$(var.TraySource)\**" />` auto-harvest (heat
+#    is not a `wix` subcommand in v4/v5), so no separate fragment is needed.
 Write-Host "`n== wix build =="
 # Firewall rules are provisioned by the server itself (netsh, as LocalSystem) —
 # see Xuva.wxs — so no WiX Firewall extension is needed.
@@ -319,10 +286,10 @@ Push-Location $staging
 try {
     # -d Version=... feeds $(var.Version) used by Xuva.wxs for the MSI's
     # ProductVersion (MajorUpgrade then recognizes a newer MSI).
-    # -d TraySource=tray feeds $(var.TraySource) used by the heat-generated
-    # tray.wxs File/@Source paths so each Electron file is found relative to
-    # the staged tray\ folder.
-    & wix build "Xuva.wxs" "tray.wxs" -arch x64 `
+    # -d TraySource=tray feeds $(var.TraySource) used by the <Files Include>
+    # glob inside the TrayComponents ComponentGroup, so each Electron file is
+    # found relative to the staged tray\ folder.
+    & wix build "Xuva.wxs" -arch x64 `
         -d "Version=$msiVersion" `
         -d "TraySource=tray" `
         -o $msiOut

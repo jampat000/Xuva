@@ -264,4 +264,20 @@
               Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
   </Package>
+
+  <!--
+    Auto-harvested Electron tray payload (TrayFeature). WiX v4+ ships a `Files`
+    element that walks a glob at build time and emits one Component per file
+    (with auto-generated stable identities + Component@Guid), nested under the
+    parent Directory's structure. This is the v4/v5 replacement for the heat
+    tool — no separate `wix heat` invocation, no separately-generated wxs
+    fragment. build-msi.ps1 stages the electron-builder unpacked output into
+    `<staging>/tray/` and passes `-d TraySource=tray` so $(var.TraySource)
+    resolves at build time.
+  -->
+  <Fragment>
+    <ComponentGroup Id="TrayComponents" Directory="TrayInstallFolder">
+      <Files Include="$(var.TraySource)\**" />
+    </ComponentGroup>
+  </Fragment>
 </Wix>
