@@ -64,6 +64,35 @@ function Get-MsiProductVersion {
     return ($nums[0..3] -join ".")
 }
 
+# Normalizes a release version into the semver string electron-builder accepts
+# in package.json. Mirrors build-package.ps1's Get-DesktopVersion (so the MSI
+# and the legacy NSIS .exe label the Electron app identically). 0.0.0.0 →
+# "0.0.0-dev" so PR-CI dry-runs produce a recognisable pre-release tag.
+#   v1.2.3 → 1.2.3
+#   1.2.3.4 → not strict semver, falls back to "0.0.0-dev"
+#   dev / garbage → 0.0.0-dev
+function Get-DesktopVersion {
+    param([Parameter(Mandatory = $true)][string]$Version)
+    $normalized = $Version.Trim()
+    if ($normalized.StartsWith("v")) { $normalized = $normalized.Substring(1) }
+    if ($normalized -match "^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$") {
+        return $normalized
+    }
+    return "0.0.0-dev"
+}
+
+# Throws if a command isn't on PATH. Used to fail fast (with a useful message)
+# when the runner is missing node/npm before we get to a confusing electron-
+# builder error 200 lines later.
+function Get-RequiredCommand {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        throw "Required build command '$Name' was not found on PATH."
+    }
+    return $cmd.Source
+}
+
 # Downloads the BtbN LGPL ffmpeg build, verifies its SHA-256 against the upstream
 # checksums manifest, and stages ffmpeg.exe + ffprobe.exe into $DestinationDir.
 # (Self-contained mirror of build-package.ps1's Save-VerifiedFFmpeg; the two are
@@ -180,8 +209,70 @@ foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
     if (-not (Test-Path -LiteralPath (Join-Path $binStaging $tool))) { throw "$tool was not staged" }
 }
 
+# 1c) Build the Electron tray bundle for the optional TrayFeature.
+#     electron-builder picks up xuva-server.exe + bin\ffmpeg via the
+#     `extraResources: runtime/ -> resources/runtime` mapping in
+#     apps/desktop/package.json, so we stage runtime\ inside apps\desktop
+#     first. The result is dist\win-unpacked\ (no NSIS, no zip — just the
+#     unpacked Electron app dir). That dir is then copied into the MSI
+#     staging area so heat can harvest it into a WiX ComponentGroup.
+#
+#     NOTE: the staged tray\resources\runtime\ duplicates the engine's
+#     xuva-server.exe (~120 MB) for now — that's the path the tray uses
+#     today to spawn the server when no service is running. A follow-up PR
+#     deduplicates by pointing the tray at the engine's install path.
+$npm = Get-RequiredCommand -Name "npm"
+$desktopVersion = Get-DesktopVersion -Version $Version
+$desktopRoot = Join-Path $repoRoot "apps\desktop"
+$desktopRuntime = Join-Path $desktopRoot "runtime"
+$desktopRuntimeBin = Join-Path $desktopRuntime "bin"
+$desktopDist = Join-Path $desktopRoot "dist"
+
+Write-Host "`n== electron tray bundle =="
+Write-Host "Desktop ver : $desktopVersion"
+
+Remove-Item -LiteralPath $desktopRuntime -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $desktopDist -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $desktopRuntimeBin -Force | Out-Null
+Copy-Item -LiteralPath $serverExe -Destination (Join-Path $desktopRuntime "xuva-server.exe") -Force
+Copy-Item -LiteralPath (Join-Path $binStaging "ffmpeg.exe")  -Destination (Join-Path $desktopRuntimeBin "ffmpeg.exe")  -Force
+Copy-Item -LiteralPath (Join-Path $binStaging "ffprobe.exe") -Destination (Join-Path $desktopRuntimeBin "ffprobe.exe") -Force
+
+Push-Location $desktopRoot
+try {
+    & $npm ci
+    if ($LASTEXITCODE -ne 0) { throw "npm ci (apps/desktop) failed (exit $LASTEXITCODE)" }
+    # `--win dir` = unpacked output only (no NSIS, no zip target). Override
+    # the package.json `version` so the running tray reports the release
+    # number (app.getVersion()) — matters for the tray-mode update check,
+    # which compares against it.
+    & $npm run "dist:win:unpacked" "--" "--config.extraMetadata.version=$desktopVersion"
+    if ($LASTEXITCODE -ne 0) { throw "electron-builder (dir) failed (exit $LASTEXITCODE)" }
+} finally {
+    Pop-Location
+    # Clean the per-build runtime\ scratch dir so successive builds don't see
+    # stale state and so source control stays clean.
+    Remove-Item -LiteralPath $desktopRuntime -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$unpackedDir = Join-Path $desktopDist "win-unpacked"
+if (-not (Test-Path -LiteralPath $unpackedDir)) {
+    throw "electron-builder did not produce dist\win-unpacked"
+}
+
+# Copy the unpacked tree into the MSI staging area as tray\ (heat harvests it).
+$trayStaging = Join-Path $staging "tray"
+Remove-Item -LiteralPath $trayStaging -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item -LiteralPath $unpackedDir -Destination $trayStaging -Recurse -Force
+if (-not (Test-Path -LiteralPath (Join-Path $trayStaging "Xuva.exe"))) {
+    throw "tray staging missing Xuva.exe (electron-builder output shape changed?)"
+}
+
 # 2) Build the MSI. Run wix from the staging dir so File/@Source paths
-#    (xuva-server.exe, bin\ffmpeg.exe) resolve, with the .wxs copied alongside.
+#    (xuva-server.exe, bin\ffmpeg.exe, $(var.TraySource)\...) resolve, with
+#    the .wxs alongside. The TrayFeature ComponentGroup uses WiX 4/5's
+#    built-in `<Files Include="$(var.TraySource)\**" />` auto-harvest (heat
+#    is not a `wix` subcommand in v4/v5), so no separate fragment is needed.
 Write-Host "`n== wix build =="
 # Firewall rules are provisioned by the server itself (netsh, as LocalSystem) —
 # see Xuva.wxs — so no WiX Firewall extension is needed.
@@ -193,10 +284,15 @@ $fileVersion = $Version.TrimStart('v', 'V')
 $msiOut = Join-Path $outputBase "xuva-server-v$fileVersion.msi"
 Push-Location $staging
 try {
-    # -d Version=... feeds the WiX preprocessor variable $(var.Version) that
-    # Xuva.wxs uses for Package/@Version, so the MSI ProductVersion tracks the
-    # release (MajorUpgrade then recognizes a newer MSI).
-    & wix build "Xuva.wxs" -arch x64 -d "Version=$msiVersion" -o $msiOut
+    # -d Version=... feeds $(var.Version) used by Xuva.wxs for the MSI's
+    # ProductVersion (MajorUpgrade then recognizes a newer MSI).
+    # -d TraySource=tray feeds $(var.TraySource) used by the <Files Include>
+    # glob inside the TrayComponents ComponentGroup, so each Electron file is
+    # found relative to the staged tray\ folder.
+    & wix build "Xuva.wxs" -arch x64 `
+        -d "Version=$msiVersion" `
+        -d "TraySource=tray" `
+        -o $msiOut
     if ($LASTEXITCODE -ne 0) { throw "wix build failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
