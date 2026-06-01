@@ -119,17 +119,13 @@ foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
 # 2) Build the MSI. Run wix from the staging dir so File/@Source paths
 #    (xuva-server.exe, bin\ffmpeg.exe) resolve, with the .wxs copied alongside.
 Write-Host "`n== wix build =="
-# The WiX Firewall extension provides <fw:FirewallException> (inbound rules for
-# the HTTP port + mDNS). Add it (idempotent) and reference it on the build.
-# Pin the extension to the SAME version as the toolset (5.0.2); an unpinned add
-# pulls v7, which is incompatible with WiX v5 (WIX6101).
-& wix extension add -g WixToolset.Firewall.wixext/5.0.2
-if ($LASTEXITCODE -ne 0) { throw "wix extension add failed (exit $LASTEXITCODE)" }
+# Firewall rules are provisioned by the server itself (netsh, as LocalSystem) —
+# see Xuva.wxs — so no WiX Firewall extension is needed.
 Copy-Item -LiteralPath $wxsSource -Destination (Join-Path $staging "Xuva.wxs") -Force
 $msiOut = Join-Path $outputBase "xuva-server-v$Version.msi"
 Push-Location $staging
 try {
-    & wix build "Xuva.wxs" -arch x64 -ext WixToolset.Firewall.wixext -o $msiOut
+    & wix build "Xuva.wxs" -arch x64 -o $msiOut
     if ($LASTEXITCODE -ne 0) { throw "wix build failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
