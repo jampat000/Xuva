@@ -384,10 +384,14 @@ func writeJSONFileAtomic(path string, payload any) error {
 func classifyUpdateAsset(name string) string {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	switch {
+	case strings.HasSuffix(lower, ".msi.sha256"):
+		return "windows-msi-checksum"
 	case strings.HasSuffix(lower, ".exe.sha256"):
 		return "windows-installer-checksum"
 	case strings.HasSuffix(lower, ".zip.sha256"):
 		return "windows-portable-checksum"
+	case strings.HasSuffix(lower, ".msi"):
+		return "windows-msi"
 	case strings.HasSuffix(lower, ".exe"):
 		return "windows-installer"
 	case strings.HasSuffix(lower, ".zip"):
