@@ -63,8 +63,37 @@ function runtimeRoot() {
   return path.resolve(__dirname, "runtime");
 }
 
+// In an MSI tray install Xuva.exe lives at "<install>\tray\Xuva.exe" with the
+// engine's xuva-server.exe one level up at "<install>\xuva-server.exe" (the
+// EngineFeature installs it there, independent of TrayFeature). Returns the
+// candidate path; the caller verifies existence. Empty string when the layout
+// can't apply (dev mode, non-Windows, no execPath dir).
+function adjacentServerPath() {
+  if (!app.isPackaged || process.platform !== "win32") return "";
+  try {
+    const trayDir = path.dirname(process.execPath);
+    if (!trayDir) return "";
+    const installRoot = path.dirname(trayDir);
+    if (!installRoot || installRoot === trayDir) return "";
+    return path.join(installRoot, "xuva-server.exe");
+  } catch {
+    return "";
+  }
+}
+
 function packagedServerPath() {
-  return path.join(runtimeRoot(), process.platform === "win32" ? "xuva-server.exe" : "xuva-server");
+  const exeName = process.platform === "win32" ? "xuva-server.exe" : "xuva-server";
+  // 1) Legacy NSIS / dev layout: server bundled inside the Electron resources.
+  const insideTray = path.join(runtimeRoot(), exeName);
+  if (fs.existsSync(insideTray)) return insideTray;
+  // 2) MSI tray install: server installed by EngineFeature one level up. The
+  //    MSI strips resources\runtime\ from the tray bundle so insideTray
+  //    misses; we fall back to the engine's own install dir.
+  const adjacent = adjacentServerPath();
+  if (adjacent && fs.existsSync(adjacent)) return adjacent;
+  // No server binary found — caller's fs.existsSync(insideTray) === false path
+  // will fall through to "go run" (dev) or surface the missing binary.
+  return insideTray;
 }
 
 function ensureDir(dir) {
@@ -408,7 +437,14 @@ function serverCommand() {
 
   const packaged = packagedServerPath();
   if (fs.existsSync(packaged)) {
-    return { cmd: packaged, args: [], cwd: runtimeRoot(), env: serverEnv() };
+    // cwd matches the resolved binary's directory rather than runtimeRoot():
+    // for the legacy NSIS layout this is the same path (runtimeRoot ===
+    // dirname(insideTray)), but for the MSI tray install the engine lives at
+    // <install>\xuva-server.exe (one level up from the tray\) and the spawned
+    // server must see THAT dir as cwd so its <exeDir>\bin\ffmpeg auto-detect
+    // resolves to <install>\bin (the engine's ffmpeg) rather than the tray's
+    // resources\runtime\bin (which the MSI no longer ships).
+    return { cmd: packaged, args: [], cwd: path.dirname(packaged), env: serverEnv() };
   }
 
   return { cmd: "go", args: ["run", "./cmd/Xuva"], cwd, env: process.env };
