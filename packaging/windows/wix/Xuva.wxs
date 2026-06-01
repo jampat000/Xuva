@@ -159,15 +159,25 @@
          uninstall — worst case the service would have removed it anyway. -->
     <!-- Working dir is the (already-declared) install folder; schtasks.exe is
          resolved from the system PATH, so the working dir is immaterial. Using
-         INSTALLFOLDER avoids declaring an extra StandardDirectory. -->
+         INSTALLFOLDER avoids declaring an extra StandardDirectory. Two CAs —
+         one per task the service registers (the every-6h task and the at-boot
+         task). Return="ignore" so a missing task never fails uninstall. -->
     <CustomAction Id="RemoveUpdaterTask"
                   Directory="INSTALLFOLDER"
                   ExeCommand="schtasks.exe /delete /tn &quot;Xuva\XuvaUpdater&quot; /f"
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
+    <CustomAction Id="RemoveUpdaterBootTask"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="schtasks.exe /delete /tn &quot;Xuva\XuvaUpdater-AtBoot&quot; /f"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="RemoveUpdaterTask" Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RemoveUpdaterBootTask" After="RemoveUpdaterTask"
               Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
   </Package>
