@@ -52,7 +52,7 @@ jobs:
         run: node tools/validate-release-tag.cjs "${{ steps.version.outputs.version }}"
 
   windows:
-    name: Build Windows package
+    name: Build Windows MSI
     runs-on: windows-2025-vs2026
     needs: version-policy
     steps:
@@ -63,14 +63,17 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
+      # Node is needed by build-msi.ps1 to run electron-builder for the MSI's
+      # TrayFeature. The cache key follows apps/desktop/package-lock.json
+      # because that's the lockfile the npm ci hits.
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: apps/web/svelte/package-lock.json
+          cache-dependency-path: apps/desktop/package-lock.json
 
-      # WiX toolset for the server MSI (matches the .github/workflows/security.yml
-      # "Windows MSI build" job — pinned to v5 to avoid the v6/v7 OSMF EULA gate).
+      # WiX toolset for the MSI (matches the .github/workflows/security.yml
+      # "Windows MSI build" PR job — pinned to v5 to avoid the v6/v7 OSMF EULA gate).
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -80,19 +83,9 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Build Windows package
-        shell: powershell
-        env:
-          XUVA_DEFAULT_TMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_TMDB_API_KEY }}
-          XUVA_DEFAULT_FANARTTV_API_KEY: ${{ secrets.XUVA_DEFAULT_FANARTTV_API_KEY }}
-          XUVA_DEFAULT_OMDB_API_KEY: ${{ secrets.XUVA_DEFAULT_OMDB_API_KEY }}
-        run: |
-          ./packaging/windows/build-package.ps1 -Version "${{ needs.version-policy.outputs.version }}"
-
-      # Server MSI (Windows Service install). Output goes into dist/windows so it
-      # ships alongside the desktop installer; the version is injected into the
-      # binary (buildinfo) and the MSI ProductVersion so the SYSTEM updater can
-      # compare it against the published release.
+      # The single Windows artifact: a WiX MSI containing the engine + service
+      # + ffmpeg + tray Electron bundle. Replaces the previous dual NSIS
+      # `.exe`/`.zip` + MSI dance (see #451 for the convergence rationale).
       - name: Build Windows MSI
         shell: powershell
         env:
@@ -103,12 +96,9 @@ jobs:
           ./packaging/windows/build-msi.ps1 -Version "${{ needs.version-policy.outputs.version }}" -OutputDir dist/windows
 
       # ── Code signing (Azure Trusted Signing) ──────────────────────────────
-      # Activates when AZURE_CLIENT_ID is set in repository secrets.
-      # Set up: create an Azure Trusted Signing account → identity validation →
-      # certificate profile, then add AZURE_CLIENT_ID / AZURE_CLIENT_SECRET /
-      # AZURE_TENANT_ID / ATS_ENDPOINT / ATS_ACCOUNT / ATS_PROFILE to secrets.
-      # GitHub Actions does not allow secrets in if: expressions; we emit the
-      # flag from a run step and gate on the step output instead.
+      # Activates when AZURE_CLIENT_ID is set in repository secrets. The
+      # NSIS .exe sign step was dropped along with the NSIS build itself (#451);
+      # only the MSI is signed now.
       - name: Check Azure signing configuration
         id: signing_check
         shell: bash
@@ -118,21 +108,6 @@ jobs:
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Sign Windows installer (Azure Trusted Signing)
-        if: steps.signing_check.outputs.enabled == 'true'
-        uses: azure/trusted-signing-action@v0
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ secrets.ATS_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.ATS_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.ATS_PROFILE }}
-          files-folder: dist/windows
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
       - name: Sign Windows MSI (Azure Trusted Signing)
         if: steps.signing_check.outputs.enabled == 'true'
         uses: azure/trusted-signing-action@v0
@@ -150,8 +125,8 @@ jobs:
           timestamp-digest: SHA256
 
       # Checksum the MSI AFTER signing so the .sha256 the updater verifies matches
-      # the published (signed) file. Format mirrors build-package.ps1's sidecars:
-      # "<64-hex>  <filename>" (ASCII), which the server's parseSHA256File reads.
+      # the published (signed) file. Format: "<64-hex>  <filename>" (ASCII), which
+      # the server's parseSHA256File reads.
       - name: Generate MSI checksum
         shell: powershell
         run: |
@@ -162,21 +137,12 @@ jobs:
           Write-Host "MSI:     $($msi.Name) ($([math]::Round($msi.Length / 1MB, 2)) MB)"
           Write-Host "SHA256:  $sha"
 
-      - name: Verify unsigned Windows package
-        shell: powershell
-        run: |
-          $package = Get-ChildItem -Path dist/windows -Filter "*.zip" | Select-Object -First 1
-          if (-not $package) { throw "Windows package zip was not produced." }
-          ./packaging/windows/verify-package.ps1 -PackagePath $package.FullName
-
-      - name: Upload Windows package
+      - name: Upload Windows MSI
         uses: actions/upload-artifact@v7
         with:
           name: windows-package
           path: |
-            dist/windows/*.exe
             dist/windows/*.msi
-            dist/windows/*.zip
             dist/windows/*.sha256
 
   docker:
@@ -291,11 +257,23 @@ jobs:
           echo "" >> "$GITHUB_OUTPUT"
           echo "## Windows" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "- **Desktop app** — download \`xuva-v*-win-x64.exe\` and run it (per-user, with tray app)." >> "$GITHUB_OUTPUT"
-          echo "- **Server (headless service)** — download \`xuva-server-v*.msi\` and run it to install the Xuva Media Server Windows Service. It self-updates from future releases." >> "$GITHUB_OUTPUT"
+          echo "Download \`xuva-server-v*.msi\` and double-click to install. A default install puts in:" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "- the **media server** at \`C:\\Program Files\\Xuva\\xuva-server.exe\` (the engine)," >> "$GITHUB_OUTPUT"
+          echo "- the **\"XuvaMediaServer\" Windows Service** that runs the engine at boot as LocalSystem," >> "$GITHUB_OUTPUT"
+          echo "- the **Xuva tray app** (Start Menu → Xuva) for browsing the local server, and" >> "$GITHUB_OUTPUT"
+          echo "- a SYSTEM scheduled task that silently auto-updates to future MSI releases." >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "**Power-user options** (\`msiexec /i xuva-server-v*.msi /qn\`):" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "- \`ADDLOCAL=EngineFeature\` — install the engine + service WITHOUT the tray (headless server)." >> "$GITHUB_OUTPUT"
+          echo "- \`XUVA_AUTO_UPDATE=0\` — opt out of the auto-updater scheduled task." >> "$GITHUB_OUTPUT"
+          echo "- \`XUVA_RUNTIME_HOME=D:\\XuvaData\` — relocate runtime state (default \`C:\\ProgramData\\Xuva\`)." >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "**Migrating from a pre-v0.0.41 install?** Earlier releases shipped two Windows artifacts (a per-user NSIS \`.exe\` desktop app and a separate server MSI). v0.0.41+ converges them into ONE MSI. Uninstall the previous per-user \"Xuva (User)\" entry from Add or Remove Programs before installing this MSI to avoid two side-by-side trays — the MSI install does not detect or remove the legacy NSIS install." >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "> **Windows SmartScreen / Defender warning**" >> "$GITHUB_OUTPUT"
-          echo "> Xuva is not yet code-signed. Windows will warn the first time you download/run it." >> "$GITHUB_OUTPUT"
+          echo "> Xuva is not yet code-signed. Windows will warn the first time you download/run the MSI." >> "$GITHUB_OUTPUT"
           echo "> " >> "$GITHUB_OUTPUT"
           echo "> **To install anyway:** click \`More info → Run anyway\` in the SmartScreen dialog." >> "$GITHUB_OUTPUT"
           echo "> If Defender quarantines the file: open Windows Security → Virus & threat protection → Protection history → find the item → Allow." >> "$GITHUB_OUTPUT"
