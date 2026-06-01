@@ -36,6 +36,14 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of Xuva Media Server is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Optional unattended override for where the service keeps ALL runtime
+         state (data, logs, transcode, cache, ...). When unset, the service
+         defaults to C:\ProgramData\Xuva. Set it for an isolated/relocated
+         install, e.g.:
+           msiexec /i xuva.msi /qn XUVA_RUNTIME_HOME="D:\XuvaData"
+         Public (uppercase) + Secure so it survives the elevation handoff. -->
+    <Property Id="XUVA_RUNTIME_HOME" Secure="yes" />
+
     <!-- C:\Program Files\Xuva\  with a bin\ for ffmpeg/ffprobe. The server
          auto-detects <exeDir>\bin\ffmpeg.exe when XUVA_FFMPEG_PATH is unset
          (see config.resolveBundledTool), so the service finds these with no
@@ -49,6 +57,7 @@
     <Feature Id="Main" Title="Xuva Media Server" Level="1">
       <ComponentGroupRef Id="EngineComponents" />
       <ComponentGroupRef Id="FfmpegComponents" />
+      <ComponentRef Id="ServiceEnvironmentComponent" />
     </Feature>
 
     <ComponentGroup Id="EngineComponents" Directory="INSTALLFOLDER">
@@ -109,5 +118,23 @@
         <File Id="FfprobeExe" Name="ffprobe.exe" Source="bin\ffprobe.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
+
+    <!-- When XUVA_RUNTIME_HOME is supplied, write it into the service's own
+         per-service Environment (REG_MULTI_SZ), which the SCM applies at start.
+         The component is only installed when the property is non-empty, so a
+         default install leaves the service to pick C:\ProgramData\Xuva itself.
+         Written before InstallServices populates the rest of the service key;
+         ServiceInstall preserves this separate value. Removed on uninstall. -->
+    <Component Id="ServiceEnvironmentComponent" Bitness="always64" Directory="INSTALLFOLDER"
+               Condition="XUVA_RUNTIME_HOME">
+      <RegistryValue
+          Root="HKLM"
+          Key="SYSTEM\CurrentControlSet\Services\XuvaMediaServer"
+          Name="Environment"
+          Type="multiString"
+          KeyPath="yes">
+        <MultiStringValue Value="XUVA_RUNTIME_HOME=[XUVA_RUNTIME_HOME]" />
+      </RegistryValue>
+    </Component>
   </Package>
 </Wix>
