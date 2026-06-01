@@ -22,10 +22,17 @@
   optional feature — that split comes with a Condition-gated follow-up).
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- ProductVersion is supplied by build-msi.ps1 as `-d Version=<x.y.z.0>`
+       (normalized from the release tag). The fallback keeps a bare `wix build`
+       working for local/dev compiles. MajorUpgrade compares ProductVersion, so
+       this MUST increase release-over-release for self-update to fire. -->
+  <?ifndef Version?>
+    <?define Version="0.0.0.0"?>
+  <?endif?>
   <Package
       Name="Xuva Media Server"
       Manufacturer="Xuva"
-      Version="0.0.0.0"
+      Version="$(var.Version)"
       UpgradeCode="7C9E6A2B-1F4D-4E8A-9B3C-2A5D8F0E1C44"
       Scope="perMachine"
       Compressed="yes">

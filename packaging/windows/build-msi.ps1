@@ -14,8 +14,11 @@
   the committed server/internal/webapp/static-next bundle.
 
 .PARAMETER Version
-  Four-part version for the output filename (e.g. 1.2.3.0). The MSI's internal
-  ProductVersion is currently fixed in Xuva.wxs; wiring this through is a follow-up.
+  Release version, e.g. "v1.2.3" or "1.2.3.0". This is injected into the server
+  binary (buildinfo.Version, so the running service reports its real version and
+  the updater can compare against GitHub releases) AND normalized to a four-part
+  numeric MSI ProductVersion (via -d Version=) so MajorUpgrade can tell a newer
+  MSI from the installed one. The output filename also carries it.
 
 .PARAMETER OutputDir
   Where the .msi is written. Relative paths are resolved from the repo root.
@@ -27,6 +30,39 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Returns the trimmed stdout of a git command, or "" if git isn't available or
+# the command fails. Mirrors build-package.ps1's Get-GitValue.
+function Get-GitValue {
+    param([Parameter(Mandatory = $true)][string[]]$GitArgs)
+    try {
+        $value = (& git @GitArgs 2>$null)
+        if ($LASTEXITCODE -eq 0) { return ([string]$value).Trim() }
+    } catch {}
+    return ""
+}
+
+# Normalizes a release version into a four-part numeric MSI ProductVersion.
+# MSI versions are major.minor.build[.revision] with each field <= 65535, and
+# any pre-release suffix (e.g. "-beta.1") is invalid — so strip a leading "v",
+# drop everything from the first "-"/"+", and pad/truncate to four parts.
+#   v1.2.3        -> 1.2.3.0
+#   1.2.3.4       -> 1.2.3.4
+#   v1.2.3-beta.1 -> 1.2.3.0
+#   dev / garbage -> 0.0.0.0
+function Get-MsiProductVersion {
+    param([Parameter(Mandatory = $true)][string]$Version)
+    $v = $Version.Trim()
+    if ($v.StartsWith("v") -or $v.StartsWith("V")) { $v = $v.Substring(1) }
+    $v = ($v -split "[-+]", 2)[0]
+    $parts = $v -split "\."
+    $nums = @()
+    foreach ($p in $parts) {
+        if ($p -match "^\d+$" -and [long]$p -le 65535) { $nums += [int]$p } else { break }
+    }
+    while ($nums.Count -lt 4) { $nums += 0 }
+    return ($nums[0..3] -join ".")
+}
 
 # Downloads the BtbN LGPL ffmpeg build, verifies its SHA-256 against the upstream
 # checksums manifest, and stages ffmpeg.exe + ffprobe.exe into $DestinationDir.
@@ -95,12 +131,40 @@ Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $staging | Out-Null
 New-Item -ItemType Directory -Force -Path $outputBase | Out-Null
 
+# Build metadata baked into the binary so the running service reports its real
+# version (buildinfo.Version) — without this the MSI server reports "dev", the
+# update check can't compare it against a GitHub tag, and self-update is dead.
+$gitCommit = Get-GitValue -GitArgs @("rev-parse", "HEAD")
+if ([string]::IsNullOrWhiteSpace($gitCommit)) { $gitCommit = "unknown" }
+$buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$msiVersion = Get-MsiProductVersion -Version $Version
+Write-Host "Version   : $Version (MSI ProductVersion $msiVersion, commit $gitCommit)"
+
 # 1) Build the server binary (embeds the SPA). Run from the module root.
 Write-Host "`n== go build xuva-server.exe =="
 $serverExe = Join-Path $staging "xuva-server.exe"
 Push-Location $serverDir
 try {
-    & go build -trimpath -o $serverExe ".\cmd\Xuva"
+    $ldflagsParts = @(
+        "-s",
+        "-w",
+        "-X github.com/jampat000/Xuva/server/internal/buildinfo.Version=$Version",
+        "-X github.com/jampat000/Xuva/server/internal/buildinfo.Commit=$gitCommit",
+        "-X github.com/jampat000/Xuva/server/internal/buildinfo.Date=$buildDate"
+    )
+    # Embed the default metadata API keys when CI provides them (same as the
+    # desktop/NSIS build) so an MSI-installed server has working defaults.
+    if (-not [string]::IsNullOrWhiteSpace($env:XUVA_DEFAULT_TMDB_API_KEY)) {
+        $ldflagsParts += "-X github.com/jampat000/Xuva/server/internal/config.DefaultTMDBAPIKey=$($env:XUVA_DEFAULT_TMDB_API_KEY)"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:XUVA_DEFAULT_FANARTTV_API_KEY)) {
+        $ldflagsParts += "-X github.com/jampat000/Xuva/server/internal/config.DefaultFanartTVAPIKey=$($env:XUVA_DEFAULT_FANARTTV_API_KEY)"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:XUVA_DEFAULT_OMDB_API_KEY)) {
+        $ldflagsParts += "-X github.com/jampat000/Xuva/server/internal/config.DefaultOMDbAPIKey=$($env:XUVA_DEFAULT_OMDB_API_KEY)"
+    }
+    $ldflags = $ldflagsParts -join " "
+    & go build -trimpath "-ldflags=$ldflags" -o $serverExe ".\cmd\Xuva"
     if ($LASTEXITCODE -ne 0) { throw "go build failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
@@ -125,7 +189,10 @@ Copy-Item -LiteralPath $wxsSource -Destination (Join-Path $staging "Xuva.wxs") -
 $msiOut = Join-Path $outputBase "xuva-server-v$Version.msi"
 Push-Location $staging
 try {
-    & wix build "Xuva.wxs" -arch x64 -o $msiOut
+    # -d Version=... feeds the WiX preprocessor variable $(var.Version) that
+    # Xuva.wxs uses for Package/@Version, so the MSI ProductVersion tracks the
+    # release (MajorUpgrade then recognizes a newer MSI).
+    & wix build "Xuva.wxs" -arch x64 -d "Version=$msiVersion" -o $msiOut
     if ($LASTEXITCODE -ne 0) { throw "wix build failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
