@@ -50,6 +50,14 @@
          Public (uppercase) + Secure so it survives the elevation handoff. -->
     <Property Id="XUVA_RUNTIME_HOME" Secure="yes" />
 
+    <!-- Auto-update is on by default; set XUVA_AUTO_UPDATE=0 at install to opt
+         out, e.g.  msiexec /i xuva.msi /qn XUVA_AUTO_UPDATE=0
+         The value is written to HKLM\SOFTWARE\Xuva\AutoUpdate (below) and read
+         by the service: when enabled it registers the SYSTEM scheduled task that
+         runs the updater; when disabled it removes the task. An admin can flip
+         the registry value post-install and restart the service. -->
+    <Property Id="XUVA_AUTO_UPDATE" Value="1" Secure="yes" />
+
     <!-- C:\Program Files\Xuva\  with a bin\ for ffmpeg/ffprobe. The server
          auto-detects <exeDir>\bin\ffmpeg.exe when XUVA_FFMPEG_PATH is unset
          (see config.resolveBundledTool), so the service finds these with no
@@ -64,6 +72,7 @@
       <ComponentGroupRef Id="EngineComponents" />
       <ComponentGroupRef Id="FfmpegComponents" />
       <ComponentRef Id="ServiceEnvironmentComponent" />
+      <ComponentRef Id="UpdaterTaskComponent" />
     </Feature>
 
     <ComponentGroup Id="EngineComponents" Directory="INSTALLFOLDER">
@@ -125,5 +134,42 @@
         <MultiStringValue Value="XUVA_RUNTIME_HOME=[XUVA_RUNTIME_HOME]" />
       </RegistryValue>
     </Component>
+
+    <!-- The auto-updater scheduled-task definition (installed next to the exe,
+         where the service reads it to register the task via schtasks) plus the
+         AutoUpdate opt-out flag the service consults. The task itself is created
+         at runtime by the LocalSystem service (see service_windows.go), which
+         keeps the rich trigger/principal definition out of fragile install-time
+         custom actions and lets it self-heal + honor a post-install toggle. -->
+    <Component Id="UpdaterTaskComponent" Bitness="always64" Directory="INSTALLFOLDER">
+      <File Id="XuvaUpdaterXml" Name="XuvaUpdater.xml" Source="XuvaUpdater.xml" KeyPath="yes" />
+      <RegistryValue
+          Root="HKLM"
+          Key="SOFTWARE\Xuva"
+          Name="AutoUpdate"
+          Type="string"
+          Value="[XUVA_AUTO_UPDATE]" />
+    </Component>
+
+    <!-- On a real uninstall (not the transient uninstall half of a major
+         upgrade — guarded by NOT UPGRADINGPRODUCTCODE), remove the scheduled
+         task the service registered. Deferred + no-impersonate so it runs as
+         SYSTEM with rights to delete a SYSTEM task; the command is fully literal
+         (no formatted properties) so it needs no CustomActionData or extension.
+         Return="ignore": a missing task or schtasks hiccup must not fail
+         uninstall — worst case the service would have removed it anyway. -->
+    <!-- Working dir is the (already-declared) install folder; schtasks.exe is
+         resolved from the system PATH, so the working dir is immaterial. Using
+         INSTALLFOLDER avoids declaring an extra StandardDirectory. -->
+    <CustomAction Id="RemoveUpdaterTask"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="schtasks.exe /delete /tn &quot;Xuva\XuvaUpdater&quot; /f"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveUpdaterTask" Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
   </Package>
 </Wix>

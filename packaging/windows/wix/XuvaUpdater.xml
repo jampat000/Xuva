@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Task Scheduler definition for the Xuva auto-updater. The LocalSystem service
+  registers this at startup via:  schtasks /create /xml <path> /tn "Xuva\XuvaUpdater" /f
+  (see ensureUpdaterTask in cmd/Xuva/updater_task_windows.go).
+
+  Runs as LocalSystem (SID S-1-5-18) so the silent msiexec upgrade needs no UAC.
+  Triggers: ~5 min after boot, and every 6 hours; StartWhenAvailable catches up a
+  run missed while the machine was off. The action is the installed server exe in
+  its scheduled-run mode, which honors the XUVA_AUTO_UPDATE opt-out.
+
+  The Command path matches the fixed MSI install location (Program Files\Xuva).
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>Xuva</Author>
+    <Description>Checks for and applies Xuva Media Server updates.</Description>
+    <URI>\Xuva\XuvaUpdater</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT5M</Delay>
+    </BootTrigger>
+    <TimeTrigger>
+      <StartBoundary>2024-01-01T03:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT6H</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Program Files\Xuva\xuva-server.exe</Command>
+      <Arguments>update --scheduled</Arguments>
+    </Exec>
+  </Actions>
+</Task>
