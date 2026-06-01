@@ -35,13 +35,19 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of Xuva Media Server is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- C:\Program Files\Xuva\ -->
+    <!-- C:\Program Files\Xuva\  with a bin\ for ffmpeg/ffprobe. The server
+         auto-detects <exeDir>\bin\ffmpeg.exe when XUVA_FFMPEG_PATH is unset
+         (see config.resolveBundledTool), so the service finds these with no
+         extra configuration. -->
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Xuva" />
+      <Directory Id="INSTALLFOLDER" Name="Xuva">
+        <Directory Id="BinFolder" Name="bin" />
+      </Directory>
     </StandardDirectory>
 
     <Feature Id="Main" Title="Xuva Media Server" Level="1">
       <ComponentGroupRef Id="EngineComponents" />
+      <ComponentGroupRef Id="FfmpegComponents" />
     </Feature>
 
     <ComponentGroup Id="EngineComponents" Directory="INSTALLFOLDER">
@@ -65,6 +71,16 @@
             Stop="both"
             Remove="uninstall"
             Wait="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- ffmpeg/ffprobe (BtbN LGPL build), staged into bin\ by build-msi.ps1. -->
+    <ComponentGroup Id="FfmpegComponents" Directory="BinFolder">
+      <Component Id="FfmpegExeComponent" Bitness="always64">
+        <File Id="FfmpegExe" Name="ffmpeg.exe" Source="bin\ffmpeg.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="FfprobeExeComponent" Bitness="always64">
+        <File Id="FfprobeExe" Name="ffprobe.exe" Source="bin\ffprobe.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Package>
