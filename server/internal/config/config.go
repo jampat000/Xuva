@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -155,6 +156,34 @@ func defaultDataDir() string {
 	return "data"
 }
 
+// bundledToolPath resolves a packaged tool (ffmpeg/ffprobe) shipped in a "bin"
+// directory next to the server executable. This lets the Windows Service — and
+// any bare xuva-server.exe run — find the MSI/package-bundled binaries with no
+// explicit XUVA_FFMPEG_PATH/XUVA_FFPROBE_PATH. Falls back to the bare name so a
+// PATH-resolved ffmpeg (dev, Docker, Linux) still works.
+func bundledToolPath(name string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return name
+	}
+	return resolveBundledTool(filepath.Dir(exe), name)
+}
+
+// resolveBundledTool is the testable core of bundledToolPath: given the
+// executable's directory, return <exeDir>/bin/<name>[.exe] when that file
+// exists, otherwise the bare name.
+func resolveBundledTool(exeDir, name string) string {
+	binName := name
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	candidate := filepath.Join(exeDir, "bin", binName)
+	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		return candidate
+	}
+	return name
+}
+
 func FromEnv() Config {
 	runtimeHome := strings.TrimSpace(os.Getenv("XUVA_RUNTIME_HOME"))
 	runtimeRoot := runtimeHome
@@ -191,8 +220,8 @@ func FromEnv() Config {
 		TempDir:              envString("XUVA_TEMP_DIR", runtimeDir("temp")),
 		MovieLibraryPath:     envString("XUVA_MOVIES_PATH", ""),
 		TVLibraryPath:        envString("XUVA_TV_PATH", ""),
-		FFprobePath:          envString("XUVA_FFPROBE_PATH", "ffprobe"),
-		FFmpegPath:           envString("XUVA_FFMPEG_PATH", "ffmpeg"),
+		FFprobePath:          envString("XUVA_FFPROBE_PATH", bundledToolPath("ffprobe")),
+		FFmpegPath:           envString("XUVA_FFMPEG_PATH", bundledToolPath("ffmpeg")),
 		FpcalcPath:           envString("XUVA_FPCALC_PATH", ""),
 		// Keys default empty here; ResolveProviderKey() in keys.go merges
 		// saved + env + embedded after settings.json is loaded below.
