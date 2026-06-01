@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Xuva single-installer MSI (WiX v5) — step 3.
+
+  Scope of THIS file (first slice): install the "Media server engine"
+  (xuva-server.exe) into Program Files and register + start it as the
+  "XuvaMediaServer" Windows Service. Subsequent slices add: ffmpeg/ffprobe,
+  the ProgramData tree + ACLs, the optional service/tray FEATURE split, the WiX
+  Firewall rules, and the SYSTEM updater.
+
+  Build inputs are staged next to this file by build-msi.ps1 (xuva-server.exe),
+  so File/@Source uses a bare filename resolved from the build working directory.
+
+  SERVICE LAUNCH — the service runs the BARE xuva-server.exe with NO arguments.
+  The binary detects the SCM context via svc.IsWindowsService() and runs the
+  service handler itself. Passing "service run" (or any "service ..." arg) would
+  instead hit the console verb handler in main() and exit — do NOT add Arguments.
+
+  The ServiceInstall/ServiceControl live in the SAME component as the exe: a
+  Windows service's image path is the component's KeyPath file, so they must be
+  co-located with xuva-server.exe (this is also why service is not yet a separate
+  optional feature — that split comes with a Condition-gated follow-up).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Xuva Media Server"
+      Manufacturer="Xuva"
+      Version="0.0.0.0"
+      UpgradeCode="7C9E6A2B-1F4D-4E8A-9B3C-2A5D8F0E1C44"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <!-- Stable UpgradeCode + MajorUpgrade: a newer MSI removes the old and
+         installs the new (the substrate for prompt-free in-app upgrades). -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Xuva Media Server is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- C:\Program Files\Xuva\ -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Xuva" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Xuva Media Server" Level="1">
+      <ComponentGroupRef Id="EngineComponents" />
+    </Feature>
+
+    <ComponentGroup Id="EngineComponents" Directory="INSTALLFOLDER">
+      <Component Id="ServerExeComponent" Bitness="always64">
+        <File Id="XuvaServerExe" Name="xuva-server.exe" Source="xuva-server.exe" KeyPath="yes" />
+
+        <ServiceInstall
+            Id="XuvaServiceInstall"
+            Name="XuvaMediaServer"
+            DisplayName="Xuva Media Server"
+            Description="Xuva self-hosted media server (headless)."
+            Type="ownProcess"
+            Start="auto"
+            ErrorControl="normal"
+            Account="LocalSystem"
+            Vital="yes" />
+        <ServiceControl
+            Id="XuvaServiceControl"
+            Name="XuvaMediaServer"
+            Start="install"
+            Stop="both"
+            Remove="uninstall"
+            Wait="yes" />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>
