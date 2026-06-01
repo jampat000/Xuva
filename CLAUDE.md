@@ -33,7 +33,17 @@ These rules apply to every Claude Code session in this repo.
 ### Tests visibility
 - The agent-check gate runs *before* `go test`. If agent-check is broken, test failures are hidden behind it. After fixing agent-check, expect previously-masked test failures to surface — fix them in the same PR or a follow-up.
 
-### Installer changes — HARD RULE
-- **PR-level CI does NOT run the Windows installer build.** The `Windows package script checks` job only validates PowerShell syntax. The actual NSIS compile + signing pipeline runs only in the release workflow on `v*.*.*` tag pushes. Three back-to-back v0.0.34 release runs failed because PR CI was green but the tag-push installer build wasn't.
-- **Before pushing any change to `apps/desktop/installer.nsh`, `apps/desktop/package.json`'s `nsis` block, or `packaging/windows/build-package.ps1`, run `tools/check-installer-build.ps1` locally.** It exercises the same `npx electron-builder --win nsis --x64` path CI uses. Takes ~3 minutes on a warm cache. If it doesn't produce a `dist/*.exe`, don't push.
-- This rule overrides the "wait for CI green" check on installer-touching PRs. Local installer build must pass first; CI is the second confirmation.
+### Installer changes — note
+- The NSIS `.exe` and its supporting scripts (`installer.nsh`,
+  `build-package.ps1`, `verify-package.ps1`, `check-installer-build.ps1`)
+  were retired in #451 (the convergence). The single Windows artifact is now
+  `xuva-server-v*.msi` built by `packaging/windows/build-msi.ps1`.
+- **PR CI DOES build the MSI on every push** (`Windows MSI build` job in
+  `.github/workflows/security.yml`) — the full pipeline (Go + electron-
+  builder for the tray + WiX + Svelte `publish:go-static`) runs in ~5 min.
+  PR-CI-green on an MSI-touching change is now a real signal (unlike the
+  legacy NSIS path which only built on tag push).
+- Real-box install verification still belongs to the user before trusting
+  an MSI PR that meaningfully changes install behaviour (new component, new
+  service action, new updater path). Pure refactors of build-msi.ps1 or the
+  wxs that don't change install behaviour can merge on CI-green alone.

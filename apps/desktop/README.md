@@ -38,17 +38,19 @@ Notes:
 
 ## Windows package build
 
-The repository package script builds the server runtime, bundles FFmpeg/FFprobe,
-and then runs Electron Builder:
+This tray app no longer ships as a standalone NSIS `.exe` — it's folded
+into the single MSI (#451 convergence) as the optional `TrayFeature`.
+Build the MSI with:
 
 ```powershell
-./packaging/windows/build-package.ps1 -Version v0.0.x
+./packaging/windows/build-msi.ps1 -Version v0.0.x
 ```
 
-Outputs:
-
-- `dist/windows/xuva-v0.0.x-win-x64.exe` unsigned per-user installer.
-- `dist/windows/xuva-v0.0.x-win-x64.zip` portable desktop package.
+Outputs `dist/windows-msi/xuva-server-v0.0.x.msi` (~213 MB). Install
+with `msiexec /i xuva-server-v0.0.x.msi`; the default install drops
+`Xuva.exe` at `C:\Program Files\Xuva\tray\Xuva.exe` with a Start Menu
+shortcut. `ADDLOCAL=EngineFeature` installs the headless server +
+service without the tray.
 
 ## Server discovery â€” when does this app need it?
 
