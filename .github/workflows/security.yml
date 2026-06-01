@@ -200,6 +200,16 @@ jobs:
         with:
           go-version-file: server/go.mod
 
+      # Node is needed for the Electron tray bundle build (electron-builder)
+      # that's harvested into the MSI's TrayFeature. Matches the release.yml
+      # windows job version pin so the per-PR build mirrors what release builds.
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
