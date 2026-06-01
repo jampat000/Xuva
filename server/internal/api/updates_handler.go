@@ -2,48 +2,39 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jampat000/Xuva/server/internal/buildinfo"
 	"github.com/jampat000/Xuva/server/internal/config"
+	"github.com/jampat000/Xuva/server/internal/updater"
 )
 
-const defaultUpdateReleaseAPI = "https://api.github.com/repos/jampat000/Xuva/releases/latest"
-const maxInstallerDownloadBytes = 700 * 1024 * 1024
-
-type updateAsset struct {
-	Name        string `json:"name"`
-	URL         string `json:"url"`
-	Size        int64  `json:"size"`
-	Digest      string `json:"digest,omitempty"`
-	PackageType string `json:"packageType"`
-}
+// This file is the DESKTOP/tray update path: it checks the release feed and
+// stages the NSIS installer (.exe) into pending-update.json for the Electron
+// launcher to apply. The headless Windows Service self-updates instead via the
+// `xuva-server.exe update` verb (cmd/Xuva), which targets the MSI. Both share
+// the feed/download/verify primitives in internal/updater.
 
 type updateStatus struct {
-	CurrentVersion         string        `json:"currentVersion"`
-	LatestVersion          string        `json:"latestVersion,omitempty"`
-	UpdateAvailable        bool          `json:"updateAvailable"`
-	ReleaseURL             string        `json:"releaseUrl,omitempty"`
-	PublishedAt            string        `json:"publishedAt,omitempty"`
-	Assets                 []updateAsset `json:"assets"`
-	DockerImage            string        `json:"dockerImage,omitempty"`
-	InstallMode            string        `json:"installMode"`
-	ApplySupported         bool          `json:"applySupported"`
-	ApplyUnsupportedReason string        `json:"applyUnsupportedReason,omitempty"`
-	CheckedAt              string        `json:"checkedAt"`
+	CurrentVersion         string          `json:"currentVersion"`
+	LatestVersion          string          `json:"latestVersion,omitempty"`
+	UpdateAvailable        bool            `json:"updateAvailable"`
+	ReleaseURL             string          `json:"releaseUrl,omitempty"`
+	PublishedAt            string          `json:"publishedAt,omitempty"`
+	Assets                 []updater.Asset `json:"assets"`
+	DockerImage            string          `json:"dockerImage,omitempty"`
+	InstallMode            string          `json:"installMode"`
+	ApplySupported         bool            `json:"applySupported"`
+	ApplyUnsupportedReason string          `json:"applyUnsupportedReason,omitempty"`
+	CheckedAt              string          `json:"checkedAt"`
 }
 
 type updateApplyResponse struct {
@@ -63,18 +54,6 @@ type stagedUpdateRequest struct {
 	InstallerName   string `json:"installerName"`
 	ReleaseURL      string `json:"releaseUrl,omitempty"`
 	RequestedAt     string `json:"requestedAt"`
-}
-
-type githubRelease struct {
-	TagName     string `json:"tag_name"`
-	HTMLURL     string `json:"html_url"`
-	PublishedAt string `json:"published_at"`
-	Assets      []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-		Size               int64  `json:"size"`
-		Digest             string `json:"digest"`
-	} `json:"assets"`
 }
 
 func updatesCheckHandler(deps Deps) http.HandlerFunc {
@@ -101,61 +80,25 @@ func updatesApplyHandler(deps Deps) http.HandlerFunc {
 
 func checkForUpdates(ctx context.Context, cfg config.Config) (updateStatus, error) {
 	current := buildinfo.Current().Version
-	checkedAt := time.Now().UTC().Format(time.RFC3339)
 	status := updateStatus{
 		CurrentVersion:         current,
-		Assets:                 []updateAsset{},
+		Assets:                 []updater.Asset{},
 		InstallMode:            "download-and-run-installer",
 		ApplySupported:         canApplyUpdates(cfg),
 		ApplyUnsupportedReason: updateApplyUnsupportedReason(cfg),
-		CheckedAt:              checkedAt,
+		CheckedAt:              time.Now().UTC().Format(time.RFC3339),
 	}
 
-	apiURL := strings.TrimSpace(os.Getenv("XUVA_UPDATE_RELEASE_API"))
-	if apiURL == "" {
-		apiURL = defaultUpdateReleaseAPI
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	release, err := updater.FetchLatest(ctx)
 	if err != nil {
-		return status, fmt.Errorf("build update request: %w", err)
+		return status, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "Xuva/"+current)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return status, fmt.Errorf("update check failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return status, fmt.Errorf("update check failed with HTTP %d", resp.StatusCode)
-	}
-
-	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return status, fmt.Errorf("decode update response: %w", err)
-	}
-	status.LatestVersion = strings.TrimSpace(release.TagName)
-	status.ReleaseURL = strings.TrimSpace(release.HTMLURL)
-	status.PublishedAt = strings.TrimSpace(release.PublishedAt)
-	status.UpdateAvailable = compareReleaseVersions(status.LatestVersion, current) > 0
-	status.DockerImage = "ghcr.io/jampat000/xuva:" + status.LatestVersion
-	for _, asset := range release.Assets {
-		name := strings.TrimSpace(asset.Name)
-		url := strings.TrimSpace(asset.BrowserDownloadURL)
-		if name == "" || url == "" {
-			continue
-		}
-		status.Assets = append(status.Assets, updateAsset{
-			Name:        name,
-			URL:         url,
-			Size:        asset.Size,
-			Digest:      strings.TrimSpace(asset.Digest),
-			PackageType: classifyUpdateAsset(name),
-		})
-	}
+	status.LatestVersion = release.Version
+	status.ReleaseURL = release.URL
+	status.PublishedAt = release.PublishedAt
+	status.Assets = release.Assets
+	status.UpdateAvailable = updater.CompareVersions(release.Version, current) > 0
+	status.DockerImage = "ghcr.io/jampat000/xuva:" + release.Version
 	return status, nil
 }
 
@@ -170,28 +113,28 @@ func stageUpdateApply(ctx context.Context, cfg config.Config) (updateApplyRespon
 	if !status.ApplySupported {
 		return updateApplyResponse{}, errors.New(status.ApplyUnsupportedReason)
 	}
-	installer, ok := findUpdateAsset(status.Assets, "windows-installer")
+	installer, ok := updater.FindAsset(status.Assets, "windows-installer")
 	if !ok {
 		return updateApplyResponse{}, fmt.Errorf("latest release does not include a Windows installer")
 	}
-	checksum, _ := findUpdateAsset(status.Assets, "windows-installer-checksum")
+	checksum, _ := updater.FindAsset(status.Assets, "windows-installer-checksum")
 
 	root := updateRoot(cfg)
-	updateDir := filepath.Join(root, "updates", safePathName(status.LatestVersion))
+	updateDir := filepath.Join(root, "updates", updater.SafePathName(status.LatestVersion))
 	if err := os.MkdirAll(updateDir, 0o755); err != nil {
 		return updateApplyResponse{}, fmt.Errorf("create update directory: %w", err)
 	}
 	installerPath := filepath.Join(updateDir, installer.Name)
-	if err := downloadURLToFile(ctx, installer.URL, installerPath); err != nil {
+	if err := updater.Download(ctx, installer.URL, installerPath); err != nil {
 		return updateApplyResponse{}, err
 	}
-	expectedSHA := strings.TrimPrefix(strings.TrimSpace(installer.Digest), "sha256:")
+	expectedSHA := updater.ExpectedSHA(installer)
 	if expectedSHA == "" && checksum.URL != "" {
 		checksumPath := filepath.Join(updateDir, checksum.Name)
-		if err := downloadURLToFile(ctx, checksum.URL, checksumPath); err != nil {
+		if err := updater.Download(ctx, checksum.URL, checksumPath); err != nil {
 			return updateApplyResponse{}, err
 		}
-		expectedSHA = parseSHA256File(checksumPath)
+		expectedSHA = updater.ParseSHA256File(checksumPath)
 	}
 	// An installer we cannot verify must never be staged. If neither the GitHub
 	// asset digest nor a published .exe.sha256 sidecar gave us an expected hash,
@@ -201,7 +144,7 @@ func stageUpdateApply(ctx context.Context, cfg config.Config) (updateApplyRespon
 		_ = os.Remove(installerPath)
 		return updateApplyResponse{}, fmt.Errorf("release is missing a checksum for the installer; refusing to stage an unverified update")
 	}
-	actualSHA, err := sha256File(installerPath)
+	actualSHA, err := updater.SHA256File(installerPath)
 	if err != nil {
 		return updateApplyResponse{}, err
 	}
@@ -260,99 +203,6 @@ func updateRoot(cfg config.Config) string {
 	return ""
 }
 
-func findUpdateAsset(assets []updateAsset, packageType string) (updateAsset, bool) {
-	for _, asset := range assets {
-		if asset.PackageType == packageType {
-			return asset, true
-		}
-	}
-	return updateAsset{}, false
-}
-
-func safePathName(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.ReplaceAll(value, string(filepath.Separator), "-")
-	value = strings.ReplaceAll(value, "/", "-")
-	value = strings.ReplaceAll(value, "\\", "-")
-	if value == "" {
-		return "unknown"
-	}
-	return value
-}
-
-func downloadURLToFile(ctx context.Context, rawURL string, destination string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return fmt.Errorf("build download request: %w", err)
-	}
-	req.Header.Set("User-Agent", "Xuva/"+buildinfo.Current().Version)
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("download update asset: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("download update asset failed with HTTP %d", resp.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return fmt.Errorf("create update asset directory: %w", err)
-	}
-	tmp := destination + ".tmp"
-	file, err := os.Create(tmp)
-	if err != nil {
-		return fmt.Errorf("create update asset: %w", err)
-	}
-	_, copyErr := io.Copy(file, io.LimitReader(resp.Body, maxInstallerDownloadBytes+1))
-	closeErr := file.Close()
-	if copyErr != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("write update asset: %w", copyErr)
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("close update asset: %w", closeErr)
-	}
-	if info, err := os.Stat(tmp); err == nil && info.Size() > maxInstallerDownloadBytes {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("update asset exceeds maximum allowed size")
-	}
-	if err := os.Rename(tmp, destination); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("move update asset into place: %w", err)
-	}
-	return nil
-}
-
-func parseSHA256File(path string) string {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	fields := strings.Fields(string(raw))
-	if len(fields) == 0 {
-		return ""
-	}
-	value := strings.TrimPrefix(strings.TrimSpace(fields[0]), "sha256:")
-	if len(value) != sha256.Size*2 {
-		return ""
-	}
-	return value
-}
-
-func sha256File(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	sum := sha256.New()
-	if _, err := io.Copy(sum, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(sum.Sum(nil)), nil
-}
-
 func writeJSONFileAtomic(path string, payload any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -379,59 +229,4 @@ func writeJSONFileAtomic(path string, payload any) error {
 		return err
 	}
 	return nil
-}
-
-func classifyUpdateAsset(name string) string {
-	lower := strings.ToLower(strings.TrimSpace(name))
-	switch {
-	case strings.HasSuffix(lower, ".msi.sha256"):
-		return "windows-msi-checksum"
-	case strings.HasSuffix(lower, ".exe.sha256"):
-		return "windows-installer-checksum"
-	case strings.HasSuffix(lower, ".zip.sha256"):
-		return "windows-portable-checksum"
-	case strings.HasSuffix(lower, ".msi"):
-		return "windows-msi"
-	case strings.HasSuffix(lower, ".exe"):
-		return "windows-installer"
-	case strings.HasSuffix(lower, ".zip"):
-		return "windows-portable"
-	default:
-		return "asset"
-	}
-}
-
-var releaseVersionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)$`)
-
-func compareReleaseVersions(a, b string) int {
-	av, aok := parseReleaseVersion(a)
-	bv, bok := parseReleaseVersion(b)
-	if !aok || !bok {
-		return 0
-	}
-	for i := 0; i < len(av); i++ {
-		if av[i] > bv[i] {
-			return 1
-		}
-		if av[i] < bv[i] {
-			return -1
-		}
-	}
-	return 0
-}
-
-func parseReleaseVersion(value string) ([3]int, bool) {
-	var output [3]int
-	matches := releaseVersionPattern.FindStringSubmatch(strings.TrimSpace(value))
-	if len(matches) != 4 {
-		return output, false
-	}
-	for i := 1; i < len(matches); i++ {
-		n, err := strconv.Atoi(matches[i])
-		if err != nil {
-			return output, false
-		}
-		output[i-1] = n
-	}
-	return output, true
 }
