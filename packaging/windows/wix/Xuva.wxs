@@ -68,11 +68,50 @@
       </Directory>
     </StandardDirectory>
 
-    <Feature Id="Main" Title="Xuva Media Server" Level="1">
+    <!--
+      Feature scaffold for the convergence (see #451). Splitting the historical
+      single "Main" Feature into selectable Features lets a future slice add an
+      optional "Desktop tray app" payload without changing how the server today
+      installs. ADDLOCAL=EngineFeature (or default ADDLOCAL=ALL) reproduces the
+      pre-convergence install exactly; ADDLOCAL=EngineFeature,TrayFeature also
+      installs the tray once it ships.
+
+      EngineFeature is the always-on payload (server exe + ffmpeg + the service
+      + the SYSTEM updater). AllowAbsent="no" prevents msiexec from skipping it
+      via ADDLOCAL — a Xuva install without the engine isn't a thing.
+
+      TrayFeature is intentionally empty in this slice: the tray Electron payload
+      and Start Menu shortcut are added in the follow-up convergence PR. An empty
+      Feature is valid in MSI — it installs nothing when selected — and lets us
+      validate the scaffold compiles + the default ADDLOCAL behaviour is
+      unchanged before adding ~150-200MB of files. AllowAdvertise="no" keeps
+      both features local-only (no MSI advertise/install-on-first-use).
+    -->
+    <Feature Id="EngineFeature"
+             Title="Media server engine"
+             Description="The Xuva media server, ffmpeg/ffprobe, the Windows Service that runs the server at boot, and the SYSTEM auto-updater. Required."
+             Level="1"
+             AllowAbsent="no"
+             AllowAdvertise="no"
+             InstallDefault="local"
+             TypicalDefault="install"
+             Display="2">
       <ComponentGroupRef Id="EngineComponents" />
       <ComponentGroupRef Id="FfmpegComponents" />
       <ComponentRef Id="ServiceEnvironmentComponent" />
       <ComponentRef Id="UpdaterTaskComponent" />
+    </Feature>
+
+    <Feature Id="TrayFeature"
+             Title="Desktop tray app"
+             Description="System tray launcher for browsing the local Xuva server. Optional."
+             Level="1"
+             AllowAbsent="yes"
+             AllowAdvertise="no"
+             InstallDefault="local"
+             TypicalDefault="install"
+             Display="4">
+      <!-- Populated by the Electron harvest in the next convergence slice (#451). -->
     </Feature>
 
     <ComponentGroup Id="EngineComponents" Directory="INSTALLFOLDER">
