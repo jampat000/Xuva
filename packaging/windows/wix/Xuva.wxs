@@ -21,7 +21,8 @@
   co-located with xuva-server.exe (this is also why service is not yet a separate
   optional feature — that split comes with a Condition-gated follow-up).
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
   <Package
       Name="Xuva Media Server"
       Manufacturer="Xuva"
@@ -71,6 +72,31 @@
             Stop="both"
             Remove="uninstall"
             Wait="yes" />
+
+        <!-- Inbound firewall rules, scoped to xuva-server.exe (so only our
+             listener is exposed, not the port globally), on all profiles
+             (Windows frequently misclassifies a LAN as Public). Replaces the
+             old netsh shell-outs; removed automatically on uninstall.
+               - TCP 8097: the web UI / API
+               - UDP 5353: mDNS/Bonjour LAN discovery -->
+        <fw:FirewallException
+            Id="XuvaHttpInbound"
+            Name="Xuva Media Server (HTTP 8097)"
+            Program="[#XuvaServerExe]"
+            Protocol="tcp"
+            Port="8097"
+            Profile="all"
+            Scope="any"
+            IgnoreFailure="yes" />
+        <fw:FirewallException
+            Id="XuvaMdnsInbound"
+            Name="Xuva Media Server (mDNS discovery)"
+            Program="[#XuvaServerExe]"
+            Protocol="udp"
+            Port="5353"
+            Profile="all"
+            Scope="any"
+            IgnoreFailure="yes" />
       </Component>
     </ComponentGroup>
 
