@@ -102,6 +102,13 @@ func main() {
 		return
 	}
 
+	// `xuva-server update` — the prompt-free MSI self-updater (registered as a
+	// SYSTEM scheduled task by the installer). Runs as a console process and
+	// exits; never reached under the SCM. No-op / returns false on non-Windows.
+	if handleUpdateCommand(os.Args) {
+		return
+	}
+
 	// When the Windows SCM launches us, default the runtime home to ProgramData
 	// before config is read so state lands in C:\ProgramData\Xuva rather than
 	// under Program Files. No-op on non-Windows and on non-service launches.
