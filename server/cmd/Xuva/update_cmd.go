@@ -133,27 +133,42 @@ func updateDownloadRoot() string {
 	return filepath.Join(os.TempDir(), "Xuva")
 }
 
-// updaterTaskName is the scheduled task's path (folder \Xuva\, task XuvaUpdater).
-const updaterTaskName = `Xuva\XuvaUpdater`
+// The auto-updater registers two SYSTEM scheduled tasks: a periodic one that
+// checks every 6 hours, and one that checks shortly after boot (so a machine
+// that was off through a scheduled slot still catches up promptly). schtasks
+// has no single schedule for "every 6h AND at boot", hence two tasks.
+const (
+	updaterTaskName     = `Xuva\XuvaUpdater`        // every 6 hours
+	updaterBootTaskName = `Xuva\XuvaUpdater-AtBoot` // at startup
+)
 
-// updaterTaskArgs builds the schtasks.exe arguments to register the SYSTEM
-// auto-updater task (enabled), or remove it (disabled). It uses command-line
-// flags rather than a /xml definition: schtasks then constructs a schema-valid
-// task itself, sidestepping the /create /xml pitfalls (the file must be UTF-16
-// and its <Settings> must follow a strict element order). The task runs every
-// 6 hours as LocalSystem at the highest run level. Pure, so the command shape
-// is unit-tested. /f makes both idempotent (create overwrites, delete is quiet).
-func updaterTaskArgs(enabled bool, exePath string) []string {
-	if !enabled {
-		return []string{"/delete", "/tn", updaterTaskName, "/f"}
-	}
-	return []string{
-		"/create", "/tn", updaterTaskName,
-		"/tr", `"` + exePath + `" update --scheduled`,
-		"/sc", "HOURLY", "/mo", "6",
-		"/ru", "SYSTEM", "/rl", "HIGHEST",
-		"/f",
-	}
+// updaterTask pairs a task name with its schtasks schedule flags.
+type updaterTask struct {
+	name     string
+	schedule []string
+}
+
+// updaterTasks is the set the service keeps in sync. Built from schtasks
+// command-line flags rather than a /xml definition so schtasks constructs a
+// schema-valid task itself, sidestepping the /create /xml pitfalls (the file
+// must be UTF-16 and its <Settings> must follow a strict element order).
+var updaterTasks = []updaterTask{
+	{updaterTaskName, []string{"/sc", "HOURLY", "/mo", "6"}},
+	{updaterBootTaskName, []string{"/sc", "ONSTART"}},
+}
+
+// updaterCreateArgs builds `schtasks /create` args for one task: run the updater
+// (as SYSTEM, highest run level) on the given schedule. Pure, so unit-tested.
+// The exe path is quoted in /tr so the spaced "Program Files" path runs.
+func updaterCreateArgs(taskName, exePath string, schedule []string) []string {
+	args := []string{"/create", "/tn", taskName, "/tr", `"` + exePath + `" update --scheduled`}
+	args = append(args, schedule...)
+	return append(args, "/ru", "SYSTEM", "/rl", "HIGHEST", "/f")
+}
+
+// updaterDeleteArgs builds `schtasks /delete` args for one task. /f is quiet.
+func updaterDeleteArgs(taskName string) []string {
+	return []string{"/delete", "/tn", taskName, "/f"}
 }
 
 // autoUpdateDisabledByValue reports whether an XUVA_AUTO_UPDATE-style value
