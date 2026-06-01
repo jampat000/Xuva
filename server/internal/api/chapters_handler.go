@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/jampat000/Xuva/server/internal/auth"
 	"github.com/jampat000/Xuva/server/internal/chapters"
@@ -50,12 +52,24 @@ func chaptersAnalyzeHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		// Fire credits analysis in background.
-		go deps.Chapters.AnalyzeCredits(r.Context(), id, src.Path, src.DurationSeconds)
+		// Fire credits + season analysis in background. CRITICAL: use a
+		// detached background context, NOT r.Context() — the request context
+		// is cancelled the moment writeJSON returns, which would silently
+		// abort the analysis a few hundred ms later (audit caught this).
+		// A long-but-bounded timeout caps a runaway analysis without
+		// dropping legitimate long runs (season analysis can take minutes
+		// for a high-episode-count series).
+		analysisCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		go func() {
+			defer cancel()
+			deps.Chapters.AnalyzeCredits(analysisCtx, id, src.Path, src.DurationSeconds)
+		}()
 
 		// Fire season intro analysis if this is a TV episode.
+		seasonCtx, seasonCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		go func() {
-			peers, err := deps.Catalog.GetSeasonPeers(r.Context(), id)
+			defer seasonCancel()
+			peers, err := deps.Catalog.GetSeasonPeers(seasonCtx, id)
 			if err != nil || len(peers) < 2 {
 				return
 			}
@@ -67,7 +81,7 @@ func chaptersAnalyzeHandler(deps Deps) http.HandlerFunc {
 					Duration:      p.Duration,
 				})
 			}
-			deps.Chapters.AnalyzeSeason(r.Context(), eps)
+			deps.Chapters.AnalyzeSeason(seasonCtx, eps)
 		}()
 
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})

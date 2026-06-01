@@ -2,6 +2,8 @@ package sessions
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -406,6 +408,16 @@ func cloneMap(input map[string]string) map[string]string {
 }
 
 func (s *Service) nextSessionID() string {
+	// Defense-in-depth alongside the router-level ownership checks: an
+	// unpredictable suffix means even if a future API change accidentally
+	// re-exposes a session by ID, the ID can't be guessed/enumerated from
+	// timing or a previously-known ID. Falls back to the legacy
+	// timestamp+counter format on the (theoretically impossible)
+	// crypto/rand.Read failure, so this can never break startup.
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err == nil {
+		return "session_" + time.Now().UTC().Format("20060102T150405") + "_" + hex.EncodeToString(buf[:])
+	}
 	return "session_" + time.Now().UTC().Format("20060102T150405") + "_" + stringID(s.nextID.Add(1))
 }
 

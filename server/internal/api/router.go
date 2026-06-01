@@ -6940,13 +6940,44 @@ func approvedDevicePayload(item devices.ApprovedDevice) map[string]any {
 
 func sessionsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"sessions": deps.Sessions.List()})
+		// SECURITY: standard users only see their own sessions; admins see
+		// every session. Previously the full list (every user's session
+		// IDs, MediaSourceIDs, UserIDs) was returned to any caller, which
+		// was the enumeration substrate for cross-user attacks against
+		// PATCH/DELETE /api/sessions/{id} and the inspector endpoint.
+		all := deps.Sessions.List()
+		if requestIsAdmin(r) {
+			writeJSON(w, http.StatusOK, map[string]any{"sessions": all})
+			return
+		}
+		callerID := sessionOwnerID(r)
+		filtered := make([]sessions.Session, 0, len(all))
+		for _, s := range all {
+			if s.UserID == callerID {
+				filtered = append(filtered, s)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": filtered})
 	}
 }
 
 func sessionInspectorHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		inspector, ok := deps.Sessions.Inspector(r.PathValue("id"))
+		id := r.PathValue("id")
+		// SECURITY: load the session first so we can ownership-check before
+		// returning its inspector payload (title, bitrate, device, route
+		// history). Without this, a standard user can read any session by
+		// ID — combined with the predictable session ID format, trivial.
+		session, ok := deps.Sessions.Get(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if !requestIsAdmin(r) && session.UserID != sessionOwnerID(r) {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		inspector, ok := deps.Sessions.Inspector(id)
 		if !ok {
 			writeError(w, http.StatusNotFound, "session not found")
 			return
@@ -6961,9 +6992,12 @@ func sessionStartHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		if request.UserID == "" {
-			request.UserID = requestUserID(r)
-		}
+		// SECURITY: unconditionally bind UserID to the authenticated caller.
+		// Same root cause as playbackStateSetHandler — accepting a
+		// client-supplied UserID let standard users attribute sessions to
+		// other users (corrupting playback history, watch state, transcode
+		// accounting).
+		request.UserID = requestUserID(r)
 		if err := enrichSessionStartRequest(deps, r.Context(), &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -7129,7 +7163,22 @@ func sessionUpdateHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		session, ok := deps.Sessions.Update(r.PathValue("id"), request)
+		// SECURITY: ownership-check before mutating someone else's session.
+		// Without this, any standard user could PATCH any session by ID
+		// (combined with predictable session IDs from sessions.nextSessionID,
+		// trivial to script). Return 404 (not 403) on mismatch so we don't
+		// leak existence of the target session.
+		id := r.PathValue("id")
+		existing, ok := deps.Sessions.Get(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if !requestIsAdmin(r) && existing.UserID != sessionOwnerID(r) {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		session, ok := deps.Sessions.Update(id, request)
 		if !ok {
 			writeError(w, http.StatusNotFound, "session not found")
 			return
@@ -7145,7 +7194,19 @@ func sessionUpdateHandler(deps Deps) http.HandlerFunc {
 
 func sessionStopHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		session, ok := deps.Sessions.Stop(r.PathValue("id"))
+		id := r.PathValue("id")
+		// SECURITY: ownership-check before stopping someone else's playback.
+		// See sessionUpdateHandler for the same rationale.
+		existing, ok := deps.Sessions.Get(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if !requestIsAdmin(r) && existing.UserID != sessionOwnerID(r) {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		session, ok := deps.Sessions.Stop(id)
 		if !ok {
 			writeError(w, http.StatusNotFound, "session not found")
 			return
@@ -7201,9 +7262,12 @@ func playbackStateSetHandler(deps Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &request) {
 			return
 		}
-		if request.UserID == "" {
-			request.UserID = requestUserID(r)
-		}
+		// SECURITY: unconditionally bind UserID to the authenticated caller —
+		// never trust a client-supplied UserID. The previous
+		// `if request.UserID == ""` fallback let any standard user write
+		// playback state on behalf of another user (mark watched, set
+		// progress) just by including a different userId in the body.
+		request.UserID = requestUserID(r)
 		state, err := deps.PlayState.Set(r.Context(), r.PathValue("id"), request)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -7218,6 +7282,29 @@ func requestUserID(r *http.Request) string {
 		return resolved.Principal.ID
 	}
 	return r.URL.Query().Get("userId")
+}
+
+// requestIsAdmin reports whether the request's resolved session is an admin
+// principal. Used to gate cross-user visibility on endpoints (Sessions list /
+// inspector / update / stop) — admins see and act on every session; standard
+// users only see and act on their own.
+func requestIsAdmin(r *http.Request) bool {
+	resolved, ok := auth.ResolvedSessionFromContext(r.Context())
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(resolved.Principal.Role), roleAdmin)
+}
+
+// sessionOwnerID returns the caller's session-owner identity for ownership
+// checks. Matches sessions.Service.Start's default of "local" when no auth
+// context is resolved so unauthenticated callers (XUVA_AUTH_DISABLED loopback
+// installs, dev/tests) can still act on the sessions they themselves created.
+func sessionOwnerID(r *http.Request) string {
+	if id := requestUserID(r); id != "" {
+		return id
+	}
+	return "local"
 }
 
 func movieScanHandler(deps Deps) http.HandlerFunc {
