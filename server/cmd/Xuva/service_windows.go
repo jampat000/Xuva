@@ -58,6 +58,18 @@ func (s *xuvaService) Execute(_ []string, r <-chan svc.ChangeRequest, changes ch
 	}
 	changes <- svc.Status{State: svc.Running, Accepts: accepted}
 
+	// Register (or, when opted out, remove) the SYSTEM auto-updater scheduled
+	// task. Done from the running LocalSystem service — which has the rights to
+	// manage a SYSTEM task — so it self-heals a missing task and applies an
+	// XUVA_AUTO_UPDATE opt-out toggle on the next start. Best-effort: a failure
+	// here must never stop the media server.
+	enabled := autoUpdateEnabled()
+	if err := ensureUpdaterTask(enabled); err != nil {
+		slog.Warn("windows service: could not ensure updater task", "enabled", enabled, "error", err)
+	} else {
+		slog.Info("windows service: updater task ensured", "enabled", enabled)
+	}
+
 	for c := range r {
 		switch c.Cmd {
 		case svc.Interrogate:

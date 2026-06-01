@@ -76,7 +76,7 @@ func TestRunUpdateCheckAppliesNewerVerifiedMSI(t *testing.T) {
 	setBuildVersion(t, "v1.0.0")
 
 	fake := &fakeApplier{}
-	if err := runUpdateCheck(context.Background(), fake); err != nil {
+	if err := runUpdateCheck(context.Background(), fake, false); err != nil {
 		t.Fatalf("runUpdateCheck: %v", err)
 	}
 	if !fake.called {
@@ -102,7 +102,7 @@ func TestRunUpdateCheckUpToDate(t *testing.T) {
 	setBuildVersion(t, "v1.0.0")
 
 	fake := &fakeApplier{}
-	if err := runUpdateCheck(context.Background(), fake); err != nil {
+	if err := runUpdateCheck(context.Background(), fake, false); err != nil {
 		t.Fatalf("runUpdateCheck: %v", err)
 	}
 	if fake.called {
@@ -120,7 +120,7 @@ func TestRunUpdateCheckRejectsBadChecksum(t *testing.T) {
 	setBuildVersion(t, "v1.0.0")
 
 	fake := &fakeApplier{}
-	err := runUpdateCheck(context.Background(), fake)
+	err := runUpdateCheck(context.Background(), fake, false)
 	if err == nil {
 		t.Fatal("expected a checksum-mismatch error")
 	}
@@ -140,11 +140,74 @@ func TestRunUpdateCheckFailsClosedWithoutChecksum(t *testing.T) {
 	setBuildVersion(t, "v1.0.0")
 
 	fake := &fakeApplier{}
-	if err := runUpdateCheck(context.Background(), fake); err == nil {
+	if err := runUpdateCheck(context.Background(), fake, false); err == nil {
 		t.Fatal("expected a fail-closed error when no checksum is available")
 	}
 	if fake.called {
 		t.Fatal("applier called for an unverifiable MSI")
+	}
+}
+
+func TestRunUpdateCheckScheduledRespectsOptOut(t *testing.T) {
+	body := []byte("PRETEND-MSI")
+	srv := newReleaseServer(t, "v2.0.0", body, sha256Digest(body))
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	t.Setenv("XUVA_RUNTIME_HOME", t.TempDir())
+	t.Setenv("XUVA_AUTO_UPDATE", "0") // opted out
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	// scheduled=true honors the opt-out: a newer release exists but is skipped.
+	if err := runUpdateCheck(context.Background(), fake, true); err != nil {
+		t.Fatalf("runUpdateCheck (scheduled, opted out): %v", err)
+	}
+	if fake.called {
+		t.Fatal("scheduled run applied an update despite XUVA_AUTO_UPDATE=0")
+	}
+}
+
+func TestRunUpdateCheckManualIgnoresOptOut(t *testing.T) {
+	body := []byte("PRETEND-MSI")
+	srv := newReleaseServer(t, "v2.0.0", body, sha256Digest(body))
+	t.Setenv("XUVA_UPDATE_RELEASE_API", srv.URL)
+	t.Setenv("XUVA_RUNTIME_HOME", t.TempDir())
+	t.Setenv("XUVA_AUTO_UPDATE", "0") // opted out — but a MANUAL run still proceeds
+	setBuildVersion(t, "v1.0.0")
+
+	fake := &fakeApplier{}
+	if err := runUpdateCheck(context.Background(), fake, false); err != nil {
+		t.Fatalf("runUpdateCheck (manual): %v", err)
+	}
+	if !fake.called {
+		t.Fatal("a manual update run was blocked by the auto-update opt-out")
+	}
+}
+
+func TestAutoUpdateDisabledByValue(t *testing.T) {
+	disabled := []string{"0", "false", "FALSE", "no", "Off", " off "}
+	for _, v := range disabled {
+		if !autoUpdateDisabledByValue(v) {
+			t.Errorf("autoUpdateDisabledByValue(%q) = false, want true", v)
+		}
+	}
+	enabled := []string{"", "1", "true", "yes", "on", "anything"}
+	for _, v := range enabled {
+		if autoUpdateDisabledByValue(v) {
+			t.Errorf("autoUpdateDisabledByValue(%q) = true, want false", v)
+		}
+	}
+}
+
+func TestUpdaterTaskArgs(t *testing.T) {
+	create := updaterTaskArgs(true, `C:\Program Files\Xuva\XuvaUpdater.xml`)
+	want := []string{"/create", "/xml", `C:\Program Files\Xuva\XuvaUpdater.xml`, "/tn", `Xuva\XuvaUpdater`, "/f"}
+	if strings.Join(create, "|") != strings.Join(want, "|") {
+		t.Errorf("create args = %v, want %v", create, want)
+	}
+	del := updaterTaskArgs(false, "ignored")
+	wantDel := []string{"/delete", "/tn", `Xuva\XuvaUpdater`, "/f"}
+	if strings.Join(del, "|") != strings.Join(wantDel, "|") {
+		t.Errorf("delete args = %v, want %v", del, wantDel)
 	}
 }
 
@@ -163,7 +226,7 @@ func TestRunUpdateCheckNoMSIAsset(t *testing.T) {
 	setBuildVersion(t, "v1.0.0")
 
 	fake := &fakeApplier{}
-	if err := runUpdateCheck(context.Background(), fake); err == nil {
+	if err := runUpdateCheck(context.Background(), fake, false); err == nil {
 		t.Fatal("expected an error when the release has no MSI asset")
 	}
 	if fake.called {
