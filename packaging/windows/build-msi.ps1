@@ -121,7 +121,9 @@ foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
 Write-Host "`n== wix build =="
 # The WiX Firewall extension provides <fw:FirewallException> (inbound rules for
 # the HTTP port + mDNS). Add it (idempotent) and reference it on the build.
-& wix extension add -g WixToolset.Firewall.wixext
+# Pin the extension to the SAME version as the toolset (5.0.2); an unpinned add
+# pulls v7, which is incompatible with WiX v5 (WIX6101).
+& wix extension add -g WixToolset.Firewall.wixext/5.0.2
 if ($LASTEXITCODE -ne 0) { throw "wix extension add failed (exit $LASTEXITCODE)" }
 Copy-Item -LiteralPath $wxsSource -Destination (Join-Path $staging "Xuva.wxs") -Force
 $msiOut = Join-Path $outputBase "xuva-server-v$Version.msi"
