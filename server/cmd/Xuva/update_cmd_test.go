@@ -199,10 +199,20 @@ func TestAutoUpdateDisabledByValue(t *testing.T) {
 }
 
 func TestUpdaterTaskArgs(t *testing.T) {
-	create := updaterTaskArgs(true, `C:\Program Files\Xuva\XuvaUpdater.xml`)
-	want := []string{"/create", "/xml", `C:\Program Files\Xuva\XuvaUpdater.xml`, "/tn", `Xuva\XuvaUpdater`, "/f"}
+	create := updaterTaskArgs(true, `C:\Program Files\Xuva\xuva-server.exe`)
+	want := []string{
+		"/create", "/tn", `Xuva\XuvaUpdater`,
+		"/tr", `"C:\Program Files\Xuva\xuva-server.exe" update --scheduled`,
+		"/sc", "HOURLY", "/mo", "6",
+		"/ru", "SYSTEM", "/rl", "HIGHEST",
+		"/f",
+	}
 	if strings.Join(create, "|") != strings.Join(want, "|") {
-		t.Errorf("create args = %v, want %v", create, want)
+		t.Errorf("create args =\n  %v\nwant\n  %v", create, want)
+	}
+	// The exe path must be quoted in /tr so the spaced "Program Files" path runs.
+	if !strings.Contains(strings.Join(create, " "), `"C:\Program Files\Xuva\xuva-server.exe" update --scheduled`) {
+		t.Error("the /tr value must wrap the exe path in quotes")
 	}
 	del := updaterTaskArgs(false, "ignored")
 	wantDel := []string{"/delete", "/tn", `Xuva\XuvaUpdater`, "/f"}

@@ -137,14 +137,23 @@ func updateDownloadRoot() string {
 const updaterTaskName = `Xuva\XuvaUpdater`
 
 // updaterTaskArgs builds the schtasks.exe arguments to register the SYSTEM
-// auto-updater task from its XML definition (enabled), or remove it (disabled).
-// Pure so the command shape is unit-tested without touching the real Task
-// Scheduler. /f makes both idempotent (create overwrites, delete won't prompt).
-func updaterTaskArgs(enabled bool, xmlPath string) []string {
-	if enabled {
-		return []string{"/create", "/xml", xmlPath, "/tn", updaterTaskName, "/f"}
+// auto-updater task (enabled), or remove it (disabled). It uses command-line
+// flags rather than a /xml definition: schtasks then constructs a schema-valid
+// task itself, sidestepping the /create /xml pitfalls (the file must be UTF-16
+// and its <Settings> must follow a strict element order). The task runs every
+// 6 hours as LocalSystem at the highest run level. Pure, so the command shape
+// is unit-tested. /f makes both idempotent (create overwrites, delete is quiet).
+func updaterTaskArgs(enabled bool, exePath string) []string {
+	if !enabled {
+		return []string{"/delete", "/tn", updaterTaskName, "/f"}
 	}
-	return []string{"/delete", "/tn", updaterTaskName, "/f"}
+	return []string{
+		"/create", "/tn", updaterTaskName,
+		"/tr", `"` + exePath + `" update --scheduled`,
+		"/sc", "HOURLY", "/mo", "6",
+		"/ru", "SYSTEM", "/rl", "HIGHEST",
+		"/f",
+	}
 }
 
 // autoUpdateDisabledByValue reports whether an XUVA_AUTO_UPDATE-style value

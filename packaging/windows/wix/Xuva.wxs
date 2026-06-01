@@ -135,20 +135,19 @@
       </RegistryValue>
     </Component>
 
-    <!-- The auto-updater scheduled-task definition (installed next to the exe,
-         where the service reads it to register the task via schtasks) plus the
-         AutoUpdate opt-out flag the service consults. The task itself is created
-         at runtime by the LocalSystem service (see service_windows.go), which
-         keeps the rich trigger/principal definition out of fragile install-time
-         custom actions and lets it self-heal + honor a post-install toggle. -->
+    <!-- The AutoUpdate opt-out flag the service consults. When enabled, the
+         LocalSystem service registers the SYSTEM scheduled task at startup via
+         schtasks command-line flags (see ensureUpdaterTask) — no task XML is
+         shipped, so there's no /create /xml encoding/schema to get wrong. The
+         service also self-heals the task and honors a post-install toggle. -->
     <Component Id="UpdaterTaskComponent" Bitness="always64" Directory="INSTALLFOLDER">
-      <File Id="XuvaUpdaterXml" Name="XuvaUpdater.xml" Source="XuvaUpdater.xml" KeyPath="yes" />
       <RegistryValue
           Root="HKLM"
           Key="SOFTWARE\Xuva"
           Name="AutoUpdate"
           Type="string"
-          Value="[XUVA_AUTO_UPDATE]" />
+          Value="[XUVA_AUTO_UPDATE]"
+          KeyPath="yes" />
     </Component>
 
     <!-- On a real uninstall (not the transient uninstall half of a major
