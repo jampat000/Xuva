@@ -9,9 +9,12 @@
   ffmpeg/ffprobe, the tray component, firewall rules and the updater are layered
   in by later slices.
 
-  Requires the WiX v5 .NET tool on PATH (`dotnet tool install --global wix`).
-  No Node/SPA build is needed: the SPA is already embedded in xuva-server.exe via
-  the committed server/internal/webapp/static-next bundle.
+  Requires the WiX v5 .NET tool on PATH (`dotnet tool install --global wix`)
+  AND Node/npm (used to rebuild the Svelte SPA into static-next before the
+  server's //go:embed picks it up, and to build the Electron tray bundle).
+  Running publish:go-static every build guarantees the MSI ships a current
+  SPA — closes #90, where the previous "use committed static-next" path
+  shipped stale UI when a frontend PR merged without re-running publish.
 
 .PARAMETER Version
   Release version, e.g. "v1.2.3" or "1.2.3.0". This is injected into the server
@@ -169,7 +172,32 @@ $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $msiVersion = Get-MsiProductVersion -Version $Version
 Write-Host "Version   : $Version (MSI ProductVersion $msiVersion, commit $gitCommit)"
 
-# 1) Build the server binary (embeds the SPA). Run from the module root.
+# 1a) Rebuild the Svelte SPA into server/internal/webapp/static-next/ so the
+#     server's //go:embed bundles the current frontend. Without this the MSI
+#     would ship whatever static-next happens to be committed — and a frontend
+#     PR can land on main without re-running publish:go-static, which is
+#     exactly the bug #90 closes. We accept ~10-15s of vite build per MSI
+#     build as the cost of correctness; the npm ci + node_modules cache hit
+#     keeps PR-CI iteration affordable.
+$npm = Get-RequiredCommand -Name "npm"
+$svelteRoot = Join-Path $repoRoot "apps\web\svelte"
+Write-Host "`n== publish:go-static (Svelte SPA -> static-next) =="
+Push-Location $svelteRoot
+try {
+    & $npm ci
+    if ($LASTEXITCODE -ne 0) { throw "npm ci (apps/web/svelte) failed (exit $LASTEXITCODE)" }
+    & $npm run "publish:go-static"
+    if ($LASTEXITCODE -ne 0) { throw "publish:go-static failed (exit $LASTEXITCODE)" }
+} finally {
+    Pop-Location
+}
+$staticNext = Join-Path $repoRoot "server\internal\webapp\static-next"
+if (-not (Test-Path -LiteralPath $staticNext)) {
+    throw "publish:go-static did not populate server\internal\webapp\static-next"
+}
+
+# 1b) Build the server binary (embeds the SPA we just rebuilt). Run from the
+#     module root.
 Write-Host "`n== go build xuva-server.exe =="
 $serverExe = Join-Path $staging "xuva-server.exe"
 Push-Location $serverDir
@@ -224,7 +252,7 @@ foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
 #     below — the MSI's EngineFeature already installs the same binaries at
 #     INSTALLFOLDER, and apps/desktop/main.js's `adjacentServerPath()` probes
 #     that adjacent location when the bundled copy is missing.
-$npm = Get-RequiredCommand -Name "npm"
+# $npm is already resolved up in the SPA build step (step 1a) above.
 $desktopVersion = Get-DesktopVersion -Version $Version
 $desktopRoot = Join-Path $repoRoot "apps\desktop"
 $desktopRuntime = Join-Path $desktopRoot "runtime"

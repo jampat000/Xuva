@@ -63,14 +63,17 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
-      # Node is needed by build-msi.ps1 to run electron-builder for the MSI's
-      # TrayFeature. The cache key follows apps/desktop/package-lock.json
-      # because that's the lockfile the npm ci hits.
+      # Node is needed by build-msi.ps1 for BOTH the Svelte SPA build
+      # (publish:go-static → static-next so xuva-server.exe embeds the
+      # current frontend, closes #90) AND the Electron tray bundle that's
+      # harvested into the MSI's TrayFeature. Cache keyed off both lockfiles.
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
+          cache-dependency-path: |
+            apps/desktop/package-lock.json
+            apps/web/svelte/package-lock.json
 
       # WiX toolset for the MSI (matches the .github/workflows/security.yml
       # "Windows MSI build" PR job — pinned to v5 to avoid the v6/v7 OSMF EULA gate).

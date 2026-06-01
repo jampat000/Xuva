@@ -2,11 +2,26 @@ root = "."
 tmp_dir = ".air"
 
 [build]
+  # The Svelte SPA is //go:embed-ed into xuva-server.exe at build time via
+  # server/internal/webapp/static-next. Running `npm run publish:go-static`
+  # before each Air rebuild is what makes a frontend edit visible at
+  # http://127.0.0.1:8097 — without it Air rebuilds the Go binary but
+  # re-embeds the stale committed static-next bundle (closed #90).
+  #
+  # `npm --prefix` keeps this cross-platform (no cd-into-subshell).
+  pre_cmd = ["npm --prefix ../apps/web/svelte run publish:go-static"]
   cmd = "go build -buildvcs=false -o .air/xuva.exe ./cmd/Xuva/..."
   bin = ".air/xuva.exe"
   full_bin = ".air/xuva.exe"
-  include_ext = ["go"]
-  exclude_dir  = [".air", "vendor"]
+  # Svelte/TS/CSS/HTML are added so an apps/web/svelte/src edit fires the
+  # pre_cmd+build pair; without them the Go binary only rebuilds on .go
+  # changes and the embedded SPA goes stale (root cause in #90).
+  include_ext = ["go", "svelte", "ts", "css", "html"]
+  # Watch the Svelte source tree alongside server/ so frontend edits
+  # trigger rebuilds. node_modules + the generated static-next dir are
+  # excluded so the publish output doesn't loop us back into a rebuild.
+  include_dir = [".", "../apps/web/svelte/src"]
+  exclude_dir  = [".air", "vendor", "../apps/web/svelte/node_modules", "internal/webapp/static-next"]
   exclude_file = []
   delay = 500
   kill_delay = "500ms"
