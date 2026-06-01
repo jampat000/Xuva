@@ -217,10 +217,13 @@ foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
 #     unpacked Electron app dir). That dir is then copied into the MSI
 #     staging area so heat can harvest it into a WiX ComponentGroup.
 #
-#     NOTE: the staged tray\resources\runtime\ duplicates the engine's
-#     xuva-server.exe (~120 MB) for now — that's the path the tray uses
-#     today to spawn the server when no service is running. A follow-up PR
-#     deduplicates by pointing the tray at the engine's install path.
+#     NOTE: electron-builder bundles xuva-server.exe + bin\ffmpeg/ffprobe at
+#     resources\runtime\* via the package.json extraResources entry. We let
+#     it do so (so the unpacked dir is "complete" and would still work as a
+#     legacy NSIS layout) and then STRIP those files from the tray staging
+#     below — the MSI's EngineFeature already installs the same binaries at
+#     INSTALLFOLDER, and apps/desktop/main.js's `adjacentServerPath()` probes
+#     that adjacent location when the bundled copy is missing.
 $npm = Get-RequiredCommand -Name "npm"
 $desktopVersion = Get-DesktopVersion -Version $Version
 $desktopRoot = Join-Path $repoRoot "apps\desktop"
@@ -260,12 +263,29 @@ if (-not (Test-Path -LiteralPath $unpackedDir)) {
     throw "electron-builder did not produce dist\win-unpacked"
 }
 
-# Copy the unpacked tree into the MSI staging area as tray\ (heat harvests it).
+# Copy the unpacked tree into the MSI staging area as tray\, which the WiX
+# <Files Include="$(var.TraySource)\**"> will then auto-harvest into the
+# TrayComponents ComponentGroup.
 $trayStaging = Join-Path $staging "tray"
 Remove-Item -LiteralPath $trayStaging -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath $unpackedDir -Destination $trayStaging -Recurse -Force
 if (-not (Test-Path -LiteralPath (Join-Path $trayStaging "Xuva.exe"))) {
     throw "tray staging missing Xuva.exe (electron-builder output shape changed?)"
+}
+
+# Strip the duplicated server runtime from the tray bundle. electron-builder
+# bundles xuva-server.exe + bin\ffmpeg/ffprobe at resources\runtime\* via
+# package.json's extraResources entry — but the MSI's EngineFeature already
+# installs those at INSTALLFOLDER\xuva-server.exe + INSTALLFOLDER\bin\*.
+# Keeping the bundled copy duplicated ~140 MB into every MSI. apps/desktop/
+# main.js (`packagedServerPath` -> `adjacentServerPath`) now probes the
+# engine's adjacent install path when the bundled copy is missing, so the
+# tray attaches to it (when a service is running) or spawns it (when not)
+# instead. Both layouts still work; the bundle just sheds the dup.
+$bundledRuntime = Join-Path $trayStaging "resources\runtime"
+if (Test-Path -LiteralPath $bundledRuntime) {
+    Remove-Item -LiteralPath $bundledRuntime -Recurse -Force
+    Write-Host "Stripped duplicated $bundledRuntime from tray staging."
 }
 
 # 2) Build the MSI. Run wix from the staging dir so File/@Source paths
