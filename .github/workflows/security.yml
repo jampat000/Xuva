@@ -200,15 +200,22 @@ jobs:
         with:
           go-version-file: server/go.mod
 
-      # Node is needed for the Electron tray bundle build (electron-builder)
-      # that's harvested into the MSI's TrayFeature. Matches the release.yml
-      # windows job version pin so the per-PR build mirrors what release builds.
+      # Node is needed for both:
+      #   - the Svelte SPA build (npm --prefix apps/web/svelte run
+      #     publish:go-static) so xuva-server.exe embeds the current
+      #     frontend (closes #90)
+      #   - the Electron tray bundle (electron-builder) that's harvested
+      #     into the MSI's TrayFeature
+      # The multi-line cache-dependency-path keys the npm cache off BOTH
+      # lockfiles so a change to either invalidates correctly.
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
+          cache-dependency-path: |
+            apps/desktop/package-lock.json
+            apps/web/svelte/package-lock.json
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
