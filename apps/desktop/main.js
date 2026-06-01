@@ -300,8 +300,20 @@ try {
   if (-not (Test-Path -LiteralPath $installerPath)) {
     throw "installer not found: $installerPath"
   }
-  Write-XuvaUpdateLog "starting elevated installer $installerPath"
-  $proc = Start-Process -FilePath $installerPath -ArgumentList '/S' -Verb RunAs -Wait -PassThru
+  # Branch on the staged installer's extension: a .msi goes through msiexec
+  # (the single-Windows-artifact direction in #451), a .exe through the legacy
+  # NSIS silent flag. Both are launched elevated (-Verb RunAs) — the MSI is
+  # perMachine so it needs admin; the NSIS .exe was previously launched the
+  # same way for symmetry with the firewall-rule install step.
+  $ext = [System.IO.Path]::GetExtension($installerPath).ToLowerInvariant()
+  if ($ext -eq '.msi') {
+    $msiLog = [System.IO.Path]::ChangeExtension($installerPath, '.msi.log')
+    Write-XuvaUpdateLog "running MSI installer $installerPath (msi log: $msiLog)"
+    $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $installerPath, '/qn', '/norestart', '/L*v', $msiLog) -Verb RunAs -Wait -PassThru
+  } else {
+    Write-XuvaUpdateLog "running NSIS installer $installerPath"
+    $proc = Start-Process -FilePath $installerPath -ArgumentList '/S' -Verb RunAs -Wait -PassThru
+  }
   if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
     throw "installer exited with code $($proc.ExitCode)"
   }

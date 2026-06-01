@@ -18,10 +18,13 @@ import (
 )
 
 // This file is the DESKTOP/tray update path: it checks the release feed and
-// stages the NSIS installer (.exe) into pending-update.json for the Electron
-// launcher to apply. The headless Windows Service self-updates instead via the
-// `xuva-server.exe update` verb (cmd/Xuva), which targets the MSI. Both share
-// the feed/download/verify primitives in internal/updater.
+// stages a Windows installer into pending-update.json for the Electron launcher
+// to apply. The MSI is preferred (matches the convergence direction in #451 —
+// single Windows artifact, tray bundled into the MSI's TrayFeature), with the
+// legacy NSIS .exe used as a fallback while older clients still expect it.
+// The headless Windows Service self-updates via the `xuva-server.exe update`
+// verb (cmd/Xuva), which unconditionally targets the MSI. Both share the
+// feed/download/verify primitives in internal/updater.
 
 type updateStatus struct {
 	CurrentVersion         string          `json:"currentVersion"`
@@ -113,11 +116,19 @@ func stageUpdateApply(ctx context.Context, cfg config.Config) (updateApplyRespon
 	if !status.ApplySupported {
 		return updateApplyResponse{}, errors.New(status.ApplyUnsupportedReason)
 	}
-	installer, ok := updater.FindAsset(status.Assets, "windows-installer")
+	// Prefer the MSI (convergence direction — single Windows artifact); fall
+	// back to the legacy NSIS .exe if the release omits the MSI. The desktop
+	// launcher branches on the staged file's extension to choose msiexec vs
+	// NSIS /S, so a release that publishes both will deliver the MSI.
+	installer, ok := updater.FindAsset(status.Assets, "windows-msi")
+	checksum, _ := updater.FindAsset(status.Assets, "windows-msi-checksum")
+	if !ok {
+		installer, ok = updater.FindAsset(status.Assets, "windows-installer")
+		checksum, _ = updater.FindAsset(status.Assets, "windows-installer-checksum")
+	}
 	if !ok {
 		return updateApplyResponse{}, fmt.Errorf("latest release does not include a Windows installer")
 	}
-	checksum, _ := updater.FindAsset(status.Assets, "windows-installer-checksum")
 
 	root := updateRoot(cfg)
 	updateDir := filepath.Join(root, "updates", updater.SafePathName(status.LatestVersion))
