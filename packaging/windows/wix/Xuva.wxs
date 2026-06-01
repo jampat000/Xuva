@@ -133,7 +133,7 @@
           Name="Environment"
           Type="multiString"
           KeyPath="yes">
-        <MultiStringValue>XUVA_RUNTIME_HOME=[XUVA_RUNTIME_HOME]</MultiStringValue>
+        <MultiStringValue Value="XUVA_RUNTIME_HOME=[XUVA_RUNTIME_HOME]" />
       </RegistryValue>
     </Component>
   </Package>
