@@ -186,9 +186,6 @@ Write-Host "`n== wix build =="
 # Firewall rules are provisioned by the server itself (netsh, as LocalSystem) —
 # see Xuva.wxs — so no WiX Firewall extension is needed.
 Copy-Item -LiteralPath $wxsSource -Destination (Join-Path $staging "Xuva.wxs") -Force
-# The auto-updater scheduled-task definition, packaged next to the exe and read
-# by the service to register the task (see Xuva.wxs UpdaterTaskComponent).
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot "wix\XuvaUpdater.xml") -Destination (Join-Path $staging "XuvaUpdater.xml") -Force
 # Strip any leading "v" from the tag so the file is xuva-server-v0.0.99.msi,
 # not xuva-server-vv0.0.99.msi (release tags arrive as "v0.0.99"). Matches the
 # single-"v" desktop asset naming (xuva-v0.0.99-win-x64.exe).

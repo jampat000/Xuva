@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -50,24 +49,23 @@ func readAutoUpdateRegistry() (string, bool) {
 // service start, so it self-heals a missing task and applies an opt-out toggle
 // on restart. Idempotent. Runs as the LocalSystem service, which has the rights
 // to manage a SYSTEM task.
+//
+// The task is built from schtasks command-line flags rather than an XML
+// definition: schtasks constructs a schema-valid task internally, which avoids
+// the /create /xml pitfalls (the file must be UTF-16 and its <Settings>
+// elements must be in a strict order — both easy to get wrong and the cause of
+// the task silently failing to register).
 func ensureUpdaterTask(enabled bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve own path: %w", err)
 	}
-	xmlPath := filepath.Join(filepath.Dir(exe), "XuvaUpdater.xml")
-	if enabled {
-		if _, statErr := os.Stat(xmlPath); statErr != nil {
-			return fmt.Errorf("updater task definition missing at %s: %w", xmlPath, statErr)
-		}
-	}
-
-	cmd := exec.Command("schtasks", updaterTaskArgs(enabled, xmlPath)...)
+	cmd := exec.Command("schtasks", updaterTaskArgs(enabled, exe)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
 	out, runErr := cmd.CombinedOutput()
 	if runErr != nil {
 		if enabled {
-			return fmt.Errorf("schtasks create: %v: %s", runErr, strings.TrimSpace(string(out)))
+			return fmt.Errorf("schtasks: %v: %s", runErr, strings.TrimSpace(string(out)))
 		}
 		// Removing an already-absent task is fine — disabling must be idempotent.
 		return nil
