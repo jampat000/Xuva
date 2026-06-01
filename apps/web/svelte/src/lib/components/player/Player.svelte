@@ -953,13 +953,21 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
+<!--
+  Keyboard handling is centralized on `<svelte:window onkeydown={onKeyDown} />`
+  above so a Space/F/M/J/K/L/arrow keypress fires exactly once regardless of
+  which element has focus. The old local `onkeydown={onKeyDown}` on this
+  container was a double-fire trap (every shortcut fired twice when the
+  container had focus — see #121). Click-events-have-key-events is suppressed
+  because Space is wired to the same toggle through the window handler.
+-->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   bind:this={containerEl}
   class={`relative h-screen w-screen overflow-hidden bg-black ${controlsVisible ? 'cursor-default' : 'cursor-none'}`}
   onmousemove={showControls}
   onclick={onVideoTap}
-  onkeydown={onKeyDown}
   role="application"
   aria-label="Video player"
   tabindex="-1"
@@ -1059,14 +1067,22 @@
     </div>
   {/if}
 
-  <!-- ─── CONTROLS OVERLAY ─────────────────────────────────────────────── -->
+  <!--
+    Controls overlay. onclick stops propagation so a click on the overlay's
+    background does NOT trigger the underlying video's onVideoTap (toggle
+    play). The old `onkeydown={(e) => e.stopPropagation()}` was a footgun
+    (#121): every player shortcut went silent when overlay focus landed
+    here via Tab navigation or seek-bar interaction. Keyboard events
+    correctly bubble to the window listener now; the seek bar still
+    overrides ArrowLeft/Right locally (see its onkeydown below).
+  -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     class={`absolute inset-0 flex flex-col justify-between transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     role="toolbar"
     aria-label="Player controls"
     tabindex="0"
     onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.stopPropagation()}
   >
     <!-- Top bar: back + title + route badge -->
     <div
