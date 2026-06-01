@@ -11,10 +11,21 @@ import (
 	"strings"
 )
 
-// ensureInboundTCP uses `netsh advfirewall firewall` to add (or verify) an
-// inbound-allow rule for the given port. netsh is shipped with every
-// supported Windows version, doesn't require any PowerShell modules, and
-// can be driven non-interactively.
+// ensureInboundTCP / ensureInboundUDP — thin protocol-specific wrappers
+// around ensureInbound. Kept as separate symbols so callers (and tests) can
+// pin the protocol without threading a string through.
+func ensureInboundTCP(ctx context.Context, port int, ruleName string) error {
+	return ensureInbound(ctx, "TCP", port, ruleName)
+}
+
+func ensureInboundUDP(ctx context.Context, port int, ruleName string) error {
+	return ensureInbound(ctx, "UDP", port, ruleName)
+}
+
+// ensureInbound uses `netsh advfirewall firewall` to add (or verify) an
+// inbound-allow rule for the given protocol+port. netsh is shipped with
+// every supported Windows version, doesn't require any PowerShell modules,
+// and can be driven non-interactively.
 //
 // The shape of a Plex-style rule:
 //
@@ -31,9 +42,14 @@ import (
 // we delete it first and re-add. This means a port change in settings still
 // produces a correct rule, and stale rules from earlier versions get
 // rewritten with current parameters.
-func ensureInboundTCP(ctx context.Context, port int, ruleName string) error {
+func ensureInbound(ctx context.Context, protocol string, port int, ruleName string) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("invalid port: %d", port)
+	}
+	switch protocol {
+	case "TCP", "UDP":
+	default:
+		return fmt.Errorf("invalid protocol: %q (expected TCP or UDP)", protocol)
 	}
 	displayName := fmt.Sprintf("%s (%d)", ruleName, port)
 
@@ -56,6 +72,7 @@ func ensureInboundTCP(ctx context.Context, port int, ruleName string) error {
 		); delErr != nil {
 			// Soldier on — the add below will fail with a duplicate-name
 			// error if the delete didn't work, and we'll surface that.
+			_ = delErr
 		}
 	}
 	return runNetsh(ctx,
@@ -63,11 +80,11 @@ func ensureInboundTCP(ctx context.Context, port int, ruleName string) error {
 		"name="+displayName,
 		"dir=in",
 		"action=allow",
-		"protocol=TCP",
+		"protocol="+protocol,
 		"localport="+strconv.Itoa(port),
 		"profile=private,domain",
 		"enable=yes",
-		"description=Xuva media server inbound TCP (auto-managed)",
+		"description=Xuva media server inbound "+protocol+" (auto-managed)",
 	)
 }
 
@@ -134,8 +151,12 @@ func isAccessDenied(out string, err error) bool {
 }
 
 func manualFixHint(port int, ruleName string) string {
+	return manualFixHintProto("TCP", port, ruleName)
+}
+
+func manualFixHintProto(protocol string, port int, ruleName string) string {
 	return fmt.Sprintf(
-		`Run as Administrator: netsh advfirewall firewall add rule name="%s (%d)" dir=in action=allow protocol=TCP localport=%d profile=private,domain`,
-		ruleName, port, port,
+		`Run as Administrator: netsh advfirewall firewall add rule name="%s (%d)" dir=in action=allow protocol=%s localport=%d profile=private,domain`,
+		ruleName, port, protocol, port,
 	)
 }

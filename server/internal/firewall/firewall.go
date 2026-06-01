@@ -32,21 +32,39 @@ func EnsureInboundTCP(ctx context.Context, port int, ruleName string) error {
 	return ensureInboundTCP(ctx, port, ruleName)
 }
 
+// EnsureInboundUDP is the UDP twin of EnsureInboundTCP — used for
+// connectionless protocols like mDNS (UDP 5353) that wouldn't otherwise be
+// covered by the TCP rule. Same idempotence + non-fatal semantics.
+func EnsureInboundUDP(ctx context.Context, port int, ruleName string) error {
+	return ensureInboundUDP(ctx, port, ruleName)
+}
+
 // LogResult is a convenience wrapper that calls EnsureInboundTCP and logs
 // the outcome at the appropriate level — info on success/no-op, warn on
 // failure with the exact manual fix the user can run as admin.
 func LogResult(ctx context.Context, logger *slog.Logger, port int, ruleName string) {
+	logResultProto(ctx, logger, "TCP", port, ruleName, EnsureInboundTCP)
+}
+
+// LogResultUDP is LogResult's UDP twin — same logging shape, opens UDP.
+// Used at startup to permit inbound mDNS (UDP 5353) for LAN discovery.
+func LogResultUDP(ctx context.Context, logger *slog.Logger, port int, ruleName string) {
+	logResultProto(ctx, logger, "UDP", port, ruleName, EnsureInboundUDP)
+}
+
+func logResultProto(ctx context.Context, logger *slog.Logger, protocol string, port int, ruleName string, ensure func(context.Context, int, string) error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if err := EnsureInboundTCP(ctx, port, ruleName); err != nil {
+	if err := ensure(ctx, port, ruleName); err != nil {
 		logger.Warn("firewall rule add failed",
+			"protocol", protocol,
 			"port", port,
 			"rule", ruleName,
 			"err", err.Error(),
-			"manual_fix", manualFixHint(port, ruleName),
+			"manual_fix", manualFixHintProto(protocol, port, ruleName),
 		)
 		return
 	}
-	logger.Info("firewall rule ensured", "port", port, "rule", ruleName)
+	logger.Info("firewall rule ensured", "protocol", protocol, "port", port, "rule", ruleName)
 }

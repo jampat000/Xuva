@@ -205,6 +205,13 @@ func startRuntime(cfg config.Config) (*serverRuntime, error) {
 	if port := portFromHTTPAddr(cfg.HTTPAddr); port > 0 {
 		fwCtx, fwCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		firewall.LogResult(fwCtx, slog.Default(), port, "Xuva Server")
+		// Also open inbound UDP 5353 so the LAN can discover us via mDNS
+		// (the discovery package advertises _xuva._tcp via UDP multicast).
+		// Without this, an OS-default-firewalled Windows box accepts HTTP
+		// fine on TCP 8097 but is invisible to mobile/TV clients walking
+		// the LAN looking for Xuva instances. WiX firewall extension was
+		// dropped in #444; this is the server-side replacement (#452).
+		firewall.LogResultUDP(fwCtx, slog.Default(), 5353, "Xuva Local Discovery (mDNS)")
 		fwCancel()
 	}
 
