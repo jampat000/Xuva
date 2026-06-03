@@ -22,6 +22,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.xuva.tv.ui.browse.BrowseScreen
 import com.xuva.tv.ui.pairing.PairingFlow
 import com.xuva.tv.ui.theme.XuvaTVTheme
 
@@ -38,19 +39,30 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Top-level navigation gate. Two states until slice 3 introduces browse:
- * either we route through pairing, or we show a paired-placeholder that
- * links to unpair so the user can re-test the flow.
+ * Top-level navigation gate. Three states:
+ *   - Unpaired → PairingFlow
+ *   - Paired   → BrowseScreen (home rows from /api/client/home)
+ *   - Detail   → DetailPlaceholder (kind+id, "play" comes in slice 4)
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun XuvaRoot(app: XuvaApp) {
     var paired by remember { mutableStateOf(app.secureStore.isPaired) }
-    if (!paired) {
-        PairingFlow(app = app, onPaired = { paired = true })
-    } else {
-        PairedPlaceholder(
-            baseUrl = app.secureStore.baseUrl.orEmpty(),
+    var openItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    when {
+        !paired -> PairingFlow(app = app, onPaired = { paired = true })
+        openItem != null -> {
+            val (kind, id) = openItem!!
+            DetailPlaceholder(
+                kind = kind,
+                id = id,
+                onBack = { openItem = null },
+            )
+        }
+        else -> BrowseScreen(
+            app = app,
+            onOpenItem = { kind, id -> openItem = kind to id },
             onUnpair = {
                 app.pairingRepository.unpair()
                 paired = false
@@ -61,21 +73,19 @@ private fun XuvaRoot(app: XuvaApp) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun PairedPlaceholder(baseUrl: String, onUnpair: () -> Unit) {
+private fun DetailPlaceholder(kind: String, id: String, onBack: () -> Unit) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize().padding(48.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Paired", style = MaterialTheme.typography.displayMedium)
+                Text("$kind / $id", style = MaterialTheme.typography.displaySmall)
                 Spacer(Modifier.height(12.dp))
-                Text("Server: $baseUrl", style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Browse + playback arrive in the next slices.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "Detail screen + ExoPlayer arrive in slice 4.",
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 )
                 Spacer(Modifier.height(40.dp))
-                OutlinedButton(onClick = onUnpair) { Text("Unpair this device") }
+                OutlinedButton(onClick = onBack) { Text("Back") }
             }
         }
     }
