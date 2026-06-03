@@ -93,6 +93,15 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
     static func dismantleUIViewController(_ vc: AVPlayerViewController, coordinator: Coordinator) {
         vc.player?.pause()
         coordinator.detach()
+        // Pair the setActive(true) we did in makeUIViewController so other
+        // audio apps (Music, Podcasts) resume after dismissal. Without this
+        // the system keeps the .playback session active and ducks/silences
+        // the next foreground audio app.
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            logger.error("AVAudioSession teardown failed: \(error)")
+        }
     }
 
     @MainActor
@@ -111,6 +120,12 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         private var errorObserver: NSObjectProtocol?
         private var statusObservation: NSKeyValueObservation?
         private var timeControlObservation: NSKeyValueObservation?
+        // Flipped the first time the AVPlayerItem reaches .readyToPlay. We
+        // gate the final stopPlayback() write on it: dismissing BEFORE the
+        // item ever loaded (network blip, user changed their mind) would
+        // otherwise overwrite the server's saved resume position with 0.
+        // Mirrors the `didBecomeReady` guard on the iOS branch.
+        private var didBecomeReady = false
 
         init(playback: PlaybackStartResponse, close: @escaping () -> Void, sendHeartbeat: @escaping (Int, Bool) async -> Void, stopPlayback: @escaping (Int) async -> Void) {
             self.playback = playback
@@ -140,6 +155,7 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
             }
             statusObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
                 guard item.status == .readyToPlay else { return }
+                self?.didBecomeReady = true
                 if let s = seconds, s > 0 {
                     let target = CMTime(seconds: Double(s), preferredTimescale: 600)
                     item.seek(to: target, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
@@ -202,14 +218,16 @@ struct XuvaVideoPlayer: UIViewControllerRepresentable {
         }
 
         func playerViewControllerDidEndDismissalTransition(_ playerViewController: AVPlayerViewController) {
-            // Report the final position to the server so it can save progress
-            // and close the session. stopPlayback() calls closePlayer() internally
-            // when there is no stopUrl (trailers), so close() is not needed here.
-            let currentSeconds: Int = {
-                guard let p = playerViewController.player else { return 0 }
-                let t = CMTimeGetSeconds(p.currentTime())
-                return t.isFinite ? max(0, Int(t)) : 0
-            }()
+            // Report the final position so the server can save progress and
+            // close the session. stopPlayback() handles closePlayer().
+            //
+            // GUARD: if the item never reached .readyToPlay, currentTime() is
+            // 0; writing it would clobber the saved resume. Skip the write
+            // in that case — the prior resume position is the correct value
+            // for "I dismissed before it loaded."
+            guard didBecomeReady, let p = playerViewController.player else { return }
+            let t = CMTimeGetSeconds(p.currentTime())
+            let currentSeconds = t.isFinite ? max(0, Int(t)) : 0
             Task { await stopPlayback(currentSeconds) }
         }
     }

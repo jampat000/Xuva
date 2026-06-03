@@ -18,10 +18,29 @@ public final class XuvaWatchlist: ObservableObject {
 
     private static let storageKey = "xuva.apple.watchlist"
     private var synced = false
-    weak var api: XuvaAPI?
+    /// Identity of the API instance the cache was last synced against.
+    /// Lets `syncFromServer()` re-run when a new pairing arrives.
+    private var syncedFromBaseURL: URL?
+    weak var api: XuvaAPI? {
+        didSet {
+            if api !== oldValue {
+                synced = false
+                if api == nil { reset() }
+            }
+        }
+    }
 
     public init() {
         load()
+    }
+
+    /// Clear the local watchlist and its persisted cache. Called when the
+    /// user unpairs so the next pairing doesn't inherit a stranger's items.
+    public func reset() {
+        items = []
+        synced = false
+        syncedFromBaseURL = nil
+        UserDefaults.standard.removeObject(forKey: Self.storageKey)
     }
 
     public func isIn(id: String, kind: String) -> Bool {
@@ -45,9 +64,12 @@ public final class XuvaWatchlist: ObservableObject {
         }
     }
 
-    /// Fetch the authoritative server list once and replace the local cache.
+    /// Fetch the authoritative server list once per API instance and
+    /// replace the local cache. Re-runs after a new pairing because
+    /// `api`'s didSet clears `synced`.
     public func syncFromServer() async {
-        guard !synced, let api else { return }
+        guard let api else { return }
+        if synced, syncedFromBaseURL == api.baseURL { return }
         do {
             let response = try await api.watchlistList()
             let formatter = ISO8601DateFormatter()
@@ -65,6 +87,7 @@ public final class XuvaWatchlist: ObservableObject {
             }
             persist()
             synced = true
+            syncedFromBaseURL = api.baseURL
         } catch {
             xuvaLog("watchlist sync failed: \(error)")
         }
