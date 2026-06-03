@@ -5,10 +5,16 @@ services:
     restart: unless-stopped
     ports:
       - "8097:8097"
+      # Uncomment to expose mDNS discovery on the host network. mDNS only works
+      # when the container shares the host's network stack (network_mode: host)
+      # — bridged port-forwarding does NOT carry multicast. Run with
+      # `network_mode: host` if LAN auto-discovery from native clients matters.
+      # - "5353:5353/udp"
     volumes:
-      # Persistent database, cache, and generated files
+      # Persistent database, cache, and generated files.
       - xuva_data:/data
-      # Mount your media directories (adjust paths for your system)
+      # Mount your media directories (adjust paths for your system).
+      # Mount read-only — Xuva never writes to media; this prevents accidents.
       - /media/movies:/movies:ro
       - /media/tv:/tv:ro
     environment:
@@ -19,6 +25,44 @@ services:
       # XUVA_SERVER_NAME: My Xuva
       # XUVA_FFMPEG_PATH: /usr/bin/ffmpeg
       # XUVA_FFPROBE_PATH: /usr/bin/ffprobe
+      # PUID / PGID match the host user owning your media mounts so xuva can
+      # read them without "permission denied" errors. Find the values with
+      # `id -u` and `id -g` as the owning user. Defaults are 1000/1000.
+      # PUID: 1000
+      # PGID: 1000
+
+    # Security posture: no privilege escalation, drop everything but the
+    # narrow set xuva actually needs. Add NET_ADMIN if you ever switch on
+    # any in-process firewalling (not currently needed).
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # CHOWN + DAC_OVERRIDE — entrypoint's chown of /data when PUID/PGID change.
+      - CHOWN
+      - DAC_OVERRIDE
+      # SETUID + SETGID — su-exec drop-privilege from root to xuva at startup.
+      - SETUID
+      - SETGID
+      # FOWNER — usermod/groupmod when PUID/PGID change.
+      - FOWNER
+
+    # Optional resource limits. Uncomment + tune for your host. The defaults
+    # (no limits) are fine for typical home-server installs.
+    # mem_limit: 2g
+    # cpus: 2.0
+
+    # Healthcheck is defined in the Dockerfile (HEALTHCHECK directive). Compose
+    # inherits it so `docker compose ps` reports "healthy" without duplication.
+
+    # Logging — JSON-file is the docker default but rotation must be configured
+    # or logs grow unbounded. Tune for your host.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   xuva_data:
