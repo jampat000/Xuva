@@ -29,7 +29,7 @@ import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.xuva.tv.XuvaApp
-import com.xuva.tv.data.model.DiscoveredServer
+import com.xuva.tv.core.model.DiscoveredServer
 
 /**
  * Top-level pairing flow composable. Picks the screen to render based on
@@ -159,7 +159,7 @@ private fun ServerSelection(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun WaitingForApproval(item: com.xuva.tv.data.model.PairingItem, onCancel: () -> Unit) {
+private fun WaitingForApproval(item: com.xuva.tv.core.model.PairingItem, onCancel: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Approve this device on the server", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))

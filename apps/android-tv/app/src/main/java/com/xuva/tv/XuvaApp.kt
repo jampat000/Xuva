@@ -1,10 +1,10 @@
 package com.xuva.tv
 
 import android.app.Application
-import com.xuva.tv.data.api.XuvaApi
-import com.xuva.tv.data.discovery.ServerDiscovery
-import com.xuva.tv.data.pairing.PairingRepository
-import com.xuva.tv.data.storage.SecureStore
+import com.xuva.tv.core.api.XuvaApi
+import com.xuva.tv.core.discovery.ServerDiscovery
+import com.xuva.tv.core.pairing.PairingRepository
+import com.xuva.tv.core.storage.SecureStore
 
 /**
  * Manual DI container. Tiny scope (single screen at this point) — Hilt/Koin

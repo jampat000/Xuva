@@ -4,11 +4,11 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.xuva.tv.data.discovery.ServerDiscovery
-import com.xuva.tv.data.model.DiscoveredServer
-import com.xuva.tv.data.model.PairingItem
-import com.xuva.tv.data.pairing.PairingRepository
-import com.xuva.tv.data.storage.SecureStore
+import com.xuva.tv.core.discovery.ServerDiscovery
+import com.xuva.tv.core.model.DiscoveredServer
+import com.xuva.tv.core.model.PairingItem
+import com.xuva.tv.core.pairing.PairingRepository
+import com.xuva.tv.core.storage.SecureStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
