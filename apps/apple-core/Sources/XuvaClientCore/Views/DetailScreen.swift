@@ -208,8 +208,7 @@ private struct DetailContentView: View {
             }
             .foregroundStyle(XuvaTheme.mutedText)
         }
-        .buttonStyle(XuvaNakedButtonStyle())
-        .xuvaFocused(radius: 8)
+        .buttonStyle(XuvaCardButtonStyle(radius: 8))
     }
 
     private var backTitle: String {
@@ -834,8 +833,7 @@ private struct SeasonChip: View {
                 .background(isSelected ? XuvaTheme.text : XuvaTheme.surface.opacity(0.6), in: Capsule())
                 .overlay(Capsule().stroke(isSelected ? Color.clear : XuvaTheme.hairline))
         }
-        .buttonStyle(XuvaNakedButtonStyle())
-        .xuvaFocused(radius: 22)
+        .buttonStyle(XuvaCardButtonStyle(radius: 22))
     }
 }
 
@@ -893,8 +891,7 @@ private struct EpisodeRow: View {
             .background(XuvaTheme.surface.opacity(0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(XuvaTheme.hairline))
         }
-        .buttonStyle(XuvaNakedButtonStyle())
-        .xuvaFocused(radius: 16)
+        .buttonStyle(XuvaCardButtonStyle(radius: 16))
     }
 }
 
@@ -1074,8 +1071,7 @@ private struct VersionCard: View {
             .background(isSelected ? XuvaTheme.focus.opacity(0.12) : XuvaTheme.elevated.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isSelected ? XuvaTheme.focus.opacity(0.42) : XuvaTheme.hairline))
         }
-        .buttonStyle(XuvaNakedButtonStyle())
-        .xuvaFocused(radius: 18)
+        .buttonStyle(XuvaCardButtonStyle(radius: 18))
     }
 
     private var qualityTitle: String {
@@ -1176,7 +1172,6 @@ private struct TrackButton: View {
             .background(isSelected ? XuvaTheme.focus.opacity(0.10) : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isSelected ? XuvaTheme.focus.opacity(0.34) : Color.clear))
         }
-        .buttonStyle(XuvaNakedButtonStyle())
-        .xuvaFocused(radius: 12)
+        .buttonStyle(XuvaCardButtonStyle(radius: 12))
     }
 }
