@@ -1,11 +1,18 @@
 # Security Policy
 
-## Supported Scope
+## Supported Versions
 
-Xuva is pre-alpha. Security fixes are accepted for:
+Security fixes are issued against the latest stable release. Older patch versions on the same minor track also receive fixes; pre-release tags (`-alpha.N`, `-beta.N`, `-rc.N`) do not.
+
+## Supported Scope
 
 - `server/**`
 - `apps/web/svelte/**`
+- `apps/desktop/**`
+- `apps/ios/**`, `apps/tvos/**`, `apps/apple-core/**`
+- `apps/android-tv/**`
+- `packaging/windows/**`
+- `Dockerfile`, `docker-compose.yml`, `docker/**`
 - `.github/workflows/**`
 
 ## Reporting a Vulnerability

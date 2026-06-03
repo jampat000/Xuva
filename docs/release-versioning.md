@@ -1,53 +1,37 @@
 # Release Versioning
 
-Xuva uses semantic version tags in the form `vMAJOR.MINOR.PATCH`.
+Xuva uses [semantic versioning](https://semver.org) — `vMAJOR.MINOR.PATCH`.
 
-## Current Track
+## Cadence
 
-Until the installer, Docker image, upgrade flow, and local library workflows are proven on real machines, Xuva releases use:
+- **Patch** (`v1.0.x`) — safe fixes, no intentional behaviour or API change. Released as needed (typically weekly during active development, monthly during stabilisation).
+- **Minor** (`v1.x.0`) — backward-compatible features. Released when a meaningful set of new functionality is ready.
+- **Major** (`vX.0.0`) — intentional breaking changes or upgrade-contract changes. Released rarely and with prior notice.
 
-```text
-v0.0.x
-```
-
-This keeps the product clearly pre-1.0 while still allowing orderly public builds, upgrade testing, release notes, and support references.
-
-Patch numbers should increase for every tagged package release:
+Pre-release tags follow the `-(alpha|beta|rc).N` suffix convention:
 
 ```text
-v0.0.1
-v0.0.2
-v0.0.3
+v1.1.0-alpha.1
+v1.1.0-beta.2
+v1.1.0-rc.1
 ```
 
-Do not skip to `v0.1.x` or `v1.x.x` just to make the product look mature.
-
-## Promotion To 1.x
-
-Move to `v1.0.0` only when these are true:
-
-- Windows package install, first run, restart, upgrade, rollback, and uninstall/reinstall are reliable.
-- Docker install and upgrade docs are tested against the published image.
-- SQLite schema migrations have fixture-based upgrade coverage.
-- Bundled prerequisites are verified: FFmpeg, FFprobe, embedded web UI, and runtime directories.
-- LAN access, canonical browser origin behavior, and local file/NAS browsing are predictable.
-- The release workflow publishes all required artifacts and checksums from a tag.
-
-After `v1.0.0`, use normal semantic versioning:
-
-- Patch: safe fixes with no intentional behavior or API break.
-- Minor: backward-compatible features.
-- Major: intentional breaking changes or upgrade-contract changes.
+A pre-release tag publishes its artifacts but never updates the `:latest` Docker tag — only stable releases do.
 
 ## Tagging Rule
 
-The release workflow is tag-driven. Normal early releases should be annotated tags:
+The release workflow is tag-driven. Releases are annotated tags:
 
-```powershell
-git tag -a v0.0.x -m "Xuva v0.0.x"
-git push origin v0.0.x
+```bash
+git tag -a v1.2.3 -m "Xuva v1.2.3"
+git push origin v1.2.3
 ```
 
-Every release tag must point at a commit that has passed the release-readiness checks.
+Every release tag must point at a `main` commit that has passed CI.
 
-The release workflow enforces this early-release policy with `tools/validate-release-tag.cjs`. Update that guard only when the project is deliberately promoted to the `1.x` track.
+`tools/validate-release-tag.cjs` enforces the strict semver shape. The guard rejects malformed tags (e.g. `v1.2`, `1.2.3`, `v1.2.3-foo`) at the start of the release workflow so a typo can't publish a broken artifact.
+
+## Promotion History
+
+- **v0.0.x** — pre-public iteration. Used while the Windows MSI install/upgrade/uninstall, Docker image, native pairing, and library scanning were being validated on real hardware.
+- **v1.0.0** — public release. Server, Web, Apple TV / iOS, Windows MSI, and Docker images are box-validated; auto-update is end-to-end proven.
