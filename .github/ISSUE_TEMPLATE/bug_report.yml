@@ -1,0 +1,90 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. A clear, reproducible report goes a very long way — the more specific you can be about *what you did* and *what you saw*, the faster the fix.
+
+  - type: input
+    id: version
+    attributes:
+      label: Xuva version
+      description: "Output of `xuva-server version` or shown in Settings → About in the web UI."
+      placeholder: "v1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      multiple: true
+      options:
+        - Server (Go)
+        - Web admin / player
+        - Windows desktop / tray
+        - Windows MSI install / upgrade
+        - Docker image
+        - Apple TV
+        - iOS / iPadOS
+        - Android TV
+        - Other (describe in steps)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Be specific. "Click X, expect Y, saw Z" beats "playback is broken."
+      placeholder: |
+        1. Open a movie detail page on Apple TV
+        2. Press Play
+        3. Player shows "decoding error" after ~2s
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include any error messages exactly as shown.
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, browser (for web), client device model, ffmpeg version if known.
+      placeholder: |
+        Server: Ubuntu 24.04, Docker image v1.0.0
+        Client: Apple TV 4K (3rd gen), tvOS 18.2
+        Media: MKV, HEVC Main10, EAC3 5.1, PGS subs
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Server logs (`/data/logs/xuva.ndjson` in Docker, `C:\ProgramData\Xuva\logs\xuva.ndjson` on Windows). Trim to the relevant 30-50 lines around the event.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues and this isn't already filed.
+          required: true
+        - label: I'm running a supported version (latest minor on the v1.x track, or the current pre-release).
+          required: true
