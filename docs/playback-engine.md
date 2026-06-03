@@ -38,6 +38,40 @@ Examples:
 - Subtitle burn-in: selected PGS subtitle cannot be rendered by this client.
 - Video transcode: client cannot decode AV1 Main10 at this resolution.
 
+## Decision Flow
+
+```mermaid
+flowchart TD
+    Start([Client requests playback]) --> Probe[Probe selected media source<br/>container · video · audio · subtitle tracks]
+    Probe --> Profile{Client capability<br/>profile match?}
+    Profile -->|All streams supported<br/>+ container OK<br/>+ bitrate within budget| Direct[Direct Play<br/>serve original file]
+    Profile -->|Streams OK,<br/>container not supported| Remux[Remux<br/>repack container, copy streams]
+    Profile -->|Video OK,<br/>audio codec unsupported| Audio[Audio Transcode<br/>copy video, re-encode audio]
+    Profile -->|Subtitle is image<br/>(PGS/DVB), client text-only| Burn[Subtitle Burn-In<br/>burn subs into video stream]
+    Profile -->|Subtitle is text,<br/>codec unsupported| SubConv[Subtitle Conversion<br/>SRT/VTT mux]
+    Profile -->|Network bitrate<br/>below source| Adaptive[Adaptive Stream<br/>HLS variants]
+    Profile -->|Video codec or HDR<br/>unsupported| Transcode[Video Transcode<br/>re-encode video + audio]
+    Direct --> Out([Decision returned<br/>with reason + actions])
+    Remux --> Out
+    Audio --> Out
+    Burn --> Out
+    SubConv --> Out
+    Adaptive --> Out
+    Transcode --> Out
+```
+
+The preference order is exactly that of [README](../README.md): direct play → remux → audio-only → subtitle convert/burn → full transcode. Every decision returns a `reasonCode` + `reasonText` so the UI can show *why* the chosen path was taken.
+
+## Supported formats (current matrix)
+
+What the server can ingest and play to current clients. Probe-data dependent; an item not in this table may still play via transcode.
+
+| Containers | Video codecs | Audio codecs | Subtitles | Notes |
+|---|---|---|---|---|
+| MKV, MP4, MOV, WebM, AVI, TS, M4V | H.264 / AVC, H.265 / HEVC, AV1, VP9, MPEG-2, VP8 | AAC, AC-3, E-AC-3, DTS, DTS-HD, TrueHD, FLAC, MP3, Opus, Vorbis, PCM, ALAC | SRT, ASS / SSA, VTT, PGS, DVB-Sub, MOV-Text | HDR10, HDR10+, Dolby Vision (profile 5/8), HLG passed through on capable clients |
+
+Client direct-play decisions are governed by `packages/client-profiles/` — each client (web, Apple TV, iOS, Android TV) declares which containers / codecs / HDR formats it can decode. Anything outside its profile triggers remux or transcode automatically.
+
 ## Decision Object
 
 Every playback request should return a structured decision object:

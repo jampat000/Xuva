@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest a new feature or enhancement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The strongest feature requests describe the *use case* first — what you're trying to do and where the current product gets in the way.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do today that's hard, slow, or impossible?
+      placeholder: |
+        I have 8 TB of TV episodes and the home screen "New Episodes" row only surfaces the last 24h — I miss anything I didn't open within a day.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would the ideal version look like? UI mockups, API shape, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried, similar features in other apps, why they fall short.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      multiple: true
+      options:
+        - Server
+        - Web
+        - Windows desktop
+        - Apple TV
+        - iOS
+        - Android TV
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues / discussions and this isn't already filed.
+          required: true
