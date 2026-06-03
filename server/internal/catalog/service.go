@@ -1060,9 +1060,17 @@ func (s *Service) ListMoviesByCollection(ctx context.Context, collectionID strin
 	}
 	var header CollectionResult
 	var output []MovieListItem
+	movieIDs := make([]string, 0, len(stubs))
+	for _, st := range stubs {
+		movieIDs = append(movieIDs, st.id)
+	}
+	metaMap, err := s.GetBestMetadataBatch(ctx, "movie", movieIDs)
+	if err != nil {
+		return nil, CollectionResult{}, false, err
+	}
 	for _, st := range stubs {
 		item := MovieListItem{ID: st.id, Title: st.title, Year: st.year, SortTitle: st.sortTitle}
-		if record, ok, err := s.GetBestMetadata(ctx, "movie", st.id); err == nil && ok {
+		if record, ok := metaMap[st.id]; ok {
 			item.Metadata = &record
 			applyMovieMetadata(&item.Title, &item.Year, &item.SortTitle, record)
 			if header.Name == "" && record.Collection != nil {
@@ -1208,9 +1216,34 @@ func (s *Service) ListItemsByPerson(ctx context.Context, personName string, limi
 	}
 	var profile PersonProfile
 	var credits []PersonCreditItem
+	movieIDs := make([]string, 0, len(stubs))
+	seriesIDs := make([]string, 0, len(stubs))
+	for _, st := range stubs {
+		if st.kind == "movie" {
+			movieIDs = append(movieIDs, st.id)
+		} else if st.kind == "series" {
+			seriesIDs = append(seriesIDs, st.id)
+		}
+	}
+	movieMeta, err := s.GetBestMetadataBatch(ctx, "movie", movieIDs)
+	if err != nil {
+		return nil, PersonProfile{}, false, err
+	}
+	seriesMeta, err := s.GetBestMetadataBatch(ctx, "series", seriesIDs)
+	if err != nil {
+		return nil, PersonProfile{}, false, err
+	}
 	for _, st := range stubs {
 		item := PersonCreditItem{Kind: st.kind, ID: st.id, Title: st.title, Year: st.year}
-		if record, ok, err := s.GetBestMetadata(ctx, st.kind, st.id); err == nil && ok {
+		var record MetadataRecord
+		var ok bool
+		switch st.kind {
+		case "movie":
+			record, ok = movieMeta[st.id]
+		case "series":
+			record, ok = seriesMeta[st.id]
+		}
+		if ok {
 			item.Metadata = &record
 			if st.kind == "movie" {
 				applyMovieMetadata(&item.Title, &item.Year, nil, record)
@@ -1615,10 +1648,16 @@ func (s *Service) SearchLibrary(ctx context.Context, query string, limit int, ma
 	if err := movieRows.Err(); err != nil {
 		return result, err
 	}
+	movieSearchIDs := make([]string, len(movieScored))
 	for i := range movieScored {
-		if record, ok, err := s.GetBestMetadata(ctx, "movie", movieScored[i].item.ID); err != nil {
-			return result, err
-		} else if ok {
+		movieSearchIDs[i] = movieScored[i].item.ID
+	}
+	movieSearchMeta, err := s.GetBestMetadataBatch(ctx, "movie", movieSearchIDs)
+	if err != nil {
+		return result, err
+	}
+	for i := range movieScored {
+		if record, ok := movieSearchMeta[movieScored[i].item.ID]; ok {
 			movieScored[i].item.Metadata = &record
 			applyMovieMetadata(&movieScored[i].item.Title, &movieScored[i].item.Year, &movieScored[i].item.SortTitle, record)
 		}
@@ -1676,10 +1715,16 @@ func (s *Service) SearchLibrary(ctx context.Context, query string, limit int, ma
 	if err := seriesRows.Err(); err != nil {
 		return result, err
 	}
+	seriesSearchIDs := make([]string, len(seriesScored))
 	for i := range seriesScored {
-		if record, ok, err := s.GetBestMetadata(ctx, "series", seriesScored[i].item.ID); err != nil {
-			return result, err
-		} else if ok {
+		seriesSearchIDs[i] = seriesScored[i].item.ID
+	}
+	seriesSearchMeta, err := s.GetBestMetadataBatch(ctx, "series", seriesSearchIDs)
+	if err != nil {
+		return result, err
+	}
+	for i := range seriesScored {
+		if record, ok := seriesSearchMeta[seriesScored[i].item.ID]; ok {
 			seriesScored[i].item.Metadata = &record
 			applyTitleMetadata(&seriesScored[i].item.Title, &seriesScored[i].item.SortTitle, record)
 		}
@@ -2119,18 +2164,30 @@ func (s *Service) GetSeries(ctx context.Context, id string) (SeriesDetail, bool,
 	if err := versionRows.Err(); err != nil {
 		return SeriesDetail{}, false, err
 	}
+	seasonIDs := make([]string, 0, len(detail.Seasons))
+	episodeIDs := make([]string, 0, len(episodeLocation))
+	for i := range detail.Seasons {
+		seasonIDs = append(seasonIDs, detail.Seasons[i].ID)
+		for j := range detail.Seasons[i].Episodes {
+			episodeIDs = append(episodeIDs, detail.Seasons[i].Episodes[j].ID)
+		}
+	}
+	seasonMeta, err := s.GetBestMetadataBatch(ctx, "season", seasonIDs)
+	if err != nil {
+		return SeriesDetail{}, false, err
+	}
+	episodeMeta, err := s.GetBestMetadataBatch(ctx, "episode", episodeIDs)
+	if err != nil {
+		return SeriesDetail{}, false, err
+	}
 	for seasonIndex := range detail.Seasons {
 		season := &detail.Seasons[seasonIndex]
-		if record, ok, err := s.GetBestMetadata(ctx, "season", season.ID); err != nil {
-			return SeriesDetail{}, false, err
-		} else if ok {
+		if record, ok := seasonMeta[season.ID]; ok {
 			season.Metadata = &record
 		}
 		for episodeIndex := range season.Episodes {
 			episode := &season.Episodes[episodeIndex]
-			if record, ok, err := s.GetBestMetadata(ctx, "episode", episode.ID); err != nil {
-				return SeriesDetail{}, false, err
-			} else if ok {
+			if record, ok := episodeMeta[episode.ID]; ok {
 				episode.Metadata = &record
 				if strings.TrimSpace(episode.Title) == "" {
 					episode.Title = record.Title
@@ -2303,16 +2360,24 @@ func (s *Service) seriesAggregateSummary(ctx context.Context, memberIDs []string
 		if err := rows.Scan(&item.ID, &item.Title, &item.SortTitle, &item.SeasonCount, &item.EpisodeCount); err != nil {
 			return SeriesListItem{}, err
 		}
-		if record, ok, err := s.GetBestMetadata(ctx, "series", item.ID); err != nil {
-			return SeriesListItem{}, err
-		} else if ok {
-			item.Metadata = &record
-			applyTitleMetadata(&item.Title, &item.SortTitle, record)
-		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
 		return SeriesListItem{}, err
+	}
+	aggIDs := make([]string, len(items))
+	for i := range items {
+		aggIDs[i] = items[i].ID
+	}
+	aggMeta, err := s.GetBestMetadataBatch(ctx, "series", aggIDs)
+	if err != nil {
+		return SeriesListItem{}, err
+	}
+	for i := range items {
+		if record, ok := aggMeta[items[i].ID]; ok {
+			items[i].Metadata = &record
+			applyTitleMetadata(&items[i].Title, &items[i].SortTitle, record)
+		}
 	}
 	grouped := collapseSeriesListItems(items)
 	if len(grouped) == 0 {
