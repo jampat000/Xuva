@@ -1,94 +1,94 @@
 # Xuva
 
-Xuva is a local-first personal media server for private media libraries.
+**A self-hosted media server you actually own.** Browse, organise, and stream your library to TV-first apps — without an account, a vendor relay, or ads.
 
-The goal is to combine polished TV-first playback with predictable local ownership: no required cloud account, no vendor relay dependency, no ads, and no streaming-service clutter.
+[![CI](https://github.com/jampat000/Xuva/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/jampat000/Xuva/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Status: pre-alpha product and implementation foundation.
+---
 
-## Product Promise
+## What you get
 
-Your media should play beautifully on the devices you own. When Xuva cannot direct-play a file, it should explain exactly why and choose the lightest possible fallback.
+- **Polished browse + playback** for movies and TV, served by a single Go binary
+- **Direct play preferred, transcoding when needed** — every decision is explainable
+- **Native clients** on Apple TV, iOS / iPadOS, and Android TV; a built-in web app for everywhere else
+- **LAN-first** — auto-discovery via mDNS, plays without internet, no required cloud account
+- **In-app upgrades** on Windows and Docker — prompt-free, atomic, with auto-rollback
+- **MIT-licensed**, runs on a stock home server, keeps working if we disappear
 
-Playback preference order:
+## Install
 
-1. Direct play.
-2. Remux only.
-3. Audio-only transcode.
-4. Subtitle conversion or burn-in.
-5. Full video transcode.
+### Windows
 
-## Principles
+Download the MSI from the [latest release](https://github.com/jampat000/Xuva/releases/latest) and double-click. The installer registers the engine, the SYSTEM service, ffmpeg, firewall rules, and the auto-updater task in one run.
 
-- Local-first by default.
-- No required vendor cloud account.
-- No vendor-hosted relay in v1.
-- LAN playback works without internet.
-- Remote access is user-owned and user-configured.
-- Personal media is always the first-class experience.
-- No ads in the paid product.
-- Every playback decision must be explainable.
-- The server should keep working if the company disappears.
-
-## Repository Layout
-
-```text
-apps/
-  android-tv/        Native Android TV client.
-  apple-core/        Shared SwiftUI client code for Apple platforms.
-  ios/               Native iPhone/iPad client.
-  tvos/              Native Apple TV client.
-  web/               Web admin and browser player.
-docs/                Product, architecture, and business planning.
-packages/
-  client-profiles/   Device capability profiles and playback rules.
-  media-probe/       Media probing schema and helpers.
-server/              Xuva Server.
+```powershell
+# Or silent install (engine only, no auto-update):
+msiexec /i xuva-server-v1.0.0.msi /qn ADDLOCAL=EngineFeature XUVA_AUTO_UPDATE=0
 ```
 
-## Current Focus
+The data directory defaults to `C:\ProgramData\Xuva`; override with `XUVA_RUNTIME_HOME`.
 
-The current web foundation is the SvelteKit Xuva app in `apps/web/svelte`.
-It is the only production web UI and is served by the Go server from
-`server/internal/webapp/static-next`.
+### Docker
 
-Phase focus:
+```bash
+docker run -d --name xuva \
+  -p 8097:8097 \
+  -v xuva_data:/data \
+  -v /path/to/movies:/movies:ro \
+  -v /path/to/tv:/tv:ro \
+  -e XUVA_MOVIES_PATH=/movies \
+  -e XUVA_TV_PATH=/tv \
+  -e PUID=1000 -e PGID=1000 \
+  ghcr.io/jampat000/xuva:latest
+```
 
-- Phase 1: desktop owner web only
-- primary acceptance viewport: `1600x1000` (secondary: `1920x1080`)
-- tablet/mobile web: smoke-only
-- auth/users expansion: Phase 2
-- native tvOS/Android clients: later phase
+Or use the bundled `docker-compose.yml` as a starting point (includes security hardening, log rotation, and resource-limit examples).
 
-The first technical milestone is a playback decision prototype:
+### Linux / macOS (from source)
 
-1. Scan a local media folder.
-2. Probe files with FFmpeg/ffprobe.
-3. Compare streams against a client capability profile.
-4. Decide direct play, remux, partial transcode, or full transcode.
-5. Stream the result.
-6. Show the exact reason for the chosen path.
+```bash
+git clone https://github.com/jampat000/Xuva && cd Xuva/apps/web/svelte
+npm ci && npm run publish:go-static
+cd ../../../server
+go build -o xuva ./cmd/Xuva
+./xuva
+```
+
+The web UI is at <http://localhost:8097>.
+
+## Clients
+
+| Platform        | App                                                    | Status |
+|-----------------|--------------------------------------------------------|--------|
+| Web (any browser) | Built-in, served by the server                       | Stable |
+| Windows desktop | MSI installer ships a tray app + the server           | Stable |
+| Apple TV (tvOS) | [`apps/tvos`](apps/tvos)                              | Stable |
+| iOS / iPadOS    | [`apps/ios`](apps/ios)                                | Stable |
+| Android TV      | [`apps/android-tv`](apps/android-tv)                  | Beta   |
+
+The web app is the easiest first launch. Pair native clients from inside the app (Settings → Devices) or scan the QR code on the TV.
+
+## How it works
+
+1. **Scan** — `XUVA_MOVIES_PATH` and `XUVA_TV_PATH` are walked, files are matched to TMDB/TVDB, and metadata is enriched.
+2. **Probe** — ffprobe extracts streams, codecs, HDR, framerate, and language tags so playback decisions are deterministic.
+3. **Decide** — the client sends a capability profile; the server picks direct play → remux → audio-only transcode → subtitle convert → full transcode (in that order) and tells you which path it took and why.
+4. **Stream** — HLS or direct, with subtitle conversion, thumbnail scrubbing, resume, and per-profile parental ceilings.
 
 ## Documentation
 
-- [Agent Map](AGENTS.md)
-- [Docs Index](docs/index.md)
-- [Agent Harness](docs/agent-harness.md)
-- [Quality Scorecard](docs/quality-score.md)
-- [Branding](docs/branding.md)
-- [Product Principles](docs/product-principles.md)
-- [MVP Scope](docs/mvp-scope.md)
-- [Architecture](docs/architecture.md)
-- [Development mode](docs/development-mode.md)
-- [Desktop owner mode](docs/desktop-owner-mode.md)
-- [Security policy](SECURITY.md)
-- [Repository hardening](docs/repository-hardening.md)
-- [Roadmap phases](docs/roadmap-phases.md)
-- [Playback Engine](docs/playback-engine.md)
-- [Media Scanner](docs/media-scanner.md)
-- [Remote Access](docs/remote-access.md)
-- [Monetization](docs/monetization.md)
-- [Roadmap](docs/roadmap.md)
-- [Build Plan](docs/build-plan.md)
-- [Competitive Notes](docs/competitive-notes.md)
-- [Design](docs/design/README.md)
+- [Architecture](docs/architecture.md) — server layout, packages, data flow
+- [Playback Engine](docs/playback-engine.md) — direct play vs transcode decision logic
+- [Media Scanner](docs/media-scanner.md) — how libraries are indexed
+- [Operations Runbook](docs/operations-runbook.md) — health checks, logs, backup
+- [Release Versioning](docs/release-versioning.md) — semver policy
+- [Security Policy](SECURITY.md) — how to report a vulnerability
+
+## Contributing
+
+Issues and discussions are welcome. For substantive changes, open an issue first so we can align on scope. Pull requests must pass the full CI suite (Go tests, Svelte type-check + Vitest, Docker smoke, Windows MSI build, Android build when touched, Apple build when touched).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
