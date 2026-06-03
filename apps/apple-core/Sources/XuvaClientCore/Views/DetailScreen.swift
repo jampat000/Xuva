@@ -9,6 +9,12 @@ public struct DetailScreen: View {
         if let detail = store.selectedDetail {
             DetailContentView(detail: detail)
                 .transition(.opacity)
+        } else if store.errorMessage != nil, !store.isBusy {
+            // Detail fetch failed and the store has stopped retrying.
+            // Show a real error with a Back button so the user isn't
+            // stranded on an infinite "Loading title…" spinner under
+            // a dismissible toast.
+            DetailFailedState()
         } else {
             GeometryReader { geometry in
                 VStack(spacing: 16) {
@@ -25,6 +31,36 @@ public struct DetailScreen: View {
                 .background(XuvaTheme.background)
             }
         }
+    }
+}
+
+private struct DetailFailedState: View {
+    @EnvironmentObject private var store: XuvaClientStore
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(XuvaTheme.warn)
+            Text("Couldn't load this title")
+                .font(.title2.bold())
+                .foregroundStyle(XuvaTheme.text)
+            if let message = store.errorMessage {
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(XuvaTheme.muted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+            Button("Back") {
+                store.clearError()
+                store.backToHome()
+            }
+            .buttonStyle(XuvaSecondaryButtonStyle())
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(XuvaTheme.background)
     }
 }
 
