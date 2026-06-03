@@ -33,6 +33,14 @@ public final class XuvaAPI: @unchecked Sendable {
         self.session = session
     }
 
+    /// Percent-encode an ID for safe inclusion in a URL path. Server IDs
+    /// can be derived from file paths or arbitrary identifiers and may
+    /// contain `#`, `?`, `%`, `+`, or space — all of which would otherwise
+    /// break the URL or be mis-parsed by the server.
+    private func enc(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+    }
+
     public func bootstrap() async throws -> BootstrapResponse {
         try await send("GET", path: "/api/client/bootstrap?clientProfile=\(XuvaClientProfile.current)")
     }
@@ -43,12 +51,12 @@ public final class XuvaAPI: @unchecked Sendable {
     }
 
     public func pairingStatus(id: String) async throws -> PairingResponse {
-        try await send("GET", path: "/api/pairing/requests/\(id)")
+        try await send("GET", path: "/api/pairing/requests/\(enc(id))")
     }
 
     public func cancelPairing(id: String, deviceId: String) async throws {
         struct Body: Codable { let deviceId: String }
-        let _: EmptyResponse = try await send("DELETE", path: "/api/pairing/requests/\(id)", body: Body(deviceId: deviceId))
+        let _: EmptyResponse = try await send("DELETE", path: "/api/pairing/requests/\(enc(id))", body: Body(deviceId: deviceId))
     }
 
     public func home() async throws -> ClientHomeResponse {
@@ -57,17 +65,17 @@ public final class XuvaAPI: @unchecked Sendable {
 
     public func detail(kind: String, id: String) async throws -> DetailResponse {
         let normalized = kind.lowercased().contains("series") || kind.lowercased().contains("show") ? "series" : "movies"
-        return try await send("GET", path: "/api/client/\(normalized)/\(id)")
+        return try await send("GET", path: "/api/client/\(normalized)/\(enc(id))")
     }
 
     public func metadata(kind: String, id: String) async throws -> MetadataRecordsResponse {
         let normalized = kind.lowercased().contains("series") || kind.lowercased().contains("show") ? "series" : "movie"
-        return try await send("GET", path: "/api/metadata/\(normalized)/\(id)")
+        return try await send("GET", path: "/api/metadata/\(normalized)/\(enc(id))")
     }
 
     public func similar(kind: String, id: String) async throws -> SimilarResponse {
         let segment = kind.lowercased().contains("series") || kind.lowercased().contains("show") ? "series" : "movies"
-        return try await send("GET", path: "/api/client/\(segment)/\(id)/similar")
+        return try await send("GET", path: "/api/client/\(segment)/\(enc(id))/similar")
     }
 
 
@@ -81,7 +89,7 @@ public final class XuvaAPI: @unchecked Sendable {
 
     /// Permanently deletes the media source file from the server (admin only).
     public func deleteMediaSource(id: String) async throws {
-        let _: EmptyResponse = try await send("DELETE", path: "/api/media-sources/\(id)")
+        let _: EmptyResponse = try await send("DELETE", path: "/api/media-sources/\(enc(id))")
     }
 
     public func startPlayback(
@@ -106,7 +114,7 @@ public final class XuvaAPI: @unchecked Sendable {
 
     public func requestStreamToken(mediaSourceId: String, sessionId: String, deviceId: String) async throws -> StreamTokenResponse {
         let body = StreamTokenRequest(sessionId: sessionId, deviceId: deviceId)
-        return try await send("POST", path: "/api/media-sources/\(mediaSourceId)/stream-token", body: body)
+        return try await send("POST", path: "/api/media-sources/\(enc(mediaSourceId))/stream-token", body: body)
     }
 
     public func heartbeat(path: String, positionSeconds: Int, isPaused: Bool) async throws {
@@ -123,7 +131,7 @@ public final class XuvaAPI: @unchecked Sendable {
 
     public func claimQRToken(token: String, deviceName: String, clientProfile: String, deviceId: String) async throws -> QRClaimResponse {
         let body = QRClaimBody(deviceName: deviceName, clientProfile: clientProfile, deviceId: deviceId)
-        return try await send("POST", path: "/api/pairing/qr/\(token)/claim", body: body)
+        return try await send("POST", path: "/api/pairing/qr/\(enc(token))/claim", body: body)
     }
 
     // MARK: – Watchlist
@@ -148,19 +156,19 @@ public final class XuvaAPI: @unchecked Sendable {
     /// Audio + subtitle tracks for a media source. Used to populate the
     /// in-player track menus (matches the web player's track switcher).
     public func mediaSourceTracks(mediaSourceId: String) async throws -> MediaSourceTracksResponse {
-        try await send("GET", path: "/api/media-sources/\(mediaSourceId)/tracks")
+        try await send("GET", path: "/api/media-sources/\(enc(mediaSourceId))/tracks")
     }
 
     /// Detected intro / credits markers. Drives the Skip Intro button and the
     /// Credits marker overlay. Returns an empty response when none are stored.
     public func chapters(mediaSourceId: String) async throws -> ChaptersResponse {
-        try await send("GET", path: "/api/media-sources/\(mediaSourceId)/chapters")
+        try await send("GET", path: "/api/media-sources/\(enc(mediaSourceId))/chapters")
     }
 
     /// Persist final playback progress / watched state. Called when playback
     /// ends so Continue Watching reflects the right position.
     public func setPlaybackState(mediaSourceId: String, update: PlaybackStateUpdate) async throws {
-        let _: EmptyResponse = try await send("PUT", path: "/api/playback/state/\(mediaSourceId)", body: update)
+        let _: EmptyResponse = try await send("PUT", path: "/api/playback/state/\(enc(mediaSourceId))", body: update)
     }
 
     public func resolvedURL(_ pathOrURL: String) -> URL? {
