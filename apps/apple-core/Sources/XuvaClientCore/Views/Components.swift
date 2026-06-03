@@ -586,14 +586,23 @@ public struct XuvaCardButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.04 : 1))
+                .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.03 : 1))
+                // Symmetric soft halo. Earlier version used a y:16 drop shadow
+                // with radius 30 — that biased the glow downward (looked
+                // "misaligned" against the card edge) and the radius was huge
+                // against slim cards like the discovery rows. Centered, smaller.
                 .shadow(
-                    color: XuvaTheme.focus.opacity(isFocused ? 0.55 : 0),
-                    radius: isFocused ? 30 : 0, x: 0, y: 16
+                    color: XuvaTheme.focus.opacity(isFocused ? 0.38 : 0),
+                    radius: isFocused ? 14 : 0, x: 0, y: 0
                 )
+                // Inset ring so the stroke sits flush on the card edge rather
+                // than half-on / half-off (default .stroke straddles the path).
+                // Lower opacity + thinner line matches Apple TV's native halo
+                // weight — visible without screaming "FOCUSED!" at the user.
                 .overlay(
                     RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .stroke(isFocused ? XuvaTheme.focus.opacity(0.95) : Color.clear, lineWidth: 3)
+                        .inset(by: 1)
+                        .stroke(isFocused ? XuvaTheme.focus.opacity(0.70) : Color.clear, lineWidth: 2)
                 )
                 .focusEffectDisabled()
                 .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
