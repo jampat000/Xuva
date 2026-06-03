@@ -1,6 +1,6 @@
 module github.com/jampat000/Xuva/server
 
-go 1.26
+go 1.26.4
 
 require (
 	github.com/HugoSmits86/nativewebp v1.3.0
