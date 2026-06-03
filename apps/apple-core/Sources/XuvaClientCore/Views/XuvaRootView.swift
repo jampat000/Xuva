@@ -59,9 +59,16 @@ public struct XuvaRootView: View {
             await store.autoConnectIfPossible()
         }
         .task(id: store.api?.baseURL) {
-            guard let api = store.api else { return }
-            watchlist.api = api
-            await watchlist.syncFromServer()
+            // Three cases the watchlist needs to know about:
+            //   - Fresh pair (api: nil → set): sync this account's items.
+            //   - Unpair (api: set → nil): watchlist.didSet clears the cache
+            //     so the next pairing doesn't show stale items.
+            //   - Re-pair to a different server (baseURL changes): same as
+            //     fresh pair; didSet drops the synced flag too.
+            watchlist.api = store.api
+            if store.api != nil {
+                await watchlist.syncFromServer()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: deepLinkNotification)) { note in
             guard let kind = note.userInfo?["kind"] as? String,
