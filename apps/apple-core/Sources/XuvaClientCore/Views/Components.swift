@@ -560,6 +560,47 @@ struct XuvaNakedButtonStyle: ButtonStyle {
     }
 }
 
+/// Focus-aware "card" button style — replaces the broken
+/// `.buttonStyle(.plain).xuvaFocused(radius:)` pattern that silently produced
+/// an invisible focus ring (XuvaFocusModifier reads `\.isFocused` from outside
+/// the button, where it's always false on tvOS).
+///
+/// Renders the same scale + glow + ring that `xuvaFocused()` was meant to
+/// render, but reads `@Environment(\.isFocused)` from inside `makeBody` where
+/// it reflects the button's own focus state.
+public struct XuvaCardButtonStyle: ButtonStyle {
+    let radius: CGFloat
+
+    public init(radius: CGFloat = 18) {
+        self.radius = radius
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        CardBody(configuration: configuration, radius: radius)
+    }
+
+    private struct CardBody: View {
+        let configuration: Configuration
+        let radius: CGFloat
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.04 : 1))
+                .shadow(
+                    color: XuvaTheme.focus.opacity(isFocused ? 0.55 : 0),
+                    radius: isFocused ? 30 : 0, x: 0, y: 16
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .stroke(isFocused ? XuvaTheme.focus.opacity(0.95) : Color.clear, lineWidth: 3)
+                )
+                .focusEffectDisabled()
+                .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+        }
+    }
+}
+
 /// Focus-aware button style for poster tile cards. Applies scale, glow, and
 /// a ring *inside* makeBody so @Environment(\.isFocused) correctly reads the
 /// button's own focus state rather than the parent container's.
