@@ -632,17 +632,22 @@ struct PosterTileButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .scaleEffect(isFocused ? 1.08 : 1)
+                .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.05 : 1))
+                // Brand-purple symmetric glow. Replaces the old y:22 drop
+                // shadow + harsh white ring combo that clashed with the rest
+                // of the UI (everything else uses XuvaTheme.focus). Same
+                // shape as XuvaCardButtonStyle, just sized for poster cards.
                 .shadow(
-                    color: XuvaTheme.focus.opacity(isFocused ? 0.65 : 0),
-                    radius: isFocused ? 38 : 0, x: 0, y: 22
+                    color: XuvaTheme.focus.opacity(isFocused ? 0.45 : 0),
+                    radius: isFocused ? 22 : 0, x: 0, y: 0
                 )
-                // White ring with a dark shadow — universally visible against
-                // both dark and light poster artwork.
+                // Inset 2pt brand-purple ring on the artwork rect, not on the
+                // outer label (which includes the title/subtitle below the
+                // card). Matches XuvaCardButtonStyle weight + opacity.
                 .overlay(alignment: .top) {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(isFocused ? 0.95 : 0), lineWidth: 4)
-                        .shadow(color: .black.opacity(isFocused ? 0.55 : 0), radius: 6)
+                        .inset(by: 1)
+                        .stroke(XuvaTheme.focus.opacity(isFocused ? 0.70 : 0), lineWidth: 2)
                         .frame(width: cardWidth, height: cardHeight)
                 }
                 .animation(.spring(response: 0.22, dampingFraction: 0.76), value: isFocused)
