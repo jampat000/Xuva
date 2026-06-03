@@ -128,6 +128,20 @@ public enum XuvaScale {
         return clamped(108, size.width * 0.115, 260)
     }
 
+    /// Column count for the Movies / TV LibraryGrid. Mirrors the web's
+    /// `grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-9`.
+    /// On a 4K Apple TV (1920×1080 logical) this lands at 7 columns.
+    public static func libraryGridColumnCount(_ size: CGSize) -> Int {
+        switch size.width {
+        case ..<640:  return 3
+        case ..<900:  return 4
+        case ..<1280: return 5
+        case ..<1600: return 6
+        case ..<1920: return 7
+        default:      return 8
+        }
+    }
+
     public static func posterHeight(_ size: CGSize) -> CGFloat {
         return posterWidth(size) * 1.5
     }

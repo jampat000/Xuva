@@ -21,11 +21,21 @@ public struct HomeScreen: View {
                     MediaTopBar(viewport: viewport, onSettings: { showSettings = true })
                         .padding(.top, XuvaScale.safeTop(viewport))
                     ScrollView {
-                        VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
-                            HeroView(item: hero, heroes: heroes, viewport: viewport)
-                            rowsSection(viewport: viewport)
+                        // Movies / TV use a poster grid (matches the web app's
+                        // /movies and /tv pages where LibraryGrid is rendered
+                        // with showHero=false). Home keeps the editorial hero
+                        // since that's the discovery entry point.
+                        if isLibraryGridSection {
+                            libraryGridSection(viewport: viewport)
+                                .padding(.top, viewport.height * 0.04)
+                                .padding(.bottom, 60)
+                        } else {
+                            VStack(alignment: .leading, spacing: XuvaScale.sectionSpacing(viewport)) {
+                                HeroView(item: hero, heroes: heroes, viewport: viewport)
+                                rowsSection(viewport: viewport)
+                            }
+                            .padding(.bottom, 60)
                         }
-                        .padding(.bottom, 60)
                     }
                     // focusSection on the ScrollView lets tvOS navigate vertically
                     // out of it — without this, UP from inside the scroll view has
@@ -65,6 +75,65 @@ public struct HomeScreen: View {
         }
         .frame(width: viewport.width, height: height)
         .ignoresSafeArea()
+    }
+
+    private var isLibraryGridSection: Bool {
+        store.activeSection == "Movies" || store.activeSection == "TV"
+    }
+
+    /// Full library as a poster grid. Mirrors the web's /movies and /tv pages
+    /// — title strip + count, then a LazyVGrid of poster cards. No hero.
+    @ViewBuilder
+    private func libraryGridSection(viewport: CGSize) -> some View {
+        let items: [HomeItem] = {
+            switch store.activeSection {
+            case "Movies": return store.moviesLibrary ?? []
+            case "TV":     return store.seriesLibrary ?? []
+            default:       return []
+            }
+        }()
+        let label = store.activeSection == "Movies" ? "Movies" : "TV Shows"
+        let countNoun = store.activeSection == "Movies" ? "movies" : "shows"
+        let safeH = XuvaScale.safeHorizontal(viewport)
+
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Your library · \(label)")
+                    .font(.system(size: XuvaScale.eyebrowFontSize(viewport), weight: .semibold))
+                    .tracking(2)
+                    .textCase(.uppercase)
+                    .foregroundStyle(XuvaTheme.mutedText)
+                Text(label)
+                    .font(.system(size: XuvaScale.heroTitleSize(viewport) * 0.45, weight: .semibold))
+                    .foregroundStyle(XuvaTheme.text)
+                Text("\(items.count.formatted()) \(countNoun) in your library")
+                    .font(.system(size: XuvaScale.metaFontSize(viewport)))
+                    .foregroundStyle(XuvaTheme.muted)
+            }
+            .padding(.horizontal, safeH)
+            .padding(.top, 8)
+
+            if items.isEmpty {
+                EmptyLibraryView(section: store.activeSection, viewport: viewport)
+                    .padding(.horizontal, safeH)
+            } else {
+                let posterW = XuvaScale.posterWidth(viewport)
+                let columns = Array(
+                    repeating: GridItem(.flexible(), spacing: 32, alignment: .top),
+                    count: XuvaScale.libraryGridColumnCount(viewport)
+                )
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 40) {
+                    ForEach(items) { item in
+                        PosterTile(item: item, viewport: viewport) {
+                            Task { await store.open(item: item) }
+                        }
+                        .frame(maxWidth: posterW, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal, safeH)
+                .focusSection()
+            }
+        }
     }
 
     @ViewBuilder
