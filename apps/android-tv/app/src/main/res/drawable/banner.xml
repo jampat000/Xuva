@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 banner required for LEANBACK_LAUNCHER. Single solid background with
+     the wordmark in the centre — replace with a richer asset once branding lands. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#0B0B0F"
+        android:pathData="M0,0h320v180h-320z" />
+    <path
+        android:fillColor="#B388FF"
+        android:pathData="M84,70 L100,70 L132,128 L164,70 L180,70 L140,140 L124,140 z M196,70 L212,70 L212,140 L196,140 z M228,70 L292,70 L292,84 L264,84 L264,140 L256,140 L256,84 L228,84 z" />
+</vector>
