@@ -12,6 +12,12 @@ public struct PairingScreen: View {
     @State private var showQRScanner = false
     #endif
 
+    // Drives default focus onto the first discovered server card once mDNS
+    // populates the list — without this, the focus engine lands on whatever
+    // was rendered first (the QR/manual chip), and the user has to swim back
+    // up to the server they want.
+    @FocusState private var focusedDiscoveryID: String?
+
     public init() {}
 
     public var body: some View {
@@ -68,6 +74,17 @@ public struct PairingScreen: View {
         #endif
         .task(id: store.pairing?.stableID) {
             await pollPairingWhilePending()
+        }
+        // When the discovery list first populates (or its head changes), jump
+        // focus to the first discovered server card. Without this, the focus
+        // engine lands on whatever rendered first (the QR / manual chip) and
+        // the user has to scroll up past everything to reach the server they
+        // actually want. Apple TV's focus is rect-based, not order-based, so
+        // we drive it explicitly here.
+        .onChange(of: discovery.servers.first?.id) { _, newFirst in
+            if let id = newFirst, focusedDiscoveryID == nil {
+                focusedDiscoveryID = id
+            }
         }
         .onAppear {
             discovery.start()
@@ -151,8 +168,7 @@ public struct PairingScreen: View {
             .background(XuvaTheme.surface.opacity(0.74), in: Capsule(style: .continuous))
             .overlay(Capsule(style: .continuous).stroke(XuvaTheme.hairline))
         }
-        .buttonStyle(.plain)
-        .xuvaFocused(radius: 999)
+        .buttonStyle(XuvaCardButtonStyle(radius: 999))
     }
 
     @ViewBuilder
@@ -188,8 +204,8 @@ public struct PairingScreen: View {
             .background(XuvaTheme.surface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(XuvaTheme.hairline))
         }
-        .buttonStyle(.plain)
-        .xuvaFocused(radius: 18)
+        .buttonStyle(XuvaCardButtonStyle(radius: 18))
+        .focused($focusedDiscoveryID, equals: server.id)
     }
 
     @ViewBuilder
