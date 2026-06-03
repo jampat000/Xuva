@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+// Release tag guard. Enforces strict semver `vMAJOR.MINOR.PATCH` so the tag,
+// the buildinfo Version string, the MSI ProductVersion, and the Docker tag
+// all stay in lock-step. Optional `-rc.N` / `-beta.N` / `-alpha.N` suffixes
+// for pre-release tags (e.g. `v1.1.0-rc.1`) — these never become `:latest`
+// (release.yml gates the `:latest` push on a stable tag).
+
 const tag = String(process.argv[2] || process.env.GITHUB_REF_NAME || "").trim();
 
 if (!tag) {
@@ -7,10 +13,15 @@ if (!tag) {
   process.exit(1);
 }
 
-if (!/^v0\.0\.(?:[1-9]\d*)$/.test(tag)) {
+// MAJOR.MINOR.PATCH with an optional pre-release suffix (semver).
+const STABLE = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
+const PRERELEASE = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-(?:alpha|beta|rc)\.(?:0|[1-9]\d*)$/;
+
+if (!STABLE.test(tag) && !PRERELEASE.test(tag)) {
   console.error(`invalid release tag: ${tag}`);
-  console.error("early Xuva releases must use v0.0.x tags, for example v0.0.1");
-  console.error("update docs/release-versioning.md and this guard only when promoting to the 1.x track");
+  console.error("release tags must be strict semver: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-(alpha|beta|rc).N");
+  console.error("examples: v1.0.0  v1.2.3  v2.0.0-rc.1  v1.0.0-beta.2");
+  console.error("see docs/release-versioning.md");
   process.exit(1);
 }
 
