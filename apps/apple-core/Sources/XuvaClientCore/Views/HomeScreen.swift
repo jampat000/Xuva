@@ -118,16 +118,26 @@ public struct HomeScreen: View {
                     .padding(.horizontal, safeH)
             } else {
                 let posterW = XuvaScale.posterWidth(viewport)
+                let posterH = XuvaScale.posterHeight(viewport)
+                // Each grid cell is the poster + caption (title + meta) +
+                // breathing room for the focus scale (1.05 × posterH adds
+                // ~17pt at typical sizes). Fix the row height so adjacent
+                // rows don't crash into each other when one row's titles
+                // wrap to two lines and the next row's posters don't.
+                let captionStack: CGFloat = 64
+                let focusBleed: CGFloat = 24
+                let cellHeight = posterH + captionStack + focusBleed
                 let columns = Array(
-                    repeating: GridItem(.flexible(), spacing: 32, alignment: .top),
+                    repeating: GridItem(.flexible(), spacing: 44, alignment: .top),
                     count: XuvaScale.libraryGridColumnCount(viewport)
                 )
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 40) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 56) {
                     ForEach(items) { item in
                         PosterTile(item: item, viewport: viewport) {
                             Task { await store.open(item: item) }
                         }
                         .frame(maxWidth: posterW, alignment: .leading)
+                        .frame(height: cellHeight, alignment: .top)
                     }
                 }
                 .padding(.horizontal, safeH)
