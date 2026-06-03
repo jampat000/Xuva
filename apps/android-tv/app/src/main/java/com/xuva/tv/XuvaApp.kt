@@ -2,6 +2,7 @@ package com.xuva.tv
 
 import android.app.Application
 import com.xuva.tv.core.api.XuvaApi
+import com.xuva.tv.core.api.XuvaAuthApi
 import com.xuva.tv.core.discovery.ServerDiscovery
 import com.xuva.tv.core.pairing.PairingRepository
 import com.xuva.tv.core.storage.SecureStore
@@ -17,4 +18,5 @@ class XuvaApp : Application() {
     val api: XuvaApi by lazy { XuvaApi() }
     val pairingRepository: PairingRepository by lazy { PairingRepository(api, secureStore) }
     val serverDiscovery: ServerDiscovery by lazy { ServerDiscovery(applicationContext) }
+    val authApi: XuvaAuthApi by lazy { XuvaAuthApi(secureStore) }
 }
