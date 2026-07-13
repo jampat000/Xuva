@@ -25,7 +25,7 @@ jobs:
     name: Build iOS (simulator)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Xcode version
         run: xcodebuild -version
       - name: Build Xuva iOS
@@ -40,7 +40,7 @@ jobs:
     name: Build tvOS (simulator)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Xcode version
         run: xcodebuild -version
       - name: Build Xuva TV
