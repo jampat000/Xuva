@@ -230,6 +230,7 @@ public struct PairingScreen: View {
 
     @ViewBuilder
     private func manualSection(viewport: CGSize) -> some View {
+        let manualAddressReady = !store.serverText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         VStack(alignment: .leading, spacing: 12) {
             Button {
                 showManualEntry.toggle()
@@ -257,7 +258,7 @@ public struct PairingScreen: View {
                     }
                     .buttonStyle(XuvaPrimaryButtonStyle(viewport: viewport))
                     .xuvaDefaultKeyboardAction()
-                    .disabled(store.isBusy)
+                    .disabled(store.isBusy || !manualAddressReady)
                 }
                 .padding(.top, 4)
             }
@@ -273,6 +274,7 @@ public struct PairingScreen: View {
             .textContentType(.URL)
             .submitLabel(.go)
             .onSubmit {
+                guard !store.serverText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                 Task {
                     await store.connect()
                     if store.errorMessage == nil { await store.startPairing() }

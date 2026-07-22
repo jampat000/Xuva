@@ -10,7 +10,7 @@ import TVServices
 public final class XuvaClientStore: ObservableObject {
     private let logger = Logger(subsystem: "com.xuva.client", category: "store")
 
-    @Published public var serverText = "http://127.0.0.1:8097" {
+    @Published public var serverText = "" {
         didSet {
             UserDefaults.standard.set(serverText, forKey: Self.serverURLKey)
         }
@@ -46,7 +46,7 @@ public final class XuvaClientStore: ObservableObject {
         serverText == Self.defaultServerURL
     }
 
-    private static let defaultServerURL = "http://127.0.0.1:8097"
+    private static let defaultServerURL = ""
     private static let deviceIDKey = "xuva.apple.deviceId"
     private static let serverURLKey = "xuva.apple.serverURL"
     private static let pairedServerURLKey = "xuva.apple.pairedServerURL"
@@ -411,6 +411,7 @@ public final class XuvaClientStore: ObservableObject {
         let trimmed = serverText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isBusy, api == nil, !trimmed.isEmpty else { return }
         guard !UserDefaults.standard.bool(forKey: Self.pairedDeviceKey) else { return }
+        guard !usesDefaultServerURL else { return }
         await connect()
         guard errorMessage == nil else { return }
         await startPairing()

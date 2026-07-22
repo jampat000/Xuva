@@ -391,20 +391,22 @@ public struct XuvaPrimaryButtonStyle: ButtonStyle {
         let configuration: Configuration
         let viewport: CGSize
         @Environment(\.isFocused) private var isFocused
+        @Environment(\.isEnabled) private var isEnabled
 
         var body: some View {
             let h = XuvaScale.buttonHeight(viewport)
             configuration.label
                 .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .semibold))
-                .foregroundStyle(XuvaTheme.background)
+                .foregroundStyle(isEnabled ? XuvaTheme.background : XuvaTheme.mutedText.opacity(0.72))
                 .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
                 .frame(height: h)
-                .background(XuvaTheme.text, in: Capsule(style: .continuous))
-                .scaleEffect(configuration.isPressed ? 0.97 : (isFocused ? 1.035 : 1))
-                .shadow(color: XuvaTheme.focus.opacity(isFocused ? 0.42 : 0), radius: isFocused ? 26 : 0, x: 0, y: 14)
-                .overlay(Capsule(style: .continuous).stroke(XuvaTheme.focus.opacity(isFocused ? 0.95 : 0), lineWidth: 3))
+                .background((isEnabled ? XuvaTheme.text : XuvaTheme.surface.opacity(0.85)), in: Capsule(style: .continuous))
+                .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : (isFocused && isEnabled ? 1.035 : 1))
+                .shadow(color: XuvaTheme.focus.opacity(isFocused && isEnabled ? 0.42 : 0), radius: isFocused && isEnabled ? 26 : 0, x: 0, y: 14)
+                .overlay(Capsule(style: .continuous).stroke(isEnabled ? XuvaTheme.focus.opacity(isFocused ? 0.95 : 0) : XuvaTheme.hairline, lineWidth: isFocused && isEnabled ? 3 : 1))
                 .focusEffectDisabled()
                 .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+                .animation(.easeOut(duration: 0.16), value: isEnabled)
         }
     }
 }
@@ -423,22 +425,24 @@ public struct XuvaSecondaryButtonStyle: ButtonStyle {
         let configuration: Configuration
         let viewport: CGSize
         @Environment(\.isFocused) private var isFocused
+        @Environment(\.isEnabled) private var isEnabled
 
         var body: some View {
             let h = XuvaScale.buttonHeight(viewport)
             configuration.label
                 .font(.system(size: XuvaScale.buttonFontSize(viewport), weight: .medium))
-                .foregroundStyle(XuvaTheme.text)
+                .foregroundStyle(isEnabled ? XuvaTheme.text : XuvaTheme.mutedText.opacity(0.65))
                 .padding(.horizontal, XuvaScale.buttonHorizontalPadding(viewport))
                 .frame(height: h)
-                .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.06), in: Capsule(style: .continuous))
+                .background(Color.white.opacity(isEnabled ? (configuration.isPressed ? 0.12 : 0.06) : 0.035), in: Capsule(style: .continuous))
                 .overlay(Capsule(style: .continuous).stroke(
-                    isFocused ? XuvaTheme.focus.opacity(0.95) : Color.white.opacity(0.15),
-                    lineWidth: isFocused ? 3 : 1))
-                .scaleEffect(isFocused ? 1.035 : 1)
-                .shadow(color: XuvaTheme.focus.opacity(isFocused ? 0.42 : 0), radius: isFocused ? 26 : 0, x: 0, y: 14)
+                    isFocused && isEnabled ? XuvaTheme.focus.opacity(0.95) : Color.white.opacity(isEnabled ? 0.15 : 0.08),
+                    lineWidth: isFocused && isEnabled ? 3 : 1))
+                .scaleEffect(isFocused && isEnabled ? 1.035 : 1)
+                .shadow(color: XuvaTheme.focus.opacity(isFocused && isEnabled ? 0.42 : 0), radius: isFocused && isEnabled ? 26 : 0, x: 0, y: 14)
                 .focusEffectDisabled()
                 .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isFocused)
+                .animation(.easeOut(duration: 0.16), value: isEnabled)
         }
     }
 }
