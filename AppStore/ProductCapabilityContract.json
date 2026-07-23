@@ -1,0 +1,152 @@
+{
+  "schema": "ejm-product-capability-contract-v1",
+  "status": "STOP",
+  "app_name": "Xuva",
+  "bundle_id": "com.xuva.ios",
+  "product_promise": "Universal iPhone and iPad client for connecting to a self-hosted Xuva server, browsing movies and shows, inspecting media details, and playing compatible local media.",
+  "build_tested": "0.1.0 (1)",
+  "audited_at": "2026-07-22T07:51:42Z",
+  "implementation_commit": "13f8161a941e1d626c53755547607af36d0c6bdc",
+  "source_changes_after_commit": [
+    "Removed generated empty iOS scene manifest setting after SpringBoard launch denial on iOS 26.5 simulators.",
+    "Changed iPhone/iPad playback requests to prefer direct playback under the server default original_only policy.",
+    "Updated Svelte package-lock through npm audit fix."
+  ],
+  "promise_sources": [
+    {
+      "id": "ios-readme",
+      "surface": "repo documentation",
+      "claim": "Universal iPhone and iPad media player for Xuva.",
+      "location": "apps/ios/README.md",
+      "capability_ids": ["connect-pair", "browse-library", "title-detail", "direct-playback"],
+      "evidence": [{"type": "source", "path": "apps/ios/README.md"}]
+    },
+    {
+      "id": "first-run-ui",
+      "surface": "first-run iOS UI",
+      "claim": "Pick your Xuva server, approve once, and the library opens to movies and shows.",
+      "location": "apps/apple-core/Sources/XuvaClientCore/Views/PairingScreen.swift",
+      "capability_ids": ["connect-pair", "browse-library"],
+      "evidence": [{"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/Views/PairingScreen.swift"}]
+    },
+    {
+      "id": "home-play-ui",
+      "surface": "home screen",
+      "claim": "Loaded library items expose Play, More Info, Movies, TV, Watchlist, refresh, and settings controls.",
+      "location": "apps/apple-core/Sources/XuvaClientCore/Views/HomeScreen.swift",
+      "capability_ids": ["browse-library", "title-detail", "direct-playback", "watchlist-settings"],
+      "evidence": [{"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/Views/HomeScreen.swift"}]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "connect-pair",
+      "kind": "workflow",
+      "advertised_label": "Connect to Xuva",
+      "user_goal": "Find or enter a self-hosted Xuva server and reach a paired state.",
+      "domain_model": "Server URL, device identity, pairing request, and persisted paired-device state.",
+      "entry_points": ["First-run connect screen", "Manual address field", "QR or pair-code section", "Bonjour discovery list"],
+      "required_inputs": ["Server URL or discovered server", "Pairing approval or QR token"],
+      "required_actions": ["Open first-run screen", "Discover or enter server", "Request pair code", "Approve or seed paired state", "Relaunch"],
+      "completion_outcome": "Paired client loads the server library after relaunch.",
+      "persistence_and_recovery": "Seeded paired state survived relaunch and loaded home on iPhone and iPad.",
+      "failure_states": ["No discovered server", "Invalid or unavailable server", "Pending approval"],
+      "evidence": [
+        {"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/State/XuvaClientStore.swift"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/iphone-first-run-connect-fixed.png"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/ipad-first-run-connect-fixed.png"}
+      ],
+      "result": "STOP",
+      "stop_reason": "No-discovery and seeded relaunch were captured; real approval path and invalid server recovery need current-build on-device proof."
+    },
+    {
+      "id": "browse-library",
+      "kind": "content-mode",
+      "advertised_label": "Movies and shows library",
+      "user_goal": "Browse media exposed by the paired Xuva server.",
+      "domain_model": "Client home rows, hero item, media identifiers, route labels, movie/series tabs, watchlist sync.",
+      "entry_points": ["Paired app launch", "Home tab", "Movies tab", "TV tab"],
+      "required_inputs": ["Paired server URL", "Server catalog with scanned media"],
+      "required_actions": ["Scan media", "Probe media", "Launch paired client", "Load home", "Inspect iPhone and iPad layouts"],
+      "completion_outcome": "The synthetic movie Orbit Proof appeared as Ready in hero and library rows.",
+      "persistence_and_recovery": "Paired defaults survived relaunch on both simulators.",
+      "failure_states": ["Empty library", "Server unavailable", "Auth expired"],
+      "evidence": [
+        {"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/Views/HomeScreen.swift"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/iphone-home-seeded-library.png"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/ipad-home-seeded-library.png"}
+      ],
+      "result": "STOP",
+      "stop_reason": "Home library proof passed partially; Movies/TV tab switching, empty states, unavailable server, and auth-expired recovery remain unproven."
+    },
+    {
+      "id": "title-detail",
+      "kind": "content-mode",
+      "advertised_label": "More Info",
+      "user_goal": "Open a title and inspect versions, metadata, tracks, and actions before playback.",
+      "domain_model": "Movie detail response, media versions, playback decisions, watchlist state, related metadata.",
+      "entry_points": ["Home More Info button", "Library card"],
+      "required_inputs": ["Selected media item"],
+      "required_actions": ["Open detail", "Inspect title metadata", "Return to home", "Recover from detail error"],
+      "completion_outcome": "Server logs show both simulators requested the movie detail endpoint after auto-open.",
+      "persistence_and_recovery": "Not fully proven after relaunch.",
+      "failure_states": ["Detail fetch failure", "Missing metadata", "No playable version"],
+      "evidence": [
+        {"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/Views/DetailScreen.swift"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/iphone-home-seeded-library.png"}
+      ],
+      "result": "STOP",
+      "stop_reason": "Detail endpoint was reached, but screenshot and interaction proof were interrupted by macOS process exhaustion."
+    },
+    {
+      "id": "direct-playback",
+      "kind": "content-mode",
+      "advertised_label": "Play",
+      "user_goal": "Start playback for a compatible local media source.",
+      "domain_model": "Playback start request, direct/adaptive route decision, stream-token URL, AVPlayer screen, heartbeat/stop state.",
+      "entry_points": ["Home Play button", "Detail Play button"],
+      "required_inputs": ["Probed media source", "Client playback profile"],
+      "required_actions": ["Start playback", "Resolve route", "Display player", "Stop and persist progress"],
+      "completion_outcome": "API proof returned direct route ready after the iOS preferAdaptive fix.",
+      "persistence_and_recovery": "Not proven in simulator player UI.",
+      "failure_states": ["Unprobed file", "Blocked by server policy", "Missing stream URL", "Network interruption"],
+      "evidence": [
+        {"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/Networking/XuvaAPI.swift"},
+        {"type": "source", "path": "server/internal/api/router.go"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/iphone-home-seeded-library.png"}
+      ],
+      "result": "STOP",
+      "stop_reason": "The policy mismatch was fixed and API-proven, but player UI, heartbeat, stop, and progress proof remain incomplete."
+    },
+    {
+      "id": "watchlist-settings",
+      "kind": "workflow",
+      "advertised_label": "Watchlist and settings",
+      "user_goal": "Manage saved titles and server connection state.",
+      "domain_model": "Watchlist API, local cache, settings/reset connection controls.",
+      "entry_points": ["Plus button", "Watchlist tab", "Settings button"],
+      "required_inputs": ["Paired server", "Selected title"],
+      "required_actions": ["Add title", "Open Watchlist", "Remove title", "Reset connection"],
+      "completion_outcome": "Not proven in this lane.",
+      "persistence_and_recovery": "Not proven in this lane.",
+      "failure_states": ["Watchlist sync failure", "Connection reset", "Server unavailable"],
+      "evidence": [
+        {"type": "source", "path": "apps/apple-core/Sources/XuvaClientCore/State/XuvaWatchlist.swift"},
+        {"type": "screenshot", "path": "AppStore/DeepQA/artifacts/current-build-20260722/ipad-home-seeded-library.png"}
+      ],
+      "result": "STOP",
+      "stop_reason": "Visible controls exist, but runtime add/remove/reset proof is missing."
+    }
+  ],
+  "unmapped_promises": [
+    "TV tab with real episodic series was not runtime-proven.",
+    "Watchlist add/remove persistence was not runtime-proven.",
+    "Settings/reset connection and auth-expired recovery were not runtime-proven.",
+    "Player heartbeat/stop/progress persistence was not runtime-proven."
+  ],
+  "generic_shells": [],
+  "decision_required": {
+    "required": false,
+    "statement": "No product-concept decision is required. Xuva can be a shippable companion client for users who run a Xuva server, but the current build needs more proof and fixes before release."
+  }
+}

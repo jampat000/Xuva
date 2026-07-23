@@ -1,0 +1,39 @@
+{
+  "actions": {},
+  "build_number": "1",
+  "contract": {
+    "app_name": "Xuva",
+    "bundle_id": "com.xuva.ios",
+    "device_family": "universal-iphone-ipad",
+    "eu_policy": "available unless ASC/legal setup says otherwise",
+    "kind": "app",
+    "monetization": "none",
+    "price": "free",
+    "privacy_posture": "local-first self-hosted; no analytics or collected data; local network and optional camera QR scan permissions",
+    "release_type": "AFTER_APPROVAL"
+  },
+  "created_at": "2026-07-22T07:31:30.710520+00:00",
+  "history": [
+    {
+      "at": "2026-07-22T07:31:30.734614+00:00",
+      "note": "Existing Xuva iOS target at commit 13f8161 verified by xcodebuild iOS simulator build, Go tests, Svelte checks, Vitest and built-bundle smoke before Deep QA initialization.",
+      "phase": "BUILD_PASS"
+    },
+    {
+      "at": "2026-07-22T07:31:31.001357+00:00",
+      "note": "Deep QA started after rebuilding missing EJM workflow state and reproducing current deterministic build/test status.",
+      "phase": "DEEP_QA_IN_PROGRESS"
+    }
+  ],
+  "marketing_version": "0.1.0",
+  "next_skill": "ejm-03-deep-qa",
+  "phase": "DEEP_QA_IN_PROGRESS",
+  "project_root": "/Users/james/Projects/Xuva",
+  "schema": "ejm-workflow-v1",
+  "source_commit": "13f8161a941e1d626c53755547607af36d0c6bdc",
+  "testflight": {
+    "asc_build_id": "",
+    "state": "NOT_DELIVERED"
+  },
+  "updated_at": "2026-07-22T07:31:31.001294+00:00"
+}

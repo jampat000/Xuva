@@ -1,0 +1,9 @@
+{
+  "acquired_at": "2026-07-22T07:31:30.845758+00:00",
+  "expires_at": "2026-07-22T11:31:30.845585+00:00",
+  "expires_epoch": 1784719890,
+  "owner": "codex",
+  "phase": "BUILD_PASS",
+  "schema": "ejm-workflow-lock-v1",
+  "session": "codex-xuva-20260722T073130Z"
+}

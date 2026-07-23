@@ -99,6 +99,13 @@ public final class XuvaAPI: @unchecked Sendable {
         subtitleTrackIndex: Int? = nil,
         subtitleTrackActive: Bool? = nil
     ) async throws -> PlaybackStartResponse {
+        #if os(tvOS)
+        let preferAdaptive = true
+        #else
+        // iPhone/iPad should honor the server's default original-only policy
+        // and direct play compatible files instead of forcing adaptive HLS.
+        let preferAdaptive = false
+        #endif
         let body = PlaybackStartRequest(
             mediaSourceId: mediaSourceId,
             clientProfile: XuvaClientProfile.current,
@@ -107,7 +114,7 @@ public final class XuvaAPI: @unchecked Sendable {
             subtitleTrackIndex: subtitleTrackIndex,
             subtitleTrackActive: subtitleTrackActive,
             supportsAdaptive: true,
-            preferAdaptive: true
+            preferAdaptive: preferAdaptive
         )
         return try await send("POST", path: "/api/client/playback/start", body: body)
     }
